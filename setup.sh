@@ -3,7 +3,7 @@
 # + Download sequences (fasta format) for Human (hg19), PhiX, and ERCC spike-in
 # + Build index for mapping with Subread
 
-SUBREAD=/mnt/lustre/home/jdblischak/src/subread-1.4.4-Linux-x86_64/bin/
+SUBREAD=/mnt/lustre/home/jdblischak/src/subread-1.4.4-Linux-x86_64/bin
 
 mkdir -p data/genome
 cd data/genome
@@ -23,4 +23,4 @@ echo "Build index"
 $SUBREAD/subread-buildindex -o combined hg19.fa PhiX/NCBI/1993-04-28/Sequence/WholeGenomeFasta/genome.fa ERCC92.fa
 
 echo "Remove intermediate files"
-rm -r hg19.fa PhiX_NCBI_1993-04-28.tar.gz README.txt PhiX ERCC92.fa
+rm -rf hg19.fa PhiX_NCBI_1993-04-28.tar.gz README.txt PhiX ERCC92.fa
