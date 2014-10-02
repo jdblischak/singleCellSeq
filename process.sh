@@ -18,7 +18,7 @@ $SUBREAD/subread-align -i data/genome/combined -r $FASTQ --BAMoutput > $BAM
 
 echo "Assess mapping"
 COUNTS=${FASTQ%fastq}counts.txt
-samtools view -F 4 $BAM | cut -f 3 | sort | uniq -c > $COUNTS
+samtools view $BAM | cut -f 3 | sort | uniq -c > $COUNTS
 
 echo "Remove intermediate file"
 rm $FASTQ
