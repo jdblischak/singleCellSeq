@@ -14,7 +14,7 @@ $FASTQC/fastqc $FASTQ
 
 echo "Map reads"
 BAM=${FASTQ%fastq}bam
-$SUBREAD/subread-align -i data/genome/combined -r $FASTQ --BAMoutput > $BAM
+$SUBREAD/subread-align -i data/genome/combined -r $FASTQ --BAMoutput --trim5 8 > $BAM
 
 echo "Assess mapping"
 COUNTS=${FASTQ%fastq}counts.txt
