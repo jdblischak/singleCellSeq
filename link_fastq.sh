@@ -10,5 +10,5 @@ LANE2=/rawdata/Illumina_Runs/140923_SN_0795_0387_AHA9RUADXX/Unaligned4/Undetermi
 for fq in $LANE1/*fastq.gz $LANE2/*fastq.gz
 do
   #echo $fq
-  ln -s $fq /home/jdblischak/single-cell-seq/data/seqs/`basename $fq`
+  ln -s $fq /mnt/gluster/home/jdblischak/single-cell-seq/data/seqs/`basename $fq`
 done
