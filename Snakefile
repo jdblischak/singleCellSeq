@@ -35,7 +35,7 @@ test_samples = ['lane1_Undetermined_L001_R1_001.fastq.gz',
                 'lane2_Undetermined_L002_R1_031.fastq.gz']
 
 rule test:
-	input: [DATA_DIR + f.replace('fastq.gz', 'trim.fastq') for f in test_samples]
+	input: [DATA_DIR + f.replace('fastq.gz', 'umi.bam') for f in test_samples]
 
 rule qc:
 	input: [DATA_DIR + f.replace('.fastq.gz', '_fastqc.zip') for f in test_samples]
@@ -87,7 +87,7 @@ rule sort_bam:
 	message: 'Sort bam file {input}'
 	params: h_vmem = '8g', bigio = '1',
 	        name = lambda wildcards: 'sort_bam.' + wildcards.seq,
-                prefix = lambda wildcards: wildcards.seq + '.sorted'
+                prefix = lambda wildcards: DATA_DIR + wildcards.seq + '.sorted'
 	log: LOG_DIR
 	shell: '{SAMTOOLS}samtools sort {input} {params.prefix}'
 
