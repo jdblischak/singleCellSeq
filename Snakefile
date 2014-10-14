@@ -46,7 +46,7 @@ rule qc:
 
 rule unzip:
 	input: DATA_DIR + '{seq}.fastq.gz'
-	output: DATA_DIR + '{seq}.fastq'
+	output: temp(DATA_DIR + '{seq}.fastq')
 	message: 'Unzipping sample {input}'
 	params: h_vmem = '8g', bigio = '0',
 	        name = lambda wildcards: 'unzip.' + wildcards.seq
@@ -64,7 +64,7 @@ rule fastqc:
 
 rule trim_umi:
 	input: DATA_DIR + '{seq}.fastq'
-	output: DATA_DIR + '{seq}.trim.fastq'
+	output: temp(DATA_DIR + '{seq}.trim.fastq')
 	message: 'Trim UMIs from 5\' end of reads of sample {input}'
 	params: h_vmem = '8g', bigio = '0',
 	        name = lambda wildcards: 'trim_umi.' + wildcards.seq
@@ -74,7 +74,7 @@ rule trim_umi:
 rule map:
 	input: fastq = DATA_DIR + '{seq}.trim.fastq',
                genome = REF_GENOME + '.reads'
-	output: DATA_DIR + '{seq}.bam'
+	output: temp(DATA_DIR + '{seq}.bam')
 	message: 'Map reads of sample {input.fastq}'
 	params: h_vmem = '12g', bigio = '1',
 	        name = lambda wildcards: 'map.' + wildcards.seq
