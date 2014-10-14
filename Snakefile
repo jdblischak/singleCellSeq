@@ -151,11 +151,11 @@ rule combine_features:
 	shell: 'cat {input.exons} {input.ercc} > {output}'
 
 rule featureCounts:
-	input: reads = 'data/seqs/{seq}.sorted.bam',
-               umi = 'data/seqs/{seq}.umi.bam',
+	input: reads = DATA_DIR + '{seq}.sorted.bam',
+               umi = DATA_DIR + '{seq}.umi.bam',
                anno = 'data/genome/exons_ERCC92.saf'
-	output: counts = 'data/seqs/{seq}.counts.txt',
-                summary = 'data/seqs/{seq}.counts.txt.summary'
+	output: counts = DATA_DIR + '{seq}.counts.txt',
+                summary = DATA_DIR + '{seq}.counts.txt.summary'
 	message: 'Counts number of reads per feature for {input.umi}.'
 	params: h_vmem = '8g', bigio = '1',
 	        name = lambda wildcards: 'featureCounts.' + wildcards.seq
