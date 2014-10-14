@@ -30,9 +30,14 @@ REF_GENOME = 'data/genome/combined' # prefix only
 
 localrules: test, qc
 
+samples = glob_wildcards(DATA_DIR + '{seq}.fastq.gz')
+
 test_samples = ['lane1_Undetermined_L001_R1_001.fastq.gz',
                 'lane1_Undetermined_L001_R1_007.fastq.gz',
                 'lane2_Undetermined_L002_R1_031.fastq.gz']
+
+rule all:
+	input: expand(DATA_DIR + '{seq}.umi.bam', seq = samples.seq)
 
 rule test:
 	input: [DATA_DIR + f.replace('fastq.gz', 'umi.bam') for f in test_samples]
