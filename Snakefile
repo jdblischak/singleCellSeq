@@ -28,7 +28,7 @@ REF_GENOME = 'data/genome/combined' # prefix only
 # Target rules
 ###############################################################################
 
-localrules: test, qc
+localrules: all, test, qc
 
 samples = glob_wildcards(DATA_DIR + '{seq}.fastq.gz')
 
