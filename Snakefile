@@ -39,7 +39,7 @@ test_samples = ['lane1_Undetermined_L001_R1_001.fastq.gz',
                 'lane2_Undetermined_L002_R1_031.fastq.gz']
 
 rule all:
-	input: expand(DATA_DIR + '{seq}.counts.txt', seq = samples.seq)
+	input: DATA_DIR + 'count_matrix.txt'
 
 rule test:
 	input: [DATA_DIR + f.replace('fastq.gz', 'umi.bam') for f in test_samples]
@@ -162,3 +162,15 @@ rule featureCounts:
 	log: LOG_DIR
 	shell: '{SUBREAD}featureCounts -a {input.anno} -F SAF -o {output.counts} {input.reads} {input.umi}'
 
+subworkflow population:
+	snakefile: 'Snakefile-population'
+
+rule combine_counts:
+	input: expand(DATA_DIR + '{seq}.counts.txt', seq = samples.seq),
+               population('data/population/19239_yale.counts.txt')
+	output: DATA_DIR + 'count_matrix.txt'
+	message: 'Combine counts into one matrix.'
+	params: h_vmem = '8g', bigio = '0',
+	        name = 'combine_counts'
+	log: LOG_DIR
+	shell: 'Rscript combine_counts.R > {output}'
