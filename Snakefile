@@ -118,6 +118,14 @@ rule rmdup_umi:
 	log: LOG_DIR
 	shell: '{UMITOOLS}umitools rmdup {input.bam} {output.bam} > {output.bed}'
 
+rule download_exons:
+	output: 'data/genome/exons.saf'
+	message: 'Create SAF file of human exons.'
+	params: h_vmem = '8g', bigio = '0',
+	        name = 'download_exons'
+	log: LOG_DIR
+	shell: 'Rscript download_exons.R > {output}'
+
 rule ercc_tab:
 	input: 'data/genome/ERCC92.fa'
 	output: 'data/genome/ERCC92.txt'

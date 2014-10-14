@@ -21,5 +21,5 @@ exons_final$Chr <- sub("chrMT", "chrM", exons_final$Chr)
 # Fix strand
 exons_final$Strand <- ifelse(exons_final$Strand == 1, "+", "-")
 # Save as tab-separated file in Simplified Annotation Format (SAF)
-write.table(exons_final, "exons.saf", quote = FALSE, sep = "\t",
+write.table(exons_final, "", quote = FALSE, sep = "\t",
             row.names = FALSE)
