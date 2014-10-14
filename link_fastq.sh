@@ -19,4 +19,4 @@ done
 # yale	090121_YOAV_FC310E0_PIPELINE_V2	3	NA19239	2.5	2
 # Unfotunately the argonne data does not have the raw sequences, just the
 # mapped reads (in some unknown binary format).
-ln -s /mnt/lustre/data/share/PrimaryData/HapGE/RNASeq/yale/090121_YOAV_FC310E0_PIPELINE_V2/s_3_sequence.txt.gz data/seqs/19239_yale.fastq.gz
+ln -s /mnt/lustre/data/share/PrimaryData/HapGE/RNASeq/yale/090121_YOAV_FC310E0_PIPELINE_V2/s_3_sequence.txt.gz data/population/19239_yale.fastq.gz
