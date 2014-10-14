@@ -39,7 +39,7 @@ test_samples = ['lane1_Undetermined_L001_R1_001.fastq.gz',
                 'lane2_Undetermined_L002_R1_031.fastq.gz']
 
 rule all:
-	input: expand(DATA_DIR + '{seq}.umi.bam', seq = samples.seq)
+	input: expand(DATA_DIR + '{seq}.counts.txt', seq = samples.seq)
 
 rule test:
 	input: [DATA_DIR + f.replace('fastq.gz', 'umi.bam') for f in test_samples]
@@ -149,3 +149,16 @@ rule combine_features:
 	        name = 'combine_features'
 	log: LOG_DIR
 	shell: 'cat {input.exons} {input.ercc} > {output}'
+
+rule featureCounts:
+	input: reads = 'data/seqs/{seq}.sorted.bam',
+               umi = 'data/seqs/{seq}.umi.bam',
+               anno = 'data/genome/exons_ERCC92.saf'
+	output: counts = 'data/seqs/{seq}.counts.txt',
+                summary = 'data/seqs/{seq}.counts.txt.summary'
+	message: 'Counts number of reads per feature for {input.umi}.'
+	params: h_vmem = '8g', bigio = '1',
+	        name = lambda wildcards: 'featureCounts.' + wildcards.seq
+	log: LOG_DIR
+	shell: '{SUBREAD}featureCounts -a {input.anno} -F SAF -o {output.counts} {input.reads} {input.umi}'
+
