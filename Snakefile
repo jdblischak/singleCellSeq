@@ -139,3 +139,13 @@ rule ercc_tab:
               out.write('%s\t%s\t1\t%d\t+\n'%(seq_record.id, seq_record.id,
                                               len(seq_record)))
           out.close()
+
+rule combine_features:
+	input: exons = 'data/genome/exons.saf',
+               ercc = 'data/genome/ERCC92.txt'
+	output: 'data/genome/exons_ERCC92.saf'
+	message: 'Combine human exons and ERCC sequences.'
+	params: h_vmem = '8g', bigio = '0',
+	        name = 'combine_features'
+	log: LOG_DIR
+	shell: 'cat {input.exons} {input.ercc} > {output}'
