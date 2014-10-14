@@ -9,6 +9,8 @@ nohup snakemake -kp -j 96 --ri -c "qsub -l h_vmem={params.h_vmem} -l bigio={para
 
 """
 
+from Bio import SeqIO
+
 ###############################################################################
 # SOFTWARE
 ###############################################################################
@@ -115,3 +117,17 @@ rule rmdup_umi:
 	        name = lambda wildcards: 'rmdup_umi.' + wildcards.seq
 	log: LOG_DIR
 	shell: '{UMITOOLS}umitools rmdup {input.bam} {output.bam} > {output.bed}'
+
+rule ercc_tab:
+	input: 'data/genome/ERCC92.fa'
+	output: 'data/genome/ERCC92.txt'
+	message: 'Create tab-sep text file of ERCC sequences.'
+	params: h_vmem = '8g', bigio = '0',
+	        name = 'ercc_tab'
+	log: LOG_DIR
+	run:
+          out = open(output[0], 'w')
+          for seq_record in SeqIO.parse("data/genome/ERCC92.fa", 'fasta'):
+              out.write('%s\t%s\t1\t%d\t+\n'%(seq_record.id, seq_record.id,
+                                              len(seq_record)))
+          out.close()
