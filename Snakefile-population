@@ -22,9 +22,10 @@ SUBREAD = '/home/jdblischak/src/subread-1.4.4-Linux-x86_64/bin/'
 ###############################################################################
 # Data
 ###############################################################################
-DATA_DIR = 'data/population/'
+DATA_DIR = 'data/'
+POP_DIR = DATA_DIR + 'population/'
 LOG_DIR = 'log/'
-REF_GENOME = 'data/genome/combined' # prefix only
+REF_GENOME = DATA_DIR + '/genome/combined' # prefix only
 
 ###############################################################################
 # Target rules
@@ -32,21 +33,21 @@ REF_GENOME = 'data/genome/combined' # prefix only
 
 localrules: all, qc
 
-samples = ['19239_yale']
+samples = ['NA19239_yale']
 
 rule all:
-	input: expand(DATA_DIR + '{seq}.counts.txt', seq = samples)
+	input: expand(POP_DIR + '{seq}.counts.txt', seq = samples)
 
 rule qc:
-	input: expand(DATA_DIR + '{seq}_fastqc.zip', seq = samples)
+	input: expand(POP_DIR + '{seq}_fastqc.zip', seq = samples)
 
 ###############################################################################
 # Per-fastq processing: from raw reads to gene counts
 ###############################################################################
 
 rule unzip:
-	input: DATA_DIR + '{seq}.fastq.gz'
-	output: temp(DATA_DIR + '{seq}.fastq')
+	input: POP_DIR + '{seq}.fastq.gz'
+	output: temp(POP_DIR + '{seq}.fastq')
 	message: 'Unzipping sample {input}'
 	params: h_vmem = '8g', bigio = '0',
 	        name = lambda wildcards: 'unzip.' + wildcards.seq
@@ -54,8 +55,8 @@ rule unzip:
 	shell: 'zcat {input} > {output}'
 
 rule fastqc:
-	input: DATA_DIR + '{seq}.fastq'
-	output: DATA_DIR + '{seq}_fastqc.zip'
+	input: POP_DIR + '{seq}.fastq'
+	output: POP_DIR + '{seq}_fastqc.zip'
 	message: 'Running FastQC on sample {input}'
 	params: h_vmem = '8g', bigio = '0',
 	        name = lambda wildcards: 'fastqc.' + wildcards.seq
@@ -63,9 +64,9 @@ rule fastqc:
 	shell: '{FASTQC}fastqc {input}'
 
 rule map:
-	input: fastq = DATA_DIR + '{seq}.fastq',
+	input: fastq = POP_DIR + '{seq}.fastq',
                genome = REF_GENOME + '.reads'
-	output: temp(DATA_DIR + '{seq}.bam')
+	output: temp(POP_DIR + '{seq}.bam')
 	message: 'Map reads of sample {input.fastq}'
 	params: h_vmem = '12g', bigio = '1',
 	        name = lambda wildcards: 'map.' + wildcards.seq
@@ -73,37 +74,29 @@ rule map:
 	shell: '{SUBREAD}subread-align -i {REF_GENOME} -r {input.fastq} --BAMoutput > {output}'
 
 rule sort_bam:
-	input: DATA_DIR + '{seq}.bam'
-	output: DATA_DIR + '{seq}.sorted.bam'
+	input: POP_DIR + '{seq}.bam'
+	output: POP_DIR + '{seq}.sorted.bam'
 	message: 'Sort bam file {input}'
 	params: h_vmem = '8g', bigio = '1',
 	        name = lambda wildcards: 'sort_bam.' + wildcards.seq,
-                prefix = lambda wildcards: DATA_DIR + wildcards.seq + '.sorted'
+                prefix = lambda wildcards: POP_DIR + wildcards.seq + '.sorted'
 	log: LOG_DIR
 	shell: '{SAMTOOLS}samtools sort {input} {params.prefix}'
 
 rule index_bam:
-	input: DATA_DIR + '{seq}.sorted.bam'
-	output: DATA_DIR + '{seq}.sorted.bam.bai'
+	input: POP_DIR + '{seq}.sorted.bam'
+	output: POP_DIR + '{seq}.sorted.bam.bai'
 	message: 'Index sorted bam file {input}'
 	params: h_vmem = '8g', bigio = '0',
 	        name = lambda wildcards: 'index_bam.' + wildcards.seq
 	log: LOG_DIR
 	shell: '{SAMTOOLS}samtools index {input}'
 
-rule download_exons:
-	output: 'data/genome/exons.saf'
-	message: 'Create SAF file of human exons.'
-	params: h_vmem = '8g', bigio = '0',
-	        name = 'download_exons'
-	log: LOG_DIR
-	shell: 'Rscript download_exons.R > {output}'
-
 rule featureCounts:
-	input: reads = DATA_DIR + '{seq}.sorted.bam',
-               anno = 'data/genome/exons_ERCC92.saf'
-	output: counts = DATA_DIR + '{seq}.counts.txt',
-                summary = DATA_DIR + '{seq}.counts.txt.summary'
+	input: reads = POP_DIR + '{seq}.sorted.bam',
+               anno = DATA_DIR + 'genome/exons_ERCC92.saf'
+	output: counts = POP_DIR + '{seq}.counts.txt',
+                summary = POP_DIR + '{seq}.counts.txt.summary'
 	message: 'Counts number of reads per feature for {input.reads}.'
 	params: h_vmem = '8g', bigio = '1',
 	        name = lambda wildcards: 'featureCounts.' + wildcards.seq

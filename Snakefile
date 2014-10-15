@@ -22,38 +22,33 @@ SUBREAD = '/home/jdblischak/src/subread-1.4.4-Linux-x86_64/bin/'
 ###############################################################################
 # Data
 ###############################################################################
-DATA_DIR = 'data/seqs/'
+DATA_DIR = 'data/'
+UMI_DIR = DATA_DIR + 'umi/'
+POP_DIR = DATA_DIR + 'population/'
 LOG_DIR = 'log/'
-REF_GENOME = 'data/genome/combined' # prefix only
+REF_GENOME = DATA_DIR + 'genome/combined' # prefix only
 
 ###############################################################################
 # Target rules
 ###############################################################################
 
-localrules: all, test, qc
+localrules: all, qc
 
-samples = glob_wildcards(DATA_DIR + '{seq}.fastq.gz')
-
-test_samples = ['lane1_Undetermined_L001_R1_001.fastq.gz',
-                'lane1_Undetermined_L001_R1_007.fastq.gz',
-                'lane2_Undetermined_L002_R1_031.fastq.gz']
+samples = glob_wildcards(UMI_DIR + '{seq}.fastq.gz')
 
 rule all:
-	input: 'data/count_matrix.txt'
-
-rule test:
-	input: [DATA_DIR + f.replace('fastq.gz', 'umi.bam') for f in test_samples]
+	input: DATA_DIR + 'count_matrix.txt'
 
 rule qc:
-	input: [DATA_DIR + f.replace('.fastq.gz', '_fastqc.zip') for f in test_samples]
+	input: [UMI_DIR + f.replace('.fastq.gz', '_fastqc.zip') for f in samples.seq]
 
 ###############################################################################
 # Per-fastq processing: from raw reads to gene counts
 ###############################################################################
 
 rule unzip:
-	input: DATA_DIR + '{seq}.fastq.gz'
-	output: temp(DATA_DIR + '{seq}.fastq')
+	input: UMI_DIR + '{seq}.fastq.gz'
+	output: temp(UMI_DIR + '{seq}.fastq')
 	message: 'Unzipping sample {input}'
 	params: h_vmem = '8g', bigio = '0',
 	        name = lambda wildcards: 'unzip.' + wildcards.seq
@@ -61,8 +56,8 @@ rule unzip:
 	shell: 'zcat {input} > {output}'
 
 rule fastqc:
-	input: DATA_DIR + '{seq}.fastq'
-	output: DATA_DIR + '{seq}_fastqc.zip'
+	input: UMI_DIR + '{seq}.fastq'
+	output: UMI_DIR + '{seq}_fastqc.zip'
 	message: 'Running FastQC on sample {input}'
 	params: h_vmem = '8g', bigio = '0',
 	        name = lambda wildcards: 'fastqc.' + wildcards.seq
@@ -70,8 +65,8 @@ rule fastqc:
 	shell: '{FASTQC}fastqc {input}'
 
 rule trim_umi:
-	input: DATA_DIR + '{seq}.fastq'
-	output: temp(DATA_DIR + '{seq}.trim.fastq')
+	input: UMI_DIR + '{seq}.fastq'
+	output: temp(UMI_DIR + '{seq}.trim.fastq')
 	message: 'Trim UMIs from 5\' end of reads of sample {input}'
 	params: h_vmem = '8g', bigio = '0',
 	        name = lambda wildcards: 'trim_umi.' + wildcards.seq
@@ -79,9 +74,9 @@ rule trim_umi:
 	shell: '{UMITOOLS}umitools trim --end 5 {input} NNNNNGGG --verbose > {output}'
 
 rule map:
-	input: fastq = DATA_DIR + '{seq}.trim.fastq',
+	input: fastq = UMI_DIR + '{seq}.trim.fastq',
                genome = REF_GENOME + '.reads'
-	output: temp(DATA_DIR + '{seq}.bam')
+	output: temp(UMI_DIR + '{seq}.bam')
 	message: 'Map reads of sample {input.fastq}'
 	params: h_vmem = '12g', bigio = '1',
 	        name = lambda wildcards: 'map.' + wildcards.seq
@@ -89,18 +84,18 @@ rule map:
 	shell: '{SUBREAD}subread-align -i {REF_GENOME} -r {input.fastq} --BAMoutput > {output}'
 
 rule sort_bam:
-	input: DATA_DIR + '{seq}.bam'
-	output: DATA_DIR + '{seq}.sorted.bam'
+	input: UMI_DIR + '{seq}.bam'
+	output: UMI_DIR + '{seq}.sorted.bam'
 	message: 'Sort bam file {input}'
 	params: h_vmem = '8g', bigio = '1',
 	        name = lambda wildcards: 'sort_bam.' + wildcards.seq,
-                prefix = lambda wildcards: DATA_DIR + wildcards.seq + '.sorted'
+                prefix = lambda wildcards: UMI_DIR + wildcards.seq + '.sorted'
 	log: LOG_DIR
 	shell: '{SAMTOOLS}samtools sort {input} {params.prefix}'
 
 rule index_bam:
-	input: DATA_DIR + '{seq}.sorted.bam'
-	output: DATA_DIR + '{seq}.sorted.bam.bai'
+	input: UMI_DIR + '{seq}.sorted.bam'
+	output: UMI_DIR + '{seq}.sorted.bam.bai'
 	message: 'Index sorted bam file {input}'
 	params: h_vmem = '8g', bigio = '0',
 	        name = lambda wildcards: 'index_bam.' + wildcards.seq
@@ -108,11 +103,11 @@ rule index_bam:
 	shell: '{SAMTOOLS}samtools index {input}'
 
 rule rmdup_umi:
-	input: bam = DATA_DIR + '{seq}.sorted.bam',
-               index = DATA_DIR + '{seq}.sorted.bam.bai',
-	output: bam = DATA_DIR + '{seq}.umi.bam',
-                bed = DATA_DIR + '{seq}.umi.diffs.bed',
-	message: 'Remove reads with duplicated UMIs for {input}'
+	input: bam = UMI_DIR + '{seq}.sorted.bam',
+               index = UMI_DIR + '{seq}.sorted.bam.bai',
+	output: bam = UMI_DIR + '{seq}.umi.bam',
+                bed = UMI_DIR + '{seq}.umi.diffs.bed',
+	message: 'Remove reads with duplicated UMIs for {input.bam}'
 	params: h_vmem = '8g', bigio = '0',
 	        name = lambda wildcards: 'rmdup_umi.' + wildcards.seq
 	log: LOG_DIR
@@ -151,11 +146,11 @@ rule combine_features:
 	shell: 'cat {input.exons} {input.ercc} > {output}'
 
 rule featureCounts:
-	input: reads = DATA_DIR + '{seq}.sorted.bam',
-               umi = DATA_DIR + '{seq}.umi.bam',
+	input: reads = UMI_DIR + '{seq}.sorted.bam',
+               umi = UMI_DIR + '{seq}.umi.bam',
                anno = 'data/genome/exons_ERCC92.saf'
-	output: counts = DATA_DIR + '{seq}.counts.txt',
-                summary = DATA_DIR + '{seq}.counts.txt.summary'
+	output: counts = UMI_DIR + '{seq}.counts.txt',
+                summary = UMI_DIR + '{seq}.counts.txt.summary'
 	message: 'Counts number of reads per feature for {input.umi}.'
 	params: h_vmem = '8g', bigio = '1',
 	        name = lambda wildcards: 'featureCounts.' + wildcards.seq
@@ -166,9 +161,9 @@ subworkflow population:
 	snakefile: 'Snakefile-population'
 
 rule combine_counts:
-	input: expand(DATA_DIR + '{seq}.counts.txt', seq = samples.seq),
-               population('data/population/19239_yale.counts.txt')
-	output: 'data/count_matrix.txt'
+	input: expand(UMI_DIR + '{seq}.counts.txt', seq = samples.seq),
+               population(POP_DIR + 'NA19239_yale.counts.txt')
+	output: DATA_DIR + 'count_matrix.txt'
 	message: 'Combine counts into one matrix.'
 	params: h_vmem = '8g', bigio = '0',
 	        name = 'combine_counts'
