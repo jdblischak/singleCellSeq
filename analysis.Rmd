@@ -55,17 +55,38 @@ counts <- counts[counts$reads + counts$molecules + counts$population > 0 |
 
 For the analyses below, I use only the `r sum(counts$feature == "gene")` genes with at least one molecule identified in this experiment or at least one read sequenced in [Pickrell et al. 2010][Pickrell2010] (as well as all `r sum(counts$feature == "control")` ERCC spike-ins).
 
+## Comparing reads and molecules
+
+The read and molecule counts are highly correlated for both the ERCC control spike-ins (`r cor(counts$molecules[counts$feature == "control"], counts$reads[counts$feature == "control"])`) and genes (`r cor(counts$molecules[counts$feature == "gene"], counts$reads[counts$feature == "gene"])`).
+
 ```{r reads-v-molecules}
-ggplot(counts, aes(x = molecules, y = reads)) + geom_point() + facet_wrap(~ feature) + geom_smooth(method = "lm") + ylim(0, 750000) + labs(title = "Read and molecule counts are highly correlated")
-cor(counts$molecules, counts$reads)
+ggplot(counts, aes(x = molecules, y = reads)) + geom_point() +
+  facet_wrap(~ feature) + geom_smooth(method = "lm") + ylim(0, 750000) +
+  labs(title = "Read and molecule counts are highly correlated")
 ```
 
-### Plotting fold-change to mean
+Note that this plot has been truncated on the y-axis to exclude a few highly expressed genes.
+Also note that the number of molecules is greater than 1024, which is the number of possible unique molecular identifiers.
+This is likely due to genes that are highly expressed and have multiple transcription start sites, which would make it possible to tag more than 1,024 molecules.
+
+In order to find where the measurements differed, I created a plot similar to Figure S1 of [Islam et al., 2014][Islam2014].
+In it, they calculate the log fold change of each count to the mean count, e.g. the log fold change of the number of molecules for a particular gene compared to the mean number of molecules across all genes.
+
+[Islam2014]: http://www.nature.com/nmeth/journal/v11/n2/full/nmeth.2772.html
 
 ```{r log-fold-change-to-mean}
 counts$reads_fc <- log2(counts$reads / mean(counts$reads))
 counts$molecules_fc <- log2(counts$molecules / mean(counts$molecules))
 ggplot(counts, aes(x = molecules_fc, y = reads_fc)) + geom_point() + facet_wrap(~ feature) + geom_abline(intercept = 0, slope = 1, col = "red") + labs(title = "Reads and molecules diverge at lower expression levels", x = "Log2 fold change of molecule counts to mean", y = "Log2 fold change of read counts to mean")
+```
+
+Similar to their result, the read and molecule counts disagree for lower expressed genes.
+Normal sequencing underestimates the expression compared to the true number of molecules.
+
+```{r log-fold-change-to-median}
+counts$reads_fc_med <- log2(counts$reads / median(counts$reads))
+counts$molecules_fc_med <- log2(counts$molecules / median(counts$molecules))
+ggplot(counts, aes(x = molecules_fc_med, y = reads_fc_med)) + geom_point() + facet_wrap(~ feature) + geom_abline(intercept = 0, slope = 1, col = "red") + labs(title = "Reads and molecules diverge at lower expression levels", x = "Log2 fold change of molecule counts to median", y = "Log2 fold change of read counts to median")
 ```
 
 ### ERCC spike-in mix
