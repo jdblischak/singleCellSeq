@@ -1,0 +1,57 @@
+---
+output: html_document
+---
+
+```{r packages}
+library("ggplot2")
+library("knitr")
+```
+
+```{r settings}
+theme_set(theme_bw(base_size = 14))
+opts_chunk$set(tidy = FALSE, fig.path = "figure/")
+```
+
+```{r}
+counts <- read.table("pipeline/data/count_matrix.txt", header = TRUE,
+                     sep = "\t", stringsAsFactors = FALSE)
+colnames(counts) <- c("gene", "chr", "start", "end", "strand", "length",
+                      "reads", "molecules", "population")
+counts$feature <- ifelse(grepl("ERCC", counts$gene), "control", "gene")
+head(counts)
+colSums(counts[, c("reads", "molecules", "population")])
+sum(counts$molecules[counts$feature == "gene"] > 0)
+```
+
+```{r clean}
+# Remove genes with zero counts, but keep all controls
+counts <- counts[counts$reads + counts$molecules + counts$population > 0 |
+                 counts$feature == "control", ]
+```
+
+```{r reads-v-molecules}
+ggplot(counts, aes(x = molecules, y = reads)) + geom_point() + facet_wrap(~ feature) + geom_smooth(method = "lm") + ylim(0, 750000) + labs(title = "Read and molecule counts are highly correlated")
+cor(counts$molecules, counts$reads)
+```
+
+### Plotting fold-change to mean
+
+```{r log-fold-change-to-mean}
+counts$reads_fc <- log2(counts$reads / mean(counts$reads))
+counts$molecules_fc <- log2(counts$molecules / mean(counts$molecules))
+ggplot(counts, aes(x = molecules_fc, y = reads_fc)) + geom_point() + facet_wrap(~ feature) + geom_abline(intercept = 0, slope = 1, col = "red") + labs(title = "Reads and molecules diverge at lower expression levels", x = "Log2 fold change of molecule counts to mean", y = "Log2 fold change of read counts to mean")
+```
+
+```{r ercc-efficiency}
+counts_controls <- counts[counts$feature == "control", ]
+efficiency <- sum(counts_controls$molecules > 0) / nrow(counts_controls)
+ggplot(counts[counts$feature == "control", ], aes(x = gene, y = molecules)) + geom_bar(stat = "identity") + labs(title = paste("Capture efficiency is", round(efficiency, 2)), x = "Control ERCC sequence", y = "Number of molecules") + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, size = 6))
+```
+
+```{r}
+summary(counts$reads)
+summary(counts$molecules)
+summary(counts$population)
+counts$gene[counts$molecules > 1024]
+```
+
