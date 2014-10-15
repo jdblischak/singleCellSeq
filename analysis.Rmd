@@ -1,16 +1,34 @@
 ---
+title: Assessment of single cell sequencing rapid run
+author: John Blischak
 output: html_document
 ---
 
-```{r packages}
-library("ggplot2")
+`r Sys.Date()`
+
+## Data processing
+
+```{r setup, include=FALSE}
 library("knitr")
+opts_chunk$set(tidy = FALSE, fig.path = "figure/", echo = FALSE,
+               warning = FALSE)
+library("ggplot2")
+theme_set(theme_bw(base_size = 14))
 ```
 
-```{r settings}
-theme_set(theme_bw(base_size = 14))
-opts_chunk$set(tidy = FALSE, fig.path = "figure/", echo = FALSE)
-```
+Po-Yuan sequenced two single cells on a rapid run flow cell.
+In addition to the cellular RNA, she added the [ERCC RNA spike-in mix][ercc] separately to each cell to assess the efficiency of the single cell sequencing.
+She also added in PhiX sample in order to boost the concentration.
+The samples were multiplexed and the mix was sequenced on both lanes.
+However, the sample barcode was not read so the data has to be analyzed jointly.
+
+I processed the sequencing data using a pipeline which utilized Snakemake, R, umitools, Subread, and samtools.
+The genome used for mapping was a combination of human genome hg19, the ERCC RNA spike-in sequences, and the PhiX genome.
+The genomic features for counting were Ensembl exons from both coding and non-coding genes as well as the ERCC sequences.
+
+For comparison, I also processed traditional RNA-sequencing on a population of cells for individual NA19239 from [Pickrell et al. 2010][Pickrell2010] (Yale data only because it was available in fastq format. The Argonne data is in map format).
+
+[Pickrell2010]: http://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE19480
 
 ```{r}
 counts <- read.table("pipeline/data/count_matrix.txt", header = TRUE,
@@ -18,16 +36,24 @@ counts <- read.table("pipeline/data/count_matrix.txt", header = TRUE,
 colnames(counts) <- c("gene", "chr", "start", "end", "strand", "length",
                       "reads", "molecules", "population")
 counts$feature <- ifelse(grepl("ERCC", counts$gene), "control", "gene")
-head(counts)
-colSums(counts[, c("reads", "molecules", "population")])
-sum(counts$molecules[counts$feature == "gene"] > 0)
+# colSums(counts[, c("reads", "molecules", "population")])
 ```
+
+Here is the rough break down of the number of sequences obtained:
+
+*  ~250 million raw reads
+*  ~150 million reads with unique molecular identifier
+*  ~114 million reads mapped to genome or controls
+*  ~`r round(sum(counts$reads) / 10^6)` million reads mapped to human exons or control sequences
+*  `r sum(counts$molecules)` unique molecules, which corresponds to `r sum(counts$molecules[counts$feature == "gene"] > 0)` genes
 
 ```{r clean}
 # Remove genes with zero counts, but keep all controls
 counts <- counts[counts$reads + counts$molecules + counts$population > 0 |
                  counts$feature == "control", ]
 ```
+
+For the analyses below, I use only the `r sum(counts$feature == "gene")` genes with at least one molecule identified in this experiment or at least one read sequenced in [Pickrell et al. 2010][Pickrell2010] (as well as all `r sum(counts$feature == "control")` ERCC spike-ins).
 
 ```{r reads-v-molecules}
 ggplot(counts, aes(x = molecules, y = reads)) + geom_point() + facet_wrap(~ feature) + geom_smooth(method = "lm") + ylim(0, 750000) + labs(title = "Read and molecule counts are highly correlated")
