@@ -83,33 +83,43 @@ rule map:
 	log: LOG_DIR
 	shell: '{SUBREAD}subread-align -i {REF_GENOME} -r {input.fastq} --BAMoutput > {output}'
 
+rule merge_bam:
+	input: expand(UMI_DIR + '{seq}.bam', seq = samples.seq)
+	output: temp(UMI_DIR + 'two_cell.merged.bam')
+	message: 'Merge bam files.'
+	params: h_vmem = '16g', bigio = '1',
+	        name = 'merge_bam'
+	log: LOG_DIR
+	shell: '{SAMTOOLS}samtools merge {output} {input}'
+
+
 rule sort_bam:
-	input: UMI_DIR + '{seq}.bam'
-	output: UMI_DIR + '{seq}.sorted.bam'
+	input: UMI_DIR + 'two_cell.merged.bam'
+	output: UMI_DIR + 'two_cell.sorted.bam'
 	message: 'Sort bam file {input}'
-	params: h_vmem = '8g', bigio = '1',
-	        name = lambda wildcards: 'sort_bam.' + wildcards.seq,
-                prefix = lambda wildcards: UMI_DIR + wildcards.seq + '.sorted'
+	params: h_vmem = '16g', bigio = '1',
+	        name = 'sort_bam',
+                prefix = UMI_DIR + 'two_cell.sorted'
 	log: LOG_DIR
 	shell: '{SAMTOOLS}samtools sort {input} {params.prefix}'
 
 rule index_bam:
-	input: UMI_DIR + '{seq}.sorted.bam'
-	output: UMI_DIR + '{seq}.sorted.bam.bai'
+	input: UMI_DIR + 'two_cell.sorted.bam'
+	output: UMI_DIR + 'two_cell.sorted.bam.bai'
 	message: 'Index sorted bam file {input}'
 	params: h_vmem = '8g', bigio = '0',
-	        name = lambda wildcards: 'index_bam.' + wildcards.seq
+	        name = 'index_bam'
 	log: LOG_DIR
 	shell: '{SAMTOOLS}samtools index {input}'
 
 rule rmdup_umi:
-	input: bam = UMI_DIR + '{seq}.sorted.bam',
-               index = UMI_DIR + '{seq}.sorted.bam.bai',
-	output: bam = UMI_DIR + '{seq}.umi.bam',
-                bed = UMI_DIR + '{seq}.umi.diffs.bed',
+	input: bam = UMI_DIR + 'two_cell.sorted.bam',
+               index = UMI_DIR + 'two_cell.sorted.bam.bai',
+	output: bam = UMI_DIR + 'two_cell.umi.bam',
+                bed = UMI_DIR + 'two_cell.umi.diffs.bed',
 	message: 'Remove reads with duplicated UMIs for {input.bam}'
-	params: h_vmem = '8g', bigio = '0',
-	        name = lambda wildcards: 'rmdup_umi.' + wildcards.seq
+	params: h_vmem = '16g', bigio = '0',
+	        name = 'rmdup_umi'
 	log: LOG_DIR
 	shell: '{UMITOOLS}umitools rmdup {input.bam} {output.bam} > {output.bed}'
 
@@ -146,14 +156,14 @@ rule combine_features:
 	shell: 'cat {input.exons} {input.ercc} > {output}'
 
 rule featureCounts:
-	input: reads = UMI_DIR + '{seq}.sorted.bam',
-               umi = UMI_DIR + '{seq}.umi.bam',
+	input: reads = UMI_DIR + 'two_cell.sorted.bam',
+               umi = UMI_DIR + 'two_cell.umi.bam',
                anno = 'data/genome/exons_ERCC92.saf'
-	output: counts = UMI_DIR + '{seq}.counts.txt',
-                summary = UMI_DIR + '{seq}.counts.txt.summary'
+	output: counts = UMI_DIR + 'two_cell.counts.txt',
+                summary = UMI_DIR + 'two_cell.counts.txt.summary'
 	message: 'Counts number of reads per feature for {input.umi}.'
 	params: h_vmem = '8g', bigio = '1',
-	        name = lambda wildcards: 'featureCounts.' + wildcards.seq
+	        name = 'featureCounts'
 	log: LOG_DIR
 	shell: '{SUBREAD}featureCounts -a {input.anno} -F SAF -o {output.counts} {input.reads} {input.umi}'
 
@@ -161,11 +171,11 @@ subworkflow population:
 	snakefile: 'Snakefile-population'
 
 rule combine_counts:
-	input: expand(UMI_DIR + '{seq}.counts.txt', seq = samples.seq),
-               population(POP_DIR + 'NA19239_yale.counts.txt')
+	input: umi = UMI_DIR + 'two_cell.counts.txt',
+               pop = population(POP_DIR + 'NA19239_yale.counts.txt')
 	output: DATA_DIR + 'count_matrix.txt'
 	message: 'Combine counts into one matrix.'
 	params: h_vmem = '8g', bigio = '0',
 	        name = 'combine_counts'
 	log: LOG_DIR
-	shell: 'Rscript combine_counts.R > {output}'
+	shell: 'cut -f7 {input.pop} | paste {input.umi} - > {output}'

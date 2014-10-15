@@ -10,10 +10,8 @@ LANE2=/rawdata/Illumina_Runs/140923_SN_0795_0387_AHA9RUADXX/Unaligned4/Undetermi
 for fq in $LANE1/*fastq.gz $LANE2/*fastq.gz
 do
   echo $fq
-  zcat $fq >> data/umi/two_cell.fastq
+  ln -s $fq data/umi/`basename $fq`
 done
-
-gzip data/umi/two_cell.fastq
 
 # The sequencing data for the population of cells.
 # $ grep 19239 /data/share/PrimaryData/HapGE/RNASeq/list_lanes_formapping_freeze4 
