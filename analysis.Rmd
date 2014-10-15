@@ -9,7 +9,7 @@ library("knitr")
 
 ```{r settings}
 theme_set(theme_bw(base_size = 14))
-opts_chunk$set(tidy = FALSE, fig.path = "figure/")
+opts_chunk$set(tidy = FALSE, fig.path = "figure/", echo = FALSE)
 ```
 
 ```{r}
@@ -42,10 +42,35 @@ counts$molecules_fc <- log2(counts$molecules / mean(counts$molecules))
 ggplot(counts, aes(x = molecules_fc, y = reads_fc)) + geom_point() + facet_wrap(~ feature) + geom_abline(intercept = 0, slope = 1, col = "red") + labs(title = "Reads and molecules diverge at lower expression levels", x = "Log2 fold change of molecule counts to mean", y = "Log2 fold change of read counts to mean")
 ```
 
-```{r ercc-efficiency}
-counts_controls <- counts[counts$feature == "control", ]
-efficiency <- sum(counts_controls$molecules > 0) / nrow(counts_controls)
-ggplot(counts[counts$feature == "control", ], aes(x = gene, y = molecules)) + geom_bar(stat = "identity") + labs(title = paste("Capture efficiency is", round(efficiency, 2)), x = "Control ERCC sequence", y = "Number of molecules") + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, size = 6))
+### ERCC spike-in mix
+
+Po-Yuan added [ERCC RNA spike-in mix][ercc] 1 to the RNA from each single cell before tagging with unique molecular identifiers.
+I downloaded the concentration information from Life Technologies website and combined it with the sequencing data.
+
+[ercc]: http://www.lifetechnologies.com/order/catalog/product/4456740
+
+```{r}
+ercc <- read.table("pipeline/data/ercc_info.txt", header = TRUE, sep = "\t",
+                   stringsAsFactors = FALSE)
+colnames(ercc) <- c("num", "id", "subgroup", "conc_mix1", "conc_mix2",
+                    "expected_fc", "log2_mix1_mix2")
+# head(ercc)
+ercc_umi <- merge(ercc, counts, by.x = "id", by.y = "gene")
+```
+
+Of the `r nrow(ercc)` ERCC spike-ins, only `r sum(ercc_umi$molecules > 0)` had at least one molecule sequenced.
+As expected, the ones we sequenced were at a much higher concentration (attomoles/&mu;L) in the spike-in mix compared to those that we missed.
+
+```{r concentration-of-sequenced-spike-ins}
+ercc_umi$presence <- ifelse(ercc_umi$molecules > 0, "Present", "Absent")
+ggplot(ercc_umi, aes(x = presence, y = conc_mix1)) + geom_boxplot() + scale_y_log10() + labs(title = "High concentration spike-ins were sequenced", x = "Was at least one molecule sequenced?", y = "log10 concentration in mix 1")
+```
+
+Of the `r sum(ercc_umi$molecules > 0)` spike-ins with at least one molecule sequenced, the concentration level was highly correlated with both the molecule (`r cor(ercc_umi$conc_mix1, ercc_umi$molecules)`) and read (`r cor(ercc_umi$conc_mix1, ercc_umi$reads)`) counts.
+
+```{r}
+ggplot(ercc_umi[ercc_umi$molecules > 0, ], aes(x = conc_mix1, y = molecules)) + geom_point() + geom_smooth(method = "lm") + labs(title = "Number of molecules is highly correlated with concentration", x = "Concentration in mix 1", y = "Number of molecules") + geom_text(aes(label = id), ercc_umi[ercc_umi$conc_mix1 > 10^4, ], size = 3, hjust = 1.1)
+ggplot(ercc_umi[ercc_umi$molecules > 0, ], aes(x = conc_mix1, y = reads)) + geom_point() + geom_smooth(method = "lm") + labs(title = "Number of reads is highly correlated with concentration", x = "Concentration in mix 1", y = "Number of reads") + geom_text(aes(label = id), ercc_umi[ercc_umi$conc_mix1 > 10^4, ], size = 3, hjust = 1.1)
 ```
 
 ```{r}
