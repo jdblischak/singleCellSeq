@@ -159,6 +159,43 @@ ggplot(counts_pop, aes(x = reads, y = pop_cpbp)) + geom_point() +
        x = "Number of reads from single cell seq", y = "Counts per base pair")
 ```
 
+## Rarefaction curve
+
+We sequenced these two single cells on both lanes of a rapid run, which resulted in ~250 million raw reads and `r sum(counts$molecules)` unique molecules mapped to coding and non-coding genes as well as the ERCC controls.
+
+```{r}
+library("vegan")
+```
+
+Based on a rarefaction curve, implemented using the R package vegan, it appears we are close to saturation.
+
+```{r rarefaction-curve-all}
+options(scipen = 5)
+rarecurve(x = matrix(counts_present$molecules, nrow = 1), step = 10^4,
+          xlab = "Number of molecules", ylab = "Number of genes")
+```
+
+The above plot requires a minumum of only one unique molecule for a gene to be considered present.
+Also, it includes non-coding genes and the ERRC controls.
+
+```{r}
+library("biomaRt")
+ensembl <- useMart("ensembl", dataset = "hsapiens_gene_ensembl")
+ens_biotype <- getBM(attributes = c("ensembl_gene_id" ,"gene_biotype"),
+                     filters = "ensembl_gene_id",
+                     values = counts_present$gene[counts_present$feature == "gene"],
+                     mart = ensembl)
+counts_type <- merge(counts_present, ens_biotype, by.x = "gene",
+                     by.y = "ensembl_gene_id")
+```
+
+However, the result is similar when using only protein-coding genes.
+
+```{r rarefaction-curve-coding}
+rarecurve(x = matrix(counts_type$molecules[counts_type$gene_biotype == "protein_coding"], nrow = 1),
+          step = 10^4, xlab = "Number of molecules",
+          ylab = "Number of protein-coding genes")
+```
 
 ```{r}
 summary(counts$reads)
