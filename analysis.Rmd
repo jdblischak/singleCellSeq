@@ -78,20 +78,19 @@ ggplot(ercc_umi[ercc_umi$molecules > 0, ], aes(x = conc_mix1, y = molecules)) + 
 ggplot(ercc_umi[ercc_umi$molecules > 0, ], aes(x = conc_mix1, y = reads)) + geom_point() + geom_smooth(method = "lm") + labs(title = "Number of reads is highly correlated with concentration", x = "Concentration in mix 1", y = "Number of reads") + geom_text(aes(label = id), ercc_umi[ercc_umi$conc_mix1 > 10^4, ], size = 3, hjust = 1.1)
 ```
 
-```{r clean}
-# Remove genes with zero counts, but keep all controls
-counts <- counts[counts$reads + counts$molecules + counts$population > 0 |
-                 counts$feature == "control", ]
-```
-
-For the analyses below, I use only the `r sum(counts$feature == "gene")` genes with at least one molecule identified in this experiment or at least one read sequenced in [Pickrell et al. 2010][Pickrell2010] (as well as all `r sum(counts$feature == "control")` ERCC spike-ins).
-
 ## Comparing reads and molecules
 
-The read and molecule counts are highly correlated for both the ERCC control spike-ins (`r cor(counts$molecules[counts$feature == "control"], counts$reads[counts$feature == "control"])`) and genes (`r cor(counts$molecules[counts$feature == "gene"], counts$reads[counts$feature == "gene"])`).
+```{r clean}
+# Remove genes with zero molecule counts
+counts_present <- counts[counts$molecules > 0, ]
+```
+
+For the analyses below, I use only the `r sum(counts_present$feature == "gene")` genes and `r sum(counts_present$feature == "control")` controls with at least one molecule identified in this experiment.
+
+The read and molecule counts are highly correlated for both the ERCC control spike-ins (`r cor(counts_present$molecules[counts_present$feature == "control"], counts_present$reads[counts_present$feature == "control"])`) and genes (`r cor(counts_present$molecules[counts_present$feature == "gene"], counts_present$reads[counts_present$feature == "gene"])`).
 
 ```{r reads-v-molecules}
-ggplot(counts, aes(x = molecules, y = reads)) + geom_point() +
+ggplot(counts_present, aes(x = molecules, y = reads)) + geom_point() +
   facet_wrap(~ feature) + geom_smooth(method = "lm") + ylim(0, 750000) +
   labs(title = "Read and molecule counts are highly correlated")
 ```
@@ -106,20 +105,29 @@ In it, they calculate the log fold change of each count to the mean count, e.g. 
 [Islam2014]: http://www.nature.com/nmeth/journal/v11/n2/full/nmeth.2772.html
 
 ```{r log-fold-change-to-mean}
-counts$reads_fc <- log2(counts$reads / mean(counts$reads))
-counts$molecules_fc <- log2(counts$molecules / mean(counts$molecules))
-ggplot(counts, aes(x = molecules_fc, y = reads_fc)) + geom_point() + facet_wrap(~ feature) + geom_abline(intercept = 0, slope = 1, col = "red") + labs(title = "Reads and molecules diverge at lower expression levels", x = "Log2 fold change of molecule counts to mean", y = "Log2 fold change of read counts to mean")
+counts_present$reads_fc <- log2(counts_present$reads / mean(counts_present$reads))
+counts_present$molecules_fc <- log2(counts_present$molecules / mean(counts_present$molecules))
+ggplot(counts_present, aes(x = molecules_fc, y = reads_fc)) + geom_point() + facet_wrap(~ feature) + geom_abline(intercept = 0, slope = 1, col = "red") + labs(title = "Reads and molecules diverge at lower expression levels", x = "Log2 fold change of molecule counts to mean", y = "Log2 fold change of read counts to mean")
 ```
 
 Similar to their result, the read and molecule counts disagree for lower expressed genes.
 Normal sequencing underestimates the expression compared to the true number of molecules.
 
+I also performed a similar analysis, but this time comparing to the median counts.
+Overall the trend looks similar.
+
 ```{r log-fold-change-to-median}
-counts$reads_fc_med <- log2(counts$reads / median(counts$reads))
-counts$molecules_fc_med <- log2(counts$molecules / median(counts$molecules))
-ggplot(counts, aes(x = molecules_fc_med, y = reads_fc_med)) + geom_point() + facet_wrap(~ feature) + geom_abline(intercept = 0, slope = 1, col = "red") + labs(title = "Reads and molecules diverge at lower expression levels", x = "Log2 fold change of molecule counts to median", y = "Log2 fold change of read counts to median")
+counts_present$reads_fc_med <- log2(counts_present$reads / median(counts_present$reads))
+counts_present$molecules_fc_med <- log2(counts_present$molecules / median(counts_present$molecules))
+ggplot(counts_present, aes(x = molecules_fc_med, y = reads_fc_med)) + geom_point() + facet_wrap(~ feature) + geom_abline(intercept = 0, slope = 1, col = "red") + labs(title = "Reads and molecules diverge at lower expression levels", x = "Log2 fold change of molecule counts to median", y = "Log2 fold change of read counts to median")
 ```
 
+The main difference is that the points fall above the diagonal because the median of the reads is so much lower than the mean.
+
+*  mean read count: `r round(mean(counts_present$reads), 2)`
+*  median read count: `r median(counts_present$reads)`
+*  mean molecule count: `r round(mean(counts_present$molecules), 2)`
+*  median molecule count: `r median(counts_present$molecules)`
 
 
 ```{r}
