@@ -129,6 +129,36 @@ The main difference is that the points fall above the diagonal because the media
 *  mean molecule count: `r round(mean(counts_present$molecules), 2)`
 *  median molecule count: `r median(counts_present$molecules)`
 
+## Comparing single cell versus traditional sequencing
+
+```{r}
+counts_pop <- counts[counts$molecules > 0 | counts$population > 0 &
+                     counts$feature == "gene", ]
+counts_pop$pop_cpbp <- counts_pop$population / counts_pop$length
+```
+
+For this analysis, I used only the `r nrow(counts_pop)` genes with at least one molecule sequenced in this experiment or at least one read sequenced in [Pickrell et al. 2010][Pickrell2010].
+The single cell-sequencing does not need to be scaled by gene length because only the 5' end of each RNA molecule is sequenced.
+However, the Pickrell data needs to standardized by gene length since longer genes have more RNA that can be fragmented and sequenced.
+Thus below the traditional data is counts per base pair of exonic sequence.
+
+Both the number of molecules (`r cor(counts_pop$molecules, counts_pop$pop_cpbp)`) and reads (`r cor(counts_pop$reads, counts_pop$pop_cpbp)`) from the single cell sequencing are modestly correlated with the counts per base pair from the traditional sequencing.
+
+```{r molecules-v-population}
+ggplot(counts_pop, aes(x = molecules, y = pop_cpbp)) + geom_point() +
+    geom_smooth(method = "lm") +
+  labs(title = "Molecule counts and counts per base pair are modestly correlated",
+       x = "Number of molecules from single cell seq",
+       y = "Counts per base pair")
+```
+
+```{r reads-v-population}
+ggplot(counts_pop, aes(x = reads, y = pop_cpbp)) + geom_point() +
+    geom_smooth(method = "lm") +
+  labs(title = "Read counts and counts per base pair are modestly correlated",
+       x = "Number of reads from single cell seq", y = "Counts per base pair")
+```
+
 
 ```{r}
 summary(counts$reads)
