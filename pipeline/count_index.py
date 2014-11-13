@@ -22,7 +22,7 @@ def count_mismatch(x, y):
             num += 1
     return num
 
-expected = open('expected_index.txt', 'r')
+expected = open('data/expected_index.txt', 'r')
 
 result = {}
 
@@ -33,7 +33,7 @@ for line in expected:
 expected.close()
 
 
-observed = open('index.fa', 'r')
+observed = open('data/index.fa', 'r')
 
 for line in observed:
     if line[0] == '>':
@@ -49,7 +49,7 @@ for line in observed:
 
 observed.close()
 
-out = open('mismatches.txt', 'w')
+out = open('data/mismatches.txt', 'w')
 out.write('index\tmismatch\tcount\n')
 for index in result.keys():
     for mismatch in range(9):
