@@ -1,0 +1,82 @@
+---
+title: Investigating index sequences
+author: John Blischak
+output: html_document
+---
+
+Last updated: `r Sys.Date()`
+
+Code version: `r system("git log -1 --format=oneline | cut -d' ' -f1", intern = TRUE)`
+
+## Introduction
+
+Po-Yuan prepared RNA collected from 96 single cells for sequencing.
+They were split into four mixes of 24 because that is the number of unique index sequences available for labeling separate samples.
+Each run was sequenced on one lane of a rapid run flow cell, for a total of two full rapid runs.
+In these runs, more of the index was sequenced.
+However, still very few were properly resolved.
+I investigated the sequences to learn how likely they were to be partial sequences of the correct index.
+
+## Pipeline
+
+There were two flow cells:
+
+*  `/rawdata/Illumina_Runs/141030_SN_0795_0391_AHAV20ADXX`
+*  `/rawdata/Illumina_Runs/141030_SN_0795_0392_BHAV2FADXX`
+
+For this analysis, I focused on the first one, HAV20ADXX.
+I extracted all the index sequences from this flow cell, including from both the properly sorted reads and the undetermined reads (using the script `gather_index.sh`).
+
+Po-Yuan is still unclear in which direction the index will be sequenced.
+Thus for comparison, I used the expected index sequences in `/rawdata/Illumina_Runs/141030_SN_0795_0391_AHAV20ADXX/Unaligned1/SampleSheet.mk`, which I refer to as "forward", as well as the index sequences in `/rawdata/Illumina_Runs/141030_SN_0795_0391_AHAV20ADXX/Unaligned2/SampleSheet.mk`, which I refer to as "reverse".
+As a control, I included "AAAAAAAA", "TTTTTTTT", "GGGGGGGG", and "CCCCCCCC".
+The script `count_index.py` counts the number of mismatches between each sequenced index and the `r 24 * 2 + 4` expected indexes.
+
+## Results
+
+```{r setup, include=FALSE}
+library("knitr")
+opts_chunk$set(tidy = FALSE, fig.path = "figure/", echo = FALSE,
+               warning = FALSE, message = FALSE, fig.pos = "center",
+               fig.width = 12)
+library("ggplot2")
+theme_set(theme_bw(base_size = 14))
+```
+
+```{r import-data}
+mis <- read.table("pipeline/data/mismatches.txt", header = TRUE,
+                  sep = "\t", stringsAsFactors = FALSE)
+all_index <- read.table("pipeline/data/expected_index.txt",
+                        stringsAsFactors = FALSE)
+all_index$type <- c(rep("forward", 24), rep("control", 4), rep("reverse", 24))
+mis <- merge(mis, all_index, by.x = "index", by.y = "V1")
+mis$index <- factor(mis$index, levels = all_index$V1)
+mis$type <- factor(mis$type, levels = c("forward", "control", "reverse"))
+mis$mismatch <- factor(mis$mismatch, levels = 0:8)
+```
+
+When looking at all the data at once, it is clear that the majority of sequences are dominated by unknown "N" bases.
+For every expected index, most of the sequences have 6 to 8 mismatches.
+
+```{r plot}
+ggplot(mis, aes(x = index, y = count, fill = mismatch)) + geom_bar(stat = "identity") + theme(axis.text.x  = element_text(angle = 90)) + scale_fill_brewer(type = "sequential", palette = "Greens")
+```
+
+Focusing in on the number of reads with perfect indexes, 1 mismatch, or 2 mismatches, the picture is still unclear.
+Neither the "forward" or the "reverse" index sequences look better, as would be expected if one set was truly being sequenced.
+Also, the homopolymer controls have comparable counts.
+
+```{r}
+index_facet <- ggplot(mis[as.numeric(as.character(mis$mismatch)) <= 2, ], aes(x = index, y = count, fill = type)) + geom_bar(stat = "identity") + theme(axis.text.x  = element_text(angle = 90)) + scale_fill_brewer(type = "qualitative", palette = "Dark2") + facet_grid(mismatch ~ .) 
+index_facet
+```
+
+Focusing just on the perfect matches, it appears that the sequenced indexes are largely random.
+
+```{r}
+index_facet %+% mis[as.numeric(as.character(mis$mismatch)) == 0, ]
+```
+
+```{r}
+sessionInfo()
+```
