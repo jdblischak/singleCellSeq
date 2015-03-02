@@ -1,56 +1,53 @@
 #!/bin/bash
+set -e
 
-# Process sequencing data from run 150116_SN_0795_0416_AC5V7FACXX.
+# Process sequencing data.
 
-# Usage: bash 2015-01-16.sh SOURCE DEST
+# Usage: bash process_sample.sh SOURCE DEST REF_GENOME EXONS
 
 # SOURCE: The directory which contains all the fastq.gz files for a
 #   given sample
 # DEST: The directory to save the processed data.
+# REF_GENOME: The indexed genome for mapping (no extension)
+# EXONS: The SAF (simplified annotation format) file for counting reads per exon
 
 # To submit in parallel:
 # for DIR in /rawdata/Illumina_Runs/150116_SN_0795_0416_AC5V7FACXX/Demultiplexed/Unaligned/Project_N/*
 # do
-#   echo "bash 2015-01-16.sh $DIR /mnt/gluster/home/ptung/2015-01-16/data" | qsub -l h_vmem=12g -V -j y -cwd -N `basename $DIR`
+#   echo "bash process_sample.sh $DIR /mnt/gluster/data/internal_supp/singleCellSeq /mnt/gluster/data/internal_supp/singleCellSeq/genome/combined /mnt/gluster/home/jdblischak/singleCellSeq/data/exons.saf"" | qsub -l h_vmem=12g -V -j y -cwd -N `basename $DIR`
 # done
 
 SOURCE=$1
 DEST=$2
+REF_GENOME=$3 
+EXONS=$4 
 
-# Software
-FASTQC="/mnt/lustre/data/tools/FastQC"
-UMITOOLS="/mnt/lustre/home/jdblischak/programs/virtualenv-1.11/py2.7/bin/"
-SUBREAD="/mnt/lustre/home/jdblischak/src/subread-1.4.4-Linux-x86_64/bin"
-SAMTOOLS="/usr/local/bin/"
+mkdir -p $DEST/fastq $DEST/bam $DEST/counts
 
-# Data
-REF_GENOME="/mnt/gluster/home/jdblischak/singleCellSeq/pipeline/data/genome/combined"
-EXONS="/mnt/gluster/home/jdblischak/singleCellSeq/pipeline/data/genome/exons.saf"
-
-NEW_NAME=$DEST/`basename ${SOURCE}`
+BASE=`basename ${SOURCE}`
 
 echo "Combine reads..."
-zcat $SOURCE/*fastq.gz > $NEW_NAME.fastq
+zcat $SOURCE/*fastq.gz > $DEST/fastq/$BASE.fastq
 
 echo "Run FastQC..."
-$FASTQC/fastqc $NEW_NAME.fastq
+fastqc $DEST/fastq/$BASE.fastq
 
 echo "Trim UMI..."
-$UMITOOLS/umitools trim --end 5 $NEW_NAME.fastq NNNNNGGG --verbose > $NEW_NAME.trim.fastq
+umitools trim --end 5 $DEST/fastq/$BASE.fastq NNNNNGGG --verbose > $DEST/fastq/$BASE.trim.fastq
 
-echo "Map with subread-align to genome that combines hg19, phiX, and ERCC controls..."
-$SUBREAD/subread-align -i $REF_GENOME -r $NEW_NAME.trim.fastq --BAMoutput > $NEW_NAME.bam
+echo "Map with subread-align to genome that combines hg19 and ERCC controls..."
+subread-align -uH -i $REF_GENOME -r $DEST/fastq/$BASE.trim.fastq --BAMoutput > $DEST/bam/$BASE.bam
 
 echo "Sort and index bam file..."
-$SAMTOOLS/samtools sort $NEW_NAME.bam $NEW_NAME.sorted
-$SAMTOOLS/samtools index $NEW_NAME.sorted.bam
+samtools sort $DEST/bam/$BASE.bam $DEST/bam/$BASE.sorted
+samtools index $DEST/bam/$BASE.sorted.bam
 
 echo "Remove reads with duplicate UMI..."
-$UMITOOLS/umitools rmdup $NEW_NAME.sorted.bam $NEW_NAME.rmdup.bam > $NEW_NAME.rmdup.bed
+umitools rmdup $DEST/bam/$BASE.sorted.bam $DEST/bam/$BASE.rmdup.bam > $DEST/bam/$BASE.rmdup.bed
 
 echo "Count reads per gene..."
-$SUBREAD/featureCounts -F SAF -a $EXONS -o $NEW_NAME.counts.txt $NEW_NAME.sorted.bam
-$SUBREAD/featureCounts -F SAF -a $EXONS -o $NEW_NAME.rmdup.counts.txt $NEW_NAME.rmdup.bam
+featureCounts -F SAF -a $EXONS -o $DEST/counts/$BASE.counts.txt $DEST/bam/$BASE.sorted.bam
+featureCounts -F SAF -a $EXONS -o $DEST/counts/$BASE.rmdup.counts.txt $DEST/bam/$BASE.rmdup.bam
 
 echo "Remove intermediate files to save space..."
-rm $NEW_NAME.fastq $NEW_NAME.trim.fastq $NEW_NAME.bam
+rm $DEST/fastq/$BASE.*fastq $DEST/bam/$BASE.bam
