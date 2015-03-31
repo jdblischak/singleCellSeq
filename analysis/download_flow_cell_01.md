@@ -42,9 +42,39 @@ Here's the final line of output:
 
 > Downloaded: 1375 files, 129G in 4h 59m 1s (7.37 MB/s)
 
-To remove the unnecessary directories from the FGF FTP site, I moved the files (though I did leave the unecessary extra directories from CASAVA).
+To remove the unnecessary directories from the FGF FTP site, I moved the files.
 
 ```
 mv fgfftp.uchicago.edu/Genomics_Data/NGS/150320_700819F_0303_AC6WYKACXX-YG-SR100-FC-1/ 150320_700819F_0303_AC6WYKACXX-YG-SR100-FC-1/
 rmdir -p fgfftp.uchicago.edu/Genomics_Data/NGS/
+```
+
+Next I removed the extraneous CASAVA directories and added the flow cell name to the filename.
+
+```
+cd -
+mkdir fastq
+```
+
+I did this with the following Python code:
+
+```python
+import glob
+import shutil
+
+files = glob.glob('raw/150320_700819F_0303_AC6WYKACXX-YG-SR100-FC-1/FastQ/Project_YG-SR100-1/Sample*/*fastq.gz')
+
+target_dir = 'fastq/'
+log = open('rearrange_C6WYKACXX.log', 'w')
+log.write('original\tnew\n')
+
+for f in files:
+    path = f.strip('fastq.gz').split('/')
+    flow_cell = path[1].split('_')[-1][1:10]
+    file_parts = path[-1].split('_')[:-1]
+    new_name = target_dir + '.'.join(file_parts + [flow_cell]) + '.fastq.gz'
+    log.write(f + '\t' + new_name + '\n')
+    shutil.move(f, new_name)
+
+log.close()
 ```
