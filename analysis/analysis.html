@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+<meta name="author" content="John Blischak" />
+
+
+<title>Assessment of single cell sequencing rapid run</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="/">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Assessment of single cell sequencing rapid run</h1>
+<h4 class="author"><em>John Blischak</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#data-processing">Data processing</a></li>
+<li><a href="#ercc-spike-in-mix">ERCC spike-in mix</a></li>
+<li><a href="#comparing-reads-and-molecules">Comparing reads and molecules</a></li>
+<li><a href="#comparing-single-cell-versus-traditional-sequencing">Comparing single cell versus traditional sequencing</a></li>
+<li><a href="#rarefaction-curve">Rarefaction curve</a></li>
+</ul>
+</div>
+
+<p>Last updated: 2015-04-11</p>
+<p>Code version: 8fa8ebb3ea79edf3b8e277009f5669ebb7c3efc0</p>
+<div id="data-processing" class="section level2">
+<h2>Data processing</h2>
+<p>Po-Yuan sequenced two single cells on a rapid run flow cell. In addition to the cellular RNA, she added the <a href="http://www.lifetechnologies.com/order/catalog/product/4456740">ERCC RNA spike-in mix</a> separately to each cell to assess the efficiency of the single cell sequencing. She also added in PhiX sample in order to boost the concentration. The samples were multiplexed and the mix was sequenced on both lanes. However, the sample barcode was not read so the data has to be analyzed jointly.</p>
+<p>I processed the sequencing data using a pipeline which utilized Snakemake, R, umitools, Subread, and samtools. The genome used for mapping was a combination of human genome hg19, the ERCC RNA spike-in sequences, and the PhiX genome. The genomic features for counting were Ensembl exons from both coding and non-coding genes as well as the ERCC sequences.</p>
+<p>For comparison, I also processed traditional RNA-sequencing on a population of cells for individual NA19239 from <a href="http://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE19480">Pickrell et al. 2010</a> (Yale data only because it was available in fastq format. The Argonne data is in map format).</p>
+<p>Here is the rough break down of the number of sequences obtained:</p>
+<ul>
+<li>~250 million raw reads</li>
+<li>~150 million reads with unique molecular identifier</li>
+<li>~114 million reads mapped to genome or controls</li>
+<li>~85 million reads mapped to human exons or control sequences</li>
+<li>581995 unique molecules, which corresponds to 18870 genes</li>
+</ul>
+<p>According to Yoav, the common wisdom is that each cell contains about 500,000 molecules. Thus, with 581995 unique molecules (only 12207 of which map to the ERCC controls) for low-coverage sequencing of two single cells, we are in the right approximate range.</p>
+</div>
+<div id="ercc-spike-in-mix" class="section level2">
+<h2>ERCC spike-in mix</h2>
+<p>Po-Yuan added <a href="http://www.lifetechnologies.com/order/catalog/product/4456740">ERCC RNA spike-in mix</a> 1 to the RNA from each single cell before tagging with unique molecular identifiers. I downloaded the concentration information from Life Technologies website and combined it with the sequencing data.</p>
+<p>Of the 92 ERCC spike-ins, only 30 had at least one molecule sequenced. As expected, the ones we sequenced were at a much higher concentration (attomoles/μL) in the spike-in mix compared to those that we missed.</p>
+<p><img src="figure/concentration-of-sequenced-spike-ins-1.png" title="" alt="" width="672" /></p>
+<p>Of the 30 spike-ins with at least one molecule sequenced, the concentration level was highly correlated with both the molecule (0.9840332) and read (0.9807536) counts.</p>
+<p><img src="figure/unnamed-chunk-3-1.png" title="" alt="" width="672" /><img src="figure/unnamed-chunk-3-2.png" title="" alt="" width="672" /></p>
+</div>
+<div id="comparing-reads-and-molecules" class="section level2">
+<h2>Comparing reads and molecules</h2>
+<p>For the analyses below, I use only the 18870 genes and 30 controls with at least one molecule identified in this experiment.</p>
+<p>The read and molecule counts are highly correlated for both the ERCC control spike-ins (0.9978104) and genes (0.9189714).</p>
+<p><img src="figure/reads-v-molecules-1.png" title="" alt="" width="672" /></p>
+<p>Note that this plot has been truncated on the y-axis to exclude a few highly expressed genes. Also note that the number of molecules is greater than 1024, which is the number of possible unique molecular identifiers. This is likely due to genes that are highly expressed and have multiple transcription start sites, which would make it possible to tag more than 1024 molecules. Overall, this occured only for a small fraction of the features (45 genes and 4 controls).</p>
+<p>In order to find where the measurements differed, I created a plot similar to Figure S1 of <a href="http://www.nature.com/nmeth/journal/v11/n2/full/nmeth.2772.html">Islam et al., 2014</a>. In it, they calculate the log fold change of each count to the mean count, e.g. the log fold change of the number of molecules for a particular gene compared to the mean number of molecules across all genes.</p>
+<p><img src="figure/log-fold-change-to-mean-1.png" title="" alt="" width="672" /></p>
+<p>Similar to their result, the read and molecule counts disagree for lower expressed genes. Normal sequencing underestimates the expression compared to the true number of molecules.</p>
+<p>I also performed a similar analysis, but this time comparing to the median counts. Overall the trend looks similar.</p>
+<p><img src="figure/log-fold-change-to-median-1.png" title="" alt="" width="672" /></p>
+<p>The main difference is that the points fall above the diagonal because the median of the reads is so much lower than the mean.</p>
+<ul>
+<li>mean read count: 4516.6</li>
+<li>median read count: 32</li>
+<li>mean molecule count: 30.79</li>
+<li>median molecule count: 7</li>
+</ul>
+<p>The fact that the higher expressed genes are above the red line indicates that normal sequencing oversamples these transcripts.</p>
+</div>
+<div id="comparing-single-cell-versus-traditional-sequencing" class="section level2">
+<h2>Comparing single cell versus traditional sequencing</h2>
+<p>For this analysis, I used only the 26787 genes with at least one molecule sequenced in this experiment or at least one read sequenced in <a href="http://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE19480">Pickrell et al. 2010</a>. The single cell-sequencing does not need to be scaled by gene length because only the 5’ end of each RNA molecule is sequenced. However, the Pickrell data needs to standardized by gene length since longer genes have more RNA that can be fragmented and sequenced. Thus below the traditional data is counts per base pair of exonic sequence.</p>
+<p>Both the number of molecules (0.5021497) and reads (0.4617872) from the single cell sequencing are modestly correlated with the counts per base pair from the traditional sequencing.</p>
+<p><img src="figure/molecules-v-population-1.png" title="" alt="" width="672" /></p>
+<p><img src="figure/reads-v-population-1.png" title="" alt="" width="672" /></p>
+</div>
+<div id="rarefaction-curve" class="section level2">
+<h2>Rarefaction curve</h2>
+<p>We sequenced these two single cells on both lanes of a rapid run, which resulted in ~250 million raw reads and 581995 unique molecules mapped to coding and non-coding genes as well as the ERCC controls.</p>
+<p>Based on a rarefaction curve, implemented using the R package vegan, it appears we are close to saturation.</p>
+<p><img src="figure/rarefaction-curve-all-1.png" title="" alt="" width="672" /></p>
+<p>The above plot requires a minumum of only one unique molecule for a gene to be considered present. Also, it includes non-coding genes and the ERRC controls.</p>
+<p>However, the result is similar when using only protein-coding genes.</p>
+<p><img src="figure/rarefaction-curve-coding-1.png" title="" alt="" width="672" /></p>
+<pre><code>## R version 3.1.2 (2014-10-31)
+## Platform: x86_64-pc-linux-gnu (64-bit)
+## 
+## locale:
+##  [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+##  [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+##  [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+##  [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+##  [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+## [11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+## 
+## attached base packages:
+## [1] stats     graphics  grDevices utils     datasets  methods   base     
+## 
+## other attached packages:
+## [1] biomaRt_2.20.0  vegan_2.2-1     lattice_0.20-30 permute_0.8-3  
+## [5] ggplot2_1.0.0   knitr_1.7      
+## 
+## loaded via a namespace (and not attached):
+##  [1] AnnotationDbi_1.26.1 Biobase_2.24.0       BiocGenerics_0.10.0 
+##  [4] cluster_2.0.1        colorspace_1.2-4     DBI_0.3.1           
+##  [7] digest_0.6.4         evaluate_0.5.5       formatR_1.0         
+## [10] GenomeInfoDb_1.0.2   grid_3.1.2           gtable_0.1.2        
+## [13] htmltools_0.2.6      IRanges_1.22.10      labeling_0.3        
+## [16] MASS_7.3-35          Matrix_1.1-5         mgcv_1.8-5          
+## [19] munsell_0.4.2        nlme_3.1-120         parallel_3.1.2      
+## [22] plyr_1.8.1           proto_0.3-10         Rcpp_0.11.3         
+## [25] RCurl_1.95-4.3       reshape2_1.4         rmarkdown_0.5.1     
+## [28] RSQLite_0.11.4       scales_0.2.4         stats4_3.1.2        
+## [31] stringr_0.6.2        tools_3.1.2          XML_3.98-1.1        
+## [34] yaml_2.1.13</code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+
+</body>
+</html>

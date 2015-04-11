@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+<meta name="author" content="John Blischak" />
+
+
+<title>Investigating index sequences</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="/">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Investigating index sequences</h1>
+<h4 class="author"><em>John Blischak</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#introduction">Introduction</a></li>
+<li><a href="#pipeline">Pipeline</a></li>
+<li><a href="#results">Results</a></li>
+</ul>
+</div>
+
+<p>Last updated: 2015-04-11</p>
+<p>Code version: 8fa8ebb3ea79edf3b8e277009f5669ebb7c3efc0</p>
+<div id="introduction" class="section level2">
+<h2>Introduction</h2>
+<p>Po-Yuan prepared RNA collected from 96 single cells for sequencing. They were split into four mixes of 24 because that is the number of unique index sequences available for labeling separate samples. Each run was sequenced on one lane of a rapid run flow cell, for a total of two full rapid runs. In these runs, more of the index was sequenced. However, still very few were properly resolved. I investigated the sequences to learn how likely they were to be partial sequences of the correct index.</p>
+</div>
+<div id="pipeline" class="section level2">
+<h2>Pipeline</h2>
+<p>There were two flow cells:</p>
+<ul>
+<li><code>/rawdata/Illumina_Runs/141030_SN_0795_0391_AHAV20ADXX</code></li>
+<li><code>/rawdata/Illumina_Runs/141030_SN_0795_0392_BHAV2FADXX</code></li>
+</ul>
+<p>For this analysis, I focused on the first one, HAV20ADXX. I extracted all the index sequences from this flow cell, including from both the properly sorted reads and the undetermined reads (using the script <code>gather_index.sh</code>).</p>
+<p>Po-Yuan is still unclear in which direction the index will be sequenced. Thus for comparison, I used the expected index sequences in <code>/rawdata/Illumina_Runs/141030_SN_0795_0391_AHAV20ADXX/Unaligned1/SampleSheet.mk</code>, which I refer to as “forward”, as well as the index sequences in <code>/rawdata/Illumina_Runs/141030_SN_0795_0391_AHAV20ADXX/Unaligned2/SampleSheet.mk</code>, which I refer to as “reverse”. As a control, I included “AAAAAAAA”, “TTTTTTTT”, “GGGGGGGG”, and “CCCCCCCC”. The script <code>count_index.py</code> counts the number of mismatches between each sequenced index and the 52 expected indexes.</p>
+</div>
+<div id="results" class="section level2">
+<h2>Results</h2>
+<p>When looking at all the data at once, it is clear that the majority of sequences are dominated by unknown “N” bases. For every expected index, most of the sequences have 6 to 8 mismatches.</p>
+<p><img src="figure/plot-1.png" title="" alt="" width="1152" /></p>
+<p>Focusing in on the number of reads with perfect indexes, 1 mismatch, or 2 mismatches, the picture is still unclear. Neither the “forward” or the “reverse” index sequences look better, as would be expected if one set was truly being sequenced. Also, the homopolymer controls have comparable counts.</p>
+<p><img src="figure/unnamed-chunk-1-1.png" title="" alt="" width="1152" /></p>
+<p>Focusing just on the perfect matches, it appears that the sequenced indexes are largely random.</p>
+<p><img src="figure/unnamed-chunk-2-1.png" title="" alt="" width="1152" /></p>
+<pre><code>## R version 3.1.2 (2014-10-31)
+## Platform: x86_64-pc-linux-gnu (64-bit)
+## 
+## locale:
+##  [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+##  [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+##  [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+##  [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+##  [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+## [11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+## 
+## attached base packages:
+## [1] stats     graphics  grDevices utils     datasets  methods   base     
+## 
+## other attached packages:
+## [1] ggplot2_1.0.0 knitr_1.7    
+## 
+## loaded via a namespace (and not attached):
+##  [1] colorspace_1.2-4   digest_0.6.4       evaluate_0.5.5    
+##  [4] formatR_1.0        grid_3.1.2         gtable_0.1.2      
+##  [7] htmltools_0.2.6    labeling_0.3       MASS_7.3-35       
+## [10] munsell_0.4.2      plyr_1.8.1         proto_0.3-10      
+## [13] RColorBrewer_1.0-5 Rcpp_0.11.3        reshape2_1.4      
+## [16] rmarkdown_0.5.1    scales_0.2.4       stringr_0.6.2     
+## [19] tools_3.1.2        yaml_2.1.13</code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+
+</body>
+</html>
