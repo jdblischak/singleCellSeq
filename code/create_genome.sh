@@ -13,15 +13,17 @@ OUT_DIR=$1
 mkdir -p $OUT_DIR
 cd $OUT_DIR
 
-echo "Download human genome"
-rsync -avzuP globus.opensciencedatacloud.org::public/illumina/igenomes/Homo_sapiens/UCSC/hg19/Homo_sapiens/UCSC/hg19/Sequence/WholeGenomeFasta/genome.fa .
-mv genome.fa hg19.fa
+echo "Download hg19 autosomes"
+wget http://hgdownload.soe.ucsc.edu/goldenPath/hg19/chromosomes/chr{1..22}.fa.gz
+
+echo "Download hg19 X, Y, and M"
+wget http://hgdownload.soe.ucsc.edu/goldenPath/hg19/chromosomes/chr{X,Y,M}.fa.gz
+
+echo "Unzip fasta files"
+gunzip chr*fa.gz
 
 echo "Download ERCC data"
 wget http://tools.invitrogen.com/downloads/ERCC92.fa
 
 echo "Build index"
-subread-buildindex -o combined hg19.fa ERCC92.fa
-
-echo "Remove intermediate files"
-rm -rf hg19.fa
+subread-buildindex -o combined *.fa
