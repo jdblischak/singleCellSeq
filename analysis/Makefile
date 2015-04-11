@@ -2,7 +2,7 @@
 HTML_FILES := $(patsubst %.Rmd, %.html ,$(wildcard *.Rmd)) \
               $(patsubst %.md, %.html ,$(wildcard *.md))
 
-all: clean html
+all: html
 
 
 html: $(HTML_FILES)
