@@ -1,0 +1,67 @@
+---
+title: "Download flow cell 02"
+author: "John Blischak"
+date: 2015-04-11
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+The third of four flow cells was sequenced at the Functional Genomics Facility (FGF).
+Here is the message from Pieter Faber:
+
+> We finished Flowcell #3 of your Illumina sequencing experiment (4 flowcells SR100). No technical problem were encountered. I attached several QC files in support.
+>
+> I have uploaded the data in fastq format to the Genomics Core ftp server data server (gilad Lab folder, folder = /NGS/150402_700819F_0305_AC723YACXX-YG-SR100-FC-3).
+
+To download, need to preface `/NGS` with `/Genomics_Data`.
+
+```bash
+cd /mnt/gluster/data/internal_supp/singleCellSeq/raw
+echo "wget --user=gilad --password='<password>' -r ftp://fgfftp.uchicago.edu/Genomics_Data/NGS/150402_700819F_0305_AC723YACXX-YG-SR100-FC-3/" \
+| qsub -l h_vmem=2g -N fc3 -cwd -V -j y -o 150402_700819F_0305_AC723YACXX-YG-SR100-FC-3.log
+```
+
+The download took ~11.5 hours.
+It started at 15:45:53 and ended at 03:18:37.
+However, `wget` reported that it only took ~6.5 hours.
+Here's the final line of output:
+
+> Downloaded: 1376 files, 112G in 6h 24m 35s (4.96 MB/s)
+
+To remove the unnecessary directories from the FGF FTP site, I moved the files.
+
+```
+mv fgfftp.uchicago.edu/Genomics_Data/NGS/150402_700819F_0305_AC723YACXX-YG-SR100-FC-3 150402_700819F_0305_AC723YACXX-YG-SR100-FC-3
+rmdir -p fgfftp.uchicago.edu/Genomics_Data/NGS/
+```
+
+Next I removed the extraneous CASAVA directories and added the flow cell name to the filename.
+
+```bash
+cd -
+```
+
+I did this with the following Python code:
+
+```python
+import glob
+import shutil
+
+files = glob.glob('raw/150402_700819F_0305_AC723YACXX-YG-SR100-FC-3/FastQ/Project_YG-SR100-3/Sample*/*fastq.gz')
+
+target_dir = 'fastq/'
+log = open('rearrange_C723YACXX.log', 'w')
+log.write('original\tnew\n')
+
+for f in files:
+    path = f.strip('fastq.gz').split('/')
+    flow_cell = path[1].split('_')[-1][1:10]
+    file_parts = path[-1].split('_')[:-1]
+    new_name = target_dir + '.'.join(file_parts + [flow_cell]) + '.fastq.gz'
+    log.write(f + '\t' + new_name + '\n')
+    shutil.move(f, new_name)
+
+log.close()
+```
