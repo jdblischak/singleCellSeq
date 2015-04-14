@@ -8,9 +8,11 @@
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
 <meta name="generator" content="pandoc" />
 
+<meta name="author" content="John Blischak" />
 
+<meta name="date" content="2015-04-11" />
 
-<title>Home</title>
+<title>Process sequence data</title>
 
 <script src="libs/jquery-1.11.0/jquery.min.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -117,39 +119,55 @@ img {
 </div><!--/.navbar -->
 
 <div id="header">
-<h1 class="title">Home</h1>
+<h1 class="title">Process sequence data</h1>
+<h4 class="author"><em>John Blischak</em></h4>
+<h4 class="date"><em>2015-04-11</em></h4>
 </div>
 
 <div id="TOC">
 <ul>
-<li><a href="#process-sequence-data">Process sequence data</a></li>
-<li><a href="#download-data">Download data</a></li>
-<li><a href="#other">Other</a></li>
+<li><a href="#trim-umi">Trim UMI</a></li>
+<li><a href="#map-to-genome">Map to genome</a></li>
+<li><a href="#process-bam-files">Process bam files</a></li>
+<li><a href="#remove-duplicate-umis">Remove duplicate UMIs</a></li>
+<li><a href="#count-reads-per-gene">Count reads per gene</a></li>
 </ul>
 </div>
 
 <p><strong>Last updated:</strong> 2015-04-13</p>
 <p><strong>Code version:</strong> 7ffcd6f901f465a7854242f12621b580e61ad9f7</p>
-<div id="process-sequence-data" class="section level2">
-<h2>Process sequence data</h2>
-<ul>
-<li><a href="process-samples.html">Pipeline</a></li>
-</ul>
+<p>All processing scripts were run from the data directory.</p>
+<pre class="bash"><code>cd /mnt/gluster/data/internal_supp/singleCellSeq</code></pre>
+<div id="trim-umi" class="section level2">
+<h2>Trim UMI</h2>
+<pre class="bash"><code>submit-array.sh trim.sh 2g fastq/*fastq.gz</code></pre>
+<p>To confirm that the jobs ran successfully:</p>
+<pre class="bash"><code>grep -l success log/trim* | wc -l</code></pre>
+<p>To re-run failed jobs, I re-ran the original command. If the output file already exists, the code is not run and “success” is not echo’d to the log file.</p>
 </div>
-<div id="download-data" class="section level2">
-<h2>Download data</h2>
-<ul>
-<li><a href="download_flow_cell_01.html">Download flow cell 01</a></li>
-<li><a href="download_flow_cell_02.html">Download flow cell 02</a></li>
-<li><a href="download_flow_cell_03.html">Download flow cell 03</a></li>
-<li><a href="download_flow_cell_04.html">Download flow cell 04</a></li>
-</ul>
+<div id="map-to-genome" class="section level2">
+<h2>Map to genome</h2>
+<pre class="bash"><code>submit.sh map-subread.sh 8g trim/*fastq.gz</code></pre>
+<pre class="bash"><code>grep -l success log/map-subread* | wc -l</code></pre>
 </div>
-<div id="other" class="section level2">
-<h2>Other</h2>
-<ul>
-<li><a href="analysis.html">Assessment of rapid run flow cell</a></li>
-</ul>
+<div id="process-bam-files" class="section level2">
+<h2>Process bam files</h2>
+<p>Remove quality less than 10 Sort bam index bam</p>
+<pre class="bash"><code>submit-array.sh process-bam.sh 8g bam/*bam</code></pre>
+<pre class="bash"><code>grep -l success log/process-bam* | wc -l</code></pre>
+<p>Check for the presence of intermediate files output during sorting.</p>
+<pre class="bash"><code>ls bam_processed/*sorted*0*bam</code></pre>
+</div>
+<div id="remove-duplicate-umis" class="section level2">
+<h2>Remove duplicate UMIs</h2>
+<pre class="bash"><code>submit-array.sh rmdup-umi.sh 2g bam-processed/*bam</code></pre>
+<pre class="bash"><code>grep -l success log/rmdup-umi* | wc -l</code></pre>
+</div>
+<div id="count-reads-per-gene" class="section level2">
+<h2>Count reads per gene</h2>
+<pre class="bash"><code>submit-array.sh count-reads-per-gene.sh 2g bam-processed/*bam</code></pre>
+<pre class="bash"><code>submit-array.sh count-reads-per-gene.sh 2g bam-rmdup-umi/*bam</code></pre>
+<pre class="bash"><code>grep -l success log/count-reads-per-gene* | wc -l</code></pre>
 </div>
 
 

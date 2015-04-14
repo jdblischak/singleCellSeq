@@ -8,9 +8,11 @@
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
 <meta name="generator" content="pandoc" />
 
+<meta name="author" content="John Blischak" />
 
+<meta name="date" content="2015-04-11" />
 
-<title>Home</title>
+<title>Download flow cell 02</title>
 
 <script src="libs/jquery-1.11.0/jquery.min.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -117,40 +119,51 @@ img {
 </div><!--/.navbar -->
 
 <div id="header">
-<h1 class="title">Home</h1>
+<h1 class="title">Download flow cell 02</h1>
+<h4 class="author"><em>John Blischak</em></h4>
+<h4 class="date"><em>2015-04-11</em></h4>
 </div>
 
-<div id="TOC">
-<ul>
-<li><a href="#process-sequence-data">Process sequence data</a></li>
-<li><a href="#download-data">Download data</a></li>
-<li><a href="#other">Other</a></li>
-</ul>
-</div>
 
 <p><strong>Last updated:</strong> 2015-04-13</p>
 <p><strong>Code version:</strong> 7ffcd6f901f465a7854242f12621b580e61ad9f7</p>
-<div id="process-sequence-data" class="section level2">
-<h2>Process sequence data</h2>
-<ul>
-<li><a href="process-samples.html">Pipeline</a></li>
-</ul>
-</div>
-<div id="download-data" class="section level2">
-<h2>Download data</h2>
-<ul>
-<li><a href="download_flow_cell_01.html">Download flow cell 01</a></li>
-<li><a href="download_flow_cell_02.html">Download flow cell 02</a></li>
-<li><a href="download_flow_cell_03.html">Download flow cell 03</a></li>
-<li><a href="download_flow_cell_04.html">Download flow cell 04</a></li>
-</ul>
-</div>
-<div id="other" class="section level2">
-<h2>Other</h2>
-<ul>
-<li><a href="analysis.html">Assessment of rapid run flow cell</a></li>
-</ul>
-</div>
+<p>The third of four flow cells was sequenced at the Functional Genomics Facility (FGF). Here is the message from Pieter Faber:</p>
+<blockquote>
+<p>We finished Flowcell #3 of your Illumina sequencing experiment (4 flowcells SR100). No technical problem were encountered. I attached several QC files in support.</p>
+<p>I have uploaded the data in fastq format to the Genomics Core ftp server data server (gilad Lab folder, folder = /NGS/150402_700819F_0305_AC723YACXX-YG-SR100-FC-3).</p>
+</blockquote>
+<p>To download, need to preface <code>/NGS</code> with <code>/Genomics_Data</code>.</p>
+<pre class="bash"><code>cd /mnt/gluster/data/internal_supp/singleCellSeq/raw
+echo &quot;wget --user=gilad --password=&#39;&lt;password&gt;&#39; -r ftp://fgfftp.uchicago.edu/Genomics_Data/NGS/150402_700819F_0305_AC723YACXX-YG-SR100-FC-3/&quot; \
+| qsub -l h_vmem=2g -N fc3 -cwd -V -j y -o 150402_700819F_0305_AC723YACXX-YG-SR100-FC-3.log</code></pre>
+<p>The download took ~11.5 hours. It started at 15:45:53 and ended at 03:18:37. However, <code>wget</code> reported that it only took ~6.5 hours. Here’s the final line of output:</p>
+<blockquote>
+<p>Downloaded: 1376 files, 112G in 6h 24m 35s (4.96 MB/s)</p>
+</blockquote>
+<p>To remove the unnecessary directories from the FGF FTP site, I moved the files.</p>
+<pre><code>mv fgfftp.uchicago.edu/Genomics_Data/NGS/150402_700819F_0305_AC723YACXX-YG-SR100-FC-3 150402_700819F_0305_AC723YACXX-YG-SR100-FC-3
+rmdir -p fgfftp.uchicago.edu/Genomics_Data/NGS/</code></pre>
+<p>Next I removed the extraneous CASAVA directories and added the flow cell name to the filename.</p>
+<pre class="bash"><code>cd -</code></pre>
+<p>I did this with the following Python code:</p>
+<pre class="python"><code>import glob
+import shutil
+
+files = glob.glob(&#39;raw/150402_700819F_0305_AC723YACXX-YG-SR100-FC-3/FastQ/Project_YG-SR100-3/Sample*/*fastq.gz&#39;)
+
+target_dir = &#39;fastq/&#39;
+log = open(&#39;rearrange_C723YACXX.log&#39;, &#39;w&#39;)
+log.write(&#39;original\tnew\n&#39;)
+
+for f in files:
+    path = f.strip(&#39;fastq.gz&#39;).split(&#39;/&#39;)
+    flow_cell = path[1].split(&#39;_&#39;)[-1][1:10]
+    file_parts = path[-1].split(&#39;_&#39;)[:-1]
+    new_name = target_dir + &#39;.&#39;.join(file_parts + [flow_cell]) + &#39;.fastq.gz&#39;
+    log.write(f + &#39;\t&#39; + new_name + &#39;\n&#39;)
+    shutil.move(f, new_name)
+
+log.close()</code></pre>
 
 
 <!-- some extra javascript for older browsers -->
