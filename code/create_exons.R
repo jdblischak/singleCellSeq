@@ -7,7 +7,7 @@
 #  ERCC: gtf file of ERCC spike-in controls downloaded from Invitrogen
 
 # Notes:
-# + Currently this includes all genes, i.e. coding and non-coding genes.
+# + This includes only coding genes, i.e. gene_biotype == "protein_coding"
 # + Uses grch37 Ensembl archive
 # + Output is in Simplified Annotation Format (SAF)
 #     + Columns: GeneID, Chr, Start, End, Strand
@@ -24,15 +24,17 @@ library("biomaRt")
 ensembl <- useMart(host = "grch37.ensembl.org",
                    biomart = "ENSEMBL_MART_ENSEMBL",
                    dataset = "hsapiens_gene_ensembl")
-attributePages(ensembl)
+# attributePages(ensembl)
 atts <- listAttributes(ensembl, page = "feature_page")
-atts[grep("rand", atts$description), ]
+# atts[grep("rand", atts$description), ]
 exons_all <- getBM(attributes = c("ensembl_gene_id", "ensembl_exon_id",
                                   "chromosome_name", "start_position",
                                   "end_position", "strand",
-                                  "external_gene_name"),
+                                  "external_gene_name",
+                                  "gene_biotype"),
                    mart = ensembl)
-exons_final <- exons_all[exons_all$chromosome_name %in% c(1:22, "X", "Y", "MT"),
+exons_final <- exons_all[exons_all$chromosome_name %in% c(1:22, "X", "Y", "MT") &
+                         exons_all$gene_biotype == "protein_coding",
                          c("ensembl_gene_id", "chromosome_name", "start_position",
                            "end_position", "strand", "external_gene_name")]
 colnames(exons_final) <- c("GeneID", "Chr", "Start", "End", "Strand", "Name")
