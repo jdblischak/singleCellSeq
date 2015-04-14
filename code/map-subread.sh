@@ -17,11 +17,10 @@ fi
 if [ -s $OUTDIR/$BASE.bam ]
 then
   echo "Output file already exists: $OUTDIR/$BASE.bam"
-  exit
+  exit 64
 fi
 
 subread-align -i $GENOME -r $FILE --gzFASTQinput --BAMoutput -uH > $OUTDIR/$BASE.bam
 
 samtools view -c $OUTDIR/$BASE.bam > $OUTDIR/$BASE.map.count.txt
 
-echo success.$BASE
