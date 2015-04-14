@@ -7,11 +7,6 @@ FILES=${*:3}
 
 mkdir -p log
 
-# for F in $FILES
-# do
-#   qsub -l h_vmem=$MEM -V -j y -N `basename $ANALYSIS`.`basename $F` -o log -cwd -b y $ANALYSIS $F
-# done
-
 let numfiles=$#-2
 echo $numfiles
 
