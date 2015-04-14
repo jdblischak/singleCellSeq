@@ -2,7 +2,7 @@
 set -e
 
 FILE=$1
-GENOME=genome/subread/combined
+GENOME=genome/combined
 BASE=`basename ${FILE%.fastq.gz}`
 OUTDIR=bam
 
