@@ -18,12 +18,14 @@ F=\${files[\$index]}
 
 $ANALYSIS \$F
 
-if [ \$? == 0 ]
+EXIT_CODE=\$?
+
+if [ \$EXIT_CODE == 0 ]
 then
   echo -e \"success\t\$F\"
-elif [ \$? == 64 ]
+elif [ \$EXIT_CODE == 64 ]
 then
-  echo -e \"Output file already exists\t\$F\"
+  echo -e \"Output file already exists. Input file was:\t\$F\"
 else 
   echo -e \"failure\t\$F\"
 fi

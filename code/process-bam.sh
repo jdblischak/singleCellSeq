@@ -16,7 +16,7 @@ fi
 if [ -s $OUTDIR/$BASE.sorted.bam ]
 then
   echo "Output file already exists: $OUTDIR/$BASE.sorted.bam"
-  exit
+  exit 64
 fi
 
 echo "Sorting file..."
@@ -27,5 +27,3 @@ samtools index $OUTDIR/$BASE.sorted.bam
 
 echo "Counting number of reads..."
 samtools view -c $OUTDIR/$BASE.sorted.bam > $OUTDIR/$BASE.processed.count.txt
-
-echo -e "success\t$BASE"
