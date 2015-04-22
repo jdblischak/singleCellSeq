@@ -7,7 +7,8 @@
 import glob
 import sys
 
-files = glob.glob("trim/*count*") + \
+files = glob.glob("fastq/*count*") + \
+        glob.glob("trim/*count*") + \
         glob.glob("bam/*count*") + \
         glob.glob("bam-processed/*count*") + \
         glob.glob("bam-rmdup-umi/*count*") + \
