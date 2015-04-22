@@ -1,0 +1,86 @@
+---
+title: "Total counts"
+author: "John Blischak"
+date: 2015-04-22
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+During the [processing pipeline](process-samples.html), the number of reads in a file are counted and saved in a separate text files.
+The script [gather-total-counts.py][] compiles all these counts and extracts the relevant variables from the filename.
+
+[gather-total-counts.py]: https://github.com/jdblischak/singleCellSeq/blob/master/code/gather-total-counts.py
+
+## Analyzing total counts
+
+```{r packages}
+library("ggplot2")
+theme_set(theme_bw(base_size = 16))
+```
+
+```{r input}
+counts <- read.table("../data/total-counts.txt", header = TRUE,
+                     stringsAsFactors = FALSE)
+```
+
+```{r}
+head(counts)
+str(counts)
+```
+
+```{r}
+# Order the processing steps
+counts$stage <- factor(counts$stage,
+                       levels = c("fastq", "trim", "bam", "bam-processed",
+                                  "bam-rmdup-umi", "counts", "counts-rmdup"))
+# Make new variable to separate bulk and single cell samples
+counts$type <- ifelse(counts$well == "bulk", "bulk", "single")
+# Scale to millions of counts
+counts$counts_mil <- counts$counts / 10^6
+# Convert numeric categorical variables to factors
+counts$individual <- factor(counts$individual)
+counts$batch <- factor(counts$batch)
+```
+
+Plot the number of reads at each processing stage faceted by bulk versus single cell sequencing.
+
+```{r}
+ggplot(counts, aes(x = stage, y = counts_mil)) +
+  geom_boxplot() +
+  facet_wrap(~type, nrow = 1) +
+  scale_y_continuous(breaks = seq(0, 16, 2)) +
+  labs(x = "Processing stage", y = "Number of reads (millions)") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))
+```
+
+```{r}
+counts_sum <- tapply(counts$counts, list(counts$stage, counts$type), mean)
+counts_sum
+```
+
+The bulk samples have an average of `r counts_sum["counts-rmdup", "bulk"]` molecules that map to protein-coding exons.
+The single cell samples have an average of `r counts_sum["counts-rmdup", "single"]` molecules that map to protein-coding exons.
+Since each sample is sequenced three times, the average total number of molecules will be `r counts_sum["counts-rmdup", "bulk"] * 3` and `r counts_sum["counts-rmdup", "single"] * 3` molecules for the bulk and single cell samples, respectively.
+
+## Variation in counts
+
+```{r}
+variables <- c("individual", "batch", "index", "lane", "flow_cell")
+for (v in variables) {
+  p <- ggplot(counts, aes_string(x = v, y = "counts_mil")) +
+  geom_boxplot() +
+  facet_wrap(~type, nrow = 1) +
+  scale_y_continuous(breaks = seq(0, 16, 2)) +
+  labs(x = v, y = "Number of reads (millions)") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))
+  print(p)
+}
+```
+
+## Session information
+
+```{r info}
+sessionInfo()
+```
