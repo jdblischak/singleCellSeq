@@ -6,7 +6,7 @@ MEM=$2
 FILES=${*:3}
 
 NAME=`basename $ANALYSIS`
-mkdir -p log/$NAME
+mkdir -p ~/log/$NAME
 
 let numfiles=$#-2
 echo $numfiles
@@ -30,4 +30,4 @@ then
 else 
   echo -e \"failure\t\$F\"
 fi
-" | qsub -l h_vmem=$MEM -V -j y -N $NAME -o log/$NAME -cwd -t 1-$numfiles
+" | qsub -l h_vmem=$MEM -V -j y -N $NAME -o ~/log/$NAME -cwd -t 1-$numfiles
