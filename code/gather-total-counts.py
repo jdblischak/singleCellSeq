@@ -9,6 +9,7 @@ import sys
 
 files = glob.glob("fastq/*count*") + \
         glob.glob("trim/*count*") + \
+        glob.glob("sickle/*count*") + \
         glob.glob("bam/*count*") + \
         glob.glob("bam-processed/*count*") + \
         glob.glob("bam-rmdup-umi/*count*") + \
@@ -16,7 +17,7 @@ files = glob.glob("fastq/*count*") + \
 
 # print(len(files))
 
-sys.stdout.write("stage\tindividual\tbatch\twell\tindex\tlane\tflow_cell\tcounts\n")
+sys.stdout.write("stage\tsickle\tindividual\tbatch\twell\tindex\tlane\tflow_cell\tcounts\n")
 
 for f in files:
     # Get counts from f
@@ -38,6 +39,15 @@ for f in files:
     fname_parts = fname.split(".")
     individual, batch, well, index, lane = fname_parts[:5]
     flow_cell = fname_parts[6]
-    sys.stdout.write(stage + "\t" + individual + "\t" + batch + "\t" + \
+    # Determine if sample was quality trimmed with sickle
+    if "sickle" in fname:
+        sickle = "quality-trimmed"
+    else:
+        sickle = "not-quality-trimmed"
+    # Samples in the sickle subdirectory are in the stage trim because they were just
+    # processed with `umitools trim`.
+    if stage == "sickle":
+        stage = "trim"
+    sys.stdout.write(stage + "\t" + sickle + "\t" + individual + "\t" + batch + "\t" + \
                      well + "\t" + index + "\t" + lane + "\t" + flow_cell + "\t" + \
                      counts + "\n")
