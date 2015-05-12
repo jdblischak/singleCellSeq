@@ -13,16 +13,30 @@ source("chunk-options.R")
 opts_chunk$set(fig.width = 8, fig.height = 8)
 ```
 
-The script [gather-gene-counts.py][] compiles all the gene counts and extracts the relevant variables from the filename.
-The result is the file [gene-counts.txt].
-Each row is a given fastq file, and each column is a variable (including all the genes).
+I performed PCA on the ERCC spike-ins to assess technical variability and a subset (~1000) of genes with a high coefficient of variation to assess the biological variability.
 
-[gather-total-counts.py]: https://github.com/jdblischak/singleCellSeq/blob/master/code/gather-gene-counts.py
+Conclusions:
+
+*  No large difference in PCs whether or not reads are trimmed for quality at the 3' end.
+Will use the quality trimmed data going forward.
+*  For the ERCC data, the biggest effect on PC1 is individual, which appears to be driven by a subpopulation of the second batch of individual 19098.
+Need to investigate if these are dead cells.
+*  For the ERCC data, the biggest effect on the second PC is whether the sample is a bulk or single cell (represented by the factors `type` or `well`)
+*  For the variable genes, the biggest effect on PC1 is whether the sample is bulk or single cell, and the largest effect on PC2 is individual.
+*  Since there is no large obvious confounder to correct for, we will use [sva][] to correct for technical effects.
+
+[sva]: http://www.bioconductor.org/packages/release/bioc/html/sva.html
+
+## Setup
+
+The script [gather-gene-counts.py][] compiles all the gene counts and extracts the relevant variables from the filename.
+The result is the file [gene-counts.txt][].
+Each row is a given fastq file (i.e. the sequences obtained for one from one lane of one flow cell), and each column is a variable (including all the genes).
+
+[gather-gene-counts.py]: https://github.com/jdblischak/singleCellSeq/blob/master/code/gather-gene-counts.py
 [gene-counts.txt]: https://github.com/jdblischak/singleCellSeq/blob/master/data/gene-counts.txt
 
-## Analyzing gene counts
-
-```{r packages}
+```{r packages, message=FALSE}
 library("data.table")
 library("edgeR")
 library("ggplot2")
@@ -31,7 +45,6 @@ theme_set(theme_bw(base_size = 16))
 ```
 
 ```{r input}
-# counts <- read.table("../data/gene-counts.txt", header = FALSE, sep = "\t", stringsAsFactors = FALSE)
 counts <- fread("../data/gene-counts.txt")
 ```
 
@@ -49,71 +62,115 @@ calc_pca <- function(dt, num_pcs = 1:6) {
   # dt - data.table
   # num_pcs: Number of PCs to return
   require("edgeR")
-  df <- df[, colSums(df) > 0, with = FALSE]
-  df <- t(df)
-  cpm_mat <- cpm(df, log = TRUE)
+  stopifnot(class(dt)[1] == "data.table")
+  dt <- dt[, colSums(dt) > 0, with = FALSE]
+  dt <- t(dt)
+  cpm_mat <- cpm(dt, log = TRUE)
   pca <- prcomp(t(cpm_mat), scale. = TRUE)
   # return(as.list(pca$x))
   return(pca$x[, num_pcs])
 }
 ```
 
-## Perform PCA on just the ERCC genes
+```{r}
+calc_pca_by_subset <- function(counts, anno, num_pcs = 1:6) {
+  # Calculate pca for 4 subsets:
+  #  quality-trimmed reads
+  #  quality-trimmed molecules
+  #  not-quality-trimmed reads
+  #  not-quality-trimmed molecules
+  # counts: data.table of counts with rows = samples and columns = genes
+  # anno: annotation file with rows = samples and columns = categorical variables
+  # num_pcs: Number of PCs to return
+  # Returns data.frame with PCs plus annotation
+  stopifnot(class(counts)[1] == "data.table",
+            class(anno)[1] == "data.table")
+  pca <- data.frame()
+  for (rmdup_status in c("molecules", "reads")) {
+    for (sickle_status in c("not-quality-trimmed", "quality-trimmed")) {
+      dat <- counts[anno$rmdup == rmdup_status & anno$sickle == sickle_status, ]
+      # print(dat[, .N])
+      result <- calc_pca(dat, num_pcs = num_pcs)
+      result_df <- data.frame(anno[rmdup == rmdup_status & sickle == sickle_status, ], result,
+                              stringsAsFactors = FALSE)
+      pca <- rbind(pca, result_df)
+    }
+  }
+  return(pca)
+}
+```
+
+```{r}
+correlate_pcs <- function(pca) {
+  # Plot heatmaps of adjusted r-squared values from simple linear regression between PCs
+  # and categorical variables.
+  # pca: data.frame of PCs plus annotation
+  factors <- colnames(pca)[c(1:6, 9)]
+  pcs <- colnames(pca)[10:ncol(pca)]
+  for (rmdup_status in c("molecules", "reads")) {
+    for (sickle_status in c("not-quality-trimmed", "quality-trimmed")) {
+      pca_corr <- matrix(NA, nrow = length(factors), ncol = length(pcs),
+                              dimnames = list(factors, pcs))
+      for (fac in factors) {
+        for (pc in pcs) {
+          result_lm <- lm(pca[pca$rmdup == rmdup_status &
+                                     pca$sickle == sickle_status, pc] ~
+                            as.factor(pca[pca$rmdup == rmdup_status &
+                                                 pca$sickle == sickle_status, fac]))
+          result_r2 <- summary(result_lm)$adj.r.squared
+          # result_df <- data.frame(fac, pc, result_r2, stringsAsFactors = FALSE)
+          pca_corr[fac, pc] <- result_r2
+        }
+      }
+      heatmap.2(pca_corr, trace = "none", main = paste(rmdup_status, sickle_status))
+    }
+  }
+}
+```
+
+## PCA on ERCC spike-ins
+
+Using only the ERCC control genes for PCA.
+Should isolate purely technical effects.
 
 ```{r}
 counts_ercc <- counts[, grep("ERCC", colnames(counts)), with = FALSE]
 anno <- counts[, 1:8, with = FALSE]
 anno$type <- ifelse(anno$well == "bulk", "bulk", "single")
-
-pca_ercc <- data.frame()
-for (rmdup_status in c("molecules", "reads")) {
-  for (sickle_status in c("not-quality-trimmed", "quality-trimmed")) {
-    dat <- counts_ercc[anno$rmdup == rmdup_status & anno$sickle == sickle_status, ]
-    # print(dat[, .N])
-    result <- calc_pca(dat)
-    result_df <- data.frame(anno[rmdup == rmdup_status & sickle == sickle_status, ], result,
-                            stringsAsFactors = FALSE)
-    pca_ercc <- rbind(pca_ercc, result_df)
-  }
-}
 ```
 
 ```{r}
+pca_ercc <- calc_pca_by_subset(counts_ercc, anno)
+```
+
+```{r ercc-pca-type}
 ggplot(pca_ercc, aes(x = PC1, y = PC2, col = as.factor(type))) +
   geom_point() +
   facet_grid(sickle ~ rmdup)
+```
 
-ggplot(pca_ercc, aes(x = PC1, y = PC2, col = as.factor(individual))) +
-  geom_point() +
+```{r ercc-pca-ind}
+ggplot(pca_ercc, aes(x = PC1, y = PC2, col = as.factor(individual), shape = as.factor(batch))) +
+  geom_point(size = 3, alpha = 0.5) +
   facet_grid(sickle ~ rmdup)
 ```
 
-## Correlate each factor with each PC
-
-```{r}
-factors <- colnames(pca_ercc)[c(1:6, 9)]
-pcs <- colnames(pca_ercc)[10:ncol(pca_ercc)]
-for (rmdup_status in c("molecules", "reads")) {
-  for (sickle_status in c("not-quality-trimmed", "quality-trimmed")) {
-    pca_ercc_corr <- matrix(NA, nrow = length(factors), ncol = length(pcs),
-                            dimnames = list(factors, pcs))
-    for (fac in factors) {
-      for (pc in pcs) {
-        result_lm <- lm(pca_ercc[pca_ercc$rmdup == rmdup_status &
-                                 pca_ercc$sickle == sickle_status, pc] ~
-                          as.factor(pca_ercc[pca_ercc$rmdup == rmdup_status &
-                                             pca_ercc$sickle == sickle_status, fac]))
-        result_r2 <- summary(result_lm)$adj.r.squared
-        # result_df <- data.frame(fac, pc, result_r2, stringsAsFactors = FALSE)
-        pca_ercc_corr[fac, pc] <- result_r2
-      }
-    }
-    heatmap.2(pca_ercc_corr, trace = "none", main = paste(rmdup_status, sickle_status))
-  }
-}
+```{r ercc-pca-batch}
+ggplot(pca_ercc, aes(x = PC1, y = PC2, col = as.factor(batch))) +
+  geom_point(size = 3, alpha = 0.5) +
+  facet_grid(sickle ~ rmdup)
 ```
 
-## Find most variable genes
+```{r ercc-corr}
+correlate_pcs(pca_ercc)
+```
+
+## PCA on highly variable genes
+
+It is too computationally intensive to perform PCA on thousands of genes.
+Instead limiting to genes with a high coefficient of variation for the non-quality-trimmed reads.
+
+### Find most variable genes
 
 ```{r}
 cov <- counts[, lapply(.SD, function(x) sd(x) / (mean(x) + 1)),
@@ -126,10 +183,30 @@ names(cov_vec) <- colnames(cov_reads_not_qual)
 var_genes <- names(cov_vec)[cov_vec > 3]
 ```
 
-## PCA using variable genes
+### PCA using variable genes
 
 ```{r}
-counts_ercc <- counts[, var_genes, with = FALSE]
+counts_cov <- counts[, var_genes, with = FALSE]
+```
+
+```{r}
+pca_cov <- calc_pca_by_subset(counts_cov, anno)
+```
+
+```{r cov-pca-type}
+ggplot(pca_cov, aes(x = PC1, y = PC2, col = as.factor(type))) +
+  geom_point() +
+  facet_grid(sickle ~ rmdup)
+```
+
+```{r cov-pca-type}
+ggplot(pca_cov, aes(x = PC1, y = PC2, col = as.factor(individual))) +
+  geom_point() +
+  facet_grid(sickle ~ rmdup)
+```
+
+```{r cov-corr}
+correlate_pcs(pca_cov)
 ```
 
 ## Session information
