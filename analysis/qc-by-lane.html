@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+<meta name="author" content="John Blischak" />
+
+<meta name="date" content="2015-05-12" />
+
+<title>Quality control at level of sequencing lane</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Quality control at level of sequencing lane</h1>
+<h4 class="author"><em>John Blischak</em></h4>
+<h4 class="date"><em>2015-05-12</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#setup">Setup</a></li>
+<li><a href="#functions">Functions</a></li>
+<li><a href="#pca-on-ercc-spike-ins">PCA on ERCC spike-ins</a></li>
+<li><a href="#pca-on-highly-variable-genes">PCA on highly variable genes</a></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2015-05-12</p>
+<p><strong>Code version:</strong> bc3afdfbc234c08447fdb9b2eda1d3a77c6cbc41</p>
+<p>I performed PCA on the ERCC spike-ins to assess technical variability and a subset (~1000) of genes with a high coefficient of variation to assess the biological variability.</p>
+<p>Conclusions:</p>
+<ul>
+<li>No large difference in PCs whether or not reads are trimmed for quality at the 3’ end. Will use the quality trimmed data going forward.</li>
+<li>For the ERCC data, the biggest effect on PC1 is individual, which appears to be driven by a subpopulation of the second batch of individual 19098. Need to investigate if these are dead cells.</li>
+<li>For the ERCC data, the biggest effect on the second PC is whether the sample is a bulk or single cell (represented by the factors <code>type</code> or <code>well</code>)</li>
+<li>For the variable genes, the biggest effect on PC1 is whether the sample is bulk or single cell, and the largest effect on PC2 is individual.</li>
+<li>Since there is no large obvious confounder to correct for, we will use <a href="http://www.bioconductor.org/packages/release/bioc/html/sva.html">sva</a> to correct for technical effects.</li>
+</ul>
+<div id="setup" class="section level2">
+<h2>Setup</h2>
+<p>The script <a href="https://github.com/jdblischak/singleCellSeq/blob/master/code/gather-gene-counts.py">gather-gene-counts.py</a> compiles all the gene counts and extracts the relevant variables from the filename. The result is the file <a href="https://github.com/jdblischak/singleCellSeq/blob/master/data/gene-counts.txt">gene-counts.txt</a>. Each row is a given fastq file (i.e. the sequences obtained for one from one lane of one flow cell), and each column is a variable (including all the genes).</p>
+<pre class="r"><code>library(&quot;data.table&quot;)
+library(&quot;edgeR&quot;)
+library(&quot;ggplot2&quot;)
+library(&quot;gplots&quot;)
+theme_set(theme_bw(base_size = 16))</code></pre>
+<pre class="r"><code>counts &lt;- fread(&quot;../data/gene-counts.txt&quot;)</code></pre>
+<pre><code>
+Read 0.0% of 10564 rows
+Read 94.7% of 10564 rows
+Read 10564 rows and 20427 (of 20427) columns from 0.451 GB file in 00:00:15</code></pre>
+<pre class="r"><code>dim(counts)</code></pre>
+<pre><code>[1] 10564 20427</code></pre>
+<pre class="r"><code>head(counts[, 1:11, with = FALSE])</code></pre>
+<pre><code>   individual batch well    index lane flow_cell              sickle
+1:      19098     1  D07 GTCAATCC L002 C6WYKACXX not-quality-trimmed
+2:      19098     1  H06 GATAAGTG L002 C6WYKACXX not-quality-trimmed
+3:      19098     2  F04 TAAGTCCT L001 C6WURACXX not-quality-trimmed
+4:      19098     2  E01 TATAGGAC L001 C6WURACXX not-quality-trimmed
+5:      19098     3  B03 ATGCTGTG L007 C6WYKACXX not-quality-trimmed
+6:      19098     2  F12 AACCCATG L001 C6WURACXX not-quality-trimmed
+       rmdup ENSG00000215405 ENSG00000268343 ENSG00000230031
+1: molecules               0               0               0
+2: molecules               0               0               0
+3: molecules               0               0               0
+4: molecules               0               0               0
+5: molecules               0               0               0
+6: molecules               0               0               0</code></pre>
+<pre class="r"><code>table(counts$lane, counts$flow_cell)</code></pre>
+<pre><code>      
+       C6WURACXX C6WYKACXX C723YACXX C72JMACXX
+  L001       380        72       384       380
+  L002       372       384       384       380
+  L003       384       360       384       380
+  L004       384       384       368       376
+  L005       384       384        72       384
+  L006       384       384       384       380
+  L007       380       384       376         0
+  L008        72       384       384        72</code></pre>
+</div>
+<div id="functions" class="section level2">
+<h2>Functions</h2>
+<pre class="r"><code>calc_pca &lt;- function(dt, num_pcs = 1:6) {
+  # Calculate pca.
+  # dt - data.table
+  # num_pcs: Number of PCs to return
+  require(&quot;edgeR&quot;)
+  stopifnot(class(dt)[1] == &quot;data.table&quot;)
+  dt &lt;- dt[, colSums(dt) &gt; 0, with = FALSE]
+  dt &lt;- t(dt)
+  cpm_mat &lt;- cpm(dt, log = TRUE)
+  pca &lt;- prcomp(t(cpm_mat), scale. = TRUE)
+  # return(as.list(pca$x))
+  return(pca$x[, num_pcs])
+}</code></pre>
+<pre class="r"><code>calc_pca_by_subset &lt;- function(counts, anno, num_pcs = 1:6) {
+  # Calculate pca for 4 subsets:
+  #  quality-trimmed reads
+  #  quality-trimmed molecules
+  #  not-quality-trimmed reads
+  #  not-quality-trimmed molecules
+  # counts: data.table of counts with rows = samples and columns = genes
+  # anno: annotation file with rows = samples and columns = categorical variables
+  # num_pcs: Number of PCs to return
+  # Returns data.frame with PCs plus annotation
+  stopifnot(class(counts)[1] == &quot;data.table&quot;,
+            class(anno)[1] == &quot;data.table&quot;)
+  pca &lt;- data.frame()
+  for (rmdup_status in c(&quot;molecules&quot;, &quot;reads&quot;)) {
+    for (sickle_status in c(&quot;not-quality-trimmed&quot;, &quot;quality-trimmed&quot;)) {
+      dat &lt;- counts[anno$rmdup == rmdup_status &amp; anno$sickle == sickle_status, ]
+      # print(dat[, .N])
+      result &lt;- calc_pca(dat, num_pcs = num_pcs)
+      result_df &lt;- data.frame(anno[rmdup == rmdup_status &amp; sickle == sickle_status, ], result,
+                              stringsAsFactors = FALSE)
+      pca &lt;- rbind(pca, result_df)
+    }
+  }
+  return(pca)
+}</code></pre>
+<pre class="r"><code>correlate_pcs &lt;- function(pca) {
+  # Plot heatmaps of adjusted r-squared values from simple linear regression between PCs
+  # and categorical variables.
+  # pca: data.frame of PCs plus annotation
+  factors &lt;- colnames(pca)[c(1:6, 9)]
+  pcs &lt;- colnames(pca)[10:ncol(pca)]
+  for (rmdup_status in c(&quot;molecules&quot;, &quot;reads&quot;)) {
+    for (sickle_status in c(&quot;not-quality-trimmed&quot;, &quot;quality-trimmed&quot;)) {
+      pca_corr &lt;- matrix(NA, nrow = length(factors), ncol = length(pcs),
+                              dimnames = list(factors, pcs))
+      for (fac in factors) {
+        for (pc in pcs) {
+          result_lm &lt;- lm(pca[pca$rmdup == rmdup_status &amp;
+                                     pca$sickle == sickle_status, pc] ~
+                            as.factor(pca[pca$rmdup == rmdup_status &amp;
+                                                 pca$sickle == sickle_status, fac]))
+          result_r2 &lt;- summary(result_lm)$adj.r.squared
+          # result_df &lt;- data.frame(fac, pc, result_r2, stringsAsFactors = FALSE)
+          pca_corr[fac, pc] &lt;- result_r2
+        }
+      }
+      heatmap.2(pca_corr, trace = &quot;none&quot;, main = paste(rmdup_status, sickle_status))
+    }
+  }
+}</code></pre>
+</div>
+<div id="pca-on-ercc-spike-ins" class="section level2">
+<h2>PCA on ERCC spike-ins</h2>
+<p>Using only the ERCC control genes for PCA. Should isolate purely technical effects.</p>
+<pre class="r"><code>counts_ercc &lt;- counts[, grep(&quot;ERCC&quot;, colnames(counts)), with = FALSE]
+anno &lt;- counts[, 1:8, with = FALSE]
+anno$type &lt;- ifelse(anno$well == &quot;bulk&quot;, &quot;bulk&quot;, &quot;single&quot;)</code></pre>
+<pre class="r"><code>pca_ercc &lt;- calc_pca_by_subset(counts_ercc, anno)</code></pre>
+<pre class="r"><code>ggplot(pca_ercc, aes(x = PC1, y = PC2, col = as.factor(type))) +
+  geom_point() +
+  facet_grid(sickle ~ rmdup)</code></pre>
+<p><img src="figure/qc-by-lane.Rmd/ercc-pca-type.png" title="plot of chunk ercc-pca-type" alt="plot of chunk ercc-pca-type" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(pca_ercc, aes(x = PC1, y = PC2, col = as.factor(individual), shape = as.factor(batch))) +
+  geom_point(size = 3, alpha = 0.5) +
+  facet_grid(sickle ~ rmdup)</code></pre>
+<p><img src="figure/qc-by-lane.Rmd/ercc-pca-ind.png" title="plot of chunk ercc-pca-ind" alt="plot of chunk ercc-pca-ind" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(pca_ercc, aes(x = PC1, y = PC2, col = as.factor(batch))) +
+  geom_point(size = 3, alpha = 0.5) +
+  facet_grid(sickle ~ rmdup)</code></pre>
+<p><img src="figure/qc-by-lane.Rmd/ercc-pca-batch.png" title="plot of chunk ercc-pca-batch" alt="plot of chunk ercc-pca-batch" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>correlate_pcs(pca_ercc)</code></pre>
+<p><img src="figure/qc-by-lane.Rmd/ercc-corr1.png" title="plot of chunk ercc-corr" alt="plot of chunk ercc-corr" width="768" style="display: block; margin: auto;" /><img src="figure/qc-by-lane.Rmd/ercc-corr2.png" title="plot of chunk ercc-corr" alt="plot of chunk ercc-corr" width="768" style="display: block; margin: auto;" /><img src="figure/qc-by-lane.Rmd/ercc-corr3.png" title="plot of chunk ercc-corr" alt="plot of chunk ercc-corr" width="768" style="display: block; margin: auto;" /><img src="figure/qc-by-lane.Rmd/ercc-corr4.png" title="plot of chunk ercc-corr" alt="plot of chunk ercc-corr" width="768" style="display: block; margin: auto;" /></p>
+</div>
+<div id="pca-on-highly-variable-genes" class="section level2">
+<h2>PCA on highly variable genes</h2>
+<p>It is too computationally intensive to perform PCA on thousands of genes. Instead limiting to genes with a high coefficient of variation for the non-quality-trimmed reads.</p>
+<div id="find-most-variable-genes" class="section level3">
+<h3>Find most variable genes</h3>
+<pre class="r"><code>cov &lt;- counts[, lapply(.SD, function(x) sd(x) / (mean(x) + 1)),
+              by = .(rmdup, sickle),
+              .SDcols = grep(&quot;ENSG&quot;, colnames(counts))]
+cov_reads_not_qual &lt;- cov[rmdup == &quot;reads&quot; &amp; sickle == &quot;not-quality-trimmed&quot;,
+                          grep(&quot;ENSG&quot;, colnames(cov)), with = FALSE]
+cov_vec &lt;- as.numeric(cov_reads_not_qual)
+names(cov_vec) &lt;- colnames(cov_reads_not_qual)
+var_genes &lt;- names(cov_vec)[cov_vec &gt; 3]</code></pre>
+</div>
+<div id="pca-using-variable-genes" class="section level3">
+<h3>PCA using variable genes</h3>
+<pre class="r"><code>counts_cov &lt;- counts[, var_genes, with = FALSE]</code></pre>
+<pre class="r"><code>pca_cov &lt;- calc_pca_by_subset(counts_cov, anno)</code></pre>
+<pre class="r"><code>ggplot(pca_cov, aes(x = PC1, y = PC2, col = as.factor(type))) +
+  geom_point() +
+  facet_grid(sickle ~ rmdup)</code></pre>
+<p><img src="figure/qc-by-lane.Rmd/cov-pca-type.png" title="plot of chunk cov-pca-type" alt="plot of chunk cov-pca-type" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(pca_cov, aes(x = PC1, y = PC2, col = as.factor(individual))) +
+  geom_point() +
+  facet_grid(sickle ~ rmdup)</code></pre>
+<p><img src="figure/qc-by-lane.Rmd/cov-pca-ind.png" title="plot of chunk cov-pca-ind" alt="plot of chunk cov-pca-ind" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>correlate_pcs(pca_cov)</code></pre>
+<p><img src="figure/qc-by-lane.Rmd/cov-corr1.png" title="plot of chunk cov-corr" alt="plot of chunk cov-corr" width="768" style="display: block; margin: auto;" /><img src="figure/qc-by-lane.Rmd/cov-corr2.png" title="plot of chunk cov-corr" alt="plot of chunk cov-corr" width="768" style="display: block; margin: auto;" /><img src="figure/qc-by-lane.Rmd/cov-corr3.png" title="plot of chunk cov-corr" alt="plot of chunk cov-corr" width="768" style="display: block; margin: auto;" /><img src="figure/qc-by-lane.Rmd/cov-corr4.png" title="plot of chunk cov-corr" alt="plot of chunk cov-corr" width="768" style="display: block; margin: auto;" /></p>
+</div>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.1.1 (2014-07-10)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] gplots_2.14.1    ggplot2_1.0.0    edgeR_3.6.7      limma_3.20.8    
+[5] data.table_1.9.4 knitr_1.6       
+
+loaded via a namespace (and not attached):
+ [1] bitops_1.0-6       caTools_1.17       chron_2.3-45      
+ [4] colorspace_1.2-4   digest_0.6.4       evaluate_0.5.5    
+ [7] formatR_0.10       gdata_2.13.3       grid_3.1.1        
+[10] gtable_0.1.2       gtools_3.4.1       htmltools_0.2.6   
+[13] KernSmooth_2.23-12 labeling_0.2       MASS_7.3-33       
+[16] munsell_0.4.2      plyr_1.8.1         proto_0.3-10      
+[19] Rcpp_0.11.6        reshape2_1.4       rmarkdown_0.5.1   
+[22] scales_0.2.4       stringr_0.6.2      tools_3.1.1       
+[25] yaml_2.1.13       </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+
+</body>
+</html>

@@ -132,8 +132,8 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-04-22</p>
-<p><strong>Code version:</strong> beec580194ceb295a5bfbc87750bb1f59f4ff273</p>
+<p><strong>Last updated:</strong> 2015-05-12</p>
+<p><strong>Code version:</strong> bc3afdfbc234c08447fdb9b2eda1d3a77c6cbc41</p>
 <p>During the <a href="process-samples.html">processing pipeline</a>, the number of reads in a file are counted and saved in a separate text files. The script <a href="https://github.com/jdblischak/singleCellSeq/blob/master/code/gather-total-counts.py">gather-total-counts.py</a> compiles all these counts and extracts the relevant variables from the filename.</p>
 <div id="analyzing-total-counts" class="section level2">
 <h2>Analyzing total counts</h2>
@@ -142,16 +142,24 @@ theme_set(theme_bw(base_size = 16))</code></pre>
 <pre class="r"><code>counts &lt;- read.table(&quot;../data/total-counts.txt&quot;, header = TRUE,
                      stringsAsFactors = FALSE)</code></pre>
 <pre class="r"><code>head(counts)</code></pre>
-<pre><code>  stage individual batch well    index lane flow_cell  counts
-1 fastq      19098     1  H03 GGGAATAT L002 C6WYKACXX 2114841
-2 fastq      19098     2  B05 CTTGAAGG L005 C72JMACXX 2394493
-3 fastq      19098     2  G10 AGCAAGCG L003 C723YACXX  753351
-4 fastq      19098     1  H11 TTCTCTGC L002 C6WYKACXX 3126886
-5 fastq      19098     2  E07 TGCCCAGA L003 C723YACXX 1589238
-6 fastq      19098     2  F12 AACCCATG L001 C6WURACXX 2504377</code></pre>
+<pre><code>  stage              sickle individual batch well    index lane flow_cell
+1 fastq not-quality-trimmed      19098     1  H03 GGGAATAT L002 C6WYKACXX
+2 fastq not-quality-trimmed      19098     2  B05 CTTGAAGG L005 C72JMACXX
+3 fastq not-quality-trimmed      19098     2  G10 AGCAAGCG L003 C723YACXX
+4 fastq not-quality-trimmed      19098     1  H11 TTCTCTGC L002 C6WYKACXX
+5 fastq not-quality-trimmed      19098     2  E07 TGCCCAGA L003 C723YACXX
+6 fastq not-quality-trimmed      19098     2  F12 AACCCATG L001 C6WURACXX
+   counts
+1 2114841
+2 2394493
+3  753351
+4 3126886
+5 1589238
+6 2504377</code></pre>
 <pre class="r"><code>str(counts)</code></pre>
-<pre><code>&#39;data.frame&#39;:   18487 obs. of  8 variables:
+<pre><code>&#39;data.frame&#39;:   34333 obs. of  9 variables:
  $ stage     : chr  &quot;fastq&quot; &quot;fastq&quot; &quot;fastq&quot; &quot;fastq&quot; ...
+ $ sickle    : chr  &quot;not-quality-trimmed&quot; &quot;not-quality-trimmed&quot; &quot;not-quality-trimmed&quot; &quot;not-quality-trimmed&quot; ...
  $ individual: int  19098 19098 19098 19098 19098 19098 19098 19098 19098 19098 ...
  $ batch     : int  1 2 2 1 2 2 2 2 2 2 ...
  $ well      : chr  &quot;H03&quot; &quot;B05&quot; &quot;G10&quot; &quot;H11&quot; ...
@@ -173,22 +181,36 @@ counts$batch &lt;- factor(counts$batch)</code></pre>
 <p>Plot the number of reads at each processing stage faceted by bulk versus single cell sequencing.</p>
 <pre class="r"><code>ggplot(counts, aes(x = stage, y = counts_mil)) +
   geom_boxplot() +
-  facet_wrap(~type, nrow = 1) +
+  # facet_wrap(type ~ sickle, nrow = 1) +
+  facet_grid(sickle ~ type) +
   scale_y_continuous(breaks = seq(0, 16, 2)) +
   labs(x = &quot;Processing stage&quot;, y = &quot;Number of reads (millions)&quot;) +
   theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))</code></pre>
-<p><img src="figure/total-counts.Rmd/counts-by-processing-stage-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>counts_sum &lt;- tapply(counts$counts, list(counts$stage, counts$type), mean)
+<p><img src="figure/total-counts.Rmd/counts-by-processing-stage.png" title="plot of chunk counts-by-processing-stage" alt="plot of chunk counts-by-processing-stage" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>counts_sum &lt;- tapply(counts$counts, list(counts$stage, counts$type, counts$sickle), mean)
 counts_sum</code></pre>
-<pre><code>                 bulk     single
-fastq         9705088 2091090.18
-trim          6536956 1477326.52
-bam           6536956 1477326.52
-bam-processed 5265894 1050901.15
-bam-rmdup-umi 3370583   92211.19
-counts        4119261  821304.58
-counts-rmdup  2687432   68758.49</code></pre>
-<p>The bulk samples have an average of 2.68743210^{6} molecules that map to protein-coding exons. The single cell samples have an average of 6.875848610^{4} molecules that map to protein-coding exons. Since each sample is sequenced three times, the average total number of molecules will be 8.06229610^{6} and 2.062754610^{5} molecules for the bulk and single cell samples, respectively.</p>
+<pre><code>, , not-quality-trimmed
+
+                 bulk  single
+fastq         9705088 2091090
+trim          6536956 1477327
+bam           6536956 1477327
+bam-processed 5265894 1050901
+bam-rmdup-umi 3370583   92211
+counts        4119261  821305
+counts-rmdup  2687432   68758
+
+, , quality-trimmed
+
+                 bulk  single
+fastq              NA      NA
+trim          6436990 1460046
+bam           6436990 1460046
+bam-processed 5186264 1039373
+bam-rmdup-umi 3338797   92505
+counts        4059869  813056
+counts-rmdup  2662176   68852</code></pre>
+<p>The bulk samples have an average of 2.6622 × 10<sup>6</sup> molecules that map to protein-coding exons (2.6874 × 10<sup>6</sup> before quality trimming). The single cell samples have an average of 6.8852 × 10<sup>4</sup> molecules that map to protein-coding exons (6.8758 × 10<sup>4</sup> before quality trimming). Since each sample is sequenced three times, the average total number of molecules will be 7.9865 × 10<sup>6</sup> and 2.0655 × 10<sup>5</sup> molecules for the bulk and single cell samples, respectively.</p>
 </div>
 <div id="variation-in-counts" class="section level2">
 <h2>Variation in counts</h2>
@@ -196,19 +218,19 @@ counts-rmdup  2687432   68758.49</code></pre>
 for (v in variables) {
   p &lt;- ggplot(counts, aes_string(x = v, y = &quot;counts_mil&quot;)) +
   geom_boxplot() +
-  facet_wrap(~type, nrow = 1) +
+  facet_grid(sickle ~ type) +
   scale_y_continuous(breaks = seq(0, 16, 2)) +
   labs(x = v, y = &quot;Number of reads (millions)&quot;) +
   theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))
   print(p)
 }</code></pre>
-<p><img src="figure/total-counts.Rmd/counts-by-variables-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /><img src="figure/total-counts.Rmd/counts-by-variables-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /><img src="figure/total-counts.Rmd/counts-by-variables-3.png" title="" alt="" width="672" style="display: block; margin: auto;" /><img src="figure/total-counts.Rmd/counts-by-variables-4.png" title="" alt="" width="672" style="display: block; margin: auto;" /><img src="figure/total-counts.Rmd/counts-by-variables-5.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="figure/total-counts.Rmd/counts-by-variables1.png" title="plot of chunk counts-by-variables" alt="plot of chunk counts-by-variables" width="768" style="display: block; margin: auto;" /><img src="figure/total-counts.Rmd/counts-by-variables2.png" title="plot of chunk counts-by-variables" alt="plot of chunk counts-by-variables" width="768" style="display: block; margin: auto;" /><img src="figure/total-counts.Rmd/counts-by-variables3.png" title="plot of chunk counts-by-variables" alt="plot of chunk counts-by-variables" width="768" style="display: block; margin: auto;" /><img src="figure/total-counts.Rmd/counts-by-variables4.png" title="plot of chunk counts-by-variables" alt="plot of chunk counts-by-variables" width="768" style="display: block; margin: auto;" /><img src="figure/total-counts.Rmd/counts-by-variables5.png" title="plot of chunk counts-by-variables" alt="plot of chunk counts-by-variables" width="768" style="display: block; margin: auto;" /></p>
 </div>
 <div id="session-information" class="section level2">
 <h2>Session information</h2>
 <pre class="r"><code>sessionInfo()</code></pre>
-<pre><code>R version 3.1.2 (2014-10-31)
-Platform: x86_64-pc-linux-gnu (64-bit)
+<pre><code>R version 3.1.1 (2014-07-10)
+Platform: x86_64-unknown-linux-gnu (64-bit)
 
 locale:
  [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
@@ -222,14 +244,14 @@ attached base packages:
 [1] stats     graphics  grDevices utils     datasets  methods   base     
 
 other attached packages:
-[1] ggplot2_1.0.0 knitr_1.9.23 
+[1] ggplot2_1.0.0 knitr_1.6    
 
 loaded via a namespace (and not attached):
- [1] colorspace_1.2-5 digest_0.6.8     evaluate_0.6     formatR_1.1     
- [5] grid_3.1.2       gtable_0.1.2     htmltools_0.2.6  MASS_7.3-39     
- [9] munsell_0.4.2    plyr_1.8.1       proto_0.3-10     Rcpp_0.11.5     
-[13] reshape2_1.4.1   rmarkdown_0.5.1  scales_0.2.4     stringr_0.6.2   
-[17] tcltk_3.1.2      tools_3.1.2      yaml_2.1.13     </code></pre>
+ [1] colorspace_1.2-4 digest_0.6.4     evaluate_0.5.5   formatR_0.10    
+ [5] grid_3.1.1       gtable_0.1.2     htmltools_0.2.6  MASS_7.3-33     
+ [9] munsell_0.4.2    plyr_1.8.1       proto_0.3-10     Rcpp_0.11.6     
+[13] reshape2_1.4     rmarkdown_0.5.1  scales_0.2.4     stringr_0.6.2   
+[17] tools_3.1.1      yaml_2.1.13     </code></pre>
 </div>
 
 
