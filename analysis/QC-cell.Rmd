@@ -1,0 +1,99 @@
+---
+title: "QC-by-cell"
+author: "PoYuan Tung"
+date: 2015-02-13
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+```
+
+
+This is the QC of cell/library by looking at the number of cell captured in each well, the ERCC ratio, the number of unmapped reads, and the number of mapped reads. Higher ERCC ratio indicates that the RNA amount from the cell is lower, which migh be caused by cell death. The higher number of unmapped reads indicates lower quality of library preparation. 
+
+## Library QC
+
+```{r}
+##### list all the files
+ wanted.files <- list.files(path="/mnt/gluster/home/ptung/test/ERCC/", pattern= "[0-9].counts.txt.summary")
+
+##### get info you need
+ all.tables <- lapply(wanted.files,function(x){
+     read.table(paste("/mnt/gluster/home/ptung/test/ERCC/",x,sep=""),header=TRUE)[c(1,4,5),]
+ })
+
+#### create ERCC ratios
+ERCC.ratios <- lapply(all.tables,function(x){
+    x[1,2]/(sum(x[,2]))
+})
+ERCC.ratios <- unlist(ERCC.ratios)
+
+#### create unmapped ratios
+unmapped.ratios <- lapply(all.tables,function(x){
+    x[3,2]/(sum(x[,2]))
+})
+unmapped.ratios <- unlist(unmapped.ratios)
+
+##### create number of mapped reads
+num.of.mapped.reads <- lapply(all.tables,function(x){
+    (sum(x[,2]))-x[3,2]
+})
+num.of.mapped.reads <- unlist(num.of.mapped.reads)
+
+##### create the table with all into
+data1 <- data.frame(wanted.files,ERCC.ratios,unmapped.ratios,num.of.mapped.reads)
+
+##### remove 4 individual cells
+data1 <- data1[(data1$num.of.mapped.reads < 50000000),]
+
+##### cell number capture on C1
+data.cell.num <- read.csv("/mnt/gluster/home/ptung/LCL/cell_number.csv")
+data1 <- data.frame(data1,data.cell.num)
+
+##### QC cell number
+index.c <- data1$cell.num == 1
+
+##### QC mapped reads
+index1 <- (data1[,"num.of.mapped.reads"] > 2500000)
+sum(index1)
+##### QC ERCC ratios
+index2 <- (data1[,"ERCC.ratios"] < 0.05)
+sum(index2)
+##### QC unmapped ratios
+index3 <- (data1[,"unmapped.ratios"] < 0.3)
+sum(index3)
+
+##### QC final ( | or, & and)
+index.final <- index1 & index2 & index3 & index.c
+index.final
+sum(index.final)
+
+#######  keep the names of good cells
+keep.cell <- data1$wanted.files[index.final]
+
+######## plot cells with color coded
+color.index <- as.numeric(index.final)+1
+
+plot(data1[,c(4,2)],col=color.index)
+plot(data1[,c(4,3)],col=color.index)
+
+plot(data1[,4]/1000000,data1[,2]*100,col=color.index,pch=as.character(data1$cell.num),xlab="Number of mapped reads (million)",ylab="Spike-In (%)")
+legend(12,25,c("Cells Removed","Cells Retained"),col=1:2,pch=20)
+
+plot(data1[,4]/1000000,data1[,3]*100,col=color.index,pch=as.character(data1$cell.num),xlab="Number of mapped reads (million)",ylab="Unmapped reads (%)")
+legend(12,70,c("Cells Removed","Cells Retained"),col=1:2,pch=20)
+
+##### plot the good cells only
+plot(data1[index.final,c(2,4)],pch=data1$cell.num[index.final],col=color.index[index.final])
+
+```
+
+## Session information
+
+```{r info}
+sessionInfo()
+```
