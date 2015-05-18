@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+<meta name="author" content="PoYuan Tung" />
+
+<meta name="date" content="2015-02-13" />
+
+<title>QC-by-cell</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">QC-by-cell</h1>
+<h4 class="author"><em>PoYuan Tung</em></h4>
+<h4 class="date"><em>2015-02-13</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#library-qc">Library QC</a></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2015-05-18</p>
+<p><strong>Code version:</strong> d6e7e4826688a6225653e6ed572bd3d8600ed4ec</p>
+<p>This is the QC of cell/library by looking at the number of cell captured in each well, the ERCC ratio, the number of unmapped reads, and the number of mapped reads. Higher ERCC ratio indicates that the RNA amount from the cell is lower, which migh be caused by cell death. The higher number of unmapped reads indicates lower quality of library preparation.</p>
+<div id="library-qc" class="section level2">
+<h2>Library QC</h2>
+<pre class="r"><code>##### list all the files
+ wanted.files &lt;- list.files(path=&quot;/mnt/gluster/home/ptung/test/ERCC/&quot;, pattern= &quot;[0-9].counts.txt.summary&quot;)
+
+##### get info you need
+ all.tables &lt;- lapply(wanted.files,function(x){
+     read.table(paste(&quot;/mnt/gluster/home/ptung/test/ERCC/&quot;,x,sep=&quot;&quot;),header=TRUE)[c(1,4,5),]
+ })
+
+#### create ERCC ratios
+ERCC.ratios &lt;- lapply(all.tables,function(x){
+    x[1,2]/(sum(x[,2]))
+})
+ERCC.ratios &lt;- unlist(ERCC.ratios)
+
+#### create unmapped ratios
+unmapped.ratios &lt;- lapply(all.tables,function(x){
+    x[3,2]/(sum(x[,2]))
+})
+unmapped.ratios &lt;- unlist(unmapped.ratios)
+
+##### create number of mapped reads
+num.of.mapped.reads &lt;- lapply(all.tables,function(x){
+    (sum(x[,2]))-x[3,2]
+})
+num.of.mapped.reads &lt;- unlist(num.of.mapped.reads)
+
+##### create the table with all into
+data1 &lt;- data.frame(wanted.files,ERCC.ratios,unmapped.ratios,num.of.mapped.reads)
+
+##### remove 4 individual cells
+data1 &lt;- data1[(data1$num.of.mapped.reads &lt; 50000000),]
+
+##### cell number capture on C1
+data.cell.num &lt;- read.csv(&quot;/mnt/gluster/home/ptung/LCL/cell_number.csv&quot;)
+data1 &lt;- data.frame(data1,data.cell.num)
+
+##### QC cell number
+index.c &lt;- data1$cell.num == 1
+
+##### QC mapped reads
+index1 &lt;- (data1[,&quot;num.of.mapped.reads&quot;] &gt; 2500000)
+sum(index1)</code></pre>
+<pre><code>[1] 81</code></pre>
+<pre class="r"><code>##### QC ERCC ratios
+index2 &lt;- (data1[,&quot;ERCC.ratios&quot;] &lt; 0.05)
+sum(index2)</code></pre>
+<pre><code>[1] 83</code></pre>
+<pre class="r"><code>##### QC unmapped ratios
+index3 &lt;- (data1[,&quot;unmapped.ratios&quot;] &lt; 0.3)
+sum(index3)</code></pre>
+<pre><code>[1] 83</code></pre>
+<pre class="r"><code>##### QC final ( | or, &amp; and)
+index.final &lt;- index1 &amp; index2 &amp; index3 &amp; index.c
+index.final</code></pre>
+<pre><code> [1]  TRUE  TRUE FALSE FALSE  TRUE  TRUE  TRUE FALSE  TRUE  TRUE  TRUE
+[12]  TRUE  TRUE  TRUE  TRUE  TRUE FALSE  TRUE FALSE FALSE  TRUE  TRUE
+[23]  TRUE  TRUE FALSE  TRUE  TRUE FALSE  TRUE  TRUE  TRUE  TRUE  TRUE
+[34]  TRUE  TRUE  TRUE  TRUE  TRUE  TRUE FALSE  TRUE  TRUE  TRUE  TRUE
+[45]  TRUE  TRUE  TRUE  TRUE  TRUE  TRUE  TRUE  TRUE  TRUE  TRUE  TRUE
+[56]  TRUE  TRUE FALSE  TRUE  TRUE  TRUE  TRUE FALSE  TRUE  TRUE FALSE
+[67]  TRUE  TRUE  TRUE  TRUE  TRUE  TRUE  TRUE FALSE FALSE  TRUE  TRUE
+[78]  TRUE  TRUE  TRUE FALSE  TRUE  TRUE  TRUE  TRUE  TRUE  TRUE  TRUE
+[89] FALSE  TRUE FALSE  TRUE  TRUE FALSE  TRUE FALSE</code></pre>
+<pre class="r"><code>sum(index.final)</code></pre>
+<pre><code>[1] 77</code></pre>
+<pre class="r"><code>#######  keep the names of good cells
+keep.cell &lt;- data1$wanted.files[index.final]
+
+######## plot cells with color coded
+color.index &lt;- as.numeric(index.final)+1
+
+plot(data1[,c(4,2)],col=color.index)</code></pre>
+<p><img src="figure/qc-cell-library.Rmd/unnamed-chunk-11.png" title="plot of chunk unnamed-chunk-1" alt="plot of chunk unnamed-chunk-1" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>plot(data1[,c(4,3)],col=color.index)</code></pre>
+<p><img src="figure/qc-cell-library.Rmd/unnamed-chunk-12.png" title="plot of chunk unnamed-chunk-1" alt="plot of chunk unnamed-chunk-1" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>plot(data1[,4]/1000000,data1[,2]*100,col=color.index,pch=as.character(data1$cell.num),xlab=&quot;Number of mapped reads (million)&quot;,ylab=&quot;Spike-In (%)&quot;)
+legend(12,25,c(&quot;Cells Removed&quot;,&quot;Cells Retained&quot;),col=1:2,pch=20)</code></pre>
+<p><img src="figure/qc-cell-library.Rmd/unnamed-chunk-13.png" title="plot of chunk unnamed-chunk-1" alt="plot of chunk unnamed-chunk-1" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>plot(data1[,4]/1000000,data1[,3]*100,col=color.index,pch=as.character(data1$cell.num),xlab=&quot;Number of mapped reads (million)&quot;,ylab=&quot;Unmapped reads (%)&quot;)
+legend(12,70,c(&quot;Cells Removed&quot;,&quot;Cells Retained&quot;),col=1:2,pch=20)</code></pre>
+<p><img src="figure/qc-cell-library.Rmd/unnamed-chunk-14.png" title="plot of chunk unnamed-chunk-1" alt="plot of chunk unnamed-chunk-1" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>##### plot the good cells only
+plot(data1[index.final,c(2,4)],pch=data1$cell.num[index.final],col=color.index[index.final])</code></pre>
+<p><img src="figure/qc-cell-library.Rmd/unnamed-chunk-15.png" title="plot of chunk unnamed-chunk-1" alt="plot of chunk unnamed-chunk-1" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.1.1 (2014-07-10)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] knitr_1.6
+
+loaded via a namespace (and not attached):
+[1] digest_0.6.4    evaluate_0.5.5  formatR_0.10    htmltools_0.2.6
+[5] rmarkdown_0.5.1 stringr_0.6.2   tools_3.1.1     yaml_2.1.13    </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+
+</body>
+</html>
