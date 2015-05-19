@@ -18,7 +18,13 @@ ql 8g
 Next start an instance of RStudio Server running in the background:
 
 ```bash
-/mnt/lustre/data/tools/rstudio_new/bin/rserver &
+rstudio-start
+```
+
+`rstudio-start` is an alias for the following:
+
+```bash
+rserver --auth-none 0 --auth-validate-users 1 --auth-required-user-group $USER &
 ```
 
 Then on your local computer, run the following:
@@ -29,12 +35,36 @@ ssh -N -f -L localhost:8787:spudling##:8787 user-name@pps-gateway.uchicago.edu
 
 replacing spudling## with the name of the spudling where you started the RStudio Server instance, e.g. `spudling87` or `bigmem01`, and user-name with your login ID.
 
-Open a browser to the address http://127.0.0.1:8787/ to access your RStudio instance.
+Open a browser to the address http://127.0.0.1:8787/.
+Enter your username and password to access your RStudio instance.
 From here, you can choose "Open Project" and select `singleCellSeq.Rproj`.
 
 When you're finished, you can close the browser tab, and then kill the RStudio instance.
-Find the 5-digit process id (PID) for rserver and rsession using the command `ps`.
-End these processes by running `kill #####`.
+
+```bash
+rstudio-end
+```
+
+`rstudio-end` is an alias for the following:
+
+```bash
+pkill rserver && pkill rsession`
+```
+
+If you re-start RStudio Server, you may receive a message about an error due to an unexpected crash.
+This is not a problem as long as you purposefully ran `rstudio-end` after having saved your files.
+
+If you have trouble starting a new RStudio instance, remove all RStudio-related temporary files:
+
+```bash
+rstudio-clean
+```
+
+`rstudio-clean` is an alias for the following:
+
+```bash
+rm ~/.rstudio -r && rm /tmp/rstudio* -r
+```
 
 ## Creating a new analysis
 
