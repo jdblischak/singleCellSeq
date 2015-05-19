@@ -48,7 +48,7 @@ rstudio-end
 `rstudio-end` is an alias for the following:
 
 ```bash
-pkill rserver && pkill rsession`
+pkill rserver && pkill rsession
 ```
 
 If you re-start RStudio Server, you may receive a message about an error due to an unexpected crash.
