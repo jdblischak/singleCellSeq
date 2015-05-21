@@ -100,8 +100,13 @@ For consistency, we'll use the following conventions:
 *  Use `<-` for assignment.
 *  Surround binary operators with spaces, e.g. `1 + 1`, not `1+1`.
 *  Use two spaces for indentation.
+*  Lines should not be longer than 80 characters.
 
 When in doubt, use the style indicated either in [Google's R Style Guide][google-style] or [Hadley's R Style Guide][hadley-style].
+
+When writing text, aim to write one sentence per line.
+This makes it easier to understand edits when reviewing the version control log.
+The limit of 80 characters for code described above does not need to be applied to text.
 
 [google-style]: https://google-styleguide.googlecode.com/svn/trunk/Rguide.xml
 [hadley-style]: http://r-pkgs.had.co.nz/style.html
