@@ -1,0 +1,282 @@
+---
+title: "Verify md5 checksums of downloaded fastq files"
+author: "John Blischak"
+date: 2015-05-20
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+```
+
+## Missing files
+
+When performing [QC by lane](qc-by-lane.html), we noticed that not every lane of single cell sequencing data had 96 fastq files.
+Furthermore, this was not a problem with the processing pipeline; the original fastq files were missing!
+We checked the data that had been independently downloaded to an external hard drive.
+It was missing some files as well, but they were different from those missing on the cluster.
+Thus we suspected there was some error in the download process.
+We confirmed this suspicion by checking the Genomics Core FTP site, which contained the proper 96 files in each lane.
+
+Returning to the log files contained the wget output, I re-confirmed that the files did not contain the words error or fail (e.g. `grep -i error raw/*log`).
+Using the name of a file that I knew failed, I found that `wget` cryptically returns the message "No such file" or "No such directory" when a download fails, which doesn't make a whole lot of sense because how did it know to search for that file or directory in its recursive search if it does not exist.
+
+```bash
+grep "No such" raw/*.log
+```
+```
+raw/150320_700819F_0303_AC6WYKACXX-YG-SR100-FC-1.log:No such directory `Genomics_Data/NGS/150320_700819F_0303_AC6WYKACXX-YG-SR100-FC-1/FastQ/Project_YG-SR100-1/Sample_19239_2_C04'.
+raw/150320_700819F_0303_AC6WYKACXX-YG-SR100-FC-1.log:unlink: No such file or directory
+raw/150320_700819F_0303_AC6WYKACXX-YG-SR100-FC-1.log:No such directory `Genomics_Data/NGS/150320_700819F_0303_AC6WYKACXX-YG-SR100-FC-1/FastQ/Project_YG-SR100-1/Sample_19239_2_H10'.
+raw/150320_700819F_0303_AC6WYKACXX-YG-SR100-FC-1.log:unlink: No such file or directory
+raw/150320_700819F_0303_AC6WYKACXX-YG-SR100-FC-1.log:No such directory `Genomics_Data/NGS/150320_700819F_0303_AC6WYKACXX-YG-SR100-FC-1/FastQ/Project_YG-SR100-1/Sample_19239_2_E09'.
+raw/150320_700819F_0303_AC6WYKACXX-YG-SR100-FC-1.log:unlink: No such file or directory
+raw/150327_700819F_0304_AC6WURACXX-YG-SR100-FC-2.log:No such directory `Genomics_Data/NGS/150327_700819F_0304_AC6WURACXX-YG-SR100-FC-2/FastQ/Project_YG-SR100-2/Sample_19239_3_B01'.
+raw/150327_700819F_0304_AC6WURACXX-YG-SR100-FC-2.log:unlink: No such file or directory
+raw/150327_700819F_0304_AC6WURACXX-YG-SR100-FC-2.log:No such file `SampleSheet.csv'.
+raw/150327_700819F_0304_AC6WURACXX-YG-SR100-FC-2.log:No such file `19098_2_A04_GTCGTTGA_L001_R1_001.fastq.gz'.
+raw/150327_700819F_0304_AC6WURACXX-YG-SR100-FC-2.log:No such directory `Genomics_Data/NGS/150327_700819F_0304_AC6WURACXX-YG-SR100-FC-2/FastQ/Project_YG-SR100-2/Sample_19101_2_C11'.
+raw/150327_700819F_0304_AC6WURACXX-YG-SR100-FC-2.log:unlink: No such file or directory
+raw/150327_700819F_0304_AC6WURACXX-YG-SR100-FC-2.log:No such directory `Genomics_Data/NGS/150327_700819F_0304_AC6WURACXX-YG-SR100-FC-2/FastQ/Project_YG-SR100-2/Sample_19239_3_E10'.
+raw/150327_700819F_0304_AC6WURACXX-YG-SR100-FC-2.log:unlink: No such file or directory
+raw/150402_700819F_0305_AC723YACXX-YG-SR100-FC-3.log:No such file `SampleSheet.csv'.
+raw/150402_700819F_0305_AC723YACXX-YG-SR100-FC-3.log:No such file `19239_2_F08_CACTTCCG_L007_R1_001.fastq.gz'.
+raw/150402_700819F_0305_AC723YACXX-YG-SR100-FC-3.log:No such directory `Genomics_Data/NGS/150402_700819F_0305_AC723YACXX-YG-SR100-FC-3/FastQ/Project_YG-SR100-3/Sample_19239_2_G04'.
+raw/150402_700819F_0305_AC723YACXX-YG-SR100-FC-3.log:unlink: No such file or directory
+raw/150402_700819F_0305_AC723YACXX-YG-SR100-FC-3.log:No such file `19239_3_G01_CTAGGAAT_L004_R1_001.fastq.gz'.
+raw/150402_700819F_0305_AC723YACXX-YG-SR100-FC-3.log:No such directory `Genomics_Data/NGS/150402_700819F_0305_AC723YACXX-YG-SR100-FC-3/FastQ/Project_YG-SR100-3/Sample_19239_3_G11'.
+raw/150402_700819F_0305_AC723YACXX-YG-SR100-FC-3.log:unlink: No such file or directory
+raw/150402_700819F_0305_AC723YACXX-YG-SR100-FC-3.log:No such file `SampleSheet.csv'.
+raw/150402_700819F_0305_AC723YACXX-YG-SR100-FC-3.log:No such file `19239_3_F02_GATTATGC_L004_R1_001.fastq.gz'.
+raw/150402_700819F_0305_AC723YACXX-YG-SR100-FC-3.log:No such directory `Genomics_Data/NGS/150402_700819F_0305_AC723YACXX-YG-SR100-FC-3/FastQ/Project_YG-SR100-3/Sample_19239_3_F03'.
+raw/150402_700819F_0305_AC723YACXX-YG-SR100-FC-3.log:unlink: No such file or directory
+raw/150402_700819F_0306_BC72JMACXX-YG-SR100-FC-4.log:No such directory `Genomics_Data/NGS/150402_700819F_0306_BC72JMACXX-YG-SR100-FC-4/FastQ/Project_YG-SR100-4/Sample_19101_1_D08'.
+raw/150402_700819F_0306_BC72JMACXX-YG-SR100-FC-4.log:unlink: No such file or directory
+raw/150402_700819F_0306_BC72JMACXX-YG-SR100-FC-4.log:No such directory `Genomics_Data/NGS/150402_700819F_0306_BC72JMACXX-YG-SR100-FC-4/FastQ/Project_YG-SR100-4/Sample_19239_3_A03'.
+raw/150402_700819F_0306_BC72JMACXX-YG-SR100-FC-4.log:unlink: No such file or directory
+raw/150402_700819F_0306_BC72JMACXX-YG-SR100-FC-4.log:No such file `SampleSheet.csv'.
+raw/150402_700819F_0306_BC72JMACXX-YG-SR100-FC-4.log:No such file `19101_2_D03_GGTTTGTC_L002_R1_001.fastq.gz'.
+raw/150402_700819F_0306_BC72JMACXX-YG-SR100-FC-4.log:No such directory `Genomics_Data/NGS/150402_700819F_0306_BC72JMACXX-YG-SR100-FC-4/FastQ/Project_YG-SR100-4/Sample_19101_1_C03'.
+raw/150402_700819F_0306_BC72JMACXX-YG-SR100-FC-4.log:unlink: No such file or directory
+```
+Overall this is scary.
+While it easy to identify files that are completely misssing, this could have also caused the more cryptic problem of files incompletely downloading.
+To eliminate this concern entirely, I confirmed the md5 checksums for all the files.
+
+Furthermore, I identified the missing files, downloaded them, checked their md5 checksums, and renamed them.
+
+## Calculate md5 checksums
+
+All the following code was run from the external data directory on gluster.
+
+Run [run-md5sum.sh][] on all the files that were already downloaded.
+Because the pipeline takes so long to run, we want to identify only those files that failed to download properly.
+
+```bash
+submit-array.sh run-md5sum.sh 2g fastq/*fastq.gz
+```
+
+[run-md5sum.sh]: https://github.com/jdblischak/singleCellSeq/blob/master/code/run-md5sum.sh
+
+Find the failed jobs.
+
+```bash
+ls md5sum | wc -l
+cat ~/log/run-md5sum.sh/* | grep success | wc -l
+grep -l failure ~/log/run-md5sum.sh/*
+```
+
+Re-run failed jobs (6 of the 2,641 jobs failed).
+
+```bash
+for F in `grep failure ~/log/run-md5sum.sh/* | cut -f2`
+do
+  run-md5sum.sh $F
+done
+```
+
+Combine into one file.
+
+```bash
+cat md5sum/* > $ssc/data/md5_downloaded.txt
+```
+
+## Compare md5 checksums
+
+Import md5 checksums of files downloaded to cluster.
+
+```{r}
+md5_cluster <- read.table("../data/md5_downloaded.txt", stringsAsFactors = FALSE)
+colnames(md5_cluster) <- c("md5", "path")
+head(md5_cluster)
+```
+
+Parse filename.
+
+```{r}
+md5_cluster$basename <- basename(md5_cluster$path)
+md5_cluster$basename <- sub(".fastq.gz", "", md5_cluster$basename)
+file_parts <- strsplit(md5_cluster$basename, "\\.")
+md5_cluster$ind <- sapply(file_parts, "[", 1)
+md5_cluster$batch <- sapply(file_parts, "[", 2)
+md5_cluster$well <- sapply(file_parts, "[", 3)
+md5_cluster$index <- sapply(file_parts, "[", 4)
+md5_cluster$lane <- sapply(file_parts, "[", 5)
+md5_cluster$flow_cell <- sapply(file_parts, "[", 7)
+head(md5_cluster)
+```
+
+Pieter sent us the md5 checksums of the files stored at the core facility.
+
+```{r}
+(md5_core_files <- list.files("../data", "md5$", full.names = TRUE))
+```
+
+```{r}
+md5_core <- NULL
+for (md5_core_f in md5_core_files) {
+  print(md5_core_f)
+  md5_core_tmp <- read.table(md5_core_f, stringsAsFactors = FALSE)
+  md5_core <- rbind(md5_core, md5_core_tmp)
+}
+colnames(md5_core) <- c("md5", "path")
+head(md5_core)
+```
+
+Remove checksums of sample sheets ("SampleSheet.csv").
+
+```{r}
+md5_core <- md5_core[grep("fastq.gz", md5_core$path), ]
+```
+
+Parse filenames.
+
+```{r}
+path_parts <- strsplit(md5_core$path, "/")
+# Remove .fastq.gz file extension
+path_parts <- lapply(path_parts, function(x) sub(".fastq.gz", "", x))
+file_parts <- sapply(path_parts, function(x) strsplit(x[9], "_"))
+md5_core$ind <- sapply(file_parts, "[", 1)
+md5_core$batch <- sapply(file_parts, "[", 2)
+md5_core$well <- sapply(file_parts, "[", 3)
+md5_core$index <- sapply(file_parts, "[", 4)
+md5_core$lane <- sapply(file_parts, "[", 5)
+md5_core$flow_cell <- sapply(path_parts, function(x) strsplit(x[5], "_")[[1]][4])
+# Remove leading A or B
+md5_core$flow_cell <- substr(md5_core$flow_cell, 2, 10)
+head(md5_core)
+```
+
+Merge the data from the core and the cluster.
+
+```{r}
+md5_merge <- merge(md5_core, md5_cluster,
+                   by = c("ind", "batch", "well", "index", "lane", "flow_cell"),
+                   all = TRUE, sort = TRUE, suffixes = c(".core", ".cluster"))
+stopifnot(nrow(md5_merge) == nrow(md5_core))
+```
+
+Check for incomplete downloads.
+
+```{r}
+sum(md5_merge$md5.core != md5_merge$md5.cluster, na.rm = TRUE)
+```
+
+Every file that downloaded did so successfully.
+
+Find the files that did not download at all.
+
+```{r}
+missing_data <- md5_merge[is.na(md5_merge$md5.cluster), ]
+```
+
+`r nrow(missing_data)` files failed to download.
+
+```{r}
+missing_data[, c("ind", "batch", "well", "index", "lane", "flow_cell")]
+```
+
+## Download missing files
+
+Create file of URLs.
+
+Pieter: 150327_700819F_0304_AC6WURACXX/Unaligned_YG-SR100-2/Project_YG-SR100-2/Sample_19098_2_A04/19098_2_A04_GTCGTTGA_L001_R1_001.fastq.gz
+FTP: Genomics_Data/NGS/150320_700819F_0303_AC6WYKACXX-YG-SR100-FC-1/FastQ/Project_YG-SR100-2/
+cluster: 19098.1.A01.ATTAGACG.L002.R1.C6WYKACXX.fastq.gz
+
+
+```{r}
+ftp_url <- "ftp://fgfftp.uchicago.edu/Genomics_Data/NGS"
+file_url_parts <- strsplit(missing_data$path.core, "/")
+convert_filename <- function(parts) {
+  # Convert filename from Pieter's data to the format on the FTP server.
+  # From Pieter: /media/DATA1/NewSequencerRuns/150327_700819F_0304_AC6WURACXX/Unaligned_YG-SR100-2/Project_YG-SR100-2/Sample_19098_2_A04/19098_2_A04_GTCGTTGA_L001_R1_001.fastq.gz
+  # On FTP server: 150327_700819F_0304_AC6WURACXX-YG-SR100-FC-2/FastQ/Project_YG-SR100-2/Sample_19098_2_A04/19098_2_A04_GTCGTTGA_L001_R1_001.fastq.gz
+  flow_cell <- paste0(parts[5], "-", substr(parts[7], 9, 22))
+  flow_cell <- sub("SR100", "SR100-FC", flow_cell)
+  result <- file.path(flow_cell, "FastQ", parts[7], parts[8], parts[9])
+  return(result)
+}
+file_url <- sapply(file_url_parts, convert_filename)
+file_url <- file.path(ftp_url, file_url)
+head(file_url)
+write(file_url, "../data/missing-files.txt")
+```
+
+Download the files.
+
+```bash
+wget --user=gilad --password='<password>' -i ../data/missing-files.txt
+```
+
+## Check md5 checksums of new files
+
+```{r}
+fastq_files <- list.files(pattern = "001.fastq.gz")
+for (fq in fastq_files) {
+  # Calculate md5 of downloaded file
+  fq_md5_cluster <- tools::md5sum(fq)
+  fq_parts <- unlist(strsplit(fq, "_"))
+  fq_data <-  subset(missing_data, ind == fq_parts[1] &
+                       batch == fq_parts[2] &
+                       well == fq_parts[3] &
+                       index == fq_parts[4] &
+                       lane == fq_parts[5])
+  fq_md5_core <- fq_data[, "md5.core"]
+  # Confirm that file checksums match
+  stopifnot(nrow(fq_md5_core) == 1, # Luckily none of the samples are flow cell replicates
+            fq_md5_cluster == fq_md5_core)
+  # Rename file
+  new_name <- paste(fq_data$ind, fq_data$batch, fq_data$well, fq_data$index,
+                    fq_data$lane, "R1", fq_data$flow_cell, "fastq.gz",
+                    sep = ".")
+  file.rename(fq, new_name)
+}
+```
+
+Change the permission to read-only.
+
+```bash
+chmod uga=r *fastq.gz
+```
+
+Move the files.
+
+```bash
+mv *.fastq.gz $ssd/fastq
+```
+
+Remove missing files document.
+
+```{r}
+unlink("../data/missing-files.txt")
+```
+
+## Session information
+
+```{r info}
+sessionInfo()
+```
