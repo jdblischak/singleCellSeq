@@ -17,7 +17,7 @@ cd /mnt/gluster/data/internal_supp/singleCellSeq
 The raw fastq files were write-protected to avoid accidental deletion.
 
 ```bash
-chmod -x fastq/*fastq.gz
+chmod uga=r fastq/*fastq.gz
 ```
 
 ## Run FastQC
@@ -27,7 +27,9 @@ submit-array.sh run-fastqc.sh 2g fastq/*fastq.gz
 ```
 
 ```bash
-grep -w success ~/log/run-fastqc* | wc -l
+ls fastq/ | wc -l
+grep -w success ~/log/run-fastqc.sh/* | wc -l
+grep -w failure ~/log/run-fastqc.sh/* | wc -l
 ```
 
 ## Trim UMI
@@ -39,34 +41,66 @@ submit-array.sh trim.sh 2g fastq/*fastq.gz
 To confirm that the jobs ran successfully:
 
 ```bash
-grep -w success ~/log/trim* | wc -l
+ls trim/*fastq.gz | wc -l
+grep -w success ~/log/trim.sh/* | wc -l
+grep -w failure ~/log/trim.sh/* | wc -l
 ```
 
 To re-run failed jobs, I re-ran the original command.
 If the output file already exists, the code is not run and "success" is not echo'd to the log file.
 
-## Map to genome
+## Quality trim 3' end of reads
 
 ```bash
-submit-array.sh map-subread.sh 8g trim/*fastq.gz
+submit-array.sh sickle.sh 2g trim/*fastq.gz
+```
+
+To confirm that the jobs ran successfully:
+
+```bash
+ls sickle/*fastq.gz | wc -l
+grep -w success ~/log/sickle.sh/* | wc -l
+grep -w failure ~/log/sickle.sh/* | wc -l
+```
+
+## Assess sequence characteristics
+
+```bash
+submit-array.sh qc.sh 2g fastq/*fastq.gz trim/*fastq.gz sickle/*fastq.gz
 ```
 
 ```bash
-grep -w success ~/log/map-subread* | wc -l
+ls seqqs/*_len.txt | wc -l
+grep -w success ~/log/qc.sh/* | wc -l
+grep -w failure ~/log/qc.sh/* | wc -l
+```
+
+## Map to genome
+
+```bash
+submit-array.sh map-subread.sh 8g trim/*fastq.gz sickle/*fastq.gz
+```
+
+```bash
+ls bam/*bam | wc -l
+grep -w success ~/log/map-subread.sh/* | wc -l
+grep -w failure ~/log/map-subread.sh/* | wc -l
 ```
 
 ## Process bam files
 
-Remove quality less than 10
-Sort bam
-index bam
+*  Remove quality less than 10
+*  Sort bam
+*  Index bam
 
 ```bash
 submit-array.sh process-bam.sh 8g bam/*bam
 ```
 
 ```bash
-grep -w success ~/log/process-bam* | wc -l
+ls bam-processed/*bam | wc -l
+grep -w success ~/log/process-bam.sh/* | wc -l
+grep -w failure ~/log/process-bam.sh/* | wc -l
 ```
 
 Check for the presence of intermediate files output during sorting.
@@ -82,20 +116,19 @@ submit-array.sh rmdup-umi.sh 2g bam-processed/*bam
 ```
 
 ```bash
-grep -w success ~/log/rmdup-umi* | wc -l
+ls bam-rmdup-umi/*bam | wc -l
+grep -w success ~/log/rmdup-umi.sh/* | wc -l
+grep -w failure ~/log/rmdup-umi.sh/* | wc -l
 ```
 
 ## Count reads per gene
 
 ```bash
-submit-array.sh count-reads-per-gene.sh 2g bam-processed/*bam
+submit-array.sh count-reads-per-gene.sh 2g bam-processed/*bam bam-rmdup-umi/*bam
 ```
 
 ```bash
-submit-array.sh count-reads-per-gene.sh 2g bam-rmdup-umi/*bam
+ls counts/*genecounts.txt | wc -l
+grep -w success ~/log/count-reads-per-gene.sh/* | wc -l
+grep -w failure ~/log/count-reads-per-gene.sh/* | wc -l
 ```
-
-```bash
-grep -w success ~/log/count-reads-per-gene* | wc -l
-```
-
