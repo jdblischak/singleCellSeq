@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+<meta name="author" content="John Blischak" />
+
+<meta name="date" content="2015-05-20" />
+
+<title>Verify md5 checksums of downloaded fastq files</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Verify md5 checksums of downloaded fastq files</h1>
+<h4 class="author"><em>John Blischak</em></h4>
+<h4 class="date"><em>2015-05-20</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#missing-files">Missing files</a></li>
+<li><a href="#calculate-md5-checksums">Calculate md5 checksums</a></li>
+<li><a href="#compare-md5-checksums">Compare md5 checksums</a></li>
+<li><a href="#download-missing-files">Download missing files</a></li>
+<li><a href="#check-md5-checksums-of-new-files">Check md5 checksums of new files</a></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2015-05-21</p>
+<p><strong>Code version:</strong> e932f0a3dde0a58de5c41d4437a6e46184afcd2f</p>
+<div id="missing-files" class="section level2">
+<h2>Missing files</h2>
+<p>When performing <a href="qc-by-lane.html">QC by lane</a>, we noticed that not every lane of single cell sequencing data had 96 fastq files. Furthermore, this was not a problem with the processing pipeline; the original fastq files were missing! We checked the data that had been independently downloaded to an external hard drive. It was missing some files as well, but they were different from those missing on the cluster. Thus we suspected there was some error in the download process. We confirmed this suspicion by checking the Genomics Core FTP site, which contained the proper 96 files in each lane.</p>
+<p>Returning to the log files contained the wget output, I re-confirmed that the files did not contain the words error or fail (e.g. <code>grep -i error raw/*log</code>). Using the name of a file that I knew failed, I found that <code>wget</code> cryptically returns the message “No such file” or “No such directory” when a download fails, which doesn’t make a whole lot of sense because how did it know to search for that file or directory in its recursive search if it does not exist.</p>
+<pre class="bash"><code>grep &quot;No such&quot; raw/*.log</code></pre>
+<pre><code>raw/150320_700819F_0303_AC6WYKACXX-YG-SR100-FC-1.log:No such directory `Genomics_Data/NGS/150320_700819F_0303_AC6WYKACXX-YG-SR100-FC-1/FastQ/Project_YG-SR100-1/Sample_19239_2_C04&#39;.
+raw/150320_700819F_0303_AC6WYKACXX-YG-SR100-FC-1.log:unlink: No such file or directory
+raw/150320_700819F_0303_AC6WYKACXX-YG-SR100-FC-1.log:No such directory `Genomics_Data/NGS/150320_700819F_0303_AC6WYKACXX-YG-SR100-FC-1/FastQ/Project_YG-SR100-1/Sample_19239_2_H10&#39;.
+raw/150320_700819F_0303_AC6WYKACXX-YG-SR100-FC-1.log:unlink: No such file or directory
+raw/150320_700819F_0303_AC6WYKACXX-YG-SR100-FC-1.log:No such directory `Genomics_Data/NGS/150320_700819F_0303_AC6WYKACXX-YG-SR100-FC-1/FastQ/Project_YG-SR100-1/Sample_19239_2_E09&#39;.
+raw/150320_700819F_0303_AC6WYKACXX-YG-SR100-FC-1.log:unlink: No such file or directory
+raw/150327_700819F_0304_AC6WURACXX-YG-SR100-FC-2.log:No such directory `Genomics_Data/NGS/150327_700819F_0304_AC6WURACXX-YG-SR100-FC-2/FastQ/Project_YG-SR100-2/Sample_19239_3_B01&#39;.
+raw/150327_700819F_0304_AC6WURACXX-YG-SR100-FC-2.log:unlink: No such file or directory
+raw/150327_700819F_0304_AC6WURACXX-YG-SR100-FC-2.log:No such file `SampleSheet.csv&#39;.
+raw/150327_700819F_0304_AC6WURACXX-YG-SR100-FC-2.log:No such file `19098_2_A04_GTCGTTGA_L001_R1_001.fastq.gz&#39;.
+raw/150327_700819F_0304_AC6WURACXX-YG-SR100-FC-2.log:No such directory `Genomics_Data/NGS/150327_700819F_0304_AC6WURACXX-YG-SR100-FC-2/FastQ/Project_YG-SR100-2/Sample_19101_2_C11&#39;.
+raw/150327_700819F_0304_AC6WURACXX-YG-SR100-FC-2.log:unlink: No such file or directory
+raw/150327_700819F_0304_AC6WURACXX-YG-SR100-FC-2.log:No such directory `Genomics_Data/NGS/150327_700819F_0304_AC6WURACXX-YG-SR100-FC-2/FastQ/Project_YG-SR100-2/Sample_19239_3_E10&#39;.
+raw/150327_700819F_0304_AC6WURACXX-YG-SR100-FC-2.log:unlink: No such file or directory
+raw/150402_700819F_0305_AC723YACXX-YG-SR100-FC-3.log:No such file `SampleSheet.csv&#39;.
+raw/150402_700819F_0305_AC723YACXX-YG-SR100-FC-3.log:No such file `19239_2_F08_CACTTCCG_L007_R1_001.fastq.gz&#39;.
+raw/150402_700819F_0305_AC723YACXX-YG-SR100-FC-3.log:No such directory `Genomics_Data/NGS/150402_700819F_0305_AC723YACXX-YG-SR100-FC-3/FastQ/Project_YG-SR100-3/Sample_19239_2_G04&#39;.
+raw/150402_700819F_0305_AC723YACXX-YG-SR100-FC-3.log:unlink: No such file or directory
+raw/150402_700819F_0305_AC723YACXX-YG-SR100-FC-3.log:No such file `19239_3_G01_CTAGGAAT_L004_R1_001.fastq.gz&#39;.
+raw/150402_700819F_0305_AC723YACXX-YG-SR100-FC-3.log:No such directory `Genomics_Data/NGS/150402_700819F_0305_AC723YACXX-YG-SR100-FC-3/FastQ/Project_YG-SR100-3/Sample_19239_3_G11&#39;.
+raw/150402_700819F_0305_AC723YACXX-YG-SR100-FC-3.log:unlink: No such file or directory
+raw/150402_700819F_0305_AC723YACXX-YG-SR100-FC-3.log:No such file `SampleSheet.csv&#39;.
+raw/150402_700819F_0305_AC723YACXX-YG-SR100-FC-3.log:No such file `19239_3_F02_GATTATGC_L004_R1_001.fastq.gz&#39;.
+raw/150402_700819F_0305_AC723YACXX-YG-SR100-FC-3.log:No such directory `Genomics_Data/NGS/150402_700819F_0305_AC723YACXX-YG-SR100-FC-3/FastQ/Project_YG-SR100-3/Sample_19239_3_F03&#39;.
+raw/150402_700819F_0305_AC723YACXX-YG-SR100-FC-3.log:unlink: No such file or directory
+raw/150402_700819F_0306_BC72JMACXX-YG-SR100-FC-4.log:No such directory `Genomics_Data/NGS/150402_700819F_0306_BC72JMACXX-YG-SR100-FC-4/FastQ/Project_YG-SR100-4/Sample_19101_1_D08&#39;.
+raw/150402_700819F_0306_BC72JMACXX-YG-SR100-FC-4.log:unlink: No such file or directory
+raw/150402_700819F_0306_BC72JMACXX-YG-SR100-FC-4.log:No such directory `Genomics_Data/NGS/150402_700819F_0306_BC72JMACXX-YG-SR100-FC-4/FastQ/Project_YG-SR100-4/Sample_19239_3_A03&#39;.
+raw/150402_700819F_0306_BC72JMACXX-YG-SR100-FC-4.log:unlink: No such file or directory
+raw/150402_700819F_0306_BC72JMACXX-YG-SR100-FC-4.log:No such file `SampleSheet.csv&#39;.
+raw/150402_700819F_0306_BC72JMACXX-YG-SR100-FC-4.log:No such file `19101_2_D03_GGTTTGTC_L002_R1_001.fastq.gz&#39;.
+raw/150402_700819F_0306_BC72JMACXX-YG-SR100-FC-4.log:No such directory `Genomics_Data/NGS/150402_700819F_0306_BC72JMACXX-YG-SR100-FC-4/FastQ/Project_YG-SR100-4/Sample_19101_1_C03&#39;.
+raw/150402_700819F_0306_BC72JMACXX-YG-SR100-FC-4.log:unlink: No such file or directory</code></pre>
+<p>Overall this is scary. While it easy to identify files that are completely misssing, this could have also caused the more cryptic problem of files incompletely downloading. To eliminate this concern entirely, I confirmed the md5 checksums for all the files.</p>
+<p>Furthermore, I identified the missing files, downloaded them, checked their md5 checksums, and renamed them.</p>
+</div>
+<div id="calculate-md5-checksums" class="section level2">
+<h2>Calculate md5 checksums</h2>
+<p>All the following code was run from the external data directory on gluster.</p>
+<p>Run <a href="https://github.com/jdblischak/singleCellSeq/blob/master/code/run-md5sum.sh">run-md5sum.sh</a> on all the files that were already downloaded. Because the pipeline takes so long to run, we want to identify only those files that failed to download properly.</p>
+<pre class="bash"><code>submit-array.sh run-md5sum.sh 2g fastq/*fastq.gz</code></pre>
+<p>Find the failed jobs.</p>
+<pre class="bash"><code>ls md5sum | wc -l
+cat ~/log/run-md5sum.sh/* | grep success | wc -l
+grep -l failure ~/log/run-md5sum.sh/*</code></pre>
+<p>Re-run failed jobs (6 of the 2,641 jobs failed).</p>
+<pre class="bash"><code>for F in `grep failure ~/log/run-md5sum.sh/* | cut -f2`
+do
+  run-md5sum.sh $F
+done</code></pre>
+<p>Combine into one file.</p>
+<pre class="bash"><code>cat md5sum/* &gt; $ssc/data/md5_downloaded.txt</code></pre>
+</div>
+<div id="compare-md5-checksums" class="section level2">
+<h2>Compare md5 checksums</h2>
+<p>Import md5 checksums of files downloaded to cluster.</p>
+<pre class="r"><code>md5_cluster &lt;- read.table(&quot;../data/md5_downloaded.txt&quot;, stringsAsFactors = FALSE)
+colnames(md5_cluster) &lt;- c(&quot;md5&quot;, &quot;path&quot;)
+head(md5_cluster)</code></pre>
+<pre><code>                               md5
+1 3949dc07f75b5d37789ce2ce0d215d67
+2 02c28413d7e4905966fd94ba55e5a321
+3 2cca289e8080964efc95b4c7328a0d5f
+4 e6b6b504ed4d0cd793d36f55cf4fcf79
+5 b16345bdc7ed23699d2f5e4a32ccf07a
+6 7caeaf4d6b5ba147fbd42aa728dddd3c
+                                                   path
+1 fastq/19098.1.A01.ATTAGACG.L002.R1.C6WYKACXX.fastq.gz
+2 fastq/19098.1.A01.ATTAGACG.L003.R1.C6WURACXX.fastq.gz
+3 fastq/19098.1.A01.ATTAGACG.L006.R1.C723YACXX.fastq.gz
+4 fastq/19098.1.A02.ACGAGTCT.L002.R1.C6WYKACXX.fastq.gz
+5 fastq/19098.1.A02.ACGAGTCT.L003.R1.C6WURACXX.fastq.gz
+6 fastq/19098.1.A02.ACGAGTCT.L006.R1.C723YACXX.fastq.gz</code></pre>
+<p>Parse filename.</p>
+<pre class="r"><code>md5_cluster$basename &lt;- basename(md5_cluster$path)
+md5_cluster$basename &lt;- sub(&quot;.fastq.gz&quot;, &quot;&quot;, md5_cluster$basename)
+file_parts &lt;- strsplit(md5_cluster$basename, &quot;\\.&quot;)
+md5_cluster$ind &lt;- sapply(file_parts, &quot;[&quot;, 1)
+md5_cluster$batch &lt;- sapply(file_parts, &quot;[&quot;, 2)
+md5_cluster$well &lt;- sapply(file_parts, &quot;[&quot;, 3)
+md5_cluster$index &lt;- sapply(file_parts, &quot;[&quot;, 4)
+md5_cluster$lane &lt;- sapply(file_parts, &quot;[&quot;, 5)
+md5_cluster$flow_cell &lt;- sapply(file_parts, &quot;[&quot;, 7)
+head(md5_cluster)</code></pre>
+<pre><code>                               md5
+1 3949dc07f75b5d37789ce2ce0d215d67
+2 02c28413d7e4905966fd94ba55e5a321
+3 2cca289e8080964efc95b4c7328a0d5f
+4 e6b6b504ed4d0cd793d36f55cf4fcf79
+5 b16345bdc7ed23699d2f5e4a32ccf07a
+6 7caeaf4d6b5ba147fbd42aa728dddd3c
+                                                   path
+1 fastq/19098.1.A01.ATTAGACG.L002.R1.C6WYKACXX.fastq.gz
+2 fastq/19098.1.A01.ATTAGACG.L003.R1.C6WURACXX.fastq.gz
+3 fastq/19098.1.A01.ATTAGACG.L006.R1.C723YACXX.fastq.gz
+4 fastq/19098.1.A02.ACGAGTCT.L002.R1.C6WYKACXX.fastq.gz
+5 fastq/19098.1.A02.ACGAGTCT.L003.R1.C6WURACXX.fastq.gz
+6 fastq/19098.1.A02.ACGAGTCT.L006.R1.C723YACXX.fastq.gz
+                                basename   ind batch well    index lane
+1 19098.1.A01.ATTAGACG.L002.R1.C6WYKACXX 19098     1  A01 ATTAGACG L002
+2 19098.1.A01.ATTAGACG.L003.R1.C6WURACXX 19098     1  A01 ATTAGACG L003
+3 19098.1.A01.ATTAGACG.L006.R1.C723YACXX 19098     1  A01 ATTAGACG L006
+4 19098.1.A02.ACGAGTCT.L002.R1.C6WYKACXX 19098     1  A02 ACGAGTCT L002
+5 19098.1.A02.ACGAGTCT.L003.R1.C6WURACXX 19098     1  A02 ACGAGTCT L003
+6 19098.1.A02.ACGAGTCT.L006.R1.C723YACXX 19098     1  A02 ACGAGTCT L006
+  flow_cell
+1 C6WYKACXX
+2 C6WURACXX
+3 C723YACXX
+4 C6WYKACXX
+5 C6WURACXX
+6 C723YACXX</code></pre>
+<p>Pieter sent us the md5 checksums of the files stored at the core facility.</p>
+<pre class="r"><code>(md5_core_files &lt;- list.files(&quot;../data&quot;, &quot;md5$&quot;, full.names = TRUE))</code></pre>
+<pre><code>[1] &quot;../data/YG-SR-100-FC1-file.md5&quot; &quot;../data/YG-SR-100-FC2-file.md5&quot;
+[3] &quot;../data/YG-SR-100-FC3-file.md5&quot; &quot;../data/YG-SR-100-FC4-file.md5&quot;</code></pre>
+<pre class="r"><code>md5_core &lt;- NULL
+for (md5_core_f in md5_core_files) {
+  print(md5_core_f)
+  md5_core_tmp &lt;- read.table(md5_core_f, stringsAsFactors = FALSE)
+  md5_core &lt;- rbind(md5_core, md5_core_tmp)
+}</code></pre>
+<pre><code>[1] &quot;../data/YG-SR-100-FC1-file.md5&quot;
+[1] &quot;../data/YG-SR-100-FC2-file.md5&quot;
+[1] &quot;../data/YG-SR-100-FC3-file.md5&quot;
+[1] &quot;../data/YG-SR-100-FC4-file.md5&quot;</code></pre>
+<pre class="r"><code>colnames(md5_core) &lt;- c(&quot;md5&quot;, &quot;path&quot;)
+head(md5_core)</code></pre>
+<pre><code>                               md5
+1 06330063422aa97adf4ac293b103433d
+2 59ae9f03da954fb5d619af90cbfdb437
+3 fdc66c05a059142b7c0157ba38aab081
+4 3b09236fef1c6e16bcec9db0a9679a79
+5 14bd09a52995bb5b2340a7c076b7f9be
+6 6b508a0b35e56ce201aa97f053541829
+                                                                                                                                                                   path
+1                            /media/DATA1/NewSequencerRuns/150320_700819F_0303_AC6WYKACXX/Unaligned_YG-SR100-FC1/Project_YG-SR100-1/Sample_19098_3_bulk/SampleSheet.csv
+2 /media/DATA1/NewSequencerRuns/150320_700819F_0303_AC6WYKACXX/Unaligned_YG-SR100-FC1/Project_YG-SR100-1/Sample_19098_3_bulk/19098_3_bulk_CTACATCA_L001_R1_001.fastq.gz
+3 /media/DATA1/NewSequencerRuns/150320_700819F_0303_AC6WYKACXX/Unaligned_YG-SR100-FC1/Project_YG-SR100-1/Sample_19098_3_bulk/19098_3_bulk_CGGAGTTA_L001_R1_001.fastq.gz
+4                            /media/DATA1/NewSequencerRuns/150320_700819F_0303_AC6WYKACXX/Unaligned_YG-SR100-FC1/Project_YG-SR100-1/Sample_19101_3_bulk/SampleSheet.csv
+5 /media/DATA1/NewSequencerRuns/150320_700819F_0303_AC6WYKACXX/Unaligned_YG-SR100-FC1/Project_YG-SR100-1/Sample_19101_3_bulk/19101_3_bulk_ACACAACT_L001_R1_001.fastq.gz
+6 /media/DATA1/NewSequencerRuns/150320_700819F_0303_AC6WYKACXX/Unaligned_YG-SR100-FC1/Project_YG-SR100-1/Sample_19101_3_bulk/19101_3_bulk_CGTCGCAT_L001_R1_001.fastq.gz</code></pre>
+<p>Remove checksums of sample sheets (“SampleSheet.csv”).</p>
+<pre class="r"><code>md5_core &lt;- md5_core[grep(&quot;fastq.gz&quot;, md5_core$path), ]</code></pre>
+<p>Parse filenames.</p>
+<pre class="r"><code>path_parts &lt;- strsplit(md5_core$path, &quot;/&quot;)
+# Remove .fastq.gz file extension
+path_parts &lt;- lapply(path_parts, function(x) sub(&quot;.fastq.gz&quot;, &quot;&quot;, x))
+file_parts &lt;- sapply(path_parts, function(x) strsplit(x[9], &quot;_&quot;))
+md5_core$ind &lt;- sapply(file_parts, &quot;[&quot;, 1)
+md5_core$batch &lt;- sapply(file_parts, &quot;[&quot;, 2)
+md5_core$well &lt;- sapply(file_parts, &quot;[&quot;, 3)
+md5_core$index &lt;- sapply(file_parts, &quot;[&quot;, 4)
+md5_core$lane &lt;- sapply(file_parts, &quot;[&quot;, 5)
+md5_core$flow_cell &lt;- sapply(path_parts, function(x) strsplit(x[5], &quot;_&quot;)[[1]][4])
+# Remove leading A or B
+md5_core$flow_cell &lt;- substr(md5_core$flow_cell, 2, 10)
+head(md5_core)</code></pre>
+<pre><code>                               md5
+2 59ae9f03da954fb5d619af90cbfdb437
+3 fdc66c05a059142b7c0157ba38aab081
+5 14bd09a52995bb5b2340a7c076b7f9be
+6 6b508a0b35e56ce201aa97f053541829
+8 43b6df964a05ad75d450d0c564ffedf8
+9 27db904bde3c78039936c6077625095a
+                                                                                                                                                                   path
+2 /media/DATA1/NewSequencerRuns/150320_700819F_0303_AC6WYKACXX/Unaligned_YG-SR100-FC1/Project_YG-SR100-1/Sample_19098_3_bulk/19098_3_bulk_CTACATCA_L001_R1_001.fastq.gz
+3 /media/DATA1/NewSequencerRuns/150320_700819F_0303_AC6WYKACXX/Unaligned_YG-SR100-FC1/Project_YG-SR100-1/Sample_19098_3_bulk/19098_3_bulk_CGGAGTTA_L001_R1_001.fastq.gz
+5 /media/DATA1/NewSequencerRuns/150320_700819F_0303_AC6WYKACXX/Unaligned_YG-SR100-FC1/Project_YG-SR100-1/Sample_19101_3_bulk/19101_3_bulk_ACACAACT_L001_R1_001.fastq.gz
+6 /media/DATA1/NewSequencerRuns/150320_700819F_0303_AC6WYKACXX/Unaligned_YG-SR100-FC1/Project_YG-SR100-1/Sample_19101_3_bulk/19101_3_bulk_CGTCGCAT_L001_R1_001.fastq.gz
+8 /media/DATA1/NewSequencerRuns/150320_700819F_0303_AC6WYKACXX/Unaligned_YG-SR100-FC1/Project_YG-SR100-1/Sample_19239_3_bulk/19239_3_bulk_TGCCCAGA_L001_R1_001.fastq.gz
+9 /media/DATA1/NewSequencerRuns/150320_700819F_0303_AC6WYKACXX/Unaligned_YG-SR100-FC1/Project_YG-SR100-1/Sample_19239_3_bulk/19239_3_bulk_GTCAATCC_L001_R1_001.fastq.gz
+    ind batch well    index lane flow_cell
+2 19098     3 bulk CTACATCA L001 C6WYKACXX
+3 19098     3 bulk CGGAGTTA L001 C6WYKACXX
+5 19101     3 bulk ACACAACT L001 C6WYKACXX
+6 19101     3 bulk CGTCGCAT L001 C6WYKACXX
+8 19239     3 bulk TGCCCAGA L001 C6WYKACXX
+9 19239     3 bulk GTCAATCC L001 C6WYKACXX</code></pre>
+<p>Merge the data from the core and the cluster.</p>
+<pre class="r"><code>md5_merge &lt;- merge(md5_core, md5_cluster,
+                   by = c(&quot;ind&quot;, &quot;batch&quot;, &quot;well&quot;, &quot;index&quot;, &quot;lane&quot;, &quot;flow_cell&quot;),
+                   all = TRUE, sort = TRUE, suffixes = c(&quot;.core&quot;, &quot;.cluster&quot;))
+stopifnot(nrow(md5_merge) == nrow(md5_core))</code></pre>
+<p>Check for incomplete downloads.</p>
+<pre class="r"><code>sum(md5_merge$md5.core != md5_merge$md5.cluster, na.rm = TRUE)</code></pre>
+<pre><code>[1] 0</code></pre>
+<p>Every file that downloaded did so successfully.</p>
+<p>Find the files that did not download at all.</p>
+<pre class="r"><code>missing_data &lt;- md5_merge[is.na(md5_merge$md5.cluster), ]</code></pre>
+<p>23 files failed to download.</p>
+<pre class="r"><code>missing_data[, c(&quot;ind&quot;, &quot;batch&quot;, &quot;well&quot;, &quot;index&quot;, &quot;lane&quot;, &quot;flow_cell&quot;)]</code></pre>
+<pre><code>       ind batch well    index lane flow_cell
+306  19098     2  A04 GTCGTTGA L001 C6WURACXX
+806  19098     3  F09 GTACTCGG L003 C72JMACXX
+976  19101     1  C03 TCATGCAC L004 C72JMACXX
+1027 19101     1  D08 GGATACGT L004 C72JMACXX
+1297 19101     2  C11 TGATTACC L007 C6WURACXX
+1307 19101     2  D03 GGTTTGTC L002 C72JMACXX
+2025 19239     1  G09 GCGTCTAA L001 C72JMACXX
+2153 19239     2  C01 TTGTACAG L003 C6WYKACXX
+2162 19239     2  C04 CTAATGAC L003 C6WYKACXX
+2246 19239     2  E08 TCTAGTTG L003 C6WYKACXX
+2249 19239     2  E09 TCCCATGG L003 C6WYKACXX
+2284 19239     2  F08 CACTTCCG L007 C723YACXX
+2308 19239     2  G04 CTTTACCT L007 C723YACXX
+2351 19239     2  H07 TTAGCGGT L003 C6WYKACXX
+2360 19239     2  H10 TACAACGT L003 C6WYKACXX
+2377 19239     3  A03 TGACGTGC L006 C72JMACXX
+2405 19239     3  B01 TCGACATC L002 C6WURACXX
+2548 19239     3  E10 CGTCGCAT L002 C6WURACXX
+2561 19239     3  F02 GATTATGC L004 C723YACXX
+2564 19239     3  F03 ACCATAGA L004 C723YACXX
+2566 19239     3  F04 TAAGTCCT L002 C6WURACXX
+2594 19239     3  G01 CTAGGAAT L004 C723YACXX
+2624 19239     3  G11 GGCAGACT L004 C723YACXX</code></pre>
+</div>
+<div id="download-missing-files" class="section level2">
+<h2>Download missing files</h2>
+<p>Create file of URLs.</p>
+<p>Pieter: 150327_700819F_0304_AC6WURACXX/Unaligned_YG-SR100-2/Project_YG-SR100-2/Sample_19098_2_A04/19098_2_A04_GTCGTTGA_L001_R1_001.fastq.gz FTP: Genomics_Data/NGS/150320_700819F_0303_AC6WYKACXX-YG-SR100-FC-1/FastQ/Project_YG-SR100-2/ cluster: 19098.1.A01.ATTAGACG.L002.R1.C6WYKACXX.fastq.gz</p>
+<pre class="r"><code>ftp_url &lt;- &quot;ftp://fgfftp.uchicago.edu/Genomics_Data/NGS&quot;
+file_url_parts &lt;- strsplit(missing_data$path.core, &quot;/&quot;)
+convert_filename &lt;- function(parts) {
+  # Convert filename from Pieter&#39;s data to the format on the FTP server.
+  # From Pieter: /media/DATA1/NewSequencerRuns/150327_700819F_0304_AC6WURACXX/Unaligned_YG-SR100-2/Project_YG-SR100-2/Sample_19098_2_A04/19098_2_A04_GTCGTTGA_L001_R1_001.fastq.gz
+  # On FTP server: 150327_700819F_0304_AC6WURACXX-YG-SR100-FC-2/FastQ/Project_YG-SR100-2/Sample_19098_2_A04/19098_2_A04_GTCGTTGA_L001_R1_001.fastq.gz
+  flow_cell &lt;- paste0(parts[5], &quot;-&quot;, substr(parts[7], 9, 22))
+  flow_cell &lt;- sub(&quot;SR100&quot;, &quot;SR100-FC&quot;, flow_cell)
+  result &lt;- file.path(flow_cell, &quot;FastQ&quot;, parts[7], parts[8], parts[9])
+  return(result)
+}
+file_url &lt;- sapply(file_url_parts, convert_filename)
+file_url &lt;- file.path(ftp_url, file_url)
+head(file_url)</code></pre>
+<pre><code>[1] &quot;ftp://fgfftp.uchicago.edu/Genomics_Data/NGS/150327_700819F_0304_AC6WURACXX-YG-SR100-FC-2/FastQ/Project_YG-SR100-2/Sample_19098_2_A04/19098_2_A04_GTCGTTGA_L001_R1_001.fastq.gz&quot;
+[2] &quot;ftp://fgfftp.uchicago.edu/Genomics_Data/NGS/150402_700819F_0306_BC72JMACXX-YG-SR100-FC-4/FastQ/Project_YG-SR100-4/Sample_19098_3_F09/19098_3_F09_GTACTCGG_L003_R1_001.fastq.gz&quot;
+[3] &quot;ftp://fgfftp.uchicago.edu/Genomics_Data/NGS/150402_700819F_0306_BC72JMACXX-YG-SR100-FC-4/FastQ/Project_YG-SR100-4/Sample_19101_1_C03/19101_1_C03_TCATGCAC_L004_R1_001.fastq.gz&quot;
+[4] &quot;ftp://fgfftp.uchicago.edu/Genomics_Data/NGS/150402_700819F_0306_BC72JMACXX-YG-SR100-FC-4/FastQ/Project_YG-SR100-4/Sample_19101_1_D08/19101_1_D08_GGATACGT_L004_R1_001.fastq.gz&quot;
+[5] &quot;ftp://fgfftp.uchicago.edu/Genomics_Data/NGS/150327_700819F_0304_AC6WURACXX-YG-SR100-FC-2/FastQ/Project_YG-SR100-2/Sample_19101_2_C11/19101_2_C11_TGATTACC_L007_R1_001.fastq.gz&quot;
+[6] &quot;ftp://fgfftp.uchicago.edu/Genomics_Data/NGS/150402_700819F_0306_BC72JMACXX-YG-SR100-FC-4/FastQ/Project_YG-SR100-4/Sample_19101_2_D03/19101_2_D03_GGTTTGTC_L002_R1_001.fastq.gz&quot;</code></pre>
+<pre class="r"><code>write(file_url, &quot;../data/missing-files.txt&quot;)</code></pre>
+<p>Download the files.</p>
+<pre class="bash"><code>wget --user=gilad --password=&#39;&lt;password&gt;&#39; -i ../data/missing-files.txt</code></pre>
+</div>
+<div id="check-md5-checksums-of-new-files" class="section level2">
+<h2>Check md5 checksums of new files</h2>
+<pre class="r"><code>fastq_files &lt;- list.files(pattern = &quot;001.fastq.gz&quot;)
+for (fq in fastq_files) {
+  # Calculate md5 of downloaded file
+  fq_md5_cluster &lt;- tools::md5sum(fq)
+  fq_parts &lt;- unlist(strsplit(fq, &quot;_&quot;))
+  fq_data &lt;-  subset(missing_data, ind == fq_parts[1] &amp;
+                       batch == fq_parts[2] &amp;
+                       well == fq_parts[3] &amp;
+                       index == fq_parts[4] &amp;
+                       lane == fq_parts[5])
+  fq_md5_core &lt;- fq_data[, &quot;md5.core&quot;]
+  # Confirm that file checksums match
+  stopifnot(nrow(fq_md5_core) == 1, # Luckily none of the samples are flow cell replicates
+            fq_md5_cluster == fq_md5_core)
+  # Rename file
+  new_name &lt;- paste(fq_data$ind, fq_data$batch, fq_data$well, fq_data$index,
+                    fq_data$lane, &quot;R1&quot;, fq_data$flow_cell, &quot;fastq.gz&quot;,
+                    sep = &quot;.&quot;)
+  file.rename(fq, new_name)
+}</code></pre>
+<p>Change the permission to read-only.</p>
+<pre class="bash"><code>chmod uga=r *fastq.gz</code></pre>
+<p>Move the files.</p>
+<pre class="bash"><code>mv *.fastq.gz $ssd/fastq</code></pre>
+<p>Remove missing files document.</p>
+<pre class="r"><code>unlink(&quot;../data/missing-files.txt&quot;)</code></pre>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.1.1 (2014-07-10)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] knitr_1.10.5
+
+loaded via a namespace (and not attached):
+[1] digest_0.6.4    evaluate_0.7    formatR_0.10    htmltools_0.2.6
+[5] rmarkdown_0.5.1 stringr_0.6.2   tools_3.1.1     yaml_2.1.13    </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+
+</body>
+</html>
