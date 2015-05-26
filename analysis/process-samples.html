@@ -128,54 +128,96 @@ img {
 <ul>
 <li><a href="#run-fastqc">Run FastQC</a></li>
 <li><a href="#trim-umi">Trim UMI</a></li>
+<li><a href="#quality-trim-3-end-of-reads">Quality trim 3’ end of reads</a></li>
+<li><a href="#assess-sequence-characteristics">Assess sequence characteristics</a></li>
 <li><a href="#map-to-genome">Map to genome</a></li>
 <li><a href="#process-bam-files">Process bam files</a></li>
 <li><a href="#remove-duplicate-umis">Remove duplicate UMIs</a></li>
 <li><a href="#count-reads-per-gene">Count reads per gene</a></li>
+<li><a href="#gather-total-counts">Gather total counts</a></li>
+<li><a href="#gather-gene-counts">Gather gene counts</a></li>
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-05-12</p>
-<p><strong>Code version:</strong> bc3afdfbc234c08447fdb9b2eda1d3a77c6cbc41</p>
+<p><strong>Last updated:</strong> 2015-05-26</p>
+<p><strong>Code version:</strong> 0986362f63102586122304cb9190dcb6a4fa5f77</p>
 <p>All processing scripts were run from the data directory.</p>
 <pre class="bash"><code>cd /mnt/gluster/data/internal_supp/singleCellSeq</code></pre>
 <p>The raw fastq files were write-protected to avoid accidental deletion.</p>
-<pre class="bash"><code>chmod -x fastq/*fastq.gz</code></pre>
+<pre class="bash"><code>chmod uga=r fastq/*fastq.gz</code></pre>
 <div id="run-fastqc" class="section level2">
 <h2>Run FastQC</h2>
 <pre class="bash"><code>submit-array.sh run-fastqc.sh 2g fastq/*fastq.gz</code></pre>
-<pre class="bash"><code>grep -w success ~/log/run-fastqc* | wc -l</code></pre>
+<pre class="bash"><code>ls fastq/ | wc -l
+grep -w success ~/log/run-fastqc.sh/* | wc -l
+grep -w failure ~/log/run-fastqc.sh/* | wc -l</code></pre>
 </div>
 <div id="trim-umi" class="section level2">
 <h2>Trim UMI</h2>
 <pre class="bash"><code>submit-array.sh trim.sh 2g fastq/*fastq.gz</code></pre>
 <p>To confirm that the jobs ran successfully:</p>
-<pre class="bash"><code>grep -w success ~/log/trim* | wc -l</code></pre>
+<pre class="bash"><code>ls trim/*fastq.gz | wc -l
+grep -w success ~/log/trim.sh/* | wc -l
+grep -w failure ~/log/trim.sh/* | wc -l</code></pre>
 <p>To re-run failed jobs, I re-ran the original command. If the output file already exists, the code is not run and “success” is not echo’d to the log file.</p>
+</div>
+<div id="quality-trim-3-end-of-reads" class="section level2">
+<h2>Quality trim 3’ end of reads</h2>
+<pre class="bash"><code>submit-array.sh sickle.sh 2g trim/*fastq.gz</code></pre>
+<p>To confirm that the jobs ran successfully:</p>
+<pre class="bash"><code>ls sickle/*fastq.gz | wc -l
+grep -w success ~/log/sickle.sh/* | wc -l
+grep -w failure ~/log/sickle.sh/* | wc -l</code></pre>
+</div>
+<div id="assess-sequence-characteristics" class="section level2">
+<h2>Assess sequence characteristics</h2>
+<pre class="bash"><code>submit-array.sh qc.sh 2g fastq/*fastq.gz trim/*fastq.gz sickle/*fastq.gz</code></pre>
+<pre class="bash"><code>ls seqqs/*_len.txt | wc -l
+grep -w success ~/log/qc.sh/* | wc -l
+grep -w failure ~/log/qc.sh/* | wc -l</code></pre>
 </div>
 <div id="map-to-genome" class="section level2">
 <h2>Map to genome</h2>
-<pre class="bash"><code>submit-array.sh map-subread.sh 8g trim/*fastq.gz</code></pre>
-<pre class="bash"><code>grep -w success ~/log/map-subread* | wc -l</code></pre>
+<pre class="bash"><code>submit-array.sh map-subread.sh 8g trim/*fastq.gz sickle/*fastq.gz</code></pre>
+<pre class="bash"><code>ls bam/*bam | wc -l
+grep -w success ~/log/map-subread.sh/* | wc -l
+grep -w failure ~/log/map-subread.sh/* | wc -l</code></pre>
 </div>
 <div id="process-bam-files" class="section level2">
 <h2>Process bam files</h2>
-<p>Remove quality less than 10 Sort bam index bam</p>
+<ul>
+<li>Remove quality less than 10</li>
+<li>Sort bam</li>
+<li>Index bam</li>
+</ul>
 <pre class="bash"><code>submit-array.sh process-bam.sh 8g bam/*bam</code></pre>
-<pre class="bash"><code>grep -w success ~/log/process-bam* | wc -l</code></pre>
+<pre class="bash"><code>ls bam-processed/*bam | wc -l
+grep -w success ~/log/process-bam.sh/* | wc -l
+grep -w failure ~/log/process-bam.sh/* | wc -l</code></pre>
 <p>Check for the presence of intermediate files output during sorting.</p>
 <pre class="bash"><code>ls bam-processed/*sorted*0*bam</code></pre>
 </div>
 <div id="remove-duplicate-umis" class="section level2">
 <h2>Remove duplicate UMIs</h2>
 <pre class="bash"><code>submit-array.sh rmdup-umi.sh 2g bam-processed/*bam</code></pre>
-<pre class="bash"><code>grep -w success ~/log/rmdup-umi* | wc -l</code></pre>
+<pre class="bash"><code>ls bam-rmdup-umi/*bam | wc -l
+grep -w success ~/log/rmdup-umi.sh/* | wc -l
+grep -w failure ~/log/rmdup-umi.sh/* | wc -l</code></pre>
 </div>
 <div id="count-reads-per-gene" class="section level2">
 <h2>Count reads per gene</h2>
-<pre class="bash"><code>submit-array.sh count-reads-per-gene.sh 2g bam-processed/*bam</code></pre>
-<pre class="bash"><code>submit-array.sh count-reads-per-gene.sh 2g bam-rmdup-umi/*bam</code></pre>
-<pre class="bash"><code>grep -w success ~/log/count-reads-per-gene* | wc -l</code></pre>
+<pre class="bash"><code>submit-array.sh count-reads-per-gene.sh 2g bam-processed/*bam bam-rmdup-umi/*bam</code></pre>
+<pre class="bash"><code>ls counts/*genecounts.txt | wc -l
+grep -w success ~/log/count-reads-per-gene.sh/* | wc -l
+grep -w failure ~/log/count-reads-per-gene.sh/* | wc -l</code></pre>
+</div>
+<div id="gather-total-counts" class="section level2">
+<h2>Gather total counts</h2>
+<pre class="bash"><code>gather-total-counts.py &gt; total-counts.txt</code></pre>
+</div>
+<div id="gather-gene-counts" class="section level2">
+<h2>Gather gene counts</h2>
+<pre class="bash"><code>gather-gene-counts.py &gt; gene-counts.txt</code></pre>
 </div>
 
 
