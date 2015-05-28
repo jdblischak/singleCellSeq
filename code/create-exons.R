@@ -1,8 +1,9 @@
 # Create exons file for for mapping reads to genes with Subread featureCounts.
 
 # Usage:
-#   Rscript create_exons.R ERCC > out.saf
-#   Rscript create_exons.R ../data/ERCC92.gtf > ../data/exons.saf
+#   Rscript create-exons.R ERCC > out.saf
+#   Ex:
+#   Rscript create-exons.R ../data/ERCC92.gtf > ../data/exons.saf
 #
 #  ERCC: gtf file of ERCC spike-in controls downloaded from Invitrogen
 
