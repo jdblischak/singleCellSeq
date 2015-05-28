@@ -41,6 +41,10 @@ exons_final <- exons_all[exons_all$chromosome_name %in% c(1:22, "X", "Y", "MT") 
                          c("ensembl_gene_id", "chromosome_name", "exon_chrom_start",
                            "exon_chrom_end", "strand", "external_gene_name")]
 colnames(exons_final) <- c("GeneID", "Chr", "Start", "End", "Strand", "Name")
+# Sort by chromosome and position
+exons_final <- exons_final[order(exons_final$Chr,
+                                 exons_final$Start,
+                                 exons_final$End), ]
 # Fix chromosome names
 exons_final$Chr <- paste0("chr", exons_final$Chr)
 exons_final$Chr <- sub("chrMT", "chrM", exons_final$Chr)
