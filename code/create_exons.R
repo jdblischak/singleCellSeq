@@ -25,18 +25,21 @@ ensembl <- useMart(host = "grch37.ensembl.org",
                    biomart = "ENSEMBL_MART_ENSEMBL",
                    dataset = "hsapiens_gene_ensembl")
 # attributePages(ensembl)
+# [1] "feature_page" "structure" "homologs" "sequences" "snp" "snp_somatic"
 atts <- listAttributes(ensembl, page = "feature_page")
-# atts[grep("rand", atts$description), ]
+# atts[grep("strand", atts$description, ignore.case = TRUE), ]
+atts_struct <- listAttributes(ensembl, page = "structure")
+# atts_struct[grep("exon", atts_struct$description, ignore.case = TRUE), ]
 exons_all <- getBM(attributes = c("ensembl_gene_id", "ensembl_exon_id",
-                                  "chromosome_name", "start_position",
-                                  "end_position", "strand",
+                                  "chromosome_name", "exon_chrom_start",
+                                  "exon_chrom_end", "strand",
                                   "external_gene_name",
                                   "gene_biotype"),
                    mart = ensembl)
 exons_final <- exons_all[exons_all$chromosome_name %in% c(1:22, "X", "Y", "MT") &
                          exons_all$gene_biotype == "protein_coding",
-                         c("ensembl_gene_id", "chromosome_name", "start_position",
-                           "end_position", "strand", "external_gene_name")]
+                         c("ensembl_gene_id", "chromosome_name", "exon_chrom_start",
+                           "exon_chrom_end", "strand", "external_gene_name")]
 colnames(exons_final) <- c("GeneID", "Chr", "Start", "End", "Strand", "Name")
 # Fix chromosome names
 exons_final$Chr <- paste0("chr", exons_final$Chr)
