@@ -20,10 +20,11 @@ then
 fi
 
 echo "Sorting file..."
-samtools sort <(samtools view -b -q 10 $FILE) $OUTDIR/$BASE.sorted
+samtools sort $FILE $OUTDIR/$BASE.sorted
 
 echo "Indexing file..."
 samtools index $OUTDIR/$BASE.sorted.bam
 
 echo "Counting number of reads..."
-samtools view -c $OUTDIR/$BASE.sorted.bam > $OUTDIR/$BASE.processed.count.txt
+# Only count mapped reads. Unmapped reads have score of 0
+samtools view -c -q 1 $OUTDIR/$BASE.sorted.bam > $OUTDIR/$BASE.processed.count.txt
