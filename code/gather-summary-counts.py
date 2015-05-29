@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 # Gathers all the counts contained in the summary files.
-# usage: gather-total-counts.py > total-counts.txt
+# usage: gather-summary-counts.py > summary-counts.txt
 # Should be run from data directory.
 
 import glob
