@@ -1,0 +1,109 @@
+---
+title: "Sum counts per sample"
+author: "John Blischak"
+date: 2015-05-12
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+opts_chunk$set(fig.width = 8, fig.height = 8)
+```
+
+For each sample, sum the number of reads or molecules for every gene across sequencing runs.
+
+Creates the following files:
+
+*  anno.txt - Annotation file
+*  molecules.txt - Molecule counts (sample x gene)
+*  reads.txt - Read counts (sample x gene)
+
+## Input
+
+```{r packages, message=FALSE}
+library("data.table")
+library("dplyr")
+```
+
+```{r input}
+counts <- fread("/mnt/gluster/data/internal_supp/singleCellSeq/gene-counts.txt")
+```
+
+## Sum counts by sample
+
+```{r summarise}
+counts_by_sample <- counts %>%
+  select(individual, batch, well, rmdup, starts_with("ENSG"), starts_with("ERCC")) %>%
+  group_by(individual, batch, well, rmdup) %>%
+  summarise_each(funs(sum)) %>%
+  arrange(individual, batch, well, rmdup) %>%
+  ungroup
+```
+
+```{r inspect}
+counts_by_sample %>% select(1:8) %>% slice(1:10)
+```
+
+## Transpose
+
+```{r annotation}
+anno <- counts_by_sample %>%
+  filter(rmdup == "molecules") %>%
+  select(individual:well) %>%
+  as.data.frame
+anno$sample_id <- paste(paste0("NA", anno$individual), anno$batch, anno$well,
+                        sep = ".")
+head(anno)
+```
+
+```{r transpose-molecules}
+molecules <- counts_by_sample %>%
+  filter(rmdup == "molecules") %>%
+  select(-(individual:rmdup)) %>%
+  t
+dim(molecules)
+colnames(molecules) <- anno$sample_id
+molecules[1:10, 1:5]
+```
+
+```{r transpose-reads}
+reads <- counts_by_sample %>%
+  filter(rmdup == "reads") %>%
+  select(-(individual:rmdup)) %>%
+  t
+dim(reads)
+colnames(reads) <- anno$sample_id
+reads[1:10, 1:5]
+```
+
+## Output
+
+Output annotation file.
+
+```{r write-anno}
+write.table(anno, "../data/annotation.txt", quote = FALSE, sep = "\t",
+            row.names = FALSE)
+```
+
+Output molecule counts.
+
+```{r write-molecules}
+write.table(molecules, "../data/molecules.txt", quote = FALSE, sep = "\t",
+            col.names = NA)
+```
+
+Output read counts.
+
+```{r}
+write.table(reads, "../data/reads.txt", quote = FALSE, sep = "\t",
+            col.names = NA)
+```
+
+## Session information
+
+```{r info}
+sessionInfo()
+```

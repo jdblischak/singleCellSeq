@@ -10,7 +10,6 @@ import sys
 files = glob.glob("fastq/*count*") + \
         glob.glob("trim/*count*") + \
         glob.glob("sickle/*count*") + \
-        glob.glob("bam/*count*") + \
         glob.glob("bam-processed/*count*") + \
         glob.glob("bam-rmdup-umi/*count*") + \
         glob.glob("counts/*summary")
