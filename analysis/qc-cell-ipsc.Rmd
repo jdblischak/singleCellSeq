@@ -15,6 +15,7 @@ source("chunk-options.R")
 
 ```{r packages}
 library("dplyr")
+library("ggplot2")
 ```
 
 Summary counts from featureCounts.
@@ -67,7 +68,8 @@ qc <- read.table("../data/qc-ipsc.txt", header = TRUE,
 head(qc)
 ```
 
-```{r}
+QC at cell level by looking at the unmapped ratio and ERCC ratio
+```{r qc-cell}
 #reads per sample
 summary_per_sample_reads <- summary_per_sample %>% filter(rmdup == "reads")
 
@@ -77,13 +79,37 @@ summary_per_sample_reads$unmapped.ratios <- summary_per_sample_reads[,9]/apply(s
 #create total mapped reads
 summary_per_sample_reads$total.mapped <- apply(summary_per_sample_reads[,5:8],1,sum)
 
+#plot
+ggplot(summary_per_sample_reads, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5)
+
+
 #creat ERCC ratios
-ERCC.ratios <- apply(reads[grep("ERCC", rownames(reads)), ],2,sum)/apply(summary_per_sample_reads[,5:8],1,sum)
+summary_per_sample_reads$ERCC.ratios <- apply(reads[grep("ERCC", rownames(reads)), ],2,sum)/apply(summary_per_sample_reads[,5:13],1,sum)
+
+#plot
+ggplot(summary_per_sample_reads, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5)
+
+#remove bulk keep single cell
+summary_per_sample_reads_single <- summary_per_sample_reads[summary_per_sample_reads$well!="bulk",]
+
+ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5)
+
+ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5)
+
+#add cell number per well
+summary_per_sample_reads_single$cell_number <- qc[,"cell_number"]
+
+ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)
+
+ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)
 
 #how come the sum of reads are larger than 'Assigned'
 (apply(reads,2,sum)/summary_per_sample_reads[,5])
+
 #plot the sum of reads and 'Assigned'
 plot(apply(reads,2,sum),summary_per_sample_reads[,5])
+
+
 ```
 
 
