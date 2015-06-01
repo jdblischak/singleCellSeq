@@ -68,8 +68,11 @@ qc <- read.table("../data/qc-ipsc.txt", header = TRUE,
 head(qc)
 ```
 
-QC at cell level by looking at the unmapped ratio and ERCC ratio
-```{r qc-cell}
+looking at the unmapped ratio and ERCC ratio of each cell
+1. low number of mapped reads might be caused by cell apoptosis, RNA degradation, insufficient cell lysis, bad Tn5 transposase quality, or contamination
+2. high proportion of ERCC spike-in indicates low RNA quantity from iPSCs which might cell death
+
+```{r reads}
 #reads per sample
 summary_per_sample_reads <- summary_per_sample %>% filter(rmdup == "reads")
 
@@ -102,6 +105,10 @@ ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = unmapped.ratio
 
 ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + facet_grid(individual ~ batch)
 
+```
+
+QC by cell number, unmapped ratio, and ERCC ratio
+```{r cell-qc}
 #add cell number per well by merging qc file
 summary_per_sample_reads_single_qc <- merge(summary_per_sample_reads_single,qc,by=c("individual","batch","well"))
 
@@ -113,11 +120,9 @@ ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = unmapped.ra
 
 ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3) + facet_grid(individual ~ batch)
 
-
-
 ```
 
-
+Given that each plates/batch was collected seperately and independently, it would make sense to remove the bad quality cell by each batch. For exmaple, 19098 batch 2 have more ERCC than all the others. 
 
 ## Session information
 
