@@ -82,9 +82,11 @@ summary_per_sample_reads$total.mapped <- apply(summary_per_sample_reads[,5:8],1,
 #plot
 ggplot(summary_per_sample_reads, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5)
 
+#plot the sum of reads and 'Assigned'
+plot(apply(reads,2,sum),summary_per_sample_reads[,5])
 
 #creat ERCC ratios
-summary_per_sample_reads$ERCC.ratios <- apply(reads[grep("ERCC", rownames(reads)), ],2,sum)/apply(summary_per_sample_reads[,5:13],1,sum)
+summary_per_sample_reads$ERCC.ratios <- apply(reads[grep("ERCC", rownames(reads)), ],2,sum)/apply(summary_per_sample_reads[,5:8],1,sum)
 
 #plot
 ggplot(summary_per_sample_reads, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5)
@@ -96,18 +98,21 @@ ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = unmapped.ratio
 
 ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5)
 
-#add cell number per well
-summary_per_sample_reads_single$cell_number <- qc[,"cell_number"]
+ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + facet_grid(individual ~ batch)
 
-ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)
+ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + facet_grid(individual ~ batch)
 
-ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)
+#add cell number per well by merging qc file
+summary_per_sample_reads_single_qc <- merge(summary_per_sample_reads_single,qc,by=c("individual","batch","well"))
 
-#how come the sum of reads are larger than 'Assigned'
-(apply(reads,2,sum)/summary_per_sample_reads[,5])
+ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)
 
-#plot the sum of reads and 'Assigned'
-plot(apply(reads,2,sum),summary_per_sample_reads[,5])
+ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)
+
+ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3) + facet_grid(individual ~ batch)
+
+ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3) + facet_grid(individual ~ batch)
+
 
 
 ```
