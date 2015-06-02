@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+
+<meta name="date" content="2015-05-27" />
+
+<title>Quality control for iPSC cells</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Quality control for iPSC cells</h1>
+<h4 class="date"><em>2015-05-27</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#input">Input</a></li>
+<li><a href="#quality-control-at-cell-level">Quality control at cell level</a></li>
+<li><a href="#effect-of-cell-qc-data-on-sequencing-results">Effect of cell QC data on sequencing results</a></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2015-06-02</p>
+<p><strong>Code version:</strong> 15af4ce25a008442c0fe16edff9d2d9f0a44697e</p>
+<div id="input" class="section level2">
+<h2>Input</h2>
+<pre class="r"><code>library(&quot;dplyr&quot;)
+library(&quot;ggplot2&quot;)</code></pre>
+<p>Summary counts from featureCounts. Created with <a href="https://github.com/jdblischak/singleCellSeq/blob/master/code/gather-summary-counts.py">gather-summary-counts.py</a>.</p>
+<pre class="r"><code>summary_counts &lt;- read.table(&quot;../data/summary-counts.txt&quot;, header = TRUE,
+                             stringsAsFactors = FALSE)</code></pre>
+<p>Using only the sickle-trimmed data, sum the counts across all the sequencing lanes for a given sample.</p>
+<pre class="r"><code>summary_per_sample &lt;- summary_counts %&gt;%
+  filter(sickle == &quot;quality-trimmed&quot;) %&gt;%
+  select(-index, -lane, -flow_cell, -sickle) %&gt;%
+  group_by(individual, batch, well, rmdup) %&gt;%
+  summarise_each(funs(sum)) %&gt;%
+  ungroup %&gt;%
+  as.data.frame</code></pre>
+<p>Input annotation.</p>
+<pre class="r"><code>anno &lt;- read.table(&quot;../data/annotation.txt&quot;, header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno)</code></pre>
+<pre><code>  individual batch well     sample_id
+1      19098     1  A01 NA19098.1.A01
+2      19098     1  A02 NA19098.1.A02
+3      19098     1  A03 NA19098.1.A03
+4      19098     1  A04 NA19098.1.A04
+5      19098     1  A05 NA19098.1.A05
+6      19098     1  A06 NA19098.1.A06</code></pre>
+<p>Input read counts.</p>
+<pre class="r"><code>reads &lt;- read.table(&quot;../data/reads.txt&quot;, header = TRUE,
+                    stringsAsFactors = FALSE)</code></pre>
+<p>Input molecule counts.</p>
+<pre class="r"><code>molecules &lt;- read.table(&quot;../data/molecules.txt&quot;, header = TRUE,
+                    stringsAsFactors = FALSE)</code></pre>
+<p>Input single cell observational quality control data.</p>
+<pre class="r"><code>qc &lt;- read.table(&quot;../data/qc-ipsc.txt&quot;, header = TRUE,
+                 stringsAsFactors = FALSE)
+head(qc)</code></pre>
+<pre><code>  individual batch well cell_number concentration tra1.60
+1      19098     1  A01           1      1.734785       1
+2      19098     1  A02           1      1.723038       1
+3      19098     1  A03           1      1.512786       1
+4      19098     1  A04           1      1.347492       1
+5      19098     1  A05           1      2.313047       1
+6      19098     1  A06           1      2.056803       1</code></pre>
+</div>
+<div id="quality-control-at-cell-level" class="section level2">
+<h2>Quality control at cell level</h2>
+<p>Looking at the unmapped ratio and ERCC ratio of each cell.</p>
+<ol style="list-style-type: decimal">
+<li>low number of mapped reads might be caused by cell apoptosis, RNA degradation, insufficient cell lysis, bad Tn5 transposase quality, or contamination</li>
+<li>high proportion of ERCC spike-in indicates low RNA quantity from iPSCs which might cell death</li>
+</ol>
+<pre class="r"><code>#reads per sample
+summary_per_sample_reads &lt;- summary_per_sample %&gt;% filter(rmdup == &quot;reads&quot;)
+
+#create unmapped ratios
+summary_per_sample_reads$unmapped.ratios &lt;- summary_per_sample_reads[,9]/apply(summary_per_sample_reads[,5:13],1,sum)
+
+#create total mapped reads
+summary_per_sample_reads$total.mapped &lt;- apply(summary_per_sample_reads[,5:8],1,sum)
+
+#plot
+ggplot(summary_per_sample_reads, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5)</code></pre>
+<p><img src="figure/qc-cell-ipsc.Rmd/reads-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>#plot the sum of reads and &#39;Assigned&#39;
+plot(apply(reads,2,sum),summary_per_sample_reads[,5])</code></pre>
+<p><img src="figure/qc-cell-ipsc.Rmd/reads-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>#creat ERCC ratios
+summary_per_sample_reads$ERCC.ratios &lt;- apply(reads[grep(&quot;ERCC&quot;, rownames(reads)), ],2,sum)/apply(summary_per_sample_reads[,5:8],1,sum)
+
+#plot
+ggplot(summary_per_sample_reads, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5)</code></pre>
+<p><img src="figure/qc-cell-ipsc.Rmd/reads-3.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>#remove bulk keep single cell
+summary_per_sample_reads_single &lt;- summary_per_sample_reads[summary_per_sample_reads$well!=&quot;bulk&quot;,]
+
+ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5)</code></pre>
+<p><img src="figure/qc-cell-ipsc.Rmd/reads-4.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5)</code></pre>
+<p><img src="figure/qc-cell-ipsc.Rmd/reads-5.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + facet_grid(individual ~ batch)</code></pre>
+<p><img src="figure/qc-cell-ipsc.Rmd/reads-6.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + facet_grid(individual ~ batch)</code></pre>
+<p><img src="figure/qc-cell-ipsc.Rmd/reads-7.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>QC by cell number, unmapped ratio, and ERCC ratio</p>
+<pre class="r"><code>#add cell number per well by merging qc file
+summary_per_sample_reads_single_qc &lt;- merge(summary_per_sample_reads_single,qc,by=c(&quot;individual&quot;,&quot;batch&quot;,&quot;well&quot;))
+
+ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)</code></pre>
+<p><img src="figure/qc-cell-ipsc.Rmd/cell-qc-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)</code></pre>
+<p><img src="figure/qc-cell-ipsc.Rmd/cell-qc-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3) + facet_grid(individual ~ batch)</code></pre>
+<p><img src="figure/qc-cell-ipsc.Rmd/cell-qc-3.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3) + facet_grid(individual ~ batch)</code></pre>
+<p><img src="figure/qc-cell-ipsc.Rmd/cell-qc-4.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>Given that each plates/batch was collected seperately and independently, it would be reasonable to remove the bad quality cell by batch (using different cutoffs for each C1 collection). For exmaple, 19098 batch 2 have more ERCC than all the others. Using the same quiteria would end up with no cell.</p>
+<pre class="r"><code>#individual 19098 batch1
+C1_19098_1 &lt;- summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$individual == &quot;19098&quot; &amp; summary_per_sample_reads_single_qc$batch ==&quot;1&quot;,]
+
+ggplot(C1_19098_1, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)</code></pre>
+<p><img src="figure/qc-cell-ipsc.Rmd/by-C1-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(C1_19098_1, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)</code></pre>
+<p><img src="figure/qc-cell-ipsc.Rmd/by-C1-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>C1_19098_1_retained &lt;- C1_19098_1[C1_19098_1$unmapped.ratios&lt; 0.4 &amp; C1_19098_1$ERCC.ratios&lt; 0.025 &amp; C1_19098_1$cell_number == 1,]
+
+dim(C1_19098_1_retained)</code></pre>
+<pre><code>[1] 86 19</code></pre>
+<pre class="r"><code>ggplot(C1_19098_1_retained, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)</code></pre>
+<p><img src="figure/qc-cell-ipsc.Rmd/by-C1-3.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>#individual 19098 batch2
+C1_19098_2 &lt;- summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$individual == &quot;19098&quot; &amp; summary_per_sample_reads_single_qc$batch ==&quot;2&quot;,]
+
+ggplot(C1_19098_2, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)</code></pre>
+<p><img src="figure/qc-cell-ipsc.Rmd/by-C1-4.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(C1_19098_2, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)</code></pre>
+<p><img src="figure/qc-cell-ipsc.Rmd/by-C1-5.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>C1_19098_2_retained &lt;- C1_19098_2[C1_19098_2$unmapped.ratios&lt; 0.6 &amp; C1_19098_2$ERCC.ratios&lt; 0.35 &amp; C1_19098_2$cell_number == 1,]
+
+dim(C1_19098_2_retained)</code></pre>
+<pre><code>[1] 88 19</code></pre>
+<pre class="r"><code>ggplot(C1_19098_2_retained, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)</code></pre>
+<p><img src="figure/qc-cell-ipsc.Rmd/by-C1-6.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>#individual 19098 batch3
+C1_19098_3 &lt;- summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$individual == &quot;19098&quot; &amp; summary_per_sample_reads_single_qc$batch ==&quot;3&quot;,]
+
+ggplot(C1_19098_3, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)</code></pre>
+<p><img src="figure/qc-cell-ipsc.Rmd/by-C1-7.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(C1_19098_3, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)</code></pre>
+<p><img src="figure/qc-cell-ipsc.Rmd/by-C1-8.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>C1_19098_3_retained &lt;- C1_19098_3[C1_19098_3$unmapped.ratios&lt; 0.45 &amp; C1_19098_3$ERCC.ratios&lt; 0.08 &amp; C1_19098_3$cell_number == 1,]
+
+dim(C1_19098_3_retained)</code></pre>
+<pre><code>[1] 78 19</code></pre>
+<pre class="r"><code>ggplot(C1_19098_3_retained, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)</code></pre>
+<p><img src="figure/qc-cell-ipsc.Rmd/by-C1-9.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="effect-of-cell-qc-data-on-sequencing-results" class="section level2">
+<h2>Effect of cell QC data on sequencing results</h2>
+<div id="cell-number" class="section level3">
+<h3>Cell number</h3>
+<pre class="r"><code>table(summary_per_sample_reads_single_qc$cell_number)</code></pre>
+<pre><code>
+  0   1   2   3   4   5 
+ 21 789  29  17   3   5 </code></pre>
+<pre class="r"><code>ggplot(summary_per_sample_reads_single_qc,
+       aes(x = as.factor(cell_number), y = ERCC.ratios)) +
+  geom_boxplot()</code></pre>
+<p><img src="figure/qc-cell-ipsc.Rmd/cell-num-ercc-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(summary_per_sample_reads_single_qc,
+       aes(x = as.factor(cell_number), y = unmapped.ratios)) +
+  geom_boxplot()</code></pre>
+<p><img src="figure/qc-cell-ipsc.Rmd/cell-num-unmapped-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="concentration" class="section level3">
+<h3>Concentration</h3>
+<pre class="r"><code>summary(summary_per_sample_reads_single_qc$concentration)</code></pre>
+<pre><code>   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+  0.000   1.030   1.680   1.545   2.081   3.200 </code></pre>
+<pre class="r"><code>ggplot(summary_per_sample_reads_single_qc,
+       aes(x = concentration, y = ERCC.ratios)) +
+  geom_point() +
+  geom_smooth()</code></pre>
+<pre><code>geom_smooth: method=&quot;auto&quot; and size of largest group is &lt;1000, so using loess. Use &#39;method = x&#39; to change the smoothing method.</code></pre>
+<p><img src="figure/qc-cell-ipsc.Rmd/conc-ercc-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(summary_per_sample_reads_single_qc,
+       aes(x = concentration, y = unmapped.ratios)) +
+  geom_point() +
+  geom_smooth()</code></pre>
+<pre><code>geom_smooth: method=&quot;auto&quot; and size of largest group is &lt;1000, so using loess. Use &#39;method = x&#39; to change the smoothing method.</code></pre>
+<p><img src="figure/qc-cell-ipsc.Rmd/conc-unmapped-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="tra-1-60" class="section level3">
+<h3>Tra-1-60</h3>
+<p>Tra-1-60 is a <a href="https://en.wikipedia.org/wiki/Stem_cell_marker">stem cell marker</a>.</p>
+<pre class="r"><code>table(summary_per_sample_reads_single_qc$tra1.60)</code></pre>
+<pre><code>
+  0   1 
+ 39 825 </code></pre>
+<pre class="r"><code>ggplot(summary_per_sample_reads_single_qc,
+       aes(x = as.factor(tra1.60), y = ERCC.ratios)) +
+  geom_boxplot()</code></pre>
+<p><img src="figure/qc-cell-ipsc.Rmd/tra-ercc-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(summary_per_sample_reads_single_qc,
+       aes(x = as.factor(tra1.60), y = unmapped.ratios)) +
+  geom_boxplot()</code></pre>
+<p><img src="figure/qc-cell-ipsc.Rmd/tra-unmapped-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="filtering-by-cell-number-and-tra-1-60" class="section level3">
+<h3>Filtering by cell number and Tra-1-60</h3>
+<p>Simply removing all the cells with bad cell number or tra-1-60 does not remove all the low quality samples.</p>
+<pre class="r"><code>table(summary_per_sample_reads_single_qc$cell_number,
+      summary_per_sample_reads_single_qc$tra1.60)</code></pre>
+<pre><code>   
+      0   1
+  0  20   1
+  1  19 770
+  2   0  29
+  3   0  17
+  4   0   3
+  5   0   5</code></pre>
+<pre class="r"><code>ggplot(subset(summary_per_sample_reads_single_qc, cell_number == 1 &amp; tra1.60 == 1),
+       aes(x = total.mapped, y = ERCC.ratios)) +
+  geom_point()</code></pre>
+<p><img src="figure/qc-cell-ipsc.Rmd/qc-filtered-by-cell-num-tra-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(subset(summary_per_sample_reads_single_qc, cell_number == 1 &amp; tra1.60 == 1),
+       aes(x = total.mapped, y = unmapped.ratios)) +
+  geom_point()</code></pre>
+<p><img src="figure/qc-cell-ipsc.Rmd/qc-filtered-by-cell-num-tra-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.1.1 (2014-07-10)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] ggplot2_1.0.0 dplyr_0.4.1   knitr_1.10.5 
+
+loaded via a namespace (and not attached):
+ [1] assertthat_0.1   colorspace_1.2-4 DBI_0.3.1        digest_0.6.4    
+ [5] evaluate_0.7     formatR_0.10     grid_3.1.1       gtable_0.1.2    
+ [9] htmltools_0.2.6  labeling_0.2     lazyeval_0.1.10  magrittr_1.0.1  
+[13] MASS_7.3-33      munsell_0.4.2    parallel_3.1.1   plyr_1.8.1      
+[17] proto_0.3-10     Rcpp_0.11.6      reshape2_1.4     rmarkdown_0.5.1 
+[21] scales_0.2.4     stringr_0.6.2    tools_3.1.1      yaml_2.1.13     </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+
+</body>
+</html>
