@@ -1,5 +1,5 @@
 ---
-title: "Quality control for iPSC cells"
+title: "Quality control for iPS cells"
 date: 2015-05-27
 ---
 
@@ -9,6 +9,7 @@ date: 2015-05-27
 
 ```{r chunk-options, include=FALSE}
 source("chunk-options.R")
+opts_chunk$set(fig.width = 8, fig.height = 8)
 ```
 
 ## Input
@@ -16,6 +17,8 @@ source("chunk-options.R")
 ```{r packages, message=FALSE}
 library("dplyr")
 library("ggplot2")
+theme_set(theme_bw(base_size = 16))
+library("edgeR")
 ```
 
 Summary counts from featureCounts.
@@ -104,10 +107,9 @@ ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = unmapped.ratio
 
 ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5)
 
-ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + facet_grid(individual ~ batch)
+ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))
 
-ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + facet_grid(individual ~ batch)
-
+ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))
 ```
 
 QC by cell number, unmapped ratio, and ERCC ratio
@@ -119,10 +121,9 @@ ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = unmapped.ra
 
 ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)
 
-ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3) + facet_grid(individual ~ batch)
+ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))
 
-ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3) + facet_grid(individual ~ batch)
-
+ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))
 ```
 
 Given that each plates/batch was collected seperately and independently, it would be reasonable to remove the bad quality cell by batch (using different cutoffs for each C1 collection). For exmaple, 19098 batch 2 have more ERCC than all the others. Using the same quiteria would end up with no cell.
@@ -245,6 +246,116 @@ ggplot(subset(summary_per_sample_reads_single_qc, cell_number == 1 & tra1.60 == 
   geom_point()
 ggplot(subset(summary_per_sample_reads_single_qc, cell_number == 1 & tra1.60 == 1),
        aes(x = total.mapped, y = unmapped.ratios)) +
+  geom_point()
+```
+
+## PCA
+
+### Reads
+
+Calculate the counts per million for the singe cells.
+
+```{r cpm}
+reads_cells <- reads %>% select(-contains("bulk"))
+reads_cells_cpm <- cpm(reads_cells)
+```
+
+Select the most variable genes.
+
+```{r variable-genes}
+reads_cells_cpm_log_var <- log(apply(reads_cells_cpm, 1, var))
+hist(reads_cells_cpm_log_var)
+sum(reads_cells_cpm_log_var > 8)
+```
+
+Using the `r sum(reads_cells_cpm_log_var > 8)` most variable genes, perform PCA.
+
+```{r pca-reads}
+reads_cells_cpm <- reads_cells_cpm[reads_cells_cpm_log_var > 8, ]
+pca_reads_cells <- prcomp(t(reads_cells_cpm), retx = TRUE, scale. = TRUE,
+                          center = TRUE)
+```
+
+```{r perc-explained}
+plot(pca_reads_cells)
+pca_reads_cells$perc_explained <- pca_reads_cells$sdev^2 / sum(pca_reads_cells$sdev^2) * 100
+plot(pca_reads_cells$perc_explained)
+```
+
+The first PC accounts for `r round(pca_reads_cells$perc_explained[1])`% of the variance and the second PC `r round(pca_reads_cells$perc_explained[2])`%.
+
+```{r cbind-anno-pca}
+stopifnot(colnames(reads_cells) == 
+            paste(paste0("NA", summary_per_sample_reads_single_qc$individual),
+                   summary_per_sample_reads_single_qc$batch,
+                   summary_per_sample_reads_single_qc$well, sep = "."))
+pca_reads_cells_anno <- cbind(summary_per_sample_reads_single_qc, pca_reads_cells$x)
+```
+
+```{r pca-plot}
+ggplot(pca_reads_cells_anno, aes(x = PC1, y = PC2, col = as.factor(individual),
+                                 shape = as.factor(batch))) +
+  geom_point()
+```
+
+What effect is PC1 capturing?
+
+```{r pc1-ind}
+ggplot(pca_reads_cells_anno, aes(x = as.factor(individual), y = PC1)) +
+  geom_boxplot() + facet_wrap(~batch)
+```
+
+```{r pc1-batch}
+ggplot(pca_reads_cells_anno, aes(x = as.factor(batch), y = PC1)) +
+  geom_boxplot() + facet_wrap(~individual)
+```
+
+```{r pca-cell-number}
+ggplot(pca_reads_cells_anno, aes(x = PC1, y = PC2)) +
+  geom_text(aes(label = cell_number))
+```
+
+The outliers on PC2 are mainly empty wells.
+
+```{r pc1-ercc}
+ggplot(pca_reads_cells_anno, aes(x = ERCC.ratios, y = PC1)) +
+  geom_point()
+```
+
+PC1 is negatively correlated with the ratio of unmapped reads.
+
+```{r pc1-unmapped}
+ggplot(pca_reads_cells_anno, aes(x = unmapped.ratios, y = PC1)) +
+  geom_point() +
+  geom_smooth()
+```
+
+PC1 is positively correlated with the total number of mapped reads.
+
+```{r pc1-total-mapped}
+ggplot(pca_reads_cells_anno, aes(x = total.mapped, y = PC1)) +
+  geom_point() +
+  geom_smooth()
+```
+
+Using various simple filtering cutoffs, it is not possible to capture all the cells that have low values of PC1.
+
+```{r filter-total}
+pca_reads_cells_anno$total_cutoff <- pca_reads_cells_anno$total.mapped > 2 * 10^6
+ggplot(pca_reads_cells_anno, aes(x = PC1, y = PC2, col = total_cutoff)) +
+  geom_point()
+```
+
+```{r filter-unmapped}
+pca_reads_cells_anno$unmapped_cutoff <- pca_reads_cells_anno$unmapped.ratios < 0.5
+ggplot(pca_reads_cells_anno, aes(x = PC1, y = PC2, col = unmapped_cutoff)) +
+  geom_point()
+```
+
+```{r filter-total-cell-num}
+pca_reads_cells_anno$qc_filter <- pca_reads_cells_anno$cell_number == 1 &
+                                   pca_reads_cells_anno$total.mapped > 2 * 10^6
+ggplot(pca_reads_cells_anno, aes(x = PC1, y = PC2, col = qc_filter)) +
   geom_point()
 ```
 
