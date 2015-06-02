@@ -13,8 +13,9 @@ source("chunk-options.R")
 
 ## Input
 
-```{r packages}
+```{r packages, message=FALSE}
 library("dplyr")
+library("ggplot2")
 ```
 
 Summary counts from featureCounts.
@@ -65,6 +66,186 @@ Input single cell observational quality control data.
 qc <- read.table("../data/qc-ipsc.txt", header = TRUE,
                  stringsAsFactors = FALSE)
 head(qc)
+```
+
+## Quality control at cell level
+
+Looking at the unmapped ratio and ERCC ratio of each cell.
+
+1. low number of mapped reads might be caused by cell apoptosis, RNA degradation, insufficient cell lysis, bad Tn5 transposase quality, or contamination
+2. high proportion of ERCC spike-in indicates low RNA quantity from iPSCs which might cell death
+
+```{r reads}
+#reads per sample
+summary_per_sample_reads <- summary_per_sample %>% filter(rmdup == "reads")
+
+#create unmapped ratios
+summary_per_sample_reads$unmapped.ratios <- summary_per_sample_reads[,9]/apply(summary_per_sample_reads[,5:13],1,sum)
+
+#create total mapped reads
+summary_per_sample_reads$total.mapped <- apply(summary_per_sample_reads[,5:8],1,sum)
+
+#plot
+ggplot(summary_per_sample_reads, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5)
+
+#plot the sum of reads and 'Assigned'
+plot(apply(reads,2,sum),summary_per_sample_reads[,5])
+
+#creat ERCC ratios
+summary_per_sample_reads$ERCC.ratios <- apply(reads[grep("ERCC", rownames(reads)), ],2,sum)/apply(summary_per_sample_reads[,5:8],1,sum)
+
+#plot
+ggplot(summary_per_sample_reads, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5)
+
+#remove bulk keep single cell
+summary_per_sample_reads_single <- summary_per_sample_reads[summary_per_sample_reads$well!="bulk",]
+
+ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5)
+
+ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5)
+
+ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + facet_grid(individual ~ batch)
+
+ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + facet_grid(individual ~ batch)
+
+```
+
+QC by cell number, unmapped ratio, and ERCC ratio
+```{r cell-qc}
+#add cell number per well by merging qc file
+summary_per_sample_reads_single_qc <- merge(summary_per_sample_reads_single,qc,by=c("individual","batch","well"))
+
+ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)
+
+ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)
+
+ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3) + facet_grid(individual ~ batch)
+
+ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3) + facet_grid(individual ~ batch)
+
+```
+
+Given that each plates/batch was collected seperately and independently, it would be reasonable to remove the bad quality cell by batch (using different cutoffs for each C1 collection). For exmaple, 19098 batch 2 have more ERCC than all the others. Using the same quiteria would end up with no cell.
+
+```{r by-C1}
+#individual 19098 batch1
+C1_19098_1 <- summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$individual == "19098" & summary_per_sample_reads_single_qc$batch =="1",]
+
+ggplot(C1_19098_1, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)
+
+ggplot(C1_19098_1, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)
+
+C1_19098_1_retained <- C1_19098_1[C1_19098_1$unmapped.ratios< 0.4 & C1_19098_1$ERCC.ratios< 0.025 & C1_19098_1$cell_number == 1,]
+
+dim(C1_19098_1_retained)
+
+ggplot(C1_19098_1_retained, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)
+
+#individual 19098 batch2
+C1_19098_2 <- summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$individual == "19098" & summary_per_sample_reads_single_qc$batch =="2",]
+
+ggplot(C1_19098_2, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)
+
+ggplot(C1_19098_2, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)
+
+C1_19098_2_retained <- C1_19098_2[C1_19098_2$unmapped.ratios< 0.6 & C1_19098_2$ERCC.ratios< 0.35 & C1_19098_2$cell_number == 1,]
+
+dim(C1_19098_2_retained)
+
+ggplot(C1_19098_2_retained, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)
+
+#individual 19098 batch3
+C1_19098_3 <- summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$individual == "19098" & summary_per_sample_reads_single_qc$batch =="3",]
+
+ggplot(C1_19098_3, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)
+
+ggplot(C1_19098_3, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)
+
+C1_19098_3_retained <- C1_19098_3[C1_19098_3$unmapped.ratios< 0.45 & C1_19098_3$ERCC.ratios< 0.08 & C1_19098_3$cell_number == 1,]
+
+dim(C1_19098_3_retained)
+
+ggplot(C1_19098_3_retained, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)
+```
+
+## Effect of cell QC data on sequencing results
+
+### Cell number
+
+```{r cell-num-counts}
+table(summary_per_sample_reads_single_qc$cell_number)
+```
+
+```{r cell-num-ercc}
+ggplot(summary_per_sample_reads_single_qc,
+       aes(x = as.factor(cell_number), y = ERCC.ratios)) +
+  geom_boxplot()
+```
+
+```{r cell-num-unmapped}
+ggplot(summary_per_sample_reads_single_qc,
+       aes(x = as.factor(cell_number), y = unmapped.ratios)) +
+  geom_boxplot()
+```
+
+### Concentration
+
+```{r concentration-sum}
+summary(summary_per_sample_reads_single_qc$concentration)
+```
+
+```{r conc-ercc}
+ggplot(summary_per_sample_reads_single_qc,
+       aes(x = concentration, y = ERCC.ratios)) +
+  geom_point() +
+  geom_smooth()
+```
+
+```{r conc-unmapped}
+ggplot(summary_per_sample_reads_single_qc,
+       aes(x = concentration, y = unmapped.ratios)) +
+  geom_point() +
+  geom_smooth()
+```
+
+### Tra-1-60
+
+Tra-1-60 is a [stem cell marker][marker].
+
+[marker]: https://en.wikipedia.org/wiki/Stem_cell_marker
+
+```{r tra-sum}
+table(summary_per_sample_reads_single_qc$tra1.60)
+```
+
+```{r tra-ercc}
+ggplot(summary_per_sample_reads_single_qc,
+       aes(x = as.factor(tra1.60), y = ERCC.ratios)) +
+  geom_boxplot()
+```
+
+```{r tra-unmapped}
+ggplot(summary_per_sample_reads_single_qc,
+       aes(x = as.factor(tra1.60), y = unmapped.ratios)) +
+  geom_boxplot()
+```
+
+### Filtering by cell number and Tra-1-60
+
+Simply removing all the cells with bad cell number or tra-1-60 does not remove all the low quality samples.
+
+```{r cell-num-tra-sum}
+table(summary_per_sample_reads_single_qc$cell_number,
+      summary_per_sample_reads_single_qc$tra1.60)
+```
+
+```{r qc-filtered-by-cell-num-tra}
+ggplot(subset(summary_per_sample_reads_single_qc, cell_number == 1 & tra1.60 == 1),
+       aes(x = total.mapped, y = ERCC.ratios)) +
+  geom_point()
+ggplot(subset(summary_per_sample_reads_single_qc, cell_number == 1 & tra1.60 == 1),
+       aes(x = total.mapped, y = unmapped.ratios)) +
+  geom_point()
 ```
 
 ## Session information
