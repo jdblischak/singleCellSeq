@@ -120,6 +120,29 @@ ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = ERCC.ratios, c
 ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = total.ERCC, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))
 ```
 
+### adjust the ERCC total reads of 19098 batch 2
+```{r}
+summary_per_sample_reads_single$index_19098_2 <- (summary_per_sample_reads_single$individual=="19098" & summary_per_sample_reads_single$batch=="2")
+
+#calculating the ratio of 19098 batch 2 to the rest
+adjusted_ratio <- mean(summary_per_sample_reads_single$total.ERCC[summary_per_sample_reads_single$index_19098_2])/mean(summary_per_sample_reads_single$total.ERCC[!summary_per_sample_reads_single$index_19098_2])
+
+#calculating the pippetting error rate before 21 cycle amplification
+adjusted_ratio^(1/22)
+
+#adjusted total ERCC reads
+summary_per_sample_reads_single$adj.total.ERCC <- summary_per_sample_reads_single$total.ERCC  
+
+summary_per_sample_reads_single$adj.total.ERCC[summary_per_sample_reads_single$index_19098_2] <- summary_per_sample_reads_single$adj.total.ERCC[summary_per_sample_reads_single$index_19098_2]/adjusted_ratio
+
+#adjust ERCC ratio
+summary_per_sample_reads_single$adj.ERCC.ratios <-
+summary_per_sample_reads_single$adj.total.ERCC/summary_per_sample_reads_single$total.mapped
+
+ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = adj.ERCC.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))
+
+```
+
 ### QC by cell number
 ```{r cell-number}
 #add cell number per well by merging qc file
@@ -132,6 +155,8 @@ ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = ERCC.ratios
 ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))
 
 ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))
+
+ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = adj.ERCC.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))
 ```
 
 Given that each plates/batch was collected seperately and independently, it would be reasonable to remove the bad quality cell by batch (using different cutoffs for each C1 collection). For exmaple, 19098 batch 2 have more ERCC than all the others. Using the same quiteria would end up with no cell.
