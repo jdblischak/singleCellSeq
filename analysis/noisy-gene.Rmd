@@ -1,0 +1,147 @@
+---
+title: "identification of noisy genes"
+author: "Po-Yuan Tung"
+date: 2015-06-03
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+opts_chunk$set(fig.width = 8, fig.height = 8)
+```
+
+## Input
+
+```{r packages, message=FALSE}
+library("dplyr")
+library("ggplot2")
+theme_set(theme_bw(base_size = 16))
+library("edgeR")
+```
+
+Summary counts from featureCounts.
+Created with [gather-summary-counts.py](https://github.com/jdblischak/singleCellSeq/blob/master/code/gather-summary-counts.py).
+
+```{r input-summary-counts}
+summary_counts <- read.table("../data/summary-counts.txt", header = TRUE,
+                             stringsAsFactors = FALSE)
+```
+
+Using only the sickle-trimmed data, sum the counts across all the sequencing lanes for a given sample.
+
+```{r sum-per-sample}
+summary_per_sample <- summary_counts %>%
+  filter(sickle == "quality-trimmed") %>%
+  select(-index, -lane, -flow_cell, -sickle) %>%
+  group_by(individual, batch, well, rmdup) %>%
+  summarise_each(funs(sum)) %>%
+  ungroup %>%
+  as.data.frame
+```
+
+Input annotation.
+
+```{r input-annotation}
+anno <- read.table("../data/annotation.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno)
+```
+
+Input read counts.
+
+```{r input-read-counts}
+reads <- read.table("../data/reads.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+```
+
+Input molecule counts.
+
+```{r input-molecule-counts}
+molecules <- read.table("../data/molecules.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+```
+
+Input single cell observational quality control data.
+
+```{r input-qc}
+qc <- read.table("../data/qc-ipsc.txt", header = TRUE,
+                 stringsAsFactors = FALSE)
+head(qc)
+```
+
+## remove bad quality cells
+
+```{r remove}
+#reads per sample
+summary_per_sample_reads <- summary_per_sample %>% filter(rmdup == "reads")
+
+#create unmapped ratios
+summary_per_sample_reads$unmapped.ratios <- summary_per_sample_reads[,9]/apply(summary_per_sample_reads[,5:13],1,sum)
+
+#create total mapped reads
+summary_per_sample_reads$total.mapped <- apply(summary_per_sample_reads[,5:8],1,sum)
+
+#creat ERCC ratios
+summary_per_sample_reads$ERCC.ratios <- apply(reads[grep("ERCC", rownames(reads)), ],2,sum)/apply(summary_per_sample_reads[,5:8],1,sum)
+
+#remove bulk keep single cell
+summary_per_sample_reads_single <- summary_per_sample_reads[summary_per_sample_reads$well!="bulk",]
+
+#add cell number per well by merging qc file
+summary_per_sample_reads_single_qc <- merge(summary_per_sample_reads_single,qc,by=c("individual","batch","well"))
+
+#qc filter
+summary_per_sample_reads_single_qc$qc_filter <- summary_per_sample_reads_single_qc$cell_number == 1 & summary_per_sample_reads_single_qc$total.mapped > 2 * 10^6
+
+sum(summary_per_sample_reads_single_qc$qc_filter)
+
+ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped , y = unmapped.ratios, col = qc_filter)) + geom_text(aes(label = cell_number))
+
+ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped , y = ERCC.ratios, col = qc_filter)) + geom_text(aes(label = cell_number))
+
+```
+
+## molecule number of ERCC
+
+```{r ERCC}
+# molecules per sample
+summary_per_sample_molecules <- summary_per_sample %>% filter(rmdup == "molecules")
+
+# total ERCC molecule
+summary_per_sample_molecules$total.ERCC.mol <- apply(molecules[grep("ERCC", rownames(reads)), ],2,sum)
+
+# remove bulk keep single cell
+summary_per_sample_molecules_single <- summary_per_sample_molecules[summary_per_sample_molecules$well!="bulk",]
+
+plot(summary_per_sample_molecules_single$total.ERCC.mol)
+
+# adjust total ERCC molecules of 19098 batch2
+summary_per_sample_molecules_single$index_19098_2 <- (summary_per_sample_molecules_single$individual == "19098" & summary_per_sample_molecules_single$batch == "2")
+
+# calculating the ratio of 19098 batch 2 to the rest
+adjusted_ratio.mol <- mean(summary_per_sample_molecules_single$total.ERCC.mol[summary_per_sample_molecules_single$index_19098_2])/mean(summary_per_sample_molecules_single$total.ERCC[!summary_per_sample_molecules_single$index_19098_2])
+
+adjusted_ratio.mol 
+
+# adjusted total ERCC reads
+summary_per_sample_molecules_single$adj.total.ERCC.mol <- summary_per_sample_molecules_single$total.ERCC.mol  
+
+summary_per_sample_molecules_single$adj.total.ERCC.mol[summary_per_sample_molecules_single$index_19098_2] <- summary_per_sample_molecules_single$adj.total.ERCC.mol[summary_per_sample_molecules_single$index_19098_2]/adjusted_ratio.mol
+
+# adjusted ERCC ratios
+summary_per_sample_molecules_single$adj.ERCC.ratios.mol <-
+summary_per_sample_molecules_single$adj.total.ERCC.mol/summary_per_sample_molecules_single$Assigned
+
+ggplot(summary_per_sample_molecules_single, aes(x = Assigned, y = adj.ERCC.ratios.mol, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))
+
+# qc filter
+
+```
+## Session information
+
+```{r info}
+sessionInfo()
+```
