@@ -125,15 +125,15 @@ img {
 <div id="TOC">
 <ul>
 <li><a href="#input">Input</a></li>
-<li><a href="#quality-control-at-cell-level">Quality control at cell level</a></li>
+<li><a href="#qc-at-cell-level">QC at cell level</a></li>
 <li><a href="#effect-of-cell-qc-data-on-sequencing-results">Effect of cell QC data on sequencing results</a></li>
 <li><a href="#pca">PCA</a></li>
 <li><a href="#session-information">Session information</a></li>
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-06-02</p>
-<p><strong>Code version:</strong> 6c992071c6e1c2fe12e38ccde012fa85b2aff9d1</p>
+<p><strong>Last updated:</strong> 2015-06-05</p>
+<p><strong>Code version:</strong> e584fdea5b3086a556ecebcc0800141cd513b060</p>
 <div id="input" class="section level2">
 <h2>Input</h2>
 <pre class="r"><code>library(&quot;dplyr&quot;)
@@ -180,8 +180,10 @@ head(qc)</code></pre>
 5      19098     1  A05           1      2.313047       1
 6      19098     1  A06           1      2.056803       1</code></pre>
 </div>
-<div id="quality-control-at-cell-level" class="section level2">
-<h2>Quality control at cell level</h2>
+<div id="qc-at-cell-level" class="section level2">
+<h2>QC at cell level</h2>
+<div id="total-mapped-reads-unmapped-ratios-and-ercc-ratios" class="section level3">
+<h3>total mapped reads, unmapped ratios, and ERCC ratios</h3>
 <p>Looking at the unmapped ratio and ERCC ratio of each cell.</p>
 <ol style="list-style-type: decimal">
 <li>low number of mapped reads might be caused by cell apoptosis, RNA degradation, insufficient cell lysis, bad Tn5 transposase quality, or contamination</li>
@@ -202,36 +204,72 @@ ggplot(summary_per_sample_reads, aes(x = total.mapped, y = unmapped.ratios, col 
 <pre class="r"><code>#plot the sum of reads and &#39;Assigned&#39;
 plot(apply(reads,2,sum),summary_per_sample_reads[,5])</code></pre>
 <p><img src="figure/qc-cell-ipsc.Rmd/reads-2.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>#total ERCC reads 
+summary_per_sample_reads$total.ERCC &lt;- apply(reads[grep(&quot;ERCC&quot;, rownames(reads)), ],2,sum)
+
+plot(summary_per_sample_reads$total.ERCC)</code></pre>
+<p><img src="figure/qc-cell-ipsc.Rmd/reads-3.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>#creat ERCC ratios
 summary_per_sample_reads$ERCC.ratios &lt;- apply(reads[grep(&quot;ERCC&quot;, rownames(reads)), ],2,sum)/apply(summary_per_sample_reads[,5:8],1,sum)
 
 #plot
 ggplot(summary_per_sample_reads, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5)</code></pre>
-<p><img src="figure/qc-cell-ipsc.Rmd/reads-3.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p><img src="figure/qc-cell-ipsc.Rmd/reads-4.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>#remove bulk keep single cell
 summary_per_sample_reads_single &lt;- summary_per_sample_reads[summary_per_sample_reads$well!=&quot;bulk&quot;,]
 
 ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5)</code></pre>
-<p><img src="figure/qc-cell-ipsc.Rmd/reads-4.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5)</code></pre>
 <p><img src="figure/qc-cell-ipsc.Rmd/reads-5.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))</code></pre>
+<pre class="r"><code>ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5)</code></pre>
 <p><img src="figure/qc-cell-ipsc.Rmd/reads-6.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))</code></pre>
+<pre class="r"><code>ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))</code></pre>
 <p><img src="figure/qc-cell-ipsc.Rmd/reads-7.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
-<p>QC by cell number, unmapped ratio, and ERCC ratio</p>
+<pre class="r"><code>ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))</code></pre>
+<p><img src="figure/qc-cell-ipsc.Rmd/reads-8.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = total.ERCC, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))</code></pre>
+<p><img src="figure/qc-cell-ipsc.Rmd/reads-9.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
+<div id="adjust-the-ercc-total-reads-of-19098-batch-2" class="section level3">
+<h3>adjust the ERCC total reads of 19098 batch 2</h3>
+<pre class="r"><code>summary_per_sample_reads_single$index_19098_2 &lt;- (summary_per_sample_reads_single$individual==&quot;19098&quot; &amp; summary_per_sample_reads_single$batch==&quot;2&quot;)
+
+#calculating the ratio of 19098 batch 2 to the rest
+adjusted_ratio &lt;- mean(summary_per_sample_reads_single$total.ERCC[summary_per_sample_reads_single$index_19098_2])/mean(summary_per_sample_reads_single$total.ERCC[!summary_per_sample_reads_single$index_19098_2])
+
+#calculating the pippetting error rate before 21 cycle amplification
+adjusted_ratio^(1/22)</code></pre>
+<pre><code>[1] 1.078894</code></pre>
+<pre class="r"><code>#adjusted total ERCC reads
+summary_per_sample_reads_single$adj.total.ERCC &lt;- summary_per_sample_reads_single$total.ERCC  
+
+summary_per_sample_reads_single$adj.total.ERCC[summary_per_sample_reads_single$index_19098_2] &lt;- summary_per_sample_reads_single$adj.total.ERCC[summary_per_sample_reads_single$index_19098_2]/adjusted_ratio
+
+#adjust ERCC ratio
+summary_per_sample_reads_single$adj.ERCC.ratios &lt;-
+summary_per_sample_reads_single$adj.total.ERCC/summary_per_sample_reads_single$total.mapped
+
+ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = adj.ERCC.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))</code></pre>
+<p><img src="figure/qc-cell-ipsc.Rmd/unnamed-chunk-1-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
+<div id="qc-by-cell-number" class="section level3">
+<h3>QC by cell number</h3>
 <pre class="r"><code>#add cell number per well by merging qc file
 summary_per_sample_reads_single_qc &lt;- merge(summary_per_sample_reads_single,qc,by=c(&quot;individual&quot;,&quot;batch&quot;,&quot;well&quot;))
 
 ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)</code></pre>
-<p><img src="figure/qc-cell-ipsc.Rmd/cell-qc-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p><img src="figure/qc-cell-ipsc.Rmd/cell-number-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)</code></pre>
-<p><img src="figure/qc-cell-ipsc.Rmd/cell-qc-2.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p><img src="figure/qc-cell-ipsc.Rmd/cell-number-2.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))</code></pre>
-<p><img src="figure/qc-cell-ipsc.Rmd/cell-qc-3.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p><img src="figure/qc-cell-ipsc.Rmd/cell-number-3.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))</code></pre>
-<p><img src="figure/qc-cell-ipsc.Rmd/cell-qc-4.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p><img src="figure/qc-cell-ipsc.Rmd/cell-number-4.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = adj.ERCC.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))</code></pre>
+<p><img src="figure/qc-cell-ipsc.Rmd/cell-number-5.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <p>Given that each plates/batch was collected seperately and independently, it would be reasonable to remove the bad quality cell by batch (using different cutoffs for each C1 collection). For exmaple, 19098 batch 2 have more ERCC than all the others. Using the same quiteria would end up with no cell.</p>
+</div>
+<div id="cutoff-by-c1-plate" class="section level3">
+<h3>cutoff by C1 plate</h3>
 <pre class="r"><code>#individual 19098 batch1
 C1_19098_1 &lt;- summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$individual == &quot;19098&quot; &amp; summary_per_sample_reads_single_qc$batch ==&quot;1&quot;,]
 
@@ -242,35 +280,30 @@ ggplot(C1_19098_1, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(in
 <pre class="r"><code>C1_19098_1_retained &lt;- C1_19098_1[C1_19098_1$unmapped.ratios&lt; 0.4 &amp; C1_19098_1$ERCC.ratios&lt; 0.025 &amp; C1_19098_1$cell_number == 1,]
 
 dim(C1_19098_1_retained)</code></pre>
-<pre><code>[1] 86 19</code></pre>
-<pre class="r"><code>ggplot(C1_19098_1_retained, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)</code></pre>
-<p><img src="figure/qc-cell-ipsc.Rmd/by-C1-3.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre><code>[1] 86 23</code></pre>
 <pre class="r"><code>#individual 19098 batch2
 C1_19098_2 &lt;- summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$individual == &quot;19098&quot; &amp; summary_per_sample_reads_single_qc$batch ==&quot;2&quot;,]
 
 ggplot(C1_19098_2, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)</code></pre>
-<p><img src="figure/qc-cell-ipsc.Rmd/by-C1-4.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p><img src="figure/qc-cell-ipsc.Rmd/by-C1-3.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>ggplot(C1_19098_2, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)</code></pre>
-<p><img src="figure/qc-cell-ipsc.Rmd/by-C1-5.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p><img src="figure/qc-cell-ipsc.Rmd/by-C1-4.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>C1_19098_2_retained &lt;- C1_19098_2[C1_19098_2$unmapped.ratios&lt; 0.6 &amp; C1_19098_2$ERCC.ratios&lt; 0.35 &amp; C1_19098_2$cell_number == 1,]
 
 dim(C1_19098_2_retained)</code></pre>
-<pre><code>[1] 88 19</code></pre>
-<pre class="r"><code>ggplot(C1_19098_2_retained, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)</code></pre>
-<p><img src="figure/qc-cell-ipsc.Rmd/by-C1-6.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre><code>[1] 88 23</code></pre>
 <pre class="r"><code>#individual 19098 batch3
 C1_19098_3 &lt;- summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$individual == &quot;19098&quot; &amp; summary_per_sample_reads_single_qc$batch ==&quot;3&quot;,]
 
 ggplot(C1_19098_3, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)</code></pre>
-<p><img src="figure/qc-cell-ipsc.Rmd/by-C1-7.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p><img src="figure/qc-cell-ipsc.Rmd/by-C1-5.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>ggplot(C1_19098_3, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)</code></pre>
-<p><img src="figure/qc-cell-ipsc.Rmd/by-C1-8.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p><img src="figure/qc-cell-ipsc.Rmd/by-C1-6.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>C1_19098_3_retained &lt;- C1_19098_3[C1_19098_3$unmapped.ratios&lt; 0.45 &amp; C1_19098_3$ERCC.ratios&lt; 0.08 &amp; C1_19098_3$cell_number == 1,]
 
 dim(C1_19098_3_retained)</code></pre>
-<pre><code>[1] 78 19</code></pre>
-<pre class="r"><code>ggplot(C1_19098_3_retained, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)</code></pre>
-<p><img src="figure/qc-cell-ipsc.Rmd/by-C1-9.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre><code>[1] 78 23</code></pre>
+</div>
 </div>
 <div id="effect-of-cell-qc-data-on-sequencing-results" class="section level2">
 <h2>Effect of cell QC data on sequencing results</h2>

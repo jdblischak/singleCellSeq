@@ -1,0 +1,1233 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+<meta name="author" content="Po-Yuan Tung" />
+
+<meta name="date" content="2015-06-03" />
+
+<title>identification of noisy genes</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">identification of noisy genes</h1>
+<h4 class="author"><em>Po-Yuan Tung</em></h4>
+<h4 class="date"><em>2015-06-03</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#input">Input</a></li>
+<li><a href="#remove-bad-quality-cells">Remove bad quality cells</a></li>
+<li><a href="#total-molecule-number-of-ercc">Total molecule number of ERCC</a></li>
+<li><a href="#cv-and-mean">CV and mean</a></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2015-06-05</p>
+<p><strong>Code version:</strong> e584fdea5b3086a556ecebcc0800141cd513b060</p>
+<div id="input" class="section level2">
+<h2>Input</h2>
+<pre class="r"><code>library(&quot;dplyr&quot;)
+library(&quot;ggplot2&quot;)
+theme_set(theme_bw(base_size = 16))
+library(&quot;edgeR&quot;)</code></pre>
+<p>Summary counts from featureCounts. Created with <a href="https://github.com/jdblischak/singleCellSeq/blob/master/code/gather-summary-counts.py">gather-summary-counts.py</a>.</p>
+<pre class="r"><code>summary_counts &lt;- read.table(&quot;../data/summary-counts.txt&quot;, header = TRUE,
+                             stringsAsFactors = FALSE)</code></pre>
+<p>Using only the sickle-trimmed data, sum the counts across all the sequencing lanes for a given sample.</p>
+<pre class="r"><code>summary_per_sample &lt;- summary_counts %&gt;%
+  filter(sickle == &quot;quality-trimmed&quot;) %&gt;%
+  select(-index, -lane, -flow_cell, -sickle) %&gt;%
+  group_by(individual, batch, well, rmdup) %&gt;%
+  summarise_each(funs(sum)) %&gt;%
+  ungroup %&gt;%
+  as.data.frame</code></pre>
+<p>Input annotation.</p>
+<pre class="r"><code>anno &lt;- read.table(&quot;../data/annotation.txt&quot;, header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno)</code></pre>
+<pre><code>  individual batch well     sample_id
+1      19098     1  A01 NA19098.1.A01
+2      19098     1  A02 NA19098.1.A02
+3      19098     1  A03 NA19098.1.A03
+4      19098     1  A04 NA19098.1.A04
+5      19098     1  A05 NA19098.1.A05
+6      19098     1  A06 NA19098.1.A06</code></pre>
+<p>Input read counts.</p>
+<pre class="r"><code>reads &lt;- read.table(&quot;../data/reads.txt&quot;, header = TRUE,
+                    stringsAsFactors = FALSE)</code></pre>
+<p>Input molecule counts.</p>
+<pre class="r"><code>molecules &lt;- read.table(&quot;../data/molecules.txt&quot;, header = TRUE,
+                    stringsAsFactors = FALSE)</code></pre>
+<p>Input single cell observational quality control data.</p>
+<pre class="r"><code>qc &lt;- read.table(&quot;../data/qc-ipsc.txt&quot;, header = TRUE,
+                 stringsAsFactors = FALSE)
+head(qc)</code></pre>
+<pre><code>  individual batch well cell_number concentration tra1.60
+1      19098     1  A01           1      1.734785       1
+2      19098     1  A02           1      1.723038       1
+3      19098     1  A03           1      1.512786       1
+4      19098     1  A04           1      1.347492       1
+5      19098     1  A05           1      2.313047       1
+6      19098     1  A06           1      2.056803       1</code></pre>
+</div>
+<div id="remove-bad-quality-cells" class="section level2">
+<h2>Remove bad quality cells</h2>
+<div id="remove-cells-with-total-reads-2-millons" class="section level3">
+<h3>Remove cells with total reads &lt; 2 millons</h3>
+<pre class="r"><code>#reads per sample
+summary_per_sample_reads &lt;- summary_per_sample %&gt;% filter(rmdup == &quot;reads&quot;)
+
+#create unmapped ratios
+summary_per_sample_reads$unmapped.ratios &lt;- summary_per_sample_reads[,9]/apply(summary_per_sample_reads[,5:13],1,sum)
+
+#create total mapped reads
+summary_per_sample_reads$total.mapped &lt;- apply(summary_per_sample_reads[,5:8],1,sum)
+
+#creat ERCC ratios
+summary_per_sample_reads$ERCC.ratios &lt;- apply(reads[grep(&quot;ERCC&quot;, rownames(reads)), ],2,sum)/apply(summary_per_sample_reads[,5:8],1,sum)
+
+#remove bulk keep single cell
+summary_per_sample_reads_single &lt;- summary_per_sample_reads[summary_per_sample_reads$well!=&quot;bulk&quot;,]
+
+#add cell number per well by merging qc file
+summary_per_sample_reads_single_qc &lt;- merge(summary_per_sample_reads_single,qc,by=c(&quot;individual&quot;,&quot;batch&quot;,&quot;well&quot;))
+
+#qc filter
+summary_per_sample_reads_single_qc$qc_filter &lt;- summary_per_sample_reads_single_qc$cell_number == 1 &amp; summary_per_sample_reads_single_qc$total.mapped &gt; 2 * 10^6
+
+sum(summary_per_sample_reads_single_qc$qc_filter)</code></pre>
+<pre><code>[1] 632</code></pre>
+<pre class="r"><code>ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped , y = unmapped.ratios, col = qc_filter)) + geom_text(aes(label = cell_number))</code></pre>
+<p><img src="figure/noisy-gene.Rmd/remove-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped , y = ERCC.ratios, col = qc_filter)) + geom_text(aes(label = cell_number))</code></pre>
+<p><img src="figure/noisy-gene.Rmd/remove-2.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
+</div>
+<div id="total-molecule-number-of-ercc" class="section level2">
+<h2>Total molecule number of ERCC</h2>
+<pre class="r"><code># molecules per sample
+summary_per_sample_molecules &lt;- summary_per_sample %&gt;% filter(rmdup == &quot;molecules&quot;)
+
+# total ERCC molecule
+summary_per_sample_molecules$total.ERCC.mol &lt;- apply(molecules[grep(&quot;ERCC&quot;, rownames(reads)), ],2,sum)
+
+# ERCC molecule ratio
+summary_per_sample_molecules$ERCC.ratio.mol &lt;- summary_per_sample_molecules$total.ERCC.mol/summary_per_sample_molecules$Assigned
+
+# remove bulk keep single cell
+summary_per_sample_molecules_single &lt;- summary_per_sample_molecules[summary_per_sample_molecules$well!=&quot;bulk&quot;,]
+
+plot(summary_per_sample_molecules_single$total.ERCC.mol)</code></pre>
+<p><img src="figure/noisy-gene.Rmd/ERCC-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code># adjust total ERCC molecules of 19098 batch2
+summary_per_sample_molecules_single$index_19098_2 &lt;- (summary_per_sample_molecules_single$individual == &quot;19098&quot; &amp; summary_per_sample_molecules_single$batch == &quot;2&quot;)
+
+# calculating the ratio of 19098 batch 2 to the rest
+adjusted_ratio.mol &lt;- mean(summary_per_sample_molecules_single$total.ERCC.mol[summary_per_sample_molecules_single$index_19098_2])/mean(summary_per_sample_molecules_single$total.ERCC[!summary_per_sample_molecules_single$index_19098_2])
+
+adjusted_ratio.mol </code></pre>
+<pre><code>[1] 7.615798</code></pre>
+<pre class="r"><code># adjusted total ERCC reads
+summary_per_sample_molecules_single$adj.total.ERCC.mol &lt;- summary_per_sample_molecules_single$total.ERCC.mol  
+
+summary_per_sample_molecules_single$adj.total.ERCC.mol[summary_per_sample_molecules_single$index_19098_2] &lt;- summary_per_sample_molecules_single$adj.total.ERCC.mol[summary_per_sample_molecules_single$index_19098_2]/adjusted_ratio.mol
+
+# adjusted ERCC ratios
+summary_per_sample_molecules_single$adj.ERCC.ratios.mol &lt;-
+summary_per_sample_molecules_single$adj.total.ERCC.mol/summary_per_sample_molecules_single$Assigned
+
+# add qc filter and cell number
+summary_per_sample_molecules_single$qc_filter &lt;- summary_per_sample_reads_single_qc$qc_filter
+summary_per_sample_molecules_single$cell_number &lt;- summary_per_sample_reads_single_qc$cell_number
+
+ggplot(summary_per_sample_molecules_single, aes(x = Assigned, y = ERCC.ratio.mol, col = qc_filter)) + geom_text(aes(label = cell_number)) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))</code></pre>
+<p><img src="figure/noisy-gene.Rmd/ERCC-2.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(summary_per_sample_molecules_single, aes(x = Assigned, y = adj.ERCC.ratios.mol, col = qc_filter)) + geom_text(aes(label = cell_number)) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))</code></pre>
+<p><img src="figure/noisy-gene.Rmd/ERCC-3.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
+<div id="cv-and-mean" class="section level2">
+<h2>CV and mean</h2>
+<div id="looking-at-molecule" class="section level3">
+<h3>Looking at molecule</h3>
+<pre class="r"><code>#correct for collision probability
+molecules.crt &lt;- -1024*log(1-molecules/1024)</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre><code>Warning in lapply(X = x, FUN = .Generic, ...): NaNs produced</code></pre>
+<pre class="r"><code>#remove bulk
+molecules_single &lt;- molecules.crt %&gt;% select(-contains(&quot;bulk&quot;))
+
+# apply qc_filter
+molecules_single_qc &lt;- molecules_single[,summary_per_sample_reads_single_qc$qc_filter]
+dim(molecules_single_qc)</code></pre>
+<pre><code>[1] 20419   632</code></pre>
+<pre class="r"><code>sum(summary_per_sample_reads_single_qc$qc_filter)</code></pre>
+<pre><code>[1] 632</code></pre>
+<pre class="r"><code># create a new dataset
+molecules_single_qc_w_mean_cv &lt;- molecules_single_qc
+
+# add mean
+molecules_single_qc_w_mean_cv$mean &lt;- apply(molecules_single_qc, 1, mean)
+# add CV
+molecules_single_qc_w_mean_cv$CV &lt;- apply(molecules_single_qc, 1, sd)/ apply(molecules_single_qc, 1, mean)
+
+# remove non-expressed 
+molecules_single_qc_expressed &lt;- molecules_single_qc_w_mean_cv[molecules_single_qc_w_mean_cv$mean &gt;0,]
+dim(molecules_single_qc_expressed)</code></pre>
+<pre><code>[1] 17598   634</code></pre>
+<pre class="r"><code># sellect ERCC
+molecules_single_qc_expressed_ERCC &lt;- molecules_single_qc_expressed[grep(&quot;ERCC&quot;,rownames(molecules_single_qc_expressed)),]
+
+molecules_single_qc_expressed$ERCC &lt;- grepl(&quot;ERCC&quot;,rownames(molecules_single_qc_expressed))
+
+# plot with color-blind-friendly palettes
+cbPalette &lt;- c(&quot;#999999&quot;, &quot;#0000FF&quot;, &quot;#56B4E9&quot;, &quot;#009E73&quot;, &quot;#F0E442&quot;, &quot;#0072B2&quot;, &quot;#D55E00&quot;, &quot;#CC79A7&quot;)
+
+ggplot(molecules_single_qc_expressed, aes(x = mean, y = CV, col = ERCC))  + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_colour_manual(values=cbPalette)</code></pre>
+<pre><code>Warning: Removed 54 rows containing missing values (geom_point).</code></pre>
+<p><img src="figure/noisy-gene.Rmd/CV&mean-molecule-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
+<div id="looking-at-reads" class="section level3">
+<h3>Looking at reads</h3>
+<pre class="r"><code># remove bulk
+reads_single &lt;- reads %&gt;% select(-contains(&quot;bulk&quot;))
+
+# apply qc_filter
+reads_single_qc &lt;- reads_single[,summary_per_sample_reads_single_qc$qc_filter]
+dim(reads_single_qc)</code></pre>
+<pre><code>[1] 20419   632</code></pre>
+<pre class="r"><code>sum(summary_per_sample_reads_single_qc$qc_filter)</code></pre>
+<pre><code>[1] 632</code></pre>
+<pre class="r"><code># create a new dataset
+reads_single_qc_w_mean_cv &lt;- reads_single_qc
+
+# add mean
+reads_single_qc_w_mean_cv$mean &lt;- apply(reads_single_qc, 1, mean)
+
+# add CV
+reads_single_qc_w_mean_cv$CV &lt;- apply(reads_single_qc, 1, sd)/ apply(reads_single_qc, 1, mean)
+
+# remove non-expressed 
+reads_single_qc_expressed &lt;- reads_single_qc_w_mean_cv[reads_single_qc_w_mean_cv$mean &gt;0,]
+dim(reads_single_qc_expressed)</code></pre>
+<pre><code>[1] 17609   634</code></pre>
+<pre class="r"><code># sellect ERCC
+reads_single_qc_expressed$ERCC &lt;- grepl(&quot;ERCC&quot;,rownames(reads_single_qc_expressed))
+
+# plot with color-blind-friendly palettes
+cbPalette &lt;- c(&quot;#999999&quot;, &quot;#0000FF&quot;, &quot;#56B4E9&quot;, &quot;#009E73&quot;, &quot;#F0E442&quot;, &quot;#0072B2&quot;, &quot;#D55E00&quot;, &quot;#CC79A7&quot;)
+
+ggplot(reads_single_qc_expressed, aes(x = mean, y = CV, col = ERCC))  + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_colour_manual(values=cbPalette)</code></pre>
+<p><img src="figure/noisy-gene.Rmd/CV&mean-reads-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.1.1 (2014-07-10)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] edgeR_3.6.7   limma_3.20.8  ggplot2_1.0.0 dplyr_0.4.1   knitr_1.10.5 
+
+loaded via a namespace (and not attached):
+ [1] assertthat_0.1   colorspace_1.2-4 DBI_0.3.1        digest_0.6.4    
+ [5] evaluate_0.7     formatR_0.10     grid_3.1.1       gtable_0.1.2    
+ [9] htmltools_0.2.6  labeling_0.2     lazyeval_0.1.10  magrittr_1.0.1  
+[13] MASS_7.3-33      munsell_0.4.2    parallel_3.1.1   plyr_1.8.1      
+[17] proto_0.3-10     Rcpp_0.11.6      reshape2_1.4     rmarkdown_0.5.1 
+[21] scales_0.2.4     stringr_0.6.2    tools_3.1.1      yaml_2.1.13     </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+
+</body>
+</html>
