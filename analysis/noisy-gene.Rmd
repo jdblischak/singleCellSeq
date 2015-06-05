@@ -72,8 +72,8 @@ qc <- read.table("../data/qc-ipsc.txt", header = TRUE,
 head(qc)
 ```
 
-## remove bad quality cells
-### remove cells with total reads < 2 millons
+## Remove bad quality cells
+### Remove cells with total reads < 2 millons
 ```{r remove}
 #reads per sample
 summary_per_sample_reads <- summary_per_sample %>% filter(rmdup == "reads")
@@ -104,7 +104,7 @@ ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped , y = ERCC.ratio
 
 ```
 
-##  total molecule number of ERCC
+##  Total molecule number of ERCC
 
 ```{r ERCC}
 # molecules per sample
@@ -149,7 +149,7 @@ ggplot(summary_per_sample_molecules_single, aes(x = Assigned, y = adj.ERCC.ratio
 
 ## CV and mean
 
-### looking at molecule
+### Looking at molecule
 ```{r CV&mean-molecule}
 #correct for collision probability
 molecules.crt <- -1024*log(1-molecules/1024)
@@ -170,23 +170,53 @@ molecules_single_qc_w_mean_cv$mean <- apply(molecules_single_qc, 1, mean)
 # add CV
 molecules_single_qc_w_mean_cv$CV <- apply(molecules_single_qc, 1, sd)/ apply(molecules_single_qc, 1, mean)
 
-#remove non-expressed 
+# remove non-expressed 
 molecules_single_qc_expressed <- molecules_single_qc_w_mean_cv[molecules_single_qc_w_mean_cv$mean >0,]
+dim(molecules_single_qc_expressed)
 
-ggplot(molecules_single_qc_expressed, aes(x = mean, y = CV))  + geom_point(size = 3, alpha = 0.5) + scale_x_log10()
+# sellect ERCC
+molecules_single_qc_expressed_ERCC <- molecules_single_qc_expressed[grep("ERCC",rownames(molecules_single_qc_expressed)),]
+
+molecules_single_qc_expressed$ERCC <- grepl("ERCC",rownames(molecules_single_qc_expressed))
+
+# plot with color-blind-friendly palettes
+cbPalette <- c("#999999", "#0000FF", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+
+ggplot(molecules_single_qc_expressed, aes(x = mean, y = CV, col = ERCC))  + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_colour_manual(values=cbPalette)
 
 ```
 
 
-### looking at reads
+### Looking at reads
 ```{r CV&mean-reads}
 # remove bulk
 reads_single <- reads %>% select(-contains("bulk"))
 
 # apply qc_filter
-reads_single_filter <- reads_single[,summary_per_sample_reads_single_qc$qc_filter]
-dim(reads_single_filter)
+reads_single_qc <- reads_single[,summary_per_sample_reads_single_qc$qc_filter]
+dim(reads_single_qc)
 sum(summary_per_sample_reads_single_qc$qc_filter)
+
+# create a new dataset
+reads_single_qc_w_mean_cv <- reads_single_qc
+
+# add mean
+reads_single_qc_w_mean_cv$mean <- apply(reads_single_qc, 1, mean)
+
+# add CV
+reads_single_qc_w_mean_cv$CV <- apply(reads_single_qc, 1, sd)/ apply(reads_single_qc, 1, mean)
+
+# remove non-expressed 
+reads_single_qc_expressed <- reads_single_qc_w_mean_cv[reads_single_qc_w_mean_cv$mean >0,]
+dim(reads_single_qc_expressed)
+
+# sellect ERCC
+reads_single_qc_expressed$ERCC <- grepl("ERCC",rownames(reads_single_qc_expressed))
+
+# plot with color-blind-friendly palettes
+cbPalette <- c("#999999", "#0000FF", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+
+ggplot(reads_single_qc_expressed, aes(x = mean, y = CV, col = ERCC))  + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_colour_manual(values=cbPalette)
 
 ```
 
