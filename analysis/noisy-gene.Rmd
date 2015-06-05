@@ -73,7 +73,7 @@ head(qc)
 ```
 
 ## remove bad quality cells
-
+### remove cells with total reads < 2 millons
 ```{r remove}
 #reads per sample
 summary_per_sample_reads <- summary_per_sample %>% filter(rmdup == "reads")
@@ -113,6 +113,9 @@ summary_per_sample_molecules <- summary_per_sample %>% filter(rmdup == "molecule
 # total ERCC molecule
 summary_per_sample_molecules$total.ERCC.mol <- apply(molecules[grep("ERCC", rownames(reads)), ],2,sum)
 
+# ERCC molecule ratio
+summary_per_sample_molecules$ERCC.ratio.mol <- summary_per_sample_molecules$total.ERCC.mol/summary_per_sample_molecules$Assigned
+
 # remove bulk keep single cell
 summary_per_sample_molecules_single <- summary_per_sample_molecules[summary_per_sample_molecules$well!="bulk",]
 
@@ -135,11 +138,60 @@ summary_per_sample_molecules_single$adj.total.ERCC.mol[summary_per_sample_molecu
 summary_per_sample_molecules_single$adj.ERCC.ratios.mol <-
 summary_per_sample_molecules_single$adj.total.ERCC.mol/summary_per_sample_molecules_single$Assigned
 
-ggplot(summary_per_sample_molecules_single, aes(x = Assigned, y = adj.ERCC.ratios.mol, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))
+# add qc filter and cell number
+summary_per_sample_molecules_single$qc_filter <- summary_per_sample_reads_single_qc$qc_filter
+summary_per_sample_molecules_single$cell_number <- summary_per_sample_reads_single_qc$cell_number
 
-# qc filter
+ggplot(summary_per_sample_molecules_single, aes(x = Assigned, y = ERCC.ratio.mol, col = qc_filter)) + geom_text(aes(label = cell_number)) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))
+
+ggplot(summary_per_sample_molecules_single, aes(x = Assigned, y = adj.ERCC.ratios.mol, col = qc_filter)) + geom_text(aes(label = cell_number)) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))
+```
+
+## CV and mean
+
+### looking at molecule
+```{r CV&mean-molecule}
+#correct for collision probability
+molecules.crt <- -1024*log(1-molecules/1024)
+
+#remove bulk
+molecules_single <- molecules.crt %>% select(-contains("bulk"))
+
+# apply qc_filter
+molecules_single_qc <- molecules_single[,summary_per_sample_reads_single_qc$qc_filter]
+dim(molecules_single_qc)
+sum(summary_per_sample_reads_single_qc$qc_filter)
+
+# create a new dataset
+molecules_single_qc_w_mean_cv <- molecules_single_qc
+
+# add mean
+molecules_single_qc_w_mean_cv$mean <- apply(molecules_single_qc, 1, mean)
+# add CV
+molecules_single_qc_w_mean_cv$CV <- apply(molecules_single_qc, 1, sd)/ apply(molecules_single_qc, 1, mean)
+
+#remove non-expressed 
+molecules_single_qc_expressed <- molecules_single_qc_w_mean_cv[molecules_single_qc_w_mean_cv$mean >0,]
+
+ggplot(molecules_single_qc_expressed, aes(x = mean, y = CV))  + geom_point(size = 3, alpha = 0.5) + scale_x_log10()
 
 ```
+
+
+### looking at reads
+```{r CV&mean-reads}
+# remove bulk
+reads_single <- reads %>% select(-contains("bulk"))
+
+# apply qc_filter
+reads_single_filter <- reads_single[,summary_per_sample_reads_single_qc$qc_filter]
+dim(reads_single_filter)
+sum(summary_per_sample_reads_single_qc$qc_filter)
+
+```
+
+
+
 ## Session information
 
 ```{r info}
