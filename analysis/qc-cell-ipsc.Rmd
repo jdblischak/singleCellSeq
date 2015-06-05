@@ -71,7 +71,8 @@ qc <- read.table("../data/qc-ipsc.txt", header = TRUE,
 head(qc)
 ```
 
-## Quality control at cell level
+## QC at cell level
+### total mapped reads, unmapped ratios, and ERCC ratios
 
 Looking at the unmapped ratio and ERCC ratio of each cell.
 
@@ -94,6 +95,11 @@ ggplot(summary_per_sample_reads, aes(x = total.mapped, y = unmapped.ratios, col 
 #plot the sum of reads and 'Assigned'
 plot(apply(reads,2,sum),summary_per_sample_reads[,5])
 
+#total ERCC reads 
+summary_per_sample_reads$total.ERCC <- apply(reads[grep("ERCC", rownames(reads)), ],2,sum)
+
+plot(summary_per_sample_reads$total.ERCC)
+
 #creat ERCC ratios
 summary_per_sample_reads$ERCC.ratios <- apply(reads[grep("ERCC", rownames(reads)), ],2,sum)/apply(summary_per_sample_reads[,5:8],1,sum)
 
@@ -110,10 +116,35 @@ ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = ERCC.ratios, c
 ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))
 
 ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))
+
+ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = total.ERCC, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))
 ```
 
-QC by cell number, unmapped ratio, and ERCC ratio
-```{r cell-qc}
+### adjust the ERCC total reads of 19098 batch 2
+```{r}
+summary_per_sample_reads_single$index_19098_2 <- (summary_per_sample_reads_single$individual=="19098" & summary_per_sample_reads_single$batch=="2")
+
+#calculating the ratio of 19098 batch 2 to the rest
+adjusted_ratio <- mean(summary_per_sample_reads_single$total.ERCC[summary_per_sample_reads_single$index_19098_2])/mean(summary_per_sample_reads_single$total.ERCC[!summary_per_sample_reads_single$index_19098_2])
+
+#calculating the pippetting error rate before 21 cycle amplification
+adjusted_ratio^(1/22)
+
+#adjusted total ERCC reads
+summary_per_sample_reads_single$adj.total.ERCC <- summary_per_sample_reads_single$total.ERCC  
+
+summary_per_sample_reads_single$adj.total.ERCC[summary_per_sample_reads_single$index_19098_2] <- summary_per_sample_reads_single$adj.total.ERCC[summary_per_sample_reads_single$index_19098_2]/adjusted_ratio
+
+#adjust ERCC ratio
+summary_per_sample_reads_single$adj.ERCC.ratios <-
+summary_per_sample_reads_single$adj.total.ERCC/summary_per_sample_reads_single$total.mapped
+
+ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = adj.ERCC.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))
+
+```
+
+### QC by cell number
+```{r cell-number}
 #add cell number per well by merging qc file
 summary_per_sample_reads_single_qc <- merge(summary_per_sample_reads_single,qc,by=c("individual","batch","well"))
 
@@ -124,10 +155,13 @@ ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = ERCC.ratios
 ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))
 
 ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))
+
+ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = adj.ERCC.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))
 ```
 
 Given that each plates/batch was collected seperately and independently, it would be reasonable to remove the bad quality cell by batch (using different cutoffs for each C1 collection). For exmaple, 19098 batch 2 have more ERCC than all the others. Using the same quiteria would end up with no cell.
 
+### cutoff by C1 plate
 ```{r by-C1}
 #individual 19098 batch1
 C1_19098_1 <- summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$individual == "19098" & summary_per_sample_reads_single_qc$batch =="1",]
@@ -140,8 +174,6 @@ C1_19098_1_retained <- C1_19098_1[C1_19098_1$unmapped.ratios< 0.4 & C1_19098_1$E
 
 dim(C1_19098_1_retained)
 
-ggplot(C1_19098_1_retained, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)
-
 #individual 19098 batch2
 C1_19098_2 <- summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$individual == "19098" & summary_per_sample_reads_single_qc$batch =="2",]
 
@@ -152,8 +184,6 @@ ggplot(C1_19098_2, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(indivi
 C1_19098_2_retained <- C1_19098_2[C1_19098_2$unmapped.ratios< 0.6 & C1_19098_2$ERCC.ratios< 0.35 & C1_19098_2$cell_number == 1,]
 
 dim(C1_19098_2_retained)
-
-ggplot(C1_19098_2_retained, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)
 
 #individual 19098 batch3
 C1_19098_3 <- summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$individual == "19098" & summary_per_sample_reads_single_qc$batch =="3",]
@@ -166,7 +196,6 @@ C1_19098_3_retained <- C1_19098_3[C1_19098_3$unmapped.ratios< 0.45 & C1_19098_3$
 
 dim(C1_19098_3_retained)
 
-ggplot(C1_19098_3_retained, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)
 ```
 
 ## Effect of cell QC data on sequencing results

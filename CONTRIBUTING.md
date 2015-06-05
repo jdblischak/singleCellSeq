@@ -49,7 +49,7 @@ rstudio-end
 `rstudio-end` is an alias for the following:
 
 ```bash
-pkill rserver && pkill rsession
+pkill rserver && pkill rsession && find /tmp -name 'rstudio*' -type d -user $USER -exec rm -r {} + 2> /dev/null
 ```
 
 If you re-start RStudio Server, you may receive a message about an error due to an unexpected crash.
@@ -64,7 +64,7 @@ rstudio-clean
 `rstudio-clean` is an alias for the following:
 
 ```bash
-rm ~/.rstudio -r && rm /tmp/rstudio* -r
+rm ~/.rstudio -r && find /tmp -name 'rstudio*' -type d -user $USER -exec rm -r {} + 2> /dev/null
 ```
 
 ## Creating a new analysis

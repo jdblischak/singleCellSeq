@@ -1,0 +1,229 @@
+---
+title: "identification of noisy genes"
+author: "Po-Yuan Tung"
+date: 2015-06-03
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+opts_chunk$set(fig.width = 8, fig.height = 8)
+```
+
+## Input
+
+```{r packages, message=FALSE}
+library("dplyr")
+library("ggplot2")
+theme_set(theme_bw(base_size = 16))
+library("edgeR")
+```
+
+Summary counts from featureCounts.
+Created with [gather-summary-counts.py](https://github.com/jdblischak/singleCellSeq/blob/master/code/gather-summary-counts.py).
+
+```{r input-summary-counts}
+summary_counts <- read.table("../data/summary-counts.txt", header = TRUE,
+                             stringsAsFactors = FALSE)
+```
+
+Using only the sickle-trimmed data, sum the counts across all the sequencing lanes for a given sample.
+
+```{r sum-per-sample}
+summary_per_sample <- summary_counts %>%
+  filter(sickle == "quality-trimmed") %>%
+  select(-index, -lane, -flow_cell, -sickle) %>%
+  group_by(individual, batch, well, rmdup) %>%
+  summarise_each(funs(sum)) %>%
+  ungroup %>%
+  as.data.frame
+```
+
+Input annotation.
+
+```{r input-annotation}
+anno <- read.table("../data/annotation.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno)
+```
+
+Input read counts.
+
+```{r input-read-counts}
+reads <- read.table("../data/reads.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+```
+
+Input molecule counts.
+
+```{r input-molecule-counts}
+molecules <- read.table("../data/molecules.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+```
+
+Input single cell observational quality control data.
+
+```{r input-qc}
+qc <- read.table("../data/qc-ipsc.txt", header = TRUE,
+                 stringsAsFactors = FALSE)
+head(qc)
+```
+
+## Remove bad quality cells
+### Remove cells with total reads < 2 millons
+```{r remove}
+#reads per sample
+summary_per_sample_reads <- summary_per_sample %>% filter(rmdup == "reads")
+
+#create unmapped ratios
+summary_per_sample_reads$unmapped.ratios <- summary_per_sample_reads[,9]/apply(summary_per_sample_reads[,5:13],1,sum)
+
+#create total mapped reads
+summary_per_sample_reads$total.mapped <- apply(summary_per_sample_reads[,5:8],1,sum)
+
+#creat ERCC ratios
+summary_per_sample_reads$ERCC.ratios <- apply(reads[grep("ERCC", rownames(reads)), ],2,sum)/apply(summary_per_sample_reads[,5:8],1,sum)
+
+#remove bulk keep single cell
+summary_per_sample_reads_single <- summary_per_sample_reads[summary_per_sample_reads$well!="bulk",]
+
+#add cell number per well by merging qc file
+summary_per_sample_reads_single_qc <- merge(summary_per_sample_reads_single,qc,by=c("individual","batch","well"))
+
+#qc filter
+summary_per_sample_reads_single_qc$qc_filter <- summary_per_sample_reads_single_qc$cell_number == 1 & summary_per_sample_reads_single_qc$total.mapped > 2 * 10^6
+
+sum(summary_per_sample_reads_single_qc$qc_filter)
+
+ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped , y = unmapped.ratios, col = qc_filter)) + geom_text(aes(label = cell_number))
+
+ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped , y = ERCC.ratios, col = qc_filter)) + geom_text(aes(label = cell_number))
+
+```
+
+##  Total molecule number of ERCC
+
+```{r ERCC}
+# molecules per sample
+summary_per_sample_molecules <- summary_per_sample %>% filter(rmdup == "molecules")
+
+# total ERCC molecule
+summary_per_sample_molecules$total.ERCC.mol <- apply(molecules[grep("ERCC", rownames(reads)), ],2,sum)
+
+# ERCC molecule ratio
+summary_per_sample_molecules$ERCC.ratio.mol <- summary_per_sample_molecules$total.ERCC.mol/summary_per_sample_molecules$Assigned
+
+# remove bulk keep single cell
+summary_per_sample_molecules_single <- summary_per_sample_molecules[summary_per_sample_molecules$well!="bulk",]
+
+plot(summary_per_sample_molecules_single$total.ERCC.mol)
+
+# adjust total ERCC molecules of 19098 batch2
+summary_per_sample_molecules_single$index_19098_2 <- (summary_per_sample_molecules_single$individual == "19098" & summary_per_sample_molecules_single$batch == "2")
+
+# calculating the ratio of 19098 batch 2 to the rest
+adjusted_ratio.mol <- mean(summary_per_sample_molecules_single$total.ERCC.mol[summary_per_sample_molecules_single$index_19098_2])/mean(summary_per_sample_molecules_single$total.ERCC[!summary_per_sample_molecules_single$index_19098_2])
+
+adjusted_ratio.mol 
+
+# adjusted total ERCC reads
+summary_per_sample_molecules_single$adj.total.ERCC.mol <- summary_per_sample_molecules_single$total.ERCC.mol  
+
+summary_per_sample_molecules_single$adj.total.ERCC.mol[summary_per_sample_molecules_single$index_19098_2] <- summary_per_sample_molecules_single$adj.total.ERCC.mol[summary_per_sample_molecules_single$index_19098_2]/adjusted_ratio.mol
+
+# adjusted ERCC ratios
+summary_per_sample_molecules_single$adj.ERCC.ratios.mol <-
+summary_per_sample_molecules_single$adj.total.ERCC.mol/summary_per_sample_molecules_single$Assigned
+
+# add qc filter and cell number
+summary_per_sample_molecules_single$qc_filter <- summary_per_sample_reads_single_qc$qc_filter
+summary_per_sample_molecules_single$cell_number <- summary_per_sample_reads_single_qc$cell_number
+
+ggplot(summary_per_sample_molecules_single, aes(x = Assigned, y = ERCC.ratio.mol, col = qc_filter)) + geom_text(aes(label = cell_number)) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))
+
+ggplot(summary_per_sample_molecules_single, aes(x = Assigned, y = adj.ERCC.ratios.mol, col = qc_filter)) + geom_text(aes(label = cell_number)) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))
+```
+
+## CV and mean
+
+### Looking at molecule
+```{r CV&mean-molecule}
+#correct for collision probability
+molecules.crt <- -1024*log(1-molecules/1024)
+
+#remove bulk
+molecules_single <- molecules.crt %>% select(-contains("bulk"))
+
+# apply qc_filter
+molecules_single_qc <- molecules_single[,summary_per_sample_reads_single_qc$qc_filter]
+dim(molecules_single_qc)
+sum(summary_per_sample_reads_single_qc$qc_filter)
+
+# create a new dataset
+molecules_single_qc_w_mean_cv <- molecules_single_qc
+
+# add mean
+molecules_single_qc_w_mean_cv$mean <- apply(molecules_single_qc, 1, mean)
+# add CV
+molecules_single_qc_w_mean_cv$CV <- apply(molecules_single_qc, 1, sd)/ apply(molecules_single_qc, 1, mean)
+
+# remove non-expressed 
+molecules_single_qc_expressed <- molecules_single_qc_w_mean_cv[molecules_single_qc_w_mean_cv$mean >0,]
+dim(molecules_single_qc_expressed)
+
+# sellect ERCC
+molecules_single_qc_expressed_ERCC <- molecules_single_qc_expressed[grep("ERCC",rownames(molecules_single_qc_expressed)),]
+
+molecules_single_qc_expressed$ERCC <- grepl("ERCC",rownames(molecules_single_qc_expressed))
+
+# plot with color-blind-friendly palettes
+cbPalette <- c("#999999", "#0000FF", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+
+ggplot(molecules_single_qc_expressed, aes(x = mean, y = CV, col = ERCC))  + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_colour_manual(values=cbPalette)
+
+```
+
+
+### Looking at reads
+```{r CV&mean-reads}
+# remove bulk
+reads_single <- reads %>% select(-contains("bulk"))
+
+# apply qc_filter
+reads_single_qc <- reads_single[,summary_per_sample_reads_single_qc$qc_filter]
+dim(reads_single_qc)
+sum(summary_per_sample_reads_single_qc$qc_filter)
+
+# create a new dataset
+reads_single_qc_w_mean_cv <- reads_single_qc
+
+# add mean
+reads_single_qc_w_mean_cv$mean <- apply(reads_single_qc, 1, mean)
+
+# add CV
+reads_single_qc_w_mean_cv$CV <- apply(reads_single_qc, 1, sd)/ apply(reads_single_qc, 1, mean)
+
+# remove non-expressed 
+reads_single_qc_expressed <- reads_single_qc_w_mean_cv[reads_single_qc_w_mean_cv$mean >0,]
+dim(reads_single_qc_expressed)
+
+# sellect ERCC
+reads_single_qc_expressed$ERCC <- grepl("ERCC",rownames(reads_single_qc_expressed))
+
+# plot with color-blind-friendly palettes
+cbPalette <- c("#999999", "#0000FF", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+
+ggplot(reads_single_qc_expressed, aes(x = mean, y = CV, col = ERCC))  + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_colour_manual(values=cbPalette)
+
+```
+
+
+
+## Session information
+
+```{r info}
+sessionInfo()
+```
