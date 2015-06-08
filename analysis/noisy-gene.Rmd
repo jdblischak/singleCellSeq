@@ -1,5 +1,5 @@
 ---
-title: "identification of noisy genes"
+title: "Identification of noisy genes"
 author: "Po-Yuan Tung"
 date: 2015-06-03
 ---
@@ -151,41 +151,70 @@ ggplot(summary_per_sample_molecules_single, aes(x = Assigned, y = adj.ERCC.ratio
 
 ### Looking at molecule
 ```{r CV&mean-molecule}
-#correct for collision probability
-molecules.crt <- -1024*log(1-molecules/1024)
+### create a function to compute the cv and mean of molecules
+### two parameters  
+### 1. data.in : input data of molecules
+### 2. adj.19098.batch: flag to control if we want to adj the 19098 batch2 molecules numberes. default to not adj, meaning using the raw numbers
+prep_molecules.cv.mean <- function(data.in,adj.19098.batch2=FALSE){
+	if(adj.19098.batch2){
+		#### find out which columns belong 19098 batch2
+		f <- names(data.in)
+		target.column <- f[grep("19098.2",f)]
+		
+		#### find out ERCC rows
+		g <- rownames(data.in)
+		target.row <- g[grep("ERCC",g)]
+		
+		#### replace the molecules numbers via dividing by adjusted_ratio.mol 
+		data.in[target.row,target.column] <- (data.in[target.row,target.column])/adjusted_ratio.mol
+		
+	}
+	
+	
+	#correct for collision probability
+	molecules.crt <- -1024*log(1-data.in/1024)
 
-#remove bulk
-molecules_single <- molecules.crt %>% select(-contains("bulk"))
+	#remove bulk
+	molecules_single <- molecules.crt %>% select(-contains("bulk"))
 
-# apply qc_filter
-molecules_single_qc <- molecules_single[,summary_per_sample_reads_single_qc$qc_filter]
-dim(molecules_single_qc)
-sum(summary_per_sample_reads_single_qc$qc_filter)
+	# apply qc_filter
+	molecules_single_qc <- molecules_single[,summary_per_sample_reads_single_qc$qc_filter]
+	dim(molecules_single_qc)
+	sum(summary_per_sample_reads_single_qc$qc_filter)
 
-# create a new dataset
-molecules_single_qc_w_mean_cv <- molecules_single_qc
+	# create a new dataset
+	molecules_single_qc_w_mean_cv <- molecules_single_qc
 
-# add mean
-molecules_single_qc_w_mean_cv$mean <- apply(molecules_single_qc, 1, mean)
-# add CV
-molecules_single_qc_w_mean_cv$CV <- apply(molecules_single_qc, 1, sd)/ apply(molecules_single_qc, 1, mean)
+	# add mean
+	molecules_single_qc_w_mean_cv$mean <- apply(molecules_single_qc, 1, mean)
+	# add CV
+	molecules_single_qc_w_mean_cv$CV <- apply(molecules_single_qc, 1, sd)/ apply(molecules_single_qc, 1, mean)
 
-# remove non-expressed 
-molecules_single_qc_expressed <- molecules_single_qc_w_mean_cv[molecules_single_qc_w_mean_cv$mean >0,]
-dim(molecules_single_qc_expressed)
+	# remove non-expressed 
+	molecules_single_qc_expressed <- molecules_single_qc_w_mean_cv[molecules_single_qc_w_mean_cv$mean >0,]
+	dim(molecules_single_qc_expressed)
 
-# sellect ERCC
-molecules_single_qc_expressed_ERCC <- molecules_single_qc_expressed[grep("ERCC",rownames(molecules_single_qc_expressed)),]
+  # create a flag to ERCC
+	molecules_single_qc_expressed$ERCC <- grepl("ERCC",rownames(molecules_single_qc_expressed))
+	
+	return(molecules_single_qc_expressed)
+###  end of prep.molecules.cv.mean function	
+}
 
-molecules_single_qc_expressed$ERCC <- grepl("ERCC",rownames(molecules_single_qc_expressed))
+
+molecules_single_qc_expressed 		<- prep_molecules.cv.mean(data.in=molecules,adj.19098.batch2=FALSE)
+molecules_single_qc_expressed_adj		<- prep_molecules.cv.mean(data.in=molecules,adj.19098.batch2=TRUE)
+
 
 # plot with color-blind-friendly palettes
 cbPalette <- c("#999999", "#0000FF", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
 
 ggplot(molecules_single_qc_expressed, aes(x = mean, y = CV, col = ERCC))  + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_colour_manual(values=cbPalette)
 
-```
+ggplot(molecules_single_qc_expressed_adj, aes(x = mean, y = CV, col = ERCC))  + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_colour_manual(values=cbPalette)
 
+
+```
 
 ### Looking at reads
 ```{r CV&mean-reads}
@@ -197,14 +226,18 @@ reads_single_qc <- reads_single[,summary_per_sample_reads_single_qc$qc_filter]
 dim(reads_single_qc)
 sum(summary_per_sample_reads_single_qc$qc_filter)
 
+# normalization
+reads_single_qc_cpm <- cpm(reads_single_qc)
+
 # create a new dataset
-reads_single_qc_w_mean_cv <- reads_single_qc
+reads_single_qc_w_mean_cv <- data.frame(reads_single_qc_cpm)
+sum(reads_single_qc_cpm!=reads_single_qc_w_mean_cv)
 
 # add mean
-reads_single_qc_w_mean_cv$mean <- apply(reads_single_qc, 1, mean)
+reads_single_qc_w_mean_cv$mean <- apply(reads_single_qc_cpm, 1, mean)
 
 # add CV
-reads_single_qc_w_mean_cv$CV <- apply(reads_single_qc, 1, sd)/ apply(reads_single_qc, 1, mean)
+reads_single_qc_w_mean_cv$CV <- apply(reads_single_qc_cpm, 1, sd)/ apply(reads_single_qc_cpm, 1, mean)
 
 # remove non-expressed 
 reads_single_qc_expressed <- reads_single_qc_w_mean_cv[reads_single_qc_w_mean_cv$mean >0,]
@@ -220,7 +253,80 @@ ggplot(reads_single_qc_expressed, aes(x = mean, y = CV, col = ERCC))  + geom_poi
 
 ```
 
+## Poisson sucks!
+```{r poisson}
+### this function will plot the mean vs cv based on the ERCC molecules counts
+### only need to specify the input dataset
+### the inpute dataset needs to have mean, cv and ERCC flag
+### make minipar global
+plot.cv.and.mean <- function(data.in){
+	# model based on ERCC only
+	# need to have a ERCC flag on the data.in
+	molecules_single_qc_expressed_ERCC <- data.in[data.in$ERCC,]	
+	
+	# defnine poisson function on a log x scale
+	poisson.c <- function (x) {
+		(10^x)^(0.5)/(10^x)
+	}
 
+	# compute the lossy factor based on ERCC
+	####   use LS: first define the function of f, then find the minimum
+	####   dont use the points from ERCC.mol.mean < 0.1 to fit. 
+
+	ERCC.mol.mean <- molecules_single_qc_expressed_ERCC$mean
+	ERCC.mol.CV   <- molecules_single_qc_expressed_ERCC$CV
+
+	# compute the sum of square errors
+	target.fun <- function(f){
+		sum((ERCC.mol.CV[ERCC.mol.mean>0.01]- sqrt(1/(f*ERCC.mol.mean[ERCC.mol.mean>0.01])))^2)
+	}
+	# find out the minimum
+	ans <- nlminb(0.05,target.fun,lower=0.0000001,upper=1)
+	minipar <- ans$par
+	# use the minimum to create the lossy poisson
+	lossy.posson <- function (x) {
+		1/sqrt((10^x)*minipar)
+	}
+
+	# 4 s.d. 
+	four.sd <- function (x) {
+		4*(10^x)^(0.5)/(10^x)+0.3
+	}
+
+	# 3.7 sd + 0.3
+	three.sd <- function (x) {
+		3.7*(10^x)^(0.5)/(10^(x))+0.3
+	}
+
+	ggplot(data.in, aes(x = mean, y = CV, col = ERCC))  + geom_point(size = 2, alpha = 0.5) +  stat_function(fun= poisson.c, col= "#CC79A7") + stat_function(fun= four.sd, col= "#F0E442") + stat_function(fun= lossy.posson, col= "#56B4E9") + scale_x_log10() + ylim(0, 30) + scale_colour_manual(values=cbPalette) 
+
+}
+plot.cv.and.mean(data.in=molecules_single_qc_expressed)
+plot.cv.and.mean(data.in=molecules_single_qc_expressed_adj)
+
+### ignore the following code
+ignore <- function(xxx){
+	# log plot
+  plot(log(molecules_single_qc_expressed$mean,base=2),log(molecules_single_qc_expressed$CV,base=2), col= "#999999", xlab="log2 Average number of molecules",ylab= "log2 coefficient of variation",ylim=c(-2,5),xlim=c(-10,10),pch=20)
+  points(log(molecules_single_qc_expressed_ERCC$mean,base=2),log(molecules_single_qc_expressed_ERCC$CV,base=2),col= "#0000FF" ,pch=20)
+  # add lossy poison
+  curve(-0.5*x-0.5*log(minipar,base=2),-100,6,add=TRUE,col="#56B4E9")
+  # add poisson
+  curve(-0.5*x,add=TRUE,col= "#CC79A7")
+}
+```
+
+## noisy genes
+```{r noisy-gene}
+#  larger than 3.7 sd
+count.index  <- (!is.na(molecules_single_qc_expressed$mean))&(molecules_single_qc_expressed$mean>1)
+condi.index <- (molecules_single_qc_expressed$CV > 4*(molecules_single_qc_expressed$mean^(0.5))/molecules_single_qc_expressed$mean+0.3)
+
+sum(count.index&condi.index)
+
+molecules_single_qc_expressed$mean[count.index&condi.index]
+rownames(molecules_single_qc_expressed)[count.index&condi.index]
+```
 
 ## Session information
 
