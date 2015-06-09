@@ -11,7 +11,7 @@ mkdir -p $OUTDIR
 if [ ! -s $FILE ]
 then
   echo "File is missing or empty: $FILE"
-  exit
+  exit 65
 fi
 
 if [ -s $OUTDIR/$BASE.genecounts.txt ]

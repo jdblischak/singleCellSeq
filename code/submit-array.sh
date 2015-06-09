@@ -26,8 +26,13 @@ then
   echo -e \"success\t\$F\"
 elif [ \$EXIT_CODE == 64 ]
 then
-  echo -e \"Output file already exists. Input file was:\t\$F\"
-else 
+  # Output file already exists. $ANALYSIS logged error message.
+  exit
+elif [ \$EXIT_CODE == 65 ]
+then
+  # Input file was missing or empty. $ANALYSIS logged error message.
+  exit
+else
   echo -e \"failure\t\$F\"
 fi
 " | qsub -l h_vmem=$MEM -V -j y -N $NAME -o ~/log/$NAME -cwd -t 1-$numfiles
