@@ -155,8 +155,8 @@ ggplot(summary_per_sample_molecules_single, aes(x = Assigned, y = adj.ERCC.ratio
 ### two parameters  
 ### 1. data.in : input data of molecules
 ### 2. adj.19098.batch: flag to control if we want to adj the 19098 batch2 molecules numberes. default to not adj, meaning using the raw numbers
-prep_molecules.cv.mean <- function(data.in,adj.19098.batch2=FALSE){
-	if(adj.19098.batch2){
+prep_molecules.cv.mean <- function(data.in,adj.19098.batch2=0){
+	if(adj.19098.batch2 == 1){
 		#### find out which columns belong 19098 batch2
 		f <- names(data.in)
 		target.column <- f[grep("19098.2",f)]
@@ -169,7 +169,31 @@ prep_molecules.cv.mean <- function(data.in,adj.19098.batch2=FALSE){
 		data.in[target.row,target.column] <- (data.in[target.row,target.column])/adjusted_ratio.mol
 		
 	}
+  
+  if(adj.19098.batch2 == 2){
+		#### find out which columns belong 19098 batch2
+		f <- names(data.in)
+		#### remove 19098.2
+		data.in<- data.in[,!grepl("19098.2",f)]
+		
+		#### also need to take care of summary_per_sample_reads_single_qc
+		summary_per_sample_reads_single_qc <- summary_per_sample_reads_single_qc[!((summary_per_sample_reads_single_qc$individual==19098)&(summary_per_sample_reads_single_qc$batch==2)),]
+		
+  }
 	
+  	if(adj.19098.batch2 == 3){
+		#### find out which columns belong 19098 batch2
+		f <- names(data.in)
+		target.column <- f[grep("19098.2",f)]
+		
+		#### find out ERCC rows
+		g <- rownames(data.in)
+		target.row <- g[grep("ERCC",g)]
+		
+		#### replace the molecules numbers via dividing by NA 
+		data.in[target.row,target.column] <- NA
+		
+	}
 	
 	#correct for collision probability
 	molecules.crt <- -1024*log(1-data.in/1024)
@@ -186,9 +210,9 @@ prep_molecules.cv.mean <- function(data.in,adj.19098.batch2=FALSE){
 	molecules_single_qc_w_mean_cv <- molecules_single_qc
 
 	# add mean
-	molecules_single_qc_w_mean_cv$mean <- apply(molecules_single_qc, 1, mean)
+	molecules_single_qc_w_mean_cv$mean <- apply(molecules_single_qc, 1, function(x) mean(x,na.rm=TRUE) )
 	# add CV
-	molecules_single_qc_w_mean_cv$CV <- apply(molecules_single_qc, 1, sd)/ apply(molecules_single_qc, 1, mean)
+	molecules_single_qc_w_mean_cv$CV <- apply(molecules_single_qc, 1, function(x) sd(x,na.rm=TRUE) )/ apply(molecules_single_qc, 1, function(x) mean(x,na.rm=TRUE))
 
 	# remove non-expressed 
 	molecules_single_qc_expressed <- molecules_single_qc_w_mean_cv[molecules_single_qc_w_mean_cv$mean >0,]
@@ -202,8 +226,11 @@ prep_molecules.cv.mean <- function(data.in,adj.19098.batch2=FALSE){
 }
 
 
-molecules_single_qc_expressed 		<- prep_molecules.cv.mean(data.in=molecules,adj.19098.batch2=FALSE)
-molecules_single_qc_expressed_adj		<- prep_molecules.cv.mean(data.in=molecules,adj.19098.batch2=TRUE)
+molecules_single_qc_expressed 		<- prep_molecules.cv.mean(data.in=molecules,adj.19098.batch2=0)
+molecules_single_qc_expressed_adj		<- prep_molecules.cv.mean(data.in=molecules,adj.19098.batch2=1)
+molecules_single_qc_expressed_rm 		<- prep_molecules.cv.mean(data.in=molecules,adj.19098.batch2=2)
+molecules_single_qc_expressed_rm_ERCC 		<- prep_molecules.cv.mean(data.in=molecules,adj.19098.batch2=3)
+
 
 
 # plot with color-blind-friendly palettes
@@ -211,8 +238,7 @@ cbPalette <- c("#999999", "#0000FF", "#56B4E9", "#009E73", "#F0E442", "#0072B2",
 
 ggplot(molecules_single_qc_expressed, aes(x = mean, y = CV, col = ERCC))  + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_colour_manual(values=cbPalette)
 
-ggplot(molecules_single_qc_expressed_adj, aes(x = mean, y = CV, col = ERCC))  + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_colour_manual(values=cbPalette)
-
+ggplot(molecules_single_qc_expressed_rm_ERCC, aes(x = mean, y = CV, col = ERCC))  + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_colour_manual(values=cbPalette)
 
 ```
 
@@ -303,6 +329,8 @@ plot.cv.and.mean <- function(data.in){
 }
 plot.cv.and.mean(data.in=molecules_single_qc_expressed)
 plot.cv.and.mean(data.in=molecules_single_qc_expressed_adj)
+plot.cv.and.mean(data.in=molecules_single_qc_expressed_rm)
+plot.cv.and.mean(data.in=molecules_single_qc_expressed_rm_ERCC)
 
 ### ignore the following code
 ignore <- function(xxx){
