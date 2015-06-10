@@ -19,6 +19,9 @@ files = glob.glob("fastq/*count*") + \
 sys.stdout.write("stage\tsickle\tindividual\tbatch\twell\tindex\tlane\tflow_cell\tcounts\n")
 
 for f in files:
+    # Ignore files that include data from all lanes for a given sample
+    if "combined" in f:
+        continue
     # Get counts from f
     handle = open(f, "r")
     if "summary" in f:
