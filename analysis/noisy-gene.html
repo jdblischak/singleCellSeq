@@ -136,8 +136,8 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-06-09</p>
-<p><strong>Code version:</strong> 35e5e7781c1bfc7eb86eb42e8b60934581b20022</p>
+<p><strong>Last updated:</strong> 2015-06-10</p>
+<p><strong>Code version:</strong> 23aa53a6cdd2d8abcca95e3baf4f72a0cd47e26e</p>
 <div id="input" class="section level2">
 <h2>Input</h2>
 <pre class="r"><code>library(&quot;dplyr&quot;)
@@ -267,8 +267,8 @@ ggplot(summary_per_sample_molecules_single, aes(x = Assigned, y = ERCC.ratio.mol
 ### two parameters  
 ### 1. data.in : input data of molecules
 ### 2. adj.19098.batch: flag to control if we want to adj the 19098 batch2 molecules numberes. default to not adj, meaning using the raw numbers
-prep_molecules.cv.mean &lt;- function(data.in,adj.19098.batch2=FALSE){
-    if(adj.19098.batch2){
+prep_molecules.cv.mean &lt;- function(data.in,adj.19098.batch2=0){
+    if(adj.19098.batch2 == 1){
         #### find out which columns belong 19098 batch2
         f &lt;- names(data.in)
         target.column &lt;- f[grep(&quot;19098.2&quot;,f)]
@@ -281,7 +281,31 @@ prep_molecules.cv.mean &lt;- function(data.in,adj.19098.batch2=FALSE){
         data.in[target.row,target.column] &lt;- (data.in[target.row,target.column])/adjusted_ratio.mol
         
     }
+  
+  if(adj.19098.batch2 == 2){
+        #### find out which columns belong 19098 batch2
+        f &lt;- names(data.in)
+        #### remove 19098.2
+        data.in&lt;- data.in[,!grepl(&quot;19098.2&quot;,f)]
+        
+        #### also need to take care of summary_per_sample_reads_single_qc
+        summary_per_sample_reads_single_qc &lt;- summary_per_sample_reads_single_qc[!((summary_per_sample_reads_single_qc$individual==19098)&amp;(summary_per_sample_reads_single_qc$batch==2)),]
+        
+  }
     
+    if(adj.19098.batch2 == 3){
+        #### find out which columns belong 19098 batch2
+        f &lt;- names(data.in)
+        target.column &lt;- f[grep(&quot;19098.2&quot;,f)]
+        
+        #### find out ERCC rows
+        g &lt;- rownames(data.in)
+        target.row &lt;- g[grep(&quot;ERCC&quot;,g)]
+        
+        #### replace the molecules numbers via dividing by NA 
+        data.in[target.row,target.column] &lt;- NA
+        
+    }
     
     #correct for collision probability
     molecules.crt &lt;- -1024*log(1-data.in/1024)
@@ -298,9 +322,9 @@ prep_molecules.cv.mean &lt;- function(data.in,adj.19098.batch2=FALSE){
     molecules_single_qc_w_mean_cv &lt;- molecules_single_qc
 
     # add mean
-    molecules_single_qc_w_mean_cv$mean &lt;- apply(molecules_single_qc, 1, mean)
+    molecules_single_qc_w_mean_cv$mean &lt;- apply(molecules_single_qc, 1, function(x) mean(x,na.rm=TRUE) )
     # add CV
-    molecules_single_qc_w_mean_cv$CV &lt;- apply(molecules_single_qc, 1, sd)/ apply(molecules_single_qc, 1, mean)
+    molecules_single_qc_w_mean_cv$CV &lt;- apply(molecules_single_qc, 1, function(x) sd(x,na.rm=TRUE) )/ apply(molecules_single_qc, 1, function(x) mean(x,na.rm=TRUE))
 
     # remove non-expressed 
     molecules_single_qc_expressed &lt;- molecules_single_qc_w_mean_cv[molecules_single_qc_w_mean_cv$mean &gt;0,]
@@ -314,7 +338,7 @@ prep_molecules.cv.mean &lt;- function(data.in,adj.19098.batch2=FALSE){
 }
 
 
-molecules_single_qc_expressed       &lt;- prep_molecules.cv.mean(data.in=molecules,adj.19098.batch2=FALSE)</code></pre>
+molecules_single_qc_expressed       &lt;- prep_molecules.cv.mean(data.in=molecules,adj.19098.batch2=0)</code></pre>
 <pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
 <pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
 <pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
@@ -1147,7 +1171,1572 @@ molecules_single_qc_expressed       &lt;- prep_molecules.cv.mean(data.in=molecul
 <pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
 <pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
 <pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
-<pre class="r"><code>molecules_single_qc_expressed_adj       &lt;- prep_molecules.cv.mean(data.in=molecules,adj.19098.batch2=TRUE)</code></pre>
+<pre class="r"><code>molecules_single_qc_expressed_adj       &lt;- prep_molecules.cv.mean(data.in=molecules,adj.19098.batch2=1)</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre class="r"><code>molecules_single_qc_expressed_rm        &lt;- prep_molecules.cv.mean(data.in=molecules,adj.19098.batch2=2)</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
+<pre class="r"><code>molecules_single_qc_expressed_rm_ERCC       &lt;- prep_molecules.cv.mean(data.in=molecules,adj.19098.batch2=3)</code></pre>
 <pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
 <pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
 <pre><code>Warning in FUN(X[[i]], ...): NaNs produced</code></pre>
@@ -1980,11 +3569,11 @@ molecules_single_qc_expressed       &lt;- prep_molecules.cv.mean(data.in=molecul
 cbPalette &lt;- c(&quot;#999999&quot;, &quot;#0000FF&quot;, &quot;#56B4E9&quot;, &quot;#009E73&quot;, &quot;#F0E442&quot;, &quot;#0072B2&quot;, &quot;#D55E00&quot;, &quot;#CC79A7&quot;)
 
 ggplot(molecules_single_qc_expressed, aes(x = mean, y = CV, col = ERCC))  + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_colour_manual(values=cbPalette)</code></pre>
-<pre><code>Warning in loop_apply(n, do.ply): Removed 54 rows containing missing values
+<pre><code>Warning in loop_apply(n, do.ply): Removed 8 rows containing missing values
 (geom_point).</code></pre>
 <p><img src="figure/noisy-gene.Rmd/CV-mean-molecule-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>ggplot(molecules_single_qc_expressed_adj, aes(x = mean, y = CV, col = ERCC))  + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_colour_manual(values=cbPalette)</code></pre>
-<pre><code>Warning in loop_apply(n, do.ply): Removed 49 rows containing missing values
+<pre class="r"><code>ggplot(molecules_single_qc_expressed_rm_ERCC, aes(x = mean, y = CV, col = ERCC))  + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_colour_manual(values=cbPalette)</code></pre>
+<pre><code>Warning in loop_apply(n, do.ply): Removed 8 rows containing missing values
 (geom_point).</code></pre>
 <p><img src="figure/noisy-gene.Rmd/CV-mean-molecule-2.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 </div>
@@ -2075,23 +3664,39 @@ plot.cv.and.mean &lt;- function(data.in){
 
 }
 plot.cv.and.mean(data.in=molecules_single_qc_expressed)</code></pre>
-<pre><code>Warning in loop_apply(n, do.ply): Removed 54 rows containing missing values
+<pre><code>Warning in loop_apply(n, do.ply): Removed 8 rows containing missing values
 (geom_point).</code></pre>
-<pre><code>Warning in loop_apply(n, do.ply): Removed 20 rows containing missing values
+<pre><code>Warning in loop_apply(n, do.ply): Removed 17 rows containing missing values
 (geom_path).</code></pre>
-<pre><code>Warning in loop_apply(n, do.ply): Removed 7 rows containing missing values
+<pre><code>Warning in loop_apply(n, do.ply): Removed 6 rows containing missing values
 (geom_path).</code></pre>
 <p><img src="figure/noisy-gene.Rmd/poisson-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>plot.cv.and.mean(data.in=molecules_single_qc_expressed_adj)</code></pre>
-<pre><code>Warning in loop_apply(n, do.ply): Removed 49 rows containing missing values
+<pre><code>Warning in loop_apply(n, do.ply): Removed 8 rows containing missing values
 (geom_point).</code></pre>
 <pre><code>Warning in loop_apply(n, do.ply): Removed 1 rows containing missing values
 (geom_path).</code></pre>
-<pre><code>Warning in loop_apply(n, do.ply): Removed 22 rows containing missing values
+<pre><code>Warning in loop_apply(n, do.ply): Removed 20 rows containing missing values
 (geom_path).</code></pre>
-<pre><code>Warning in loop_apply(n, do.ply): Removed 9 rows containing missing values
+<pre><code>Warning in loop_apply(n, do.ply): Removed 8 rows containing missing values
 (geom_path).</code></pre>
 <p><img src="figure/noisy-gene.Rmd/poisson-2.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>plot.cv.and.mean(data.in=molecules_single_qc_expressed_rm)</code></pre>
+<pre><code>Warning in loop_apply(n, do.ply): Removed 7 rows containing missing values
+(geom_point).</code></pre>
+<pre><code>Warning in loop_apply(n, do.ply): Removed 17 rows containing missing values
+(geom_path).</code></pre>
+<pre><code>Warning in loop_apply(n, do.ply): Removed 5 rows containing missing values
+(geom_path).</code></pre>
+<p><img src="figure/noisy-gene.Rmd/poisson-3.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>plot.cv.and.mean(data.in=molecules_single_qc_expressed_rm_ERCC)</code></pre>
+<pre><code>Warning in loop_apply(n, do.ply): Removed 8 rows containing missing values
+(geom_point).</code></pre>
+<pre><code>Warning in loop_apply(n, do.ply): Removed 17 rows containing missing values
+(geom_path).</code></pre>
+<pre><code>Warning in loop_apply(n, do.ply): Removed 6 rows containing missing values
+(geom_path).</code></pre>
+<p><img src="figure/noisy-gene.Rmd/poisson-4.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>### ignore the following code
 ignore &lt;- function(xxx){
     # log plot
@@ -2110,29 +3715,51 @@ count.index  &lt;- (!is.na(molecules_single_qc_expressed$mean))&amp;(molecules_s
 condi.index &lt;- (molecules_single_qc_expressed$CV &gt; 4*(molecules_single_qc_expressed$mean^(0.5))/molecules_single_qc_expressed$mean+0.3)
 
 sum(count.index&amp;condi.index)</code></pre>
-<pre><code>[1] 37</code></pre>
+<pre><code>[1] NA</code></pre>
 <pre class="r"><code>molecules_single_qc_expressed$mean[count.index&amp;condi.index]</code></pre>
-<pre><code> [1] 116.949997 444.728775 100.921254  44.992060 429.010303   2.065753
- [7] 395.735193  91.901820   9.305229   4.299099   3.906706   4.525847
-[13]  15.911637 184.002559 348.736538  58.527369 126.029677 135.498781
-[19] 452.124430   1.897321 551.224201 197.776809 341.878842  33.840983
-[25] 346.059003 291.113140  63.994350  32.690178  31.010591  33.123882
-[31]  15.175104  53.235546  20.565226 217.617605  88.195719  32.548284
-[37] 105.140122</code></pre>
+<pre><code> [1]  646.522722  116.949997  444.728775  130.229533  100.921254
+ [6]   44.992060  768.417024  926.228176  429.010303 1703.208355
+[11]    2.065753  621.781748  395.735193  554.810079  581.149228
+[16]  464.621087   91.901820 1338.096518    9.305229    4.299099
+[21]    3.906706    4.525847   15.911637  184.002559  348.736538
+[26]   58.527369  768.828937  126.029677  135.498781  452.124430
+[31]    1.897321  608.007851 1832.366115 1382.062798  551.224201
+[36] 1011.419369          NA  197.776809  657.607509 1489.785265
+[41]  341.878842  668.544648  699.862487  437.262342          NA
+[46] 1401.020289          NA  581.664516 1246.290563   33.840983
+[51]  465.902403  485.696759  566.878105  346.059003 1418.457961
+[56]          NA 1663.835844          NA          NA 2976.226885
+[61]          NA  809.586265          NA  291.113140   63.994350
+[66]  312.494518   32.690178   31.010591   33.123882  244.307974
+[71]   15.175104   53.235546   20.565226  217.617605 1239.680366
+[76]   88.195719   32.548284  105.140122</code></pre>
 <pre class="r"><code>rownames(molecules_single_qc_expressed)[count.index&amp;condi.index]</code></pre>
-<pre><code> [1] &quot;ENSG00000185885&quot; &quot;ENSG00000177600&quot; &quot;ENSG00000167996&quot;
- [4] &quot;ENSG00000133316&quot; &quot;ENSG00000109971&quot; &quot;ENSG00000121350&quot;
- [7] &quot;ENSG00000132341&quot; &quot;ENSG00000185088&quot; &quot;ENSG00000125148&quot;
-[10] &quot;ENSG00000169715&quot; &quot;ENSG00000125144&quot; &quot;ENSG00000205358&quot;
-[13] &quot;ENSG00000187193&quot; &quot;ENSG00000108518&quot; &quot;ENSG00000170315&quot;
-[16] &quot;ENSG00000256618&quot; &quot;ENSG00000131747&quot; &quot;ENSG00000182481&quot;
-[19] &quot;ENSG00000184009&quot; &quot;ENSG00000154040&quot; &quot;ENSG00000071082&quot;
-[22] &quot;ENSG00000269028&quot; &quot;ENSG00000145425&quot; &quot;ENSG00000106153&quot;
-[25] &quot;ENSG00000197958&quot; &quot;ENSG00000205542&quot; &quot;ERCC-00003&quot;     
-[28] &quot;ERCC-00009&quot;      &quot;ERCC-00042&quot;      &quot;ERCC-00043&quot;     
-[31] &quot;ERCC-00060&quot;      &quot;ERCC-00108&quot;      &quot;ERCC-00111&quot;     
-[34] &quot;ERCC-00113&quot;      &quot;ERCC-00136&quot;      &quot;ERCC-00145&quot;     
-[37] &quot;ERCC-00171&quot;     </code></pre>
+<pre><code> [1] &quot;ENSG00000177954&quot; &quot;ENSG00000185885&quot; &quot;ENSG00000177600&quot;
+ [4] &quot;ENSG00000255823&quot; &quot;ENSG00000167996&quot; &quot;ENSG00000133316&quot;
+ [7] &quot;ENSG00000084207&quot; &quot;ENSG00000149273&quot; &quot;ENSG00000109971&quot;
+[10] &quot;ENSG00000111640&quot; &quot;ENSG00000121350&quot; &quot;ENSG00000111716&quot;
+[13] &quot;ENSG00000132341&quot; &quot;ENSG00000213741&quot; &quot;ENSG00000080824&quot;
+[16] &quot;ENSG00000140264&quot; &quot;ENSG00000185088&quot; &quot;ENSG00000137818&quot;
+[19] &quot;ENSG00000125148&quot; &quot;ENSG00000169715&quot; &quot;ENSG00000125144&quot;
+[22] &quot;ENSG00000205358&quot; &quot;ENSG00000187193&quot; &quot;ENSG00000108518&quot;
+[25] &quot;ENSG00000170315&quot; &quot;ENSG00000256618&quot; &quot;ENSG00000125691&quot;
+[28] &quot;ENSG00000131747&quot; &quot;ENSG00000182481&quot; &quot;ENSG00000184009&quot;
+[31] &quot;ENSG00000154040&quot; &quot;ENSG00000130255&quot; &quot;ENSG00000105372&quot;
+[34] &quot;ENSG00000087086&quot; &quot;ENSG00000071082&quot; &quot;ENSG00000197756&quot;
+[37] NA                &quot;ENSG00000269028&quot; &quot;ENSG00000164032&quot;
+[40] &quot;ENSG00000174720&quot; &quot;ENSG00000145425&quot; &quot;ENSG00000145592&quot;
+[43] &quot;ENSG00000186468&quot; &quot;ENSG00000127184&quot; NA               
+[46] &quot;ENSG00000181163&quot; NA                &quot;ENSG00000231500&quot;
+[49] &quot;ENSG00000075624&quot; &quot;ENSG00000106153&quot; &quot;ENSG00000008988&quot;
+[52] &quot;ENSG00000156482&quot; &quot;ENSG00000137154&quot; &quot;ENSG00000197958&quot;
+[55] &quot;ENSG00000198888&quot; NA                &quot;ENSG00000198804&quot;
+[58] NA                NA                &quot;ENSG00000198938&quot;
+[61] NA                &quot;ENSG00000198786&quot; NA               
+[64] &quot;ENSG00000205542&quot; &quot;ERCC-00003&quot;      &quot;ERCC-00004&quot;     
+[67] &quot;ERCC-00009&quot;      &quot;ERCC-00042&quot;      &quot;ERCC-00043&quot;     
+[70] &quot;ERCC-00046&quot;      &quot;ERCC-00060&quot;      &quot;ERCC-00108&quot;     
+[73] &quot;ERCC-00111&quot;      &quot;ERCC-00113&quot;      &quot;ERCC-00130&quot;     
+[76] &quot;ERCC-00136&quot;      &quot;ERCC-00145&quot;      &quot;ERCC-00171&quot;     </code></pre>
 </div>
 <div id="session-information" class="section level2">
 <h2>Session information</h2>
