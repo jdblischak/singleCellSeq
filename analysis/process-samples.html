@@ -137,11 +137,12 @@ img {
 <li><a href="#gather-total-counts">Gather total counts</a></li>
 <li><a href="#gather-summary-counts">Gather summary counts</a></li>
 <li><a href="#gather-gene-counts">Gather gene counts</a></li>
+<li><a href="#process-at-the-sample-level">Process at the sample level</a></li>
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-05-29</p>
-<p><strong>Code version:</strong> bd50ee78f288e4be408987c8211ab0183400a853</p>
+<p><strong>Last updated:</strong> 2015-06-11</p>
+<p><strong>Code version:</strong> 44338a0a5f347c0c7a565729f2a86161eb3229d3</p>
 <p>All processing scripts were run from the data directory.</p>
 <pre class="bash"><code>cd /mnt/gluster/data/internal_supp/singleCellSeq</code></pre>
 <p>The raw fastq files were write-protected to avoid accidental deletion.</p>
@@ -225,6 +226,84 @@ grep -w failure ~/log/count-reads-per-gene.sh/* | wc -l</code></pre>
 <h2>Gather gene counts</h2>
 <p>The counts for each gene for each sequencing lane.</p>
 <pre class="bash"><code>gather-gene-counts.py &gt; gene-counts.txt</code></pre>
+</div>
+<div id="process-at-the-sample-level" class="section level2">
+<h2>Process at the sample level</h2>
+<p>All the processing performed above is done at the level of the sequencing lane. Thus when removing reads that have the same UMI and start position, this is done at the level of lane instead of the whole sample.</p>
+<p>To get true molecule counts, need to run <code>umitools rmdup</code> on all the reads for a given sample. Only using sickle trimmed data. Starting with the sorted bam files, merge the files per sample.</p>
+<pre class="bash"><code># From head node
+cd $ssd
+mkdir -p bam-combined
+mkdir -p ~/log/combine.sh
+for IND in 19098 19101 19239
+do
+  for BATCH in {1..3}
+  do
+    for ROW in {A..H}
+    do
+      for COL in {1..12}
+      do
+        ID=`printf &quot;%s.%s.%s%02d\n&quot; $IND $BATCH $ROW $COL`
+        echo $ID
+        echo &quot;samtools merge bam-combined/$ID.trim.sickle.sorted.bam bam-processed/$ID*trim.sickle.sorted.bam&quot; | qsub -l h_vmem=4g -N $ROW$COL.$IND.$BATCH.combine -cwd -o ~/log/combine.sh -j y -V
+      done
+    done
+  done
+done</code></pre>
+<p>Then index each merged sample:</p>
+<pre class="bash"><code>mkdir -p ~/log/combine2.sh
+for IND in 19098 19101 19239
+do
+  for BATCH in {1..3}
+  do
+    for ROW in {A..H}
+    do
+      for COL in {1..12}
+      do
+        ID=`printf &quot;%s.%s.%s%02d\n&quot; $IND $BATCH $ROW $COL`
+        echo $ID
+        echo &quot;samtools index bam-combined/$ID.trim.sickle.sorted.bam&quot; | qsub -l h_vmem=2g -N $ROW$COL.$IND.$BATCH.index -cwd -o ~/log/combine2.sh -j y -V
+      done
+    done
+  done
+done</code></pre>
+<p>Now can run <code>rmdup umitools</code> and <code>featureCounts</code> as above:</p>
+<pre class="bash"><code>submit-array.sh rmdup-umi.sh 2g bam-combined/*bam</code></pre>
+<p>Since do not want to re-run all the samples, need to change the name so that it is clear it is a combined sample.</p>
+<pre class="bash"><code>rename sorted.bam sorted.combined.bam *trim.sickle.sorted.bam
+rename sorted.bam.bai sorted.combined.bam.bai *trim.sickle.sorted.bam.bai</code></pre>
+<p>Now count the number of reads per gene for both the molecules and the reads:</p>
+<pre class="bash"><code>submit-array.sh count-reads-per-gene.sh 2g bam-rmdup-umi/*combined.rmdup.bam bam-combined/*bam</code></pre>
+<p>Now need to do the same for the bulk samples:</p>
+<p>Merge bulk samples.</p>
+<pre class="bash"><code># From head node
+cd $ssd
+mkdir ~/log/bulk
+for IND in 19098 19101 19239
+do
+  for BATCH in {1..3}
+  do
+    ID=$IND.$BATCH.bulk
+    echo $ID
+    echo &quot;samtools merge bam-combined/$ID.trim.sickle.sorted.combined.bam bam-processed/$ID*trim.sickle.sorted.bam&quot; | qsub -l h_vmem=8g -N bulk.$IND.$BATCH.combine -cwd -o ~/log/bulk -j y -V
+  done
+done</code></pre>
+<p>Index bulk samples.</p>
+<pre class="bash"><code># From head node
+cd $ssd
+mkdir -p ~/log/bulk
+for IND in 19098 19101 19239
+do
+  for BATCH in {1..3}
+  do
+    ID=$IND.$BATCH.bulk
+    echo $ID
+    echo &quot;samtools index bam-combined/$ID.trim.sickle.sorted.combined.bam&quot; | qsub -l h_vmem=8g -N bulk.$IND.$BATCH.index -cwd -o ~/log/bulk -j y -V
+  done
+done</code></pre>
+<p>Remove duplicates and count reads per gene.</p>
+<pre class="bash"><code>submit-array.sh rmdup-umi.sh 8g bam-combined/*bulk*bam</code></pre>
+<pre class="bash"><code>submit-array.sh count-reads-per-gene.sh 2g bam-rmdup-umi/*bulk*combined.rmdup.bam bam-combined/*bulk*bam</code></pre>
 </div>
 
 

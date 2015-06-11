@@ -132,24 +132,21 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-06-05</p>
-<p><strong>Code version:</strong> e584fdea5b3086a556ecebcc0800141cd513b060</p>
+<p><strong>Last updated:</strong> 2015-06-11</p>
+<p><strong>Code version:</strong> 44338a0a5f347c0c7a565729f2a86161eb3229d3</p>
 <div id="input" class="section level2">
 <h2>Input</h2>
 <pre class="r"><code>library(&quot;dplyr&quot;)
 library(&quot;ggplot2&quot;)
 theme_set(theme_bw(base_size = 16))
 library(&quot;edgeR&quot;)</code></pre>
-<p>Summary counts from featureCounts. Created with <a href="https://github.com/jdblischak/singleCellSeq/blob/master/code/gather-summary-counts.py">gather-summary-counts.py</a>.</p>
+<p>Summary counts from featureCounts. Created with <a href="https://github.com/jdblischak/singleCellSeq/blob/master/code/gather-summary-counts.py">gather-summary-counts.py</a>. These data were collected from the summary files of the full combined samples.</p>
 <pre class="r"><code>summary_counts &lt;- read.table(&quot;../data/summary-counts.txt&quot;, header = TRUE,
                              stringsAsFactors = FALSE)</code></pre>
-<p>Using only the sickle-trimmed data, sum the counts across all the sequencing lanes for a given sample.</p>
+<p>Currently this file only contains data from sickle-trimmed reads, so the code below simply ensures this and then removes the column.</p>
 <pre class="r"><code>summary_per_sample &lt;- summary_counts %&gt;%
   filter(sickle == &quot;quality-trimmed&quot;) %&gt;%
-  select(-index, -lane, -flow_cell, -sickle) %&gt;%
-  group_by(individual, batch, well, rmdup) %&gt;%
-  summarise_each(funs(sum)) %&gt;%
-  ungroup %&gt;%
+  select(-sickle) %&gt;%
   as.data.frame</code></pre>
 <p>Input annotation.</p>
 <pre class="r"><code>anno &lt;- read.table(&quot;../data/annotation.txt&quot;, header = TRUE,
@@ -238,7 +235,7 @@ adjusted_ratio &lt;- mean(summary_per_sample_reads_single$total.ERCC[summary_per
 
 #calculating the pippetting error rate before 21 cycle amplification
 adjusted_ratio^(1/22)</code></pre>
-<pre><code>[1] 1.078894</code></pre>
+<pre><code>[1] 1.02258</code></pre>
 <pre class="r"><code>#adjusted total ERCC reads
 summary_per_sample_reads_single$adj.total.ERCC &lt;- summary_per_sample_reads_single$total.ERCC  
 
@@ -280,7 +277,7 @@ ggplot(C1_19098_1, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(in
 <pre class="r"><code>C1_19098_1_retained &lt;- C1_19098_1[C1_19098_1$unmapped.ratios&lt; 0.4 &amp; C1_19098_1$ERCC.ratios&lt; 0.025 &amp; C1_19098_1$cell_number == 1,]
 
 dim(C1_19098_1_retained)</code></pre>
-<pre><code>[1] 86 23</code></pre>
+<pre><code>[1] 50 23</code></pre>
 <pre class="r"><code>#individual 19098 batch2
 C1_19098_2 &lt;- summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$individual == &quot;19098&quot; &amp; summary_per_sample_reads_single_qc$batch ==&quot;2&quot;,]
 
@@ -302,7 +299,7 @@ ggplot(C1_19098_3, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(in
 <pre class="r"><code>C1_19098_3_retained &lt;- C1_19098_3[C1_19098_3$unmapped.ratios&lt; 0.45 &amp; C1_19098_3$ERCC.ratios&lt; 0.08 &amp; C1_19098_3$cell_number == 1,]
 
 dim(C1_19098_3_retained)</code></pre>
-<pre><code>[1] 78 23</code></pre>
+<pre><code>[1] 75 23</code></pre>
 </div>
 </div>
 <div id="effect-of-cell-qc-data-on-sequencing-results" class="section level2">
@@ -331,13 +328,11 @@ dim(C1_19098_3_retained)</code></pre>
        aes(x = concentration, y = ERCC.ratios)) +
   geom_point() +
   geom_smooth()</code></pre>
-<pre><code>geom_smooth: method=&quot;auto&quot; and size of largest group is &lt;1000, so using loess. Use &#39;method = x&#39; to change the smoothing method.</code></pre>
 <p><img src="figure/qc-cell-ipsc.Rmd/conc-ercc-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>ggplot(summary_per_sample_reads_single_qc,
        aes(x = concentration, y = unmapped.ratios)) +
   geom_point() +
   geom_smooth()</code></pre>
-<pre><code>geom_smooth: method=&quot;auto&quot; and size of largest group is &lt;1000, so using loess. Use &#39;method = x&#39; to change the smoothing method.</code></pre>
 <p><img src="figure/qc-cell-ipsc.Rmd/conc-unmapped-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 </div>
 <div id="tra-1-60" class="section level3">
@@ -429,13 +424,11 @@ pca_reads_cells_anno &lt;- cbind(summary_per_sample_reads_single_qc, pca_reads_c
 <pre class="r"><code>ggplot(pca_reads_cells_anno, aes(x = unmapped.ratios, y = PC1)) +
   geom_point() +
   geom_smooth()</code></pre>
-<pre><code>geom_smooth: method=&quot;auto&quot; and size of largest group is &lt;1000, so using loess. Use &#39;method = x&#39; to change the smoothing method.</code></pre>
 <p><img src="figure/qc-cell-ipsc.Rmd/pc1-unmapped-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <p>PC1 is positively correlated with the total number of mapped reads.</p>
 <pre class="r"><code>ggplot(pca_reads_cells_anno, aes(x = total.mapped, y = PC1)) +
   geom_point() +
   geom_smooth()</code></pre>
-<pre><code>geom_smooth: method=&quot;auto&quot; and size of largest group is &lt;1000, so using loess. Use &#39;method = x&#39; to change the smoothing method.</code></pre>
 <p><img src="figure/qc-cell-ipsc.Rmd/pc1-total-mapped-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <p>Using various simple filtering cutoffs, it is not possible to capture all the cells that have low values of PC1.</p>
 <pre class="r"><code>pca_reads_cells_anno$total_cutoff &lt;- pca_reads_cells_anno$total.mapped &gt; 2 * 10^6
@@ -456,7 +449,7 @@ ggplot(pca_reads_cells_anno, aes(x = PC1, y = PC2, col = qc_filter)) +
 <div id="session-information" class="section level2">
 <h2>Session information</h2>
 <pre class="r"><code>sessionInfo()</code></pre>
-<pre><code>R version 3.1.1 (2014-07-10)
+<pre><code>R version 3.2.0 (2015-04-16)
 Platform: x86_64-unknown-linux-gnu (64-bit)
 
 locale:
@@ -471,15 +464,16 @@ attached base packages:
 [1] stats     graphics  grDevices utils     datasets  methods   base     
 
 other attached packages:
-[1] edgeR_3.6.7   limma_3.20.8  ggplot2_1.0.0 dplyr_0.4.1   knitr_1.10.5 
+[1] edgeR_3.10.2  limma_3.24.9  ggplot2_1.0.1 dplyr_0.4.1   knitr_1.10.5 
 
 loaded via a namespace (and not attached):
- [1] assertthat_0.1   colorspace_1.2-4 DBI_0.3.1        digest_0.6.4    
- [5] evaluate_0.7     formatR_0.10     grid_3.1.1       gtable_0.1.2    
- [9] htmltools_0.2.6  labeling_0.2     lazyeval_0.1.10  magrittr_1.0.1  
-[13] MASS_7.3-33      munsell_0.4.2    parallel_3.1.1   plyr_1.8.1      
-[17] proto_0.3-10     Rcpp_0.11.6      reshape2_1.4     rmarkdown_0.5.1 
-[21] scales_0.2.4     stringr_0.6.2    tools_3.1.1      yaml_2.1.13     </code></pre>
+ [1] Rcpp_0.11.6      magrittr_1.5     MASS_7.3-40      munsell_0.4.2   
+ [5] colorspace_1.2-6 stringr_1.0.0    plyr_1.8.2       tools_3.2.0     
+ [9] parallel_3.2.0   grid_3.2.0       gtable_0.1.2     DBI_0.3.1       
+[13] htmltools_0.2.6  lazyeval_0.1.10  yaml_2.1.13      assertthat_0.1  
+[17] digest_0.6.8     reshape2_1.4.1   formatR_1.2      evaluate_0.7    
+[21] rmarkdown_0.6.1  labeling_0.3     stringi_0.4-1    scales_0.2.4    
+[25] proto_0.3-10    </code></pre>
 </div>
 
 
