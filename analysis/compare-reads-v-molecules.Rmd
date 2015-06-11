@@ -1,0 +1,158 @@
+---
+title: "Compare read and molecule counts"
+date: 2015-06-11
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+```
+
+Compare counts via three methods:
+
+*  **reads_cpm** - standard counts per million
+*  **molecules** - counts of molecules identified using UMIs
+*  **molecules_per_lane** - counts of molecules identified using UMIs per each sequencing lane and then summed per sample
+
+## Input
+
+```{r packages, message=FALSE}
+library("dplyr")
+library("ggplot2")
+theme_set(theme_bw(base_size = 16))
+library("edgeR")
+```
+
+Input annotation.
+
+```{r input-annotation}
+anno <- read.table("../data/annotation.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno)
+```
+
+Input read counts.
+
+```{r input-read-counts}
+reads <- read.table("../data/reads.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+```
+
+Input molecule counts.
+
+```{r input-molecule-counts}
+molecules <- read.table("../data/molecules.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+```
+
+Input molecule counts summed across lanes.
+
+```{r input-molecule-per-lane-counts}
+molecules_per_lane <- read.table("../data/molecules-per-lane.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+```
+
+Input list of quality single cells.
+
+```{r input-quality-single-cells}
+quality_single_cells <- scan("../data/quality-single-cells.txt",
+                             what = "character")
+```
+
+## Filter
+
+Keep only the single cells that passed the [QC filters](qc-cell-ipsc.html) and the bulk samples.
+
+```{r}
+reads <- reads[, grepl("bulk", colnames(reads)) |
+                 colnames(reads) %in% quality_single_cells]
+molecules <- molecules[, grepl("bulk", colnames(molecules)) |
+                         colnames(molecules) %in% quality_single_cells]
+molecules_per_lane <- molecules_per_lane[, grepl("bulk", colnames(molecules_per_lane)) |
+                                           colnames(molecules_per_lane) %in% quality_single_cells]
+anno <- anno[anno$well == "bulk" | anno$sample_id %in% quality_single_cells, ]
+stopifnot(dim(reads) == dim(molecules),
+          nrow(anno) == ncol(molecules_per_lane))
+```
+
+Remove genes with zero read counts.
+
+```{r remove-non-expressed-genes}
+expressed <- rowSums(reads) > 0
+reads <- reads[expressed, ]
+molecules <- molecules[expressed, ]
+molecules_per_lane <- molecules_per_lane[expressed, ]
+```
+
+## Calculate counts per million (cpm)
+
+Calculate cpm for the reads data using TMM-normalization.
+
+```{r calc-cpm}
+norm_factors <- calcNormFactors(reads, method = "TMM")
+reads_cpm <- cpm(reads, lib.size = colSums(reads) * norm_factors)
+```
+
+## Compare reads and molecules
+
+Compare the means of each gene obtained via the different methods.
+
+```{r calc-means}
+mean_data <- data.frame(reads_cpm = rowMeans(reads_cpm),
+                        molecules = rowMeans(molecules),
+                        molecules_per_lane = rowMeans(molecules_per_lane))
+cor(mean_data)
+```
+
+All three are highly correlated.
+
+```{r reads-v-molecules}
+mean_data$type <- ifelse(grepl("ERCC", rownames(mean_data)), "ERCC", "gene")
+ggplot(mean_data, aes(x = reads_cpm, y = molecules)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  facet_wrap(~ type)
+```
+
+There are only a few genes with molecule counts greater than the number of UMIs.
+
+```{r over-umi-limit}
+rownames(molecules)[rowMeans(molecules) > 1024]
+```
+
+They are highly expressed mitochondrial genes.
+
+```{r reads-v-molecules-range-restricted, warning=FALSE}
+ggplot(mean_data, aes(x = reads_cpm, y = molecules)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  facet_wrap(~ type) +
+  ylim(0, 1100)
+```
+
+
+```{r reads-v-molecules-per-lane, warning=FALSE}
+ggplot(mean_data, aes(x = reads_cpm, y = molecules_per_lane)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  facet_wrap(~ type)
+```
+
+The molecule counts and the molecule counts summed per sequencing lane are highly correlated.
+This indicates that most of the bias is introduced in the library preparation step and not during sequencing.
+
+```{r molecules-v-molecules-per-lane, warning=FALSE}
+ggplot(mean_data, aes(x = molecules_per_lane, y = molecules)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  facet_wrap(~ type)
+```
+
+## Session information
+
+```{r info}
+sessionInfo()
+```
