@@ -20,6 +20,7 @@ Creates the following files:
 *  anno.txt - Annotation file
 *  molecules.txt - Molecule counts (sample x gene)
 *  reads.txt - Read counts (sample x gene)
+*  molecules-per-lane.txt (sample x gene) - the inflated molecule counts obtained by summing each lane (for QC purposes)
 
 ## Input
 
@@ -32,11 +33,11 @@ library("dplyr")
 counts <- fread("/mnt/gluster/data/internal_supp/singleCellSeq/gene-counts.txt")
 ```
 
-## Sum counts by sample
+## Sum counts per lane by sample
 
 ```{r summarise}
 counts_by_sample <- counts %>%
-  filter(sickle == "quality-trimmed") %>%
+  filter(!is.na(lane), sickle == "quality-trimmed") %>%
   select(individual, batch, well, rmdup, starts_with("ENSG"), starts_with("ERCC")) %>%
   group_by(individual, batch, well, rmdup) %>%
   summarise_each(funs(sum)) %>%
@@ -92,7 +93,7 @@ write.table(anno, "../data/annotation.txt", quote = FALSE, sep = "\t",
 Output molecule counts.
 
 ```{r write-molecules}
-write.table(molecules, "../data/molecules.txt", quote = FALSE, sep = "\t",
+write.table(molecules, "../data/molecules-per-lane.txt", quote = FALSE, sep = "\t",
             col.names = NA)
 ```
 
@@ -100,6 +101,39 @@ Output read counts.
 
 ```{r}
 write.table(reads, "../data/reads.txt", quote = FALSE, sep = "\t",
+            col.names = NA)
+```
+
+## Output molecules from combined counts
+
+Reads with the same UMI and start position need to be removed using all the data for a given sample.
+Otherwise the counts will be inflated because the same read can be sequenced across multiple lanes.
+Post-mapping we combined all the reads per sample and removed duplicate UMIs ([pipeline][]).
+The data from these combined samples have `NA` recorded for index, lane, and flow_cell.
+
+[pipeline]: http://jdblischak.github.io/singleCellSeq/analysis/process-samples.html#process-at-the-sample-level
+
+```{r select-sort-combined-counts}
+counts_combined <- counts %>%
+  filter(is.na(lane), sickle == "quality-trimmed") %>%
+  select(individual, batch, well, rmdup, starts_with("ENSG"), starts_with("ERCC")) %>%
+  arrange(individual, batch, well, rmdup)
+stopifnot(counts_combined$individual[c(TRUE, FALSE)] == anno$individual,
+          counts_combined$batch[c(TRUE, FALSE)] == anno$batch,
+          counts_combined$well[c(TRUE, FALSE)] == anno$well)
+```
+
+Molecule counts from combined samples.
+
+```{r molecules-combined}
+molecules_combined <- counts_combined %>%
+  filter(rmdup == "molecules") %>%
+  select(-(individual:rmdup)) %>%
+  t
+dim(molecules_combined)
+colnames(molecules_combined) <- anno$sample_id
+molecules_combined[1:10, 1:5]
+write.table(molecules_combined, "../data/molecules.txt", quote = FALSE, sep = "\t",
             col.names = NA)
 ```
 
