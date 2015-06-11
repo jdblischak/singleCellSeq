@@ -133,7 +133,7 @@ img {
 </div>
 
 <p><strong>Last updated:</strong> 2015-06-11</p>
-<p><strong>Code version:</strong> 44338a0a5f347c0c7a565729f2a86161eb3229d3</p>
+<p><strong>Code version:</strong> 3e13fe536f90a993c343dabab9b2cfa4217b9adf</p>
 <div id="input" class="section level2">
 <h2>Input</h2>
 <pre class="r"><code>library(&quot;dplyr&quot;)
@@ -147,6 +147,7 @@ library(&quot;edgeR&quot;)</code></pre>
 <pre class="r"><code>summary_per_sample &lt;- summary_counts %&gt;%
   filter(sickle == &quot;quality-trimmed&quot;) %&gt;%
   select(-sickle) %&gt;%
+  arrange(individual, batch, well, rmdup) %&gt;%
   as.data.frame</code></pre>
 <p>Input annotation.</p>
 <pre class="r"><code>anno &lt;- read.table(&quot;../data/annotation.txt&quot;, header = TRUE,
@@ -235,7 +236,7 @@ adjusted_ratio &lt;- mean(summary_per_sample_reads_single$total.ERCC[summary_per
 
 #calculating the pippetting error rate before 21 cycle amplification
 adjusted_ratio^(1/22)</code></pre>
-<pre><code>[1] 1.02258</code></pre>
+<pre><code>[1] 1.078894</code></pre>
 <pre class="r"><code>#adjusted total ERCC reads
 summary_per_sample_reads_single$adj.total.ERCC &lt;- summary_per_sample_reads_single$total.ERCC  
 
@@ -277,7 +278,7 @@ ggplot(C1_19098_1, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(in
 <pre class="r"><code>C1_19098_1_retained &lt;- C1_19098_1[C1_19098_1$unmapped.ratios&lt; 0.4 &amp; C1_19098_1$ERCC.ratios&lt; 0.025 &amp; C1_19098_1$cell_number == 1,]
 
 dim(C1_19098_1_retained)</code></pre>
-<pre><code>[1] 50 23</code></pre>
+<pre><code>[1] 86 23</code></pre>
 <pre class="r"><code>#individual 19098 batch2
 C1_19098_2 &lt;- summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$individual == &quot;19098&quot; &amp; summary_per_sample_reads_single_qc$batch ==&quot;2&quot;,]
 
@@ -299,7 +300,7 @@ ggplot(C1_19098_3, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(in
 <pre class="r"><code>C1_19098_3_retained &lt;- C1_19098_3[C1_19098_3$unmapped.ratios&lt; 0.45 &amp; C1_19098_3$ERCC.ratios&lt; 0.08 &amp; C1_19098_3$cell_number == 1,]
 
 dim(C1_19098_3_retained)</code></pre>
-<pre><code>[1] 75 23</code></pre>
+<pre><code>[1] 78 23</code></pre>
 </div>
 </div>
 <div id="effect-of-cell-qc-data-on-sequencing-results" class="section level2">
@@ -439,11 +440,41 @@ ggplot(pca_reads_cells_anno, aes(x = PC1, y = PC2, col = total_cutoff)) +
 ggplot(pca_reads_cells_anno, aes(x = PC1, y = PC2, col = unmapped_cutoff)) +
   geom_point()</code></pre>
 <p><img src="figure/qc-cell-ipsc.Rmd/filter-unmapped-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>pca_reads_cells_anno$qc_filter &lt;- pca_reads_cells_anno$cell_number == 1 &amp;
-                                   pca_reads_cells_anno$total.mapped &gt; 2 * 10^6
-ggplot(pca_reads_cells_anno, aes(x = PC1, y = PC2, col = qc_filter)) +
+<pre class="r"><code>pca_reads_cells_anno$cell_filter &lt;- pca_reads_cells_anno$cell_number == 1
+ggplot(pca_reads_cells_anno, aes(x = PC1, y = PC2, col = cell_filter)) +
   geom_point()</code></pre>
+<p><img src="figure/qc-cell-ipsc.Rmd/filter-cell-num-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>pca_reads_cells_anno$qc_filter &lt;- pca_reads_cells_anno$cell_filter &amp;
+                                  pca_reads_cells_anno$total_cutoff
+ggplot(pca_reads_cells_anno, aes(x = PC1, y = PC2, col = qc_filter,
+                                 label = as.character(cell_number))) +
+  geom_text(fontface=3)</code></pre>
 <p><img src="figure/qc-cell-ipsc.Rmd/filter-total-cell-num-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p>The two cutoffs largely overlap.</p>
+<pre class="r"><code>table(pca_reads_cells_anno$cell_filter, pca_reads_cells_anno$total_cutoff,
+      dnn = c(&quot;Num cells == 1&quot;, &quot;Total reads &gt; 2e6&quot;))</code></pre>
+<pre><code>              Total reads &gt; 2e6
+Num cells == 1 FALSE TRUE
+         FALSE    23   52
+         TRUE    157  632</code></pre>
+<p>How many cells do we keep from each individual and batch using this filter?</p>
+<pre class="r"><code>table(pca_reads_cells_anno[pca_reads_cells_anno$qc_filter,
+                           c(&quot;individual&quot;, &quot;batch&quot;)])</code></pre>
+<pre><code>          batch
+individual  1  2  3
+     19098 81 69 54
+     19101 80 73 56
+     19239 73 67 79</code></pre>
+<p>Output list of single cells to keep.</p>
+<pre class="r"><code>stopifnot(nrow(pca_reads_cells_anno) == nrow(anno[anno$well != &quot;bulk&quot;, ]))
+quality_single_cells &lt;- anno %&gt;%
+  filter(well != &quot;bulk&quot;) %&gt;%
+  filter(pca_reads_cells_anno$qc_filter) %&gt;%
+  select(sample_id)
+stopifnot(!grepl(&quot;bulk&quot;, quality_single_cells$sample_id))
+write.table(quality_single_cells,
+            file = &quot;../data/quality-single-cells.txt&quot;, quote = FALSE,
+            sep = &quot;\t&quot;, row.names = FALSE, col.names = FALSE)</code></pre>
 </div>
 </div>
 <div id="session-information" class="section level2">

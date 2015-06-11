@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+
+<meta name="date" content="2015-06-11" />
+
+<title>Compare read and molecule counts</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Compare read and molecule counts</h1>
+<h4 class="date"><em>2015-06-11</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#input">Input</a></li>
+<li><a href="#filter">Filter</a></li>
+<li><a href="#calculate-counts-per-million-cpm">Calculate counts per million (cpm)</a></li>
+<li><a href="#compare-reads-and-molecules">Compare reads and molecules</a></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2015-06-11</p>
+<p><strong>Code version:</strong> 3e13fe536f90a993c343dabab9b2cfa4217b9adf</p>
+<p>Compare counts via three methods:</p>
+<ul>
+<li><strong>reads_cpm</strong> - standard counts per million</li>
+<li><strong>molecules</strong> - counts of molecules identified using UMIs</li>
+<li><strong>molecules_per_lane</strong> - counts of molecules identified using UMIs per each sequencing lane and then summed per sample</li>
+</ul>
+<div id="input" class="section level2">
+<h2>Input</h2>
+<pre class="r"><code>library(&quot;dplyr&quot;)
+library(&quot;ggplot2&quot;)
+theme_set(theme_bw(base_size = 16))
+library(&quot;edgeR&quot;)</code></pre>
+<p>Input annotation.</p>
+<pre class="r"><code>anno &lt;- read.table(&quot;../data/annotation.txt&quot;, header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno)</code></pre>
+<pre><code>  individual batch well     sample_id
+1      19098     1  A01 NA19098.1.A01
+2      19098     1  A02 NA19098.1.A02
+3      19098     1  A03 NA19098.1.A03
+4      19098     1  A04 NA19098.1.A04
+5      19098     1  A05 NA19098.1.A05
+6      19098     1  A06 NA19098.1.A06</code></pre>
+<p>Input read counts.</p>
+<pre class="r"><code>reads &lt;- read.table(&quot;../data/reads.txt&quot;, header = TRUE,
+                    stringsAsFactors = FALSE)</code></pre>
+<p>Input molecule counts.</p>
+<pre class="r"><code>molecules &lt;- read.table(&quot;../data/molecules.txt&quot;, header = TRUE,
+                    stringsAsFactors = FALSE)</code></pre>
+<p>Input molecule counts summed across lanes.</p>
+<pre class="r"><code>molecules_per_lane &lt;- read.table(&quot;../data/molecules-per-lane.txt&quot;, header = TRUE,
+                    stringsAsFactors = FALSE)</code></pre>
+<p>Input list of quality single cells.</p>
+<pre class="r"><code>quality_single_cells &lt;- scan(&quot;../data/quality-single-cells.txt&quot;,
+                             what = &quot;character&quot;)</code></pre>
+</div>
+<div id="filter" class="section level2">
+<h2>Filter</h2>
+<p>Keep only the single cells that passed the <a href="qc-cell-ipsc.html">QC filters</a> and the bulk samples.</p>
+<pre class="r"><code>reads &lt;- reads[, grepl(&quot;bulk&quot;, colnames(reads)) |
+                 colnames(reads) %in% quality_single_cells]
+molecules &lt;- molecules[, grepl(&quot;bulk&quot;, colnames(molecules)) |
+                         colnames(molecules) %in% quality_single_cells]
+molecules_per_lane &lt;- molecules_per_lane[, grepl(&quot;bulk&quot;, colnames(molecules_per_lane)) |
+                                           colnames(molecules_per_lane) %in% quality_single_cells]
+anno &lt;- anno[anno$well == &quot;bulk&quot; | anno$sample_id %in% quality_single_cells, ]
+stopifnot(dim(reads) == dim(molecules),
+          nrow(anno) == ncol(molecules_per_lane))</code></pre>
+<p>Remove genes with zero read counts.</p>
+<pre class="r"><code>expressed &lt;- rowSums(reads) &gt; 0
+reads &lt;- reads[expressed, ]
+molecules &lt;- molecules[expressed, ]
+molecules_per_lane &lt;- molecules_per_lane[expressed, ]</code></pre>
+</div>
+<div id="calculate-counts-per-million-cpm" class="section level2">
+<h2>Calculate counts per million (cpm)</h2>
+<p>Calculate cpm for the reads data using TMM-normalization.</p>
+<pre class="r"><code>norm_factors &lt;- calcNormFactors(reads, method = &quot;TMM&quot;)
+reads_cpm &lt;- cpm(reads, lib.size = colSums(reads) * norm_factors)</code></pre>
+</div>
+<div id="compare-reads-and-molecules" class="section level2">
+<h2>Compare reads and molecules</h2>
+<p>Compare the means of each gene obtained via the different methods.</p>
+<pre class="r"><code>mean_data &lt;- data.frame(reads_cpm = rowMeans(reads_cpm),
+                        molecules = rowMeans(molecules),
+                        molecules_per_lane = rowMeans(molecules_per_lane))
+cor(mean_data)</code></pre>
+<pre><code>                   reads_cpm molecules molecules_per_lane
+reads_cpm          1.0000000 0.8967744          0.8822635
+molecules          0.8967744 1.0000000          0.9947736
+molecules_per_lane 0.8822635 0.9947736          1.0000000</code></pre>
+<p>All three are highly correlated.</p>
+<pre class="r"><code>mean_data$type &lt;- ifelse(grepl(&quot;ERCC&quot;, rownames(mean_data)), &quot;ERCC&quot;, &quot;gene&quot;)
+ggplot(mean_data, aes(x = reads_cpm, y = molecules)) +
+  geom_point() +
+  geom_smooth(method = &quot;lm&quot;) +
+  facet_wrap(~ type)</code></pre>
+<p><img src="figure/compare-reads-v-molecules.Rmd/reads-v-molecules-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>There are only a few genes with molecule counts greater than the number of UMIs.</p>
+<pre class="r"><code>rownames(molecules)[rowMeans(molecules) &gt; 1024]</code></pre>
+<pre><code>[1] &quot;ENSG00000198712&quot; &quot;ENSG00000198938&quot; &quot;ENSG00000198886&quot;</code></pre>
+<p>They are highly expressed mitochondrial genes.</p>
+<pre class="r"><code>ggplot(mean_data, aes(x = reads_cpm, y = molecules)) +
+  geom_point() +
+  geom_smooth(method = &quot;lm&quot;) +
+  facet_wrap(~ type) +
+  ylim(0, 1100)</code></pre>
+<p><img src="figure/compare-reads-v-molecules.Rmd/reads-v-molecules-range-restricted-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(mean_data, aes(x = reads_cpm, y = molecules_per_lane)) +
+  geom_point() +
+  geom_smooth(method = &quot;lm&quot;) +
+  facet_wrap(~ type)</code></pre>
+<p><img src="figure/compare-reads-v-molecules.Rmd/reads-v-molecules-per-lane-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>The molecule counts and the molecule counts summed per sequencing lane are highly correlated. This indicates that most of the bias is introduced in the library preparation step and not during sequencing.</p>
+<pre class="r"><code>ggplot(mean_data, aes(x = molecules_per_lane, y = molecules)) +
+  geom_point() +
+  geom_smooth(method = &quot;lm&quot;) +
+  facet_wrap(~ type)</code></pre>
+<p><img src="figure/compare-reads-v-molecules.Rmd/molecules-v-molecules-per-lane-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] edgeR_3.10.2  limma_3.24.9  ggplot2_1.0.1 dplyr_0.4.1   knitr_1.10.5 
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.11.6      magrittr_1.5     MASS_7.3-40      munsell_0.4.2   
+ [5] colorspace_1.2-6 stringr_1.0.0    plyr_1.8.2       tools_3.2.0     
+ [9] parallel_3.2.0   grid_3.2.0       gtable_0.1.2     DBI_0.3.1       
+[13] htmltools_0.2.6  yaml_2.1.13      assertthat_0.1   digest_0.6.8    
+[17] reshape2_1.4.1   formatR_1.2      evaluate_0.7     rmarkdown_0.6.1 
+[21] labeling_0.3     stringi_0.4-1    scales_0.2.4     proto_0.3-10    </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+
+</body>
+</html>
