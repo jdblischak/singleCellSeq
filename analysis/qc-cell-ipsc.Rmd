@@ -380,11 +380,33 @@ ggplot(pca_reads_cells_anno, aes(x = PC1, y = PC2, col = unmapped_cutoff)) +
   geom_point()
 ```
 
-```{r filter-total-cell-num}
-pca_reads_cells_anno$qc_filter <- pca_reads_cells_anno$cell_number == 1 &
-                                   pca_reads_cells_anno$total.mapped > 2 * 10^6
-ggplot(pca_reads_cells_anno, aes(x = PC1, y = PC2, col = qc_filter)) +
+```{r filter-cell-num}
+pca_reads_cells_anno$cell_filter <- pca_reads_cells_anno$cell_number == 1
+ggplot(pca_reads_cells_anno, aes(x = PC1, y = PC2, col = cell_filter)) +
   geom_point()
+```
+
+```{r filter-total-cell-num}
+pca_reads_cells_anno$qc_filter <- pca_reads_cells_anno$qc_filter &
+                                  pca_reads_cells_anno$total_cutoff
+ggplot(pca_reads_cells_anno, aes(x = PC1, y = PC2, col = qc_filter,
+                                 shape = cell_filter,
+                                 label = as.character(cell_number))) +
+  geom_text(fontface=3)
+```
+
+The two cutoffs largely overlap.
+
+```{r}
+table(pca_reads_cells_anno$cell_filter, pca_reads_cells_anno$total_cutoff,
+      dnn = c("Num cells == 1", "Total reads > 2e6"))
+```
+
+How many cells do we keep from each individual and batch using this filter?
+
+```{r}
+table(pca_reads_cells_anno[pca_reads_cells_anno$qc_filter,
+                           c("individual", "batch")])
 ```
 
 ## Session information
