@@ -32,8 +32,12 @@ for f in files:
     # Get meta data from filename
     dir, fname = f.split("/")
     fname_parts = fname.split(".")
-    individual, batch, well, index, lane = fname_parts[:5]
-    flow_cell = fname_parts[6]
+    if "combined" in fname:
+        individual, batch, well = fname_parts[:3]
+        index, lane, flow_cell = ["NA"] * 3
+    else:
+        individual, batch, well, index, lane = fname_parts[:5]
+        flow_cell = fname_parts[6]
     # Determine if sample was quality trimmed with sickle
     if "sickle" in fname:
         sickle = "quality-trimmed"

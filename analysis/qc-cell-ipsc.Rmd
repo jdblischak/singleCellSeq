@@ -24,21 +24,20 @@ library("edgeR")
 
 Summary counts from featureCounts.
 Created with [gather-summary-counts.py](https://github.com/jdblischak/singleCellSeq/blob/master/code/gather-summary-counts.py).
+These data were collected from the summary files of the full combined samples.
 
 ```{r input-summary-counts}
 summary_counts <- read.table("../data/summary-counts.txt", header = TRUE,
                              stringsAsFactors = FALSE)
 ```
 
-Using only the sickle-trimmed data, sum the counts across all the sequencing lanes for a given sample.
+Currently this file only contains data from sickle-trimmed reads, so the code below simply ensures this and then removes the column.
 
-```{r sum-per-sample}
+```{r clean-summary-counts}
 summary_per_sample <- summary_counts %>%
   filter(sickle == "quality-trimmed") %>%
-  select(-index, -lane, -flow_cell, -sickle) %>%
-  group_by(individual, batch, well, rmdup) %>%
-  summarise_each(funs(sum)) %>%
-  ungroup %>%
+  select(-sickle) %>%
+  arrange(individual, batch, well, rmdup) %>%
   as.data.frame
 ```
 
@@ -360,11 +359,46 @@ ggplot(pca_reads_cells_anno, aes(x = PC1, y = PC2, col = unmapped_cutoff)) +
   geom_point()
 ```
 
-```{r filter-total-cell-num}
-pca_reads_cells_anno$qc_filter <- pca_reads_cells_anno$cell_number == 1 &
-                                   pca_reads_cells_anno$total.mapped > 2 * 10^6
-ggplot(pca_reads_cells_anno, aes(x = PC1, y = PC2, col = qc_filter)) +
+```{r filter-cell-num}
+pca_reads_cells_anno$cell_filter <- pca_reads_cells_anno$cell_number == 1
+ggplot(pca_reads_cells_anno, aes(x = PC1, y = PC2, col = cell_filter)) +
   geom_point()
+```
+
+```{r filter-total-cell-num}
+pca_reads_cells_anno$qc_filter <- pca_reads_cells_anno$cell_filter &
+                                  pca_reads_cells_anno$total_cutoff
+ggplot(pca_reads_cells_anno, aes(x = PC1, y = PC2, col = qc_filter,
+                                 label = as.character(cell_number))) +
+  geom_text(fontface=3)
+```
+
+The two cutoffs largely overlap.
+
+```{r cell-total-filter-overlap}
+table(pca_reads_cells_anno$cell_filter, pca_reads_cells_anno$total_cutoff,
+      dnn = c("Num cells == 1", "Total reads > 2e6"))
+```
+
+How many cells do we keep from each individual and batch using this filter?
+
+```{r individuals-remaining}
+table(pca_reads_cells_anno[pca_reads_cells_anno$qc_filter,
+                           c("individual", "batch")])
+```
+
+Output list of single cells to keep.
+
+```{r filter-keep-list}
+stopifnot(nrow(pca_reads_cells_anno) == nrow(anno[anno$well != "bulk", ]))
+quality_single_cells <- anno %>%
+  filter(well != "bulk") %>%
+  filter(pca_reads_cells_anno$qc_filter) %>%
+  select(sample_id)
+stopifnot(!grepl("bulk", quality_single_cells$sample_id))
+write.table(quality_single_cells,
+            file = "../data/quality-single-cells.txt", quote = FALSE,
+            sep = "\t", row.names = FALSE, col.names = FALSE)
 ```
 
 ## Session information
