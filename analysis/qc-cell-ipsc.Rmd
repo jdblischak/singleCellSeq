@@ -1,6 +1,7 @@
 ---
 title: "Quality control for iPS cells"
-date: 2015-05-27
+output: pdf_document
+date: '2015-05-27'
 ---
 
 **Last updated:** `r Sys.Date()`
@@ -109,9 +110,9 @@ ggplot(summary_per_sample_reads, aes(x = total.mapped, y = ERCC.ratios, col = as
 #remove bulk keep single cell
 summary_per_sample_reads_single <- summary_per_sample_reads[summary_per_sample_reads$well!="bulk",]
 
-ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5)
+ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + xlab("Number of mapped reads") + ylab("Umapped reads ratio")
 
-ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5)
+ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + xlab("Number of mapped reads") + ylab("Spike-in reads ratio")
 
 ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))
 
@@ -152,28 +153,18 @@ ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = unmapped.ra
 
 ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)
 
-ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))
+#qc filter only keep cells with more than 2 million reads
+summary_per_sample_reads_single_qc$qc_filter <- summary_per_sample_reads_single_qc$cell_number == 1 & summary_per_sample_reads_single_qc$total.mapped > 2 * 10^6
 
-ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))
+ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = unmapped.ratios, col = qc_filter, label = as.character(cell_number))) + geom_text(fontface=3) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + xlab("Number of mapped reads") + ylab("Umapped reads ratio")
 
-ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = adj.ERCC.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))
+ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = ERCC.ratios, col = qc_filter, label = as.character(cell_number))) + geom_text(fontface=3) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + xlab("Number of mapped reads") + ylab("Spike-in reads ratio")
 ```
 
 Given that each plates/batch was collected seperately and independently, it would be reasonable to remove the bad quality cell by batch (using different cutoffs for each C1 collection). For exmaple, 19098 batch 2 have more ERCC than all the others. Using the same quiteria would end up with no cell.
 
 ### cutoff by C1 plate
 ```{r by-C1}
-#individual 19098 batch1
-C1_19098_1 <- summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$individual == "19098" & summary_per_sample_reads_single_qc$batch =="1",]
-
-ggplot(C1_19098_1, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)
-
-ggplot(C1_19098_1, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)
-
-C1_19098_1_retained <- C1_19098_1[C1_19098_1$unmapped.ratios< 0.4 & C1_19098_1$ERCC.ratios< 0.025 & C1_19098_1$cell_number == 1,]
-
-dim(C1_19098_1_retained)
-
 #individual 19098 batch2
 C1_19098_2 <- summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$individual == "19098" & summary_per_sample_reads_single_qc$batch =="2",]
 
@@ -184,18 +175,6 @@ ggplot(C1_19098_2, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(indivi
 C1_19098_2_retained <- C1_19098_2[C1_19098_2$unmapped.ratios< 0.6 & C1_19098_2$ERCC.ratios< 0.35 & C1_19098_2$cell_number == 1,]
 
 dim(C1_19098_2_retained)
-
-#individual 19098 batch3
-C1_19098_3 <- summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$individual == "19098" & summary_per_sample_reads_single_qc$batch =="3",]
-
-ggplot(C1_19098_3, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)
-
-ggplot(C1_19098_3, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)
-
-C1_19098_3_retained <- C1_19098_3[C1_19098_3$unmapped.ratios< 0.45 & C1_19098_3$ERCC.ratios< 0.08 & C1_19098_3$cell_number == 1,]
-
-dim(C1_19098_3_retained)
-
 ```
 
 ## Effect of cell QC data on sequencing results
