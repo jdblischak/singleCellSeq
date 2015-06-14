@@ -161,9 +161,15 @@ dim(molecules.new)
 # remove bulk
 molecules_single <- molecules %>% select(-contains("bulk"))
 
+# remove 1024 and greater
+molecules_single <- molecules_single[apply(molecules_single,1,max) < 1024,]
+
+
 # apply qc_filter
 molecules_single_qc <- molecules_single[,summary_per_sample_reads_single_qc$qc_filter]
 dim(molecules_single_qc)
+
+sample_name <- names(molecules_single_qc)
 	
 
 ### create a function to compute the cv and mean of molecules
@@ -173,7 +179,7 @@ dim(molecules_single_qc)
 ### 2. adj.19098.batch: flag to control if we want to adj the 19098 batch2 molecules numberes. default to not adj, meaning using the raw numbers
 prep_molecules.cv.mean <- function(filter,adj.19098.batch2=0){
    ### generate the data of interest 
-   sample_name <- names(molecules_single_qc)
+   
    data.in <- molecules_single_qc[,grepl(filter,sample_name)]
   
 	if(adj.19098.batch2 == 1){
@@ -220,9 +226,13 @@ prep_molecules.cv.mean <- function(filter,adj.19098.batch2=0){
 
 	# add mean
 	molecules_single_qc_w_mean_cv$mean <- apply(molecules.crt, 1, function(x) mean(x,na.rm=TRUE) )
+	
 	# add CV
 	molecules_single_qc_w_mean_cv$CV <- apply(molecules.crt, 1, function(x) sd(x,na.rm=TRUE) )/ apply(molecules.crt, 1, function(x) mean(x,na.rm=TRUE))
 
+	# add variance
+	molecules_single_qc_w_mean_cv$var <- apply(molecules.crt, 1, function(x) var(x,na.rm=TRUE) )
+	
 	# remove non-expressed 
 	molecules_single_qc_expressed <- molecules_single_qc_w_mean_cv[molecules_single_qc_w_mean_cv$mean >0,]
 	dim(molecules_single_qc_expressed)
@@ -230,6 +240,9 @@ prep_molecules.cv.mean <- function(filter,adj.19098.batch2=0){
   # create a flag to ERCC
 	molecules_single_qc_expressed$ERCC <- grepl("ERCC",rownames(molecules_single_qc_expressed))
 	
+	# add gene_name 
+  molecules_single_qc_expressed$gene_name <- rownames(molecules_single_qc_expressed)
+
 	return(molecules_single_qc_expressed)
 ###  end of prep.molecules.cv.mean function	
 }
@@ -249,7 +262,7 @@ ggplot(molecules_single_qc_expressed_rm_ERCC, aes(x = mean, y = CV, col = ERCC))
 
 ### create molecule data by each individaul using the molecules_single_qc_expressed_rm_ERCC
 ## 19098
-individual_19098_mean_CV <- prep_molecules.cv.mean(filter="19098",adj.19098.batch2 = 3)
+individual_19098_mean_CV <- prep_molecules.cv.mean(filter="19098",adj.19098.batch2 = 0)
 
 ggplot(individual_19098_mean_CV, aes(x = mean, y = CV, col = ERCC))  + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_colour_manual(values=cbPalette)
 
@@ -361,7 +374,7 @@ plot.cv.and.mean <- function(data.in){
 		3.7*(10^x)^(0.5)/(10^(x))+0.3
 	}
 
-	ggplot(data.in, aes(x = mean, y = CV, col = ERCC))  + geom_point(size = 2, alpha = 0.5) +  stat_function(fun= poisson.c, col= "#CC79A7") + stat_function(fun= four.sd, col= "#F0E442") + stat_function(fun= lossy.posson, col= "#56B4E9") + scale_x_log10() + ylim(0, 15) + scale_colour_manual(values=cbPalette) + xlab("Average number of molecules") + ylab ("coefficient of variation (CV)")
+	ggplot(data.in, aes(x = mean, y = CV, col = ERCC))  + geom_point(size = 2, alpha = 0.5) +  stat_function(fun= poisson.c, col= "#CC79A7") + stat_function(fun= four.sd, col= "#F0E442") + stat_function(fun= lossy.posson, col= "#56B4E9") + scale_x_log10() + ylim(0, max(data.in$CV)*1.1) + scale_colour_manual(values=cbPalette) + xlab("Average number of molecules") + ylab ("coefficient of variation (CV)")
 
 }
 plot.cv.and.mean(data.in=molecules_single_qc_expressed)
@@ -405,6 +418,9 @@ noisy_gene <- function(data.in){
  rownames(molecules_single_qc_expressed)[count.index&condi.index]
 }
 
+# noisy genes of all
+noisy_gene_all <- noisy_gene(data.in=molecules_single_qc_expressed)
+
 # noisy genes of each individaul
 noisy_gene_19098 <- noisy_gene(data.in = individual_19098_mean_CV)
 noisy_gene_19101 <- noisy_gene(data.in = individual_19101_mean_CV)
@@ -425,6 +441,52 @@ noisy_gene_19239.1 <- noisy_gene(data.in = individual_19239.1_mean_CV)
 noisy_gene_19239.2 <- noisy_gene(data.in = individual_19239.2_mean_CV)
 noisy_gene_19239.3 <- noisy_gene(data.in = individual_19239.3_mean_CV)
 table(c(noisy_gene_19239.1,noisy_gene_19239.2,noisy_gene_19239.3))
+```
+
+## variation between individuals
+```{r var-individual}
+# overall variation is the sum of inter- and intra- individual variation
+# creat a table with all the variation
+table_variance <- molecules_single_qc_expressed[,c("gene_name","mean","var","ERCC")]
+names(table_variance) <- c("gene_name","mean_all","variance_all","ERCC")
+
+merge_variance <- function(data.base,data.merge,post.name){
+  data.merge <- data.merge[,c("gene_name","mean","var")]
+  names(data.merge) <- c("gene_name",paste(c("mean","var"),post.name,sep=""))
+  merge(data.base,data.merge,by="gene_name",all.x=TRUE)
+}
+table_variance <- merge_variance(data.base=table_variance,data.merge=individual_19098_mean_CV,post.name="_19098")
+table_variance <- merge_variance(data.base=table_variance,data.merge=individual_19101_mean_CV,post.name="_19101")
+table_variance <- merge_variance(data.base=table_variance,data.merge=individual_19239_mean_CV,post.name="_19239")
+
+# keep non-missing across the table
+table_variance <- table_variance[apply(table_variance,1,function(x)  sum(is.na(x)))==0,]
+
+# number of cell
+number.of.cell.all   <- sum(grepl("19",sample_name))
+number.of.cell.19098 <- sum(grepl("19098",sample_name))
+number.of.cell.19101 <- sum(grepl("19101",sample_name))
+number.of.cell.19239 <- sum(grepl("19239",sample_name))
+
+# compute inter individual variance
+table_variance$between_indi_var <- (table_variance$variance_all*(number.of.cell.all   -1)  - 
+ table_variance$var_19098   *(number.of.cell.19098 -1)  -      
+ table_variance$var_19101   *(number.of.cell.19101 -1)  - 
+ table_variance$var_19239   *(number.of.cell.19239 -1)  ) / 
+ (number.of.cell.all -3)
+
+# plot overall variance vs inter-individaul variance
+plot(table_variance$variance_all,table_variance$between_indi_var)
+
+# plot ratio of inter-individual variance
+plot(table_variance$between_indi_var/table_variance$variance_all)
+abline(h=0.5,col=2)
+
+# identify genes that are noisy across all cells and also with a certain level of inter-individual variance 
+whatever_list <- table_variance[(table_variance$between_indi_var/table_variance$variance_all) > 0.35,][,1]
+
+whatever_list[whatever_list %in% noisy_gene_all]
+
 ```
 
 ## Session information
