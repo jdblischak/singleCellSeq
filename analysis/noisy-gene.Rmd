@@ -152,7 +152,13 @@ ggplot(summary_per_sample_molecules_single, aes(x = Assigned, y = adj.ERCC.ratio
 
 ### Looking at molecule
 ```{r CV-mean-molecule}
-#remove bulk
+# remove molecules that are larger than 1024
+rownames(molecules)[rowMeans(molecules) > 1024]
+molecules.new <- molecules [rowMeans(molecules) < 1024,]
+dim(molecules)
+dim(molecules.new)
+
+# remove bulk
 molecules_single <- molecules %>% select(-contains("bulk"))
 
 # apply qc_filter
@@ -161,14 +167,18 @@ dim(molecules_single_qc)
 	
 
 ### create a function to compute the cv and mean of molecules
+### input data is molecules_single_qc
 ### two parameters  
-### 1. data.in : input data of molecules
+### 1. filter: sellect for specifc individaul or batch
 ### 2. adj.19098.batch: flag to control if we want to adj the 19098 batch2 molecules numberes. default to not adj, meaning using the raw numbers
-prep_molecules.cv.mean <- function(data.in,adj.19098.batch2=0){
+prep_molecules.cv.mean <- function(filter,adj.19098.batch2=0){
+   ### generate the data of interest 
+   sample_name <- names(molecules_single_qc)
+   data.in <- molecules_single_qc[,grepl(filter,sample_name)]
+  
 	if(adj.19098.batch2 == 1){
 		#### find out which columns belong 19098 batch2
-		f <- names(data.in)
-		target.column <- f[grep("19098.2",f)]
+		target.column <- sample_name[grep("19098.2",sample_name)]
 		
 		#### find out ERCC rows
 		g <- rownames(data.in)
@@ -181,9 +191,8 @@ prep_molecules.cv.mean <- function(data.in,adj.19098.batch2=0){
   
   if(adj.19098.batch2 == 2){
 		#### find out which columns belong 19098 batch2
-		f <- names(data.in)
 		#### remove 19098.2
-		data.in<- data.in[,!grepl("19098.2",f)]
+		data.in<- data.in[,!grepl("19098.2",sample_name)]
 		
 		#### also need to take care of summary_per_sample_reads_single_qc
 		summary_per_sample_reads_single_qc <- summary_per_sample_reads_single_qc[!((summary_per_sample_reads_single_qc$individual==19098)&(summary_per_sample_reads_single_qc$batch==2)),]
@@ -192,8 +201,7 @@ prep_molecules.cv.mean <- function(data.in,adj.19098.batch2=0){
 	
   	if(adj.19098.batch2 == 3){
 		#### find out which columns belong 19098 batch2
-		f <- names(data.in)
-		target.column <- f[grep("19098.2",f)]
+		target.column <- sample_name[grep("19098.2",sample_name)]
 		
 		#### find out ERCC rows
 		g <- rownames(data.in)
@@ -227,12 +235,10 @@ prep_molecules.cv.mean <- function(data.in,adj.19098.batch2=0){
 }
 
 
-molecules_single_qc_expressed 		<- prep_molecules.cv.mean(data.in=molecules_single_qc,adj.19098.batch2=0)
-molecules_single_qc_expressed_adj		<- prep_molecules.cv.mean(data.in=molecules_single_qc,adj.19098.batch2=1)
-molecules_single_qc_expressed_rm 		<- prep_molecules.cv.mean(data.in=molecules_single_qc,adj.19098.batch2=2)
-molecules_single_qc_expressed_rm_ERCC 		<- prep_molecules.cv.mean(data.in=molecules_single_qc,adj.19098.batch2=3)
-
-
+molecules_single_qc_expressed 		<- prep_molecules.cv.mean(filter="19",adj.19098.batch2=0)
+molecules_single_qc_expressed_adj		<- prep_molecules.cv.mean(filter="19",adj.19098.batch2=1)
+molecules_single_qc_expressed_rm 		<- prep_molecules.cv.mean(filter="19",adj.19098.batch2=2)
+molecules_single_qc_expressed_rm_ERCC 		<- prep_molecules.cv.mean(filter="19",adj.19098.batch2=3)
 
 # plot with color-blind-friendly palettes
 cbPalette <- c("#999999", "#0000FF", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
@@ -243,23 +249,34 @@ ggplot(molecules_single_qc_expressed_rm_ERCC, aes(x = mean, y = CV, col = ERCC))
 
 ### create molecule data by each individaul using the molecules_single_qc_expressed_rm_ERCC
 ## 19098
-individual <- names(molecules_single_qc)
-individual_19098 <- molecules_single_qc[,grepl("19098",individual)]
-individual_19098_mean_CV <- prep_molecules.cv.mean(data.in=individual_19098,adj.19098.batch2 = 3)
+individual_19098_mean_CV <- prep_molecules.cv.mean(filter="19098",adj.19098.batch2 = 3)
 
 ggplot(individual_19098_mean_CV, aes(x = mean, y = CV, col = ERCC))  + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_colour_manual(values=cbPalette)
 
+# 19098 by batch
+individual_19098.1_mean_CV <- prep_molecules.cv.mean(filter="19098.1",adj.19098.batch2 = 0)
+individual_19098.2_mean_CV <- prep_molecules.cv.mean(filter="19098.2",adj.19098.batch2 = 1)
+individual_19098.3_mean_CV <- prep_molecules.cv.mean(filter="19098.3",adj.19098.batch2 = 0)
+
 ## 19101
-individual_19101 <- molecules_single_qc[,grepl("19101",individual)]
-individual_19101_mean_CV <- prep_molecules.cv.mean(data.in=individual_19101,adj.19098.batch2 = 0)
+individual_19101_mean_CV <- prep_molecules.cv.mean(filter="19101",adj.19098.batch2 = 0)
 
 ggplot(individual_19101_mean_CV, aes(x = mean, y = CV, col = ERCC))  + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_colour_manual(values=cbPalette)
 
+# 19101 by batch
+individual_19101.1_mean_CV <- prep_molecules.cv.mean(filter="19101.1",adj.19098.batch2 = 0)
+individual_19101.2_mean_CV <- prep_molecules.cv.mean(filter="19101.2",adj.19098.batch2 = 0)
+individual_19101.3_mean_CV <- prep_molecules.cv.mean(filter="19101.3",adj.19098.batch2 = 0)
+
 ## 19239
-individual_19239 <- molecules_single_qc[,grepl("19239",individual)]
-individual_19239_mean_CV <- prep_molecules.cv.mean(data.in=individual_19239,adj.19098.batch2 = 0)
+individual_19239_mean_CV <- prep_molecules.cv.mean(filter="19239",adj.19098.batch2 = 0)
 
 ggplot(individual_19239_mean_CV, aes(x = mean, y = CV, col = ERCC))  + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_colour_manual(values=cbPalette)
+
+# 19239 by batch
+individual_19239.1_mean_CV <- prep_molecules.cv.mean(filter="19239.1",adj.19098.batch2 = 0)
+individual_19239.2_mean_CV <- prep_molecules.cv.mean(filter="19239.2",adj.19098.batch2 = 0)
+individual_19239.3_mean_CV <- prep_molecules.cv.mean(filter="19239.3",adj.19098.batch2 = 0)
 ```
 
 ### Looking at reads
@@ -353,9 +370,11 @@ plot.cv.and.mean(data.in=molecules_single_qc_expressed_rm)
 plot.cv.and.mean(data.in=molecules_single_qc_expressed_rm_ERCC)
 
 plot.cv.and.mean(data.in=individual_19098_mean_CV)
+plot.cv.and.mean(data.in=individual_19098.1_mean_CV)
+plot.cv.and.mean(data.in=individual_19098.2_mean_CV)
+plot.cv.and.mean(data.in=individual_19098.3_mean_CV)
 plot.cv.and.mean(data.in=individual_19101_mean_CV)
 plot.cv.and.mean(data.in=individual_19239_mean_CV)
-
 
 
 ### ignore the following code
@@ -386,10 +405,26 @@ noisy_gene <- function(data.in){
  rownames(molecules_single_qc_expressed)[count.index&condi.index]
 }
 
-noisy_gene(data.in = individual_19098_mean_CV)
-noisy_gene(data.in = individual_19101_mean_CV)
-noisy_gene(data.in = individual_19239_mean_CV)
+# noisy genes of each individaul
+noisy_gene_19098 <- noisy_gene(data.in = individual_19098_mean_CV)
+noisy_gene_19101 <- noisy_gene(data.in = individual_19101_mean_CV)
+noisy_gene_19239 <- noisy_gene(data.in = individual_19239_mean_CV)
 
+# noisy genes of each batch
+noisy_gene_19098.1 <- noisy_gene(data.in = individual_19098.1_mean_CV)
+noisy_gene_19098.2 <- noisy_gene(data.in = individual_19098.2_mean_CV)
+noisy_gene_19098.3 <- noisy_gene(data.in = individual_19098.3_mean_CV)
+table(c(noisy_gene_19098.1,noisy_gene_19098.2,noisy_gene_19098.3))
+
+noisy_gene_19101.1 <- noisy_gene(data.in = individual_19101.1_mean_CV)
+noisy_gene_19101.2 <- noisy_gene(data.in = individual_19101.2_mean_CV)
+noisy_gene_19101.3 <- noisy_gene(data.in = individual_19101.3_mean_CV)
+table(c(noisy_gene_19101.1,noisy_gene_19101.2,noisy_gene_19101.3))
+
+noisy_gene_19239.1 <- noisy_gene(data.in = individual_19239.1_mean_CV)
+noisy_gene_19239.2 <- noisy_gene(data.in = individual_19239.2_mean_CV)
+noisy_gene_19239.3 <- noisy_gene(data.in = individual_19239.3_mean_CV)
+table(c(noisy_gene_19239.1,noisy_gene_19239.2,noisy_gene_19239.3))
 ```
 
 ## Session information
