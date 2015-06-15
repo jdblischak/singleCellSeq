@@ -65,6 +65,14 @@ qc <- read.table("../data/qc-ipsc.txt", header = TRUE,
 head(qc)
 ```
 
+Input list of single cells to keep based on qc.
+```{r input-goodcell}
+goodcell <- read.table("../data/quality-single-cells.txt", header = TRUE,
+                 stringsAsFactors = FALSE)
+head(goodcell)
+```
+
+
 ## Remove bad quality cells
 ### Remove cells with total reads < 2 millons
 ```{r remove}
@@ -144,15 +152,39 @@ ggplot(summary_per_sample_molecules_single, aes(x = Assigned, y = adj.ERCC.ratio
 
 ### Looking at molecule
 ```{r CV-mean-molecule}
+# remove molecules that are larger than 1024
+rownames(molecules)[rowMeans(molecules) > 1024]
+molecules.new <- molecules [rowMeans(molecules) < 1024,]
+dim(molecules)
+dim(molecules.new)
+
+# remove bulk
+molecules_single <- molecules %>% select(-contains("bulk"))
+
+# remove 1024 and greater
+molecules_single <- molecules_single[apply(molecules_single,1,max) < 1024,]
+
+
+# apply qc_filter
+molecules_single_qc <- molecules_single[,summary_per_sample_reads_single_qc$qc_filter]
+dim(molecules_single_qc)
+
+sample_name <- names(molecules_single_qc)
+	
+
 ### create a function to compute the cv and mean of molecules
+### input data is molecules_single_qc
 ### two parameters  
-### 1. data.in : input data of molecules
+### 1. filter: sellect for specifc individaul or batch
 ### 2. adj.19098.batch: flag to control if we want to adj the 19098 batch2 molecules numberes. default to not adj, meaning using the raw numbers
-prep_molecules.cv.mean <- function(data.in,adj.19098.batch2=0){
+prep_molecules.cv.mean <- function(filter,adj.19098.batch2=0){
+   ### generate the data of interest 
+   
+   data.in <- molecules_single_qc[,grepl(filter,sample_name)]
+  
 	if(adj.19098.batch2 == 1){
 		#### find out which columns belong 19098 batch2
-		f <- names(data.in)
-		target.column <- f[grep("19098.2",f)]
+		target.column <- sample_name[grep("19098.2",sample_name)]
 		
 		#### find out ERCC rows
 		g <- rownames(data.in)
@@ -165,9 +197,8 @@ prep_molecules.cv.mean <- function(data.in,adj.19098.batch2=0){
   
   if(adj.19098.batch2 == 2){
 		#### find out which columns belong 19098 batch2
-		f <- names(data.in)
 		#### remove 19098.2
-		data.in<- data.in[,!grepl("19098.2",f)]
+		data.in<- data.in[,!grepl("19098.2",sample_name)]
 		
 		#### also need to take care of summary_per_sample_reads_single_qc
 		summary_per_sample_reads_single_qc <- summary_per_sample_reads_single_qc[!((summary_per_sample_reads_single_qc$individual==19098)&(summary_per_sample_reads_single_qc$batch==2)),]
@@ -176,8 +207,7 @@ prep_molecules.cv.mean <- function(data.in,adj.19098.batch2=0){
 	
   	if(adj.19098.batch2 == 3){
 		#### find out which columns belong 19098 batch2
-		f <- names(data.in)
-		target.column <- f[grep("19098.2",f)]
+		target.column <- sample_name[grep("19098.2",sample_name)]
 		
 		#### find out ERCC rows
 		g <- rownames(data.in)
@@ -191,22 +221,18 @@ prep_molecules.cv.mean <- function(data.in,adj.19098.batch2=0){
 	#correct for collision probability
 	molecules.crt <- -1024*log(1-data.in/1024)
 
-	#remove bulk
-	molecules_single <- molecules.crt %>% select(-contains("bulk"))
-
-	# apply qc_filter
-	molecules_single_qc <- molecules_single[,summary_per_sample_reads_single_qc$qc_filter]
-	dim(molecules_single_qc)
-	sum(summary_per_sample_reads_single_qc$qc_filter)
-
 	# create a new dataset
-	molecules_single_qc_w_mean_cv <- molecules_single_qc
+	molecules_single_qc_w_mean_cv <- molecules.crt
 
 	# add mean
-	molecules_single_qc_w_mean_cv$mean <- apply(molecules_single_qc, 1, function(x) mean(x,na.rm=TRUE) )
+	molecules_single_qc_w_mean_cv$mean <- apply(molecules.crt, 1, function(x) mean(x,na.rm=TRUE) )
+	
 	# add CV
-	molecules_single_qc_w_mean_cv$CV <- apply(molecules_single_qc, 1, function(x) sd(x,na.rm=TRUE) )/ apply(molecules_single_qc, 1, function(x) mean(x,na.rm=TRUE))
+	molecules_single_qc_w_mean_cv$CV <- apply(molecules.crt, 1, function(x) sd(x,na.rm=TRUE) )/ apply(molecules.crt, 1, function(x) mean(x,na.rm=TRUE))
 
+	# add variance
+	molecules_single_qc_w_mean_cv$var <- apply(molecules.crt, 1, function(x) var(x,na.rm=TRUE) )
+	
 	# remove non-expressed 
 	molecules_single_qc_expressed <- molecules_single_qc_w_mean_cv[molecules_single_qc_w_mean_cv$mean >0,]
 	dim(molecules_single_qc_expressed)
@@ -214,17 +240,18 @@ prep_molecules.cv.mean <- function(data.in,adj.19098.batch2=0){
   # create a flag to ERCC
 	molecules_single_qc_expressed$ERCC <- grepl("ERCC",rownames(molecules_single_qc_expressed))
 	
+	# add gene_name 
+  molecules_single_qc_expressed$gene_name <- rownames(molecules_single_qc_expressed)
+
 	return(molecules_single_qc_expressed)
 ###  end of prep.molecules.cv.mean function	
 }
 
 
-molecules_single_qc_expressed 		<- prep_molecules.cv.mean(data.in=molecules,adj.19098.batch2=0)
-molecules_single_qc_expressed_adj		<- prep_molecules.cv.mean(data.in=molecules,adj.19098.batch2=1)
-molecules_single_qc_expressed_rm 		<- prep_molecules.cv.mean(data.in=molecules,adj.19098.batch2=2)
-molecules_single_qc_expressed_rm_ERCC 		<- prep_molecules.cv.mean(data.in=molecules,adj.19098.batch2=3)
-
-
+molecules_single_qc_expressed 		<- prep_molecules.cv.mean(filter="19",adj.19098.batch2=0)
+molecules_single_qc_expressed_adj		<- prep_molecules.cv.mean(filter="19",adj.19098.batch2=1)
+molecules_single_qc_expressed_rm 		<- prep_molecules.cv.mean(filter="19",adj.19098.batch2=2)
+molecules_single_qc_expressed_rm_ERCC 		<- prep_molecules.cv.mean(filter="19",adj.19098.batch2=3)
 
 # plot with color-blind-friendly palettes
 cbPalette <- c("#999999", "#0000FF", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
@@ -233,6 +260,36 @@ ggplot(molecules_single_qc_expressed, aes(x = mean, y = CV, col = ERCC))  + geom
 
 ggplot(molecules_single_qc_expressed_rm_ERCC, aes(x = mean, y = CV, col = ERCC))  + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_colour_manual(values=cbPalette)
 
+### create molecule data by each individaul using the molecules_single_qc_expressed_rm_ERCC
+## 19098
+individual_19098_mean_CV <- prep_molecules.cv.mean(filter="19098",adj.19098.batch2 = 0)
+
+ggplot(individual_19098_mean_CV, aes(x = mean, y = CV, col = ERCC))  + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_colour_manual(values=cbPalette)
+
+# 19098 by batch
+individual_19098.1_mean_CV <- prep_molecules.cv.mean(filter="19098.1",adj.19098.batch2 = 0)
+individual_19098.2_mean_CV <- prep_molecules.cv.mean(filter="19098.2",adj.19098.batch2 = 1)
+individual_19098.3_mean_CV <- prep_molecules.cv.mean(filter="19098.3",adj.19098.batch2 = 0)
+
+## 19101
+individual_19101_mean_CV <- prep_molecules.cv.mean(filter="19101",adj.19098.batch2 = 0)
+
+ggplot(individual_19101_mean_CV, aes(x = mean, y = CV, col = ERCC))  + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_colour_manual(values=cbPalette)
+
+# 19101 by batch
+individual_19101.1_mean_CV <- prep_molecules.cv.mean(filter="19101.1",adj.19098.batch2 = 0)
+individual_19101.2_mean_CV <- prep_molecules.cv.mean(filter="19101.2",adj.19098.batch2 = 0)
+individual_19101.3_mean_CV <- prep_molecules.cv.mean(filter="19101.3",adj.19098.batch2 = 0)
+
+## 19239
+individual_19239_mean_CV <- prep_molecules.cv.mean(filter="19239",adj.19098.batch2 = 0)
+
+ggplot(individual_19239_mean_CV, aes(x = mean, y = CV, col = ERCC))  + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_colour_manual(values=cbPalette)
+
+# 19239 by batch
+individual_19239.1_mean_CV <- prep_molecules.cv.mean(filter="19239.1",adj.19098.batch2 = 0)
+individual_19239.2_mean_CV <- prep_molecules.cv.mean(filter="19239.2",adj.19098.batch2 = 0)
+individual_19239.3_mean_CV <- prep_molecules.cv.mean(filter="19239.3",adj.19098.batch2 = 0)
 ```
 
 ### Looking at reads
@@ -297,7 +354,7 @@ plot.cv.and.mean <- function(data.in){
 
 	# compute the sum of square errors
 	target.fun <- function(f){
-		sum((ERCC.mol.CV[ERCC.mol.mean>0.01]- sqrt(1/(f*ERCC.mol.mean[ERCC.mol.mean>0.01])))^2)
+		sum((ERCC.mol.CV[ERCC.mol.mean>0.1]- sqrt(1/(f*ERCC.mol.mean[ERCC.mol.mean>0.1])))^2)
 	}
 	# find out the minimum
 	ans <- nlminb(0.05,target.fun,lower=0.0000001,upper=1)
@@ -309,7 +366,7 @@ plot.cv.and.mean <- function(data.in){
 
 	# 4 s.d. 
 	four.sd <- function (x) {
-		4*(10^x)^(0.5)/(10^x)+0.3
+		4*(10^x)^(0.5)/(10^x)
 	}
 
 	# 3.7 sd + 0.3
@@ -317,7 +374,7 @@ plot.cv.and.mean <- function(data.in){
 		3.7*(10^x)^(0.5)/(10^(x))+0.3
 	}
 
-	ggplot(data.in, aes(x = mean, y = CV, col = ERCC))  + geom_point(size = 2, alpha = 0.5) +  stat_function(fun= poisson.c, col= "#CC79A7") + stat_function(fun= four.sd, col= "#F0E442") + stat_function(fun= lossy.posson, col= "#56B4E9") + scale_x_log10() + ylim(0, 30) + scale_colour_manual(values=cbPalette) 
+	ggplot(data.in, aes(x = mean, y = CV, col = ERCC))  + geom_point(size = 2, alpha = 0.5) +  stat_function(fun= poisson.c, col= "#CC79A7") + stat_function(fun= four.sd, col= "#F0E442") + stat_function(fun= lossy.posson, col= "#56B4E9") + scale_x_log10() + ylim(0, max(data.in$CV)*1.1) + scale_colour_manual(values=cbPalette) + xlab("Average number of molecules") + ylab ("coefficient of variation (CV)")
 
 }
 plot.cv.and.mean(data.in=molecules_single_qc_expressed)
@@ -325,10 +382,18 @@ plot.cv.and.mean(data.in=molecules_single_qc_expressed_adj)
 plot.cv.and.mean(data.in=molecules_single_qc_expressed_rm)
 plot.cv.and.mean(data.in=molecules_single_qc_expressed_rm_ERCC)
 
+plot.cv.and.mean(data.in=individual_19098_mean_CV)
+plot.cv.and.mean(data.in=individual_19098.1_mean_CV)
+plot.cv.and.mean(data.in=individual_19098.2_mean_CV)
+plot.cv.and.mean(data.in=individual_19098.3_mean_CV)
+plot.cv.and.mean(data.in=individual_19101_mean_CV)
+plot.cv.and.mean(data.in=individual_19239_mean_CV)
+
+
 ### ignore the following code
-ignore <- function(xxx){
+ ignore <- function(xxx){
 	# log plot
-  plot(log(molecules_single_qc_expressed$mean,base=2),log(molecules_single_qc_expressed$CV,base=2), col= "#999999", xlab="log2 Average number of molecules",ylab= "log2 coefficient of variation",ylim=c(-2,5),xlim=c(-10,10),pch=20)
+  plot(log(molecules_single_qc_expressed$mean,base=2),log(molecules_single_qc_expressed$CV,base=2), col= "#999999", xlab="log2  Average number of molecules",ylab= "log2 coefficient of variation",ylim=c(-2,5),xlim=c(-10,10),pch=20)
   points(log(molecules_single_qc_expressed_ERCC$mean,base=2),log(molecules_single_qc_expressed_ERCC$CV,base=2),col= "#0000FF" ,pch=20)
   # add lossy poison
   curve(-0.5*x-0.5*log(minipar,base=2),-100,6,add=TRUE,col="#56B4E9")
@@ -339,14 +404,89 @@ ignore <- function(xxx){
 
 ## noisy genes
 ```{r noisy-gene}
-#  larger than 3.7 sd
-count.index  <- (!is.na(molecules_single_qc_expressed$mean))&(molecules_single_qc_expressed$mean>1)
-condi.index <- (molecules_single_qc_expressed$CV > 4*(molecules_single_qc_expressed$mean^(0.5))/molecules_single_qc_expressed$mean+0.3)
+### this function will identify the noisy gene based on 3.7 sd
+### only need to specify the input dataset
+### the inpute dataset needs to have mean and CV
+noisy_gene <- function(data.in){
 
-sum(count.index&condi.index)
+ #  larger than 4 sd
+ count.index  <- (!is.na(data.in$mean))&(data.in$mean>1)
+ condi.index <- (data.in$CV > 4*(data.in$mean^(0.5))/data.in$mean)
 
-molecules_single_qc_expressed$mean[count.index&condi.index]
-rownames(molecules_single_qc_expressed)[count.index&condi.index]
+ sum(count.index&condi.index)
+
+ rownames(molecules_single_qc_expressed)[count.index&condi.index]
+}
+
+# noisy genes of all
+noisy_gene_all <- noisy_gene(data.in=molecules_single_qc_expressed)
+
+# noisy genes of each individaul
+noisy_gene_19098 <- noisy_gene(data.in = individual_19098_mean_CV)
+noisy_gene_19101 <- noisy_gene(data.in = individual_19101_mean_CV)
+noisy_gene_19239 <- noisy_gene(data.in = individual_19239_mean_CV)
+
+# noisy genes of each batch
+noisy_gene_19098.1 <- noisy_gene(data.in = individual_19098.1_mean_CV)
+noisy_gene_19098.2 <- noisy_gene(data.in = individual_19098.2_mean_CV)
+noisy_gene_19098.3 <- noisy_gene(data.in = individual_19098.3_mean_CV)
+table(c(noisy_gene_19098.1,noisy_gene_19098.2,noisy_gene_19098.3))
+
+noisy_gene_19101.1 <- noisy_gene(data.in = individual_19101.1_mean_CV)
+noisy_gene_19101.2 <- noisy_gene(data.in = individual_19101.2_mean_CV)
+noisy_gene_19101.3 <- noisy_gene(data.in = individual_19101.3_mean_CV)
+table(c(noisy_gene_19101.1,noisy_gene_19101.2,noisy_gene_19101.3))
+
+noisy_gene_19239.1 <- noisy_gene(data.in = individual_19239.1_mean_CV)
+noisy_gene_19239.2 <- noisy_gene(data.in = individual_19239.2_mean_CV)
+noisy_gene_19239.3 <- noisy_gene(data.in = individual_19239.3_mean_CV)
+table(c(noisy_gene_19239.1,noisy_gene_19239.2,noisy_gene_19239.3))
+```
+
+## variation between individuals
+```{r var-individual}
+# overall variation is the sum of inter- and intra- individual variation
+# creat a table with all the variation
+table_variance <- molecules_single_qc_expressed[,c("gene_name","mean","var","ERCC")]
+names(table_variance) <- c("gene_name","mean_all","variance_all","ERCC")
+
+merge_variance <- function(data.base,data.merge,post.name){
+  data.merge <- data.merge[,c("gene_name","mean","var")]
+  names(data.merge) <- c("gene_name",paste(c("mean","var"),post.name,sep=""))
+  merge(data.base,data.merge,by="gene_name",all.x=TRUE)
+}
+table_variance <- merge_variance(data.base=table_variance,data.merge=individual_19098_mean_CV,post.name="_19098")
+table_variance <- merge_variance(data.base=table_variance,data.merge=individual_19101_mean_CV,post.name="_19101")
+table_variance <- merge_variance(data.base=table_variance,data.merge=individual_19239_mean_CV,post.name="_19239")
+
+# keep non-missing across the table
+table_variance <- table_variance[apply(table_variance,1,function(x)  sum(is.na(x)))==0,]
+
+# number of cell
+number.of.cell.all   <- sum(grepl("19",sample_name))
+number.of.cell.19098 <- sum(grepl("19098",sample_name))
+number.of.cell.19101 <- sum(grepl("19101",sample_name))
+number.of.cell.19239 <- sum(grepl("19239",sample_name))
+
+# compute inter individual variance
+table_variance$between_indi_var <- (table_variance$variance_all*(number.of.cell.all   -1)  - 
+ table_variance$var_19098   *(number.of.cell.19098 -1)  -      
+ table_variance$var_19101   *(number.of.cell.19101 -1)  - 
+ table_variance$var_19239   *(number.of.cell.19239 -1)  ) / 
+ (number.of.cell.all -3)
+
+# plot overall variance vs inter-individaul variance
+plot(table_variance$variance_all,table_variance$between_indi_var)
+
+# plot ratio of inter-individual variance
+plot(table_variance$between_indi_var/table_variance$variance_all)
+abline(h=0.5,col=2)
+
+# identify genes that are noisy across all cells and also with a certain level of inter-individual variance 
+whatever_list <- table_variance[(table_variance$between_indi_var/table_variance$variance_all) > 0.35,][,1]
+
+whatever_list[whatever_list %in% noisy_gene_all]
+
 ```
 
 ## Session information
