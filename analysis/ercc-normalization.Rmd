@@ -11,6 +11,13 @@ date: 2015-06-15
 source("chunk-options.R")
 ```
 
+In this analysis:
+
+*  Investigate the fit between ERCC counts and the concentration for each sample
+*  Perform a simple linear shift normalization where the fit between the ERCC counts from a sample and the expected concentrations are used to convert the gene counts to concentrations.
+*  Normalize with RUVg using the ERCC spike-ins as negative control genes.
+*  Compare the normalization approaches.
+
 ## Setup
 
 ```{r packages, message=FALSE}
@@ -69,6 +76,7 @@ Remove genes with zero read counts in the single cells or bulk samples.
 expressed <- rowSums(molecules[, anno$well == "bulk"]) > 0 &
              rowSums(molecules[, anno$well != "bulk"]) > 0
 molecules <- molecules[expressed, ]
+dim(molecules)
 ```
 
 ## Correlation with ERCC
@@ -79,13 +87,15 @@ How many of the 92 ERCC spike-ins had at least one read sequenced in at least on
 sum(grepl("ERCC", rownames(molecules)))
 ```
 
-```{r}
+Subset to only the ERCC counts.
+
+```{r subset-ercc}
 ercc_counts <- molecules[grep("ERCC", rownames(molecules)), ]
 ```
 
 Sort both the concentration and the counts by the ERCC ID.
 
-```{r}
+```{r sort-ercc}
 ercc_counts <- ercc_counts[order(rownames(ercc_counts)), ]
 ercc <- ercc[order(ercc$id), ]
 # Also remove spike-ins with no counts
@@ -95,7 +105,7 @@ stopifnot(rownames(ercc_counts) == ercc$id)
 
 What is the correlation of the mean molecules counts to the expected concentrations?
 
-```{r}
+```{r ercc-correlation-mean-counts}
 cor(rowMeans(ercc_counts), ercc$conc_mix1)
 plot(rowMeans(ercc_counts), ercc$conc_mix1)
 ercc_fit <- lm(ercc$conc_mix1 ~ rowMeans(ercc_counts))
@@ -106,21 +116,21 @@ title(sprintf("Y ~ %.2fX + %.2f \n R-squared: %.2f", ercc_fit$coefficients[2],
 
 What is the correlation of the mean molecules counts to the expected concentrations using only the single cells?
 
-```{r}
+```{r ercc-correlation-mean-counts-single}
 cor(rowMeans(ercc_counts[, grep("bulk", colnames(ercc_counts), invert = TRUE)]),
     ercc$conc_mix1)
 ```
 
 What is the correlation of the mean molecules counts to the expected concentrations using only the bulk samples?
 
-```{r}
+```{r ercc-correlation-mean-counts-bulk}
 cor(rowMeans(ercc_counts[, grep("bulk", colnames(ercc_counts))]),
     ercc$conc_mix1)
 ```
 
 How much variation is there in the correlation between the samples?
 
-```{r}
+```{r ercc-correlation-variation}
 ercc_per_sample <- matrix(nrow = ncol(ercc_counts), ncol = 6)
 colnames(ercc_per_sample) <- c("individual", "batch", "well",
                                "intercept", "slope", "r2")
@@ -138,16 +148,15 @@ ercc_per_sample$r2 <- as.numeric(ercc_per_sample$r2)
 str(ercc_per_sample)
 ```
 
-```{r}
+```{r ercc-intercept-per-sample}
 boxplot(intercept ~ individual + batch, data = ercc_per_sample)
 ```
 
-```{r}
+```{r ercc-slope-per-sample}
 boxplot(slope ~ individual + batch, data = ercc_per_sample)
 ```
 
-
-```{r}
+```{r ercc-r2-per-sample}
 boxplot(r2 ~ individual + batch, data = ercc_per_sample)
 ```
 
@@ -155,7 +164,7 @@ boxplot(r2 ~ individual + batch, data = ercc_per_sample)
 
 The normalization will be performed separately for bulk and single cells.
 
-```{r}
+```{r separate-single-bulk-counts}
 bulk_raw <- molecules[grep("ERCC", rownames(molecules), invert = TRUE),
                       grep("bulk", colnames(molecules))]
 bulk_ercc <- ercc_counts[, grep("bulk", colnames(molecules))]
@@ -180,12 +189,6 @@ for (i in 1:ncol(bulk_norm)) {
 }
 ```
 
-```{r}
-heatmap(cor(bulk_raw))
-heatmap(cor(bulk_norm))
-```
-
-
 ```{r single-adjust}
 single_norm <- single_raw
 single_norm[, ] <- NA
@@ -196,12 +199,12 @@ for (i in 1:ncol(single_norm)) {
 }
 ```
 
-```{r}
-heatmap(cor(single_raw))
-heatmap(cor(single_norm))
-```
-
 ## RUVseq normalization
+
+Use RUVg from [Risso et al., 2014][Risso2014].
+It uses the ERCC spike-ins as negative control genes to correct for unwanted variation.
+
+[Risso2014]: http://www.nature.com/nbt/journal/v32/n9/full/nbt.2931.html
 
 ```{r bulk-ruv}
 bulk_ruv_object <- RUVg(x = as.matrix(rbind(bulk_ercc, bulk_raw)),
@@ -219,50 +222,47 @@ single_ruv <- single_ruv_object$normalizedCounts[
 
 ## PCA comparison
 
-With the bulk data:
+Raw bulk data:
 
-```{r}
+```{r pca-bulk-raw}
 pca_bulk_raw <- run_pca(bulk_raw)
 plot_pca(pca_bulk_raw$PCs, color = anno$individual[anno$well == "bulk"])
 ```
 
+Normalized with a linear shift bulk data:
 
-```{r}
+```{r pca-bulk-norm}
 pca_bulk_norm <- run_pca(bulk_norm)
 plot_pca(pca_bulk_norm$PCs, color = anno$individual[anno$well == "bulk"])
 ```
 
-```{r}
+RUVg-normalized bulk data:
+
+```{r pca-bulk-ruv}
 pca_bulk_ruv <- run_pca(bulk_ruv[apply(bulk_ruv, 1, var) > 0, ])
 plot_pca(pca_bulk_ruv$PCs, color = anno$individual[anno$well == "bulk"])
 ```
 
-With the single cell data:
+Raw single cell data:
 
-
-```{r}
+```{r pca-single-raw}
 pca_single_raw <- run_pca(single_raw)
 plot_pca(pca_single_raw$PCs, color = anno$individual[anno$well != "bulk"])
 ```
 
+Normalized with a linear shift single cell data:
 
-```{r}
+```{r pca-single-norm}
 pca_single_norm <- run_pca(single_norm)
 plot_pca(pca_single_norm$PCs, color = anno$individual[anno$well != "bulk"])
 ```
 
-```{r}
+RUVg-normalized single cell data:
+
+```{r pca-single-ruv}
 pca_single_ruv <- run_pca(single_ruv[apply(single_ruv, 1, var) > 0, ])
 plot_pca(pca_single_ruv$PCs, color = anno$individual[anno$well != "bulk"])
 ```
-
-```{r}
-plot(bulk_raw[, 1], bulk_ruv[, 1])
-cor(bulk_raw[, 1], bulk_ruv[, 1])
-```
-
-
-## Correlations
 
 ## Session information
 
