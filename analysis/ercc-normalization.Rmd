@@ -168,30 +168,13 @@ stopifnot(rownames(bulk_raw) == rownames(single_raw),
           colnames(single_raw) == colnames(single_ercc))
 ```
 
-Fit a linear model using the mean ERCC counts.
-
-```{r}
-bulk_fit <- lm(ercc$conc_mix1 ~ rowMeans(bulk_ercc))
-plot(rowMeans(bulk_ercc), ercc$conc_mix1, main = "bulk")
-abline(bulk_fit, col = "red")
-plot(fitted(bulk_fit), residuals(bulk_fit))
-```
-
-```{r}
-single_fit <- lm(ercc$conc_mix1 ~ rowMeans(single_ercc))
-plot(rowMeans(single_ercc), ercc$conc_mix1, main = "single")
-abline(single_fit, col = "red")
-plot(fitted(single_fit), residuals(single_fit))
-```
-
-Adjust each individual sample based on the mean fit.
+Adjust each individual sample based on its ERCC counts.
 
 ```{r bulk-adjust}
 bulk_norm <- bulk_raw
 bulk_norm[, ] <- NA
 for (i in 1:ncol(bulk_norm)) {
-#   bulk_norm[, i] <- predict(bulk_fit, as.data.frame(bulk_raw[, i]),
-#                             interval = "prediction")
+  bulk_fit <- lm(ercc$conc_mix1 ~ bulk_ercc[, i])
   bulk_norm[, i] <- bulk_raw[, i] * bulk_fit$coefficients[2] +
                     bulk_fit$coefficients[1]
 }
@@ -207,8 +190,7 @@ heatmap(cor(bulk_norm))
 single_norm <- single_raw
 single_norm[, ] <- NA
 for (i in 1:ncol(single_norm)) {
-#   single_norm[, i] <- predict(single_fit, as.data.frame(single_raw[, i]),
-#                             interval = "prediction")
+  single_fit <- lm(ercc$conc_mix1 ~ single_ercc[, i])
   single_norm[, i] <- single_raw[, i] * single_fit$coefficients[2] +
                     single_fit$coefficients[1]
 }
@@ -218,7 +200,6 @@ for (i in 1:ncol(single_norm)) {
 heatmap(cor(single_raw))
 heatmap(cor(single_norm))
 ```
-
 
 ## RUVseq normalization
 
