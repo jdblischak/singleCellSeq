@@ -290,7 +290,10 @@ ggplot(individual_19239_mean_CV, aes(x = mean, y = CV, col = ERCC))  + geom_poin
 individual_19239.1_mean_CV <- prep_molecules.cv.mean(filter="19239.1",adj.19098.batch2 = 0)
 individual_19239.2_mean_CV <- prep_molecules.cv.mean(filter="19239.2",adj.19098.batch2 = 0)
 individual_19239.3_mean_CV <- prep_molecules.cv.mean(filter="19239.3",adj.19098.batch2 = 0)
+
 ```
+
+
 
 ### Looking at reads
 ```{r CV-mean-reads}
@@ -328,6 +331,7 @@ cbPalette <- c("#999999", "#0000FF", "#56B4E9", "#009E73", "#F0E442", "#0072B2",
 ggplot(reads_single_qc_expressed, aes(x = mean, y = CV, col = ERCC))  + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_colour_manual(values=cbPalette)
 
 ```
+
 
 ## Poisson sucks!
 ```{r poisson}
@@ -383,9 +387,6 @@ plot.cv.and.mean(data.in=molecules_single_qc_expressed_rm)
 plot.cv.and.mean(data.in=molecules_single_qc_expressed_rm_ERCC)
 
 plot.cv.and.mean(data.in=individual_19098_mean_CV)
-plot.cv.and.mean(data.in=individual_19098.1_mean_CV)
-plot.cv.and.mean(data.in=individual_19098.2_mean_CV)
-plot.cv.and.mean(data.in=individual_19098.3_mean_CV)
 plot.cv.and.mean(data.in=individual_19101_mean_CV)
 plot.cv.and.mean(data.in=individual_19239_mean_CV)
 
@@ -486,6 +487,47 @@ abline(h=0.5,col=2)
 whatever_list <- table_variance[(table_variance$between_indi_var/table_variance$variance_all) > 0.35,][,1]
 
 whatever_list[whatever_list %in% noisy_gene_all]
+
+```
+## variance of batches 
+```{r variance}
+# re create table
+group_list <- c("19","19098","19101","19239","19098.1","19098.2","19098.3","19101.1","19101.2","19101.3","19239.1","19239.2","19239.3")
+
+create_info_table <- function(statistics="mean"){
+  # first correct
+  molecules.crt <- -1024*log(1-molecules_single_qc/1024)
+  # loop all possible combinations
+  big_table <- do.call(cbind,lapply(group_list,function(x){
+      # subset data
+      data_ref <- molecules.crt[grep(x,names(molecules.crt))]
+      if(statistics=="mean"){
+        ans <- apply(data_ref,1,function(xx) mean(xx,na.rm=TRUE))  
+      }
+      if(statistics=="var"){
+        ans <- apply(data_ref,1,function(xx) var(xx,na.rm=TRUE))  
+      }
+      if(statistics=="CV"){
+        ans <- apply(data_ref,1,function(xx)  sd(xx,na.rm=TRUE)) / apply(data_ref,1,function(xx)  mean(xx,na.rm=TRUE))   
+      }
+    ans
+    })
+  )
+    big_table <- data.frame(big_table)
+    names(big_table) <- paste(statistics,group_list,sep="_")
+    big_table$gene_name <- rownames(molecules_single_qc)
+    big_table
+}
+
+table_mean <- create_info_table(statistics="mean")
+table_var <- create_info_table(statistics="var")
+table_cv <- create_info_table(statistics="cv")
+
+
+
+
+
+
 
 ```
 
