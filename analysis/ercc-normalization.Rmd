@@ -1,0 +1,290 @@
+---
+title: "ERCC normalization"
+date: 2015-06-15
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+```
+
+## Setup
+
+```{r packages, message=FALSE}
+library("ggplot2")
+theme_set(theme_bw(base_size = 16))
+library("RUVSeq")
+source("functions.R")
+```
+
+Input annotation.
+
+```{r input-annotation}
+anno <- read.table("../data/annotation.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno)
+```
+
+Input molecule counts.
+
+```{r input-molecule-counts}
+molecules <- read.table("../data/molecules.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+```
+
+Input ERCC concentration information.
+
+```{r input-ercc}
+ercc <- read.table("../data/ercc-info.txt", header = TRUE, sep = "\t",
+                   stringsAsFactors = FALSE)
+colnames(ercc) <- c("num", "id", "subgroup", "conc_mix1", "conc_mix2",
+                    "expected_fc", "log2_mix1_mix2")
+head(ercc)
+stopifnot(nrow(ercc) == 92)
+```
+
+Input list of quality single cells.
+
+```{r input-quality-single-cells}
+quality_single_cells <- scan("../data/quality-single-cells.txt",
+                             what = "character")
+```
+
+Keep only the single cells that passed the [QC filters](qc-cell-ipsc.html) and the bulk samples.
+
+```{r qc-filter}
+molecules <- molecules[, grepl("bulk", colnames(molecules)) |
+                         colnames(molecules) %in% quality_single_cells]
+anno <- anno[anno$well == "bulk" | anno$sample_id %in% quality_single_cells, ]
+stopifnot(ncol(molecules) == nrow(anno),
+          colnames(molecules) == anno$sample_id)
+```
+
+Remove genes with zero read counts in the single cells or bulk samples.
+
+```{r remove-non-expressed-genes}
+expressed <- rowSums(molecules[, anno$well == "bulk"]) > 0 &
+             rowSums(molecules[, anno$well != "bulk"]) > 0
+molecules <- molecules[expressed, ]
+```
+
+## Correlation with ERCC
+
+How many of the 92 ERCC spike-ins had at least one read sequenced in at least one of the samples?
+
+```{r num-ercc-present}
+sum(grepl("ERCC", rownames(molecules)))
+```
+
+```{r}
+ercc_counts <- molecules[grep("ERCC", rownames(molecules)), ]
+```
+
+Sort both the concentration and the counts by the ERCC ID.
+
+```{r}
+ercc_counts <- ercc_counts[order(rownames(ercc_counts)), ]
+ercc <- ercc[order(ercc$id), ]
+# Also remove spike-ins with no counts
+ercc <- ercc[ercc$id %in% rownames(ercc_counts), ]
+stopifnot(rownames(ercc_counts) == ercc$id)
+```
+
+What is the correlation of the mean molecules counts to the expected concentrations?
+
+```{r}
+cor(rowMeans(ercc_counts), ercc$conc_mix1)
+plot(rowMeans(ercc_counts), ercc$conc_mix1)
+ercc_fit <- lm(ercc$conc_mix1 ~ rowMeans(ercc_counts))
+abline(ercc_fit, col = "red")
+title(sprintf("Y ~ %.2fX + %.2f \n R-squared: %.2f", ercc_fit$coefficients[2],
+              ercc_fit$coefficients[1], summary(ercc_fit)$r.squared))
+```
+
+What is the correlation of the mean molecules counts to the expected concentrations using only the single cells?
+
+```{r}
+cor(rowMeans(ercc_counts[, grep("bulk", colnames(ercc_counts), invert = TRUE)]),
+    ercc$conc_mix1)
+```
+
+What is the correlation of the mean molecules counts to the expected concentrations using only the bulk samples?
+
+```{r}
+cor(rowMeans(ercc_counts[, grep("bulk", colnames(ercc_counts))]),
+    ercc$conc_mix1)
+```
+
+How much variation is there in the correlation between the samples?
+
+```{r}
+ercc_per_sample <- matrix(nrow = ncol(ercc_counts), ncol = 6)
+colnames(ercc_per_sample) <- c("individual", "batch", "well",
+                               "intercept", "slope", "r2")
+for (i in 1:ncol(ercc_counts)) {
+  fit <- lm(ercc$conc_mix1 ~ ercc_counts[, i])
+  
+  ercc_per_sample[i, ] <- c(anno$individual[i], anno$batch[i], anno$well[i],
+                            fit$coefficients[1], fit$coefficients[2],
+                            summary(fit)$r.squared)
+}
+ercc_per_sample <- as.data.frame(ercc_per_sample, stringsAsFactors = FALSE)
+ercc_per_sample$intercept <- as.numeric(ercc_per_sample$intercept)
+ercc_per_sample$slope <- as.numeric(ercc_per_sample$slope)
+ercc_per_sample$r2 <- as.numeric(ercc_per_sample$r2)
+str(ercc_per_sample)
+```
+
+```{r}
+boxplot(intercept ~ individual + batch, data = ercc_per_sample)
+```
+
+```{r}
+boxplot(slope ~ individual + batch, data = ercc_per_sample)
+```
+
+
+```{r}
+boxplot(r2 ~ individual + batch, data = ercc_per_sample)
+```
+
+## Linear shift normalization
+
+The normalization will be performed separately for bulk and single cells.
+
+```{r}
+bulk_raw <- molecules[grep("ERCC", rownames(molecules), invert = TRUE),
+                      grep("bulk", colnames(molecules))]
+bulk_ercc <- ercc_counts[, grep("bulk", colnames(molecules))]
+single_raw <- molecules[grep("ERCC", rownames(molecules), invert = TRUE),
+                        grep("bulk", colnames(molecules), invert = TRUE)]
+single_ercc <- ercc_counts[, grep("bulk", colnames(molecules), invert = TRUE)]
+stopifnot(rownames(bulk_raw) == rownames(single_raw),
+          rownames(bulk_ercc) == rownames(single_ercc),
+          colnames(bulk_raw) == colnames(bulk_ercc),
+          colnames(single_raw) == colnames(single_ercc))
+```
+
+Fit a linear model using the mean ERCC counts.
+
+```{r}
+bulk_fit <- lm(ercc$conc_mix1 ~ rowMeans(bulk_ercc))
+plot(rowMeans(bulk_ercc), ercc$conc_mix1, main = "bulk")
+abline(bulk_fit, col = "red")
+plot(fitted(bulk_fit), residuals(bulk_fit))
+```
+
+```{r}
+single_fit <- lm(rowMeans(single_ercc) ~ ercc$conc_mix1)
+plot(ercc$conc_mix1, rowMeans(single_ercc), main = "single")
+abline(single_fit, col = "red")
+plot(fitted(single_fit), residuals(single_fit))
+```
+
+Adjust each individual sample based on the mean fit.
+
+```{r bulk-adjust}
+bulk_norm <- bulk_raw
+bulk_norm[, ] <- NA
+for (i in 1:ncol(bulk_norm)) {
+#   bulk_norm[, i] <- predict(bulk_fit, as.data.frame(bulk_raw[, i]),
+#                             interval = "prediction")
+  bulk_norm[, i] <- bulk_raw[, i] * bulk_fit$coefficients[2] +
+                    bulk_fit$coefficients[1]
+}
+```
+
+```{r}
+heatmap(cor(bulk_raw))
+heatmap(cor(bulk_norm))
+```
+
+
+```{r single-adjust}
+single_norm <- single_raw
+single_norm[, ] <- NA
+for (i in 1:ncol(single_norm)) {
+#   single_norm[, i] <- predict(single_fit, as.data.frame(single_raw[, i]),
+#                             interval = "prediction")
+  single_norm[, i] <- single_raw[, i] * single_fit$coefficients[2] +
+                    single_fit$coefficients[1]
+}
+```
+
+```{r}
+heatmap(cor(single_raw))
+heatmap(cor(single_norm))
+```
+
+
+## RUVseq normalization
+
+```{r bulk-ruv}
+bulk_ruv_object <- RUVg(x = as.matrix(rbind(bulk_ercc, bulk_raw)),
+                        cIdx = 1:nrow(bulk_ercc), k = 1)
+bulk_ruv <- bulk_ruv_object$normalizedCounts[
+  grep("ERCC", rownames(bulk_ruv_object$normalizedCounts), invert = TRUE), ]
+```
+
+```{r single-ruv}
+single_ruv_object <- RUVg(x = as.matrix(rbind(single_ercc, single_raw)),
+                        cIdx = 1:nrow(single_ercc), k = 1)
+single_ruv <- single_ruv_object$normalizedCounts[
+  grep("ERCC", rownames(single_ruv_object$normalizedCounts), invert = TRUE), ]
+```
+
+## PCA comparison
+
+With the bulk data:
+
+```{r}
+pca_bulk_raw <- run_pca(bulk_raw)
+plot_pca(pca_bulk_raw$PCs, color = anno$individual[anno$well == "bulk"])
+```
+
+
+```{r}
+pca_bulk_norm <- run_pca(bulk_norm)
+plot_pca(pca_bulk_norm$PCs, color = anno$individual[anno$well == "bulk"])
+```
+
+```{r}
+pca_bulk_ruv <- run_pca(bulk_ruv[apply(bulk_ruv, 1, var) > 0, ])
+plot_pca(pca_bulk_ruv$PCs, color = anno$individual[anno$well == "bulk"])
+```
+
+With the single cell data:
+
+
+```{r}
+pca_single_raw <- run_pca(single_raw)
+plot_pca(pca_single_raw$PCs, color = anno$individual[anno$well != "bulk"])
+```
+
+
+```{r}
+pca_single_norm <- run_pca(single_norm)
+plot_pca(pca_single_norm$PCs, color = anno$individual[anno$well != "bulk"])
+```
+
+```{r}
+pca_single_ruv <- run_pca(single_ruv[apply(single_ruv, 1, var) > 0, ])
+plot_pca(pca_single_ruv$PCs, color = anno$individual[anno$well != "bulk"])
+```
+
+```{r}
+plot(bulk_raw[, 1], bulk_ruv[, 1])
+cor(bulk_raw[, 1], bulk_ruv[, 1])
+```
+
+
+## Correlations
+
+## Session information
+
+```{r info}
+sessionInfo()
+```
