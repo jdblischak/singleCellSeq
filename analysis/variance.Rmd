@@ -1,0 +1,193 @@
+---
+title: "variance"
+author: "PoYuan Tung"
+date: 2015-06-15
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+```
+
+## Input
+
+```{r packages, message=FALSE}
+library("dplyr")
+library("ggplot2")
+theme_set(theme_bw(base_size = 16))
+library("edgeR")
+```
+
+Summary counts from featureCounts.
+Created with [gather-summary-counts.py](https://github.com/jdblischak/singleCellSeq/blob/master/code/gather-summary-counts.py).
+
+```{r input-summary-counts}
+summary_counts <- read.table("../data/summary-counts.txt", header = TRUE,
+                             stringsAsFactors = FALSE)
+summary_per_sample <- summary_counts %>%
+  filter(sickle == "quality-trimmed") %>%
+  select(-sickle) %>%
+  arrange(individual, batch, well, rmdup) %>%
+  as.data.frame
+```
+
+Input annotation.
+
+```{r input-annotation}
+anno <- read.table("../data/annotation.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno)
+```
+
+Input read counts.
+
+```{r input-read-counts}
+reads <- read.table("../data/reads.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+```
+
+Input molecule counts.
+
+```{r input-molecule-counts}
+molecules <- read.table("../data/molecules.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+```
+
+Input single cell observational quality control data.
+
+```{r input-qc}
+qc <- read.table("../data/qc-ipsc.txt", header = TRUE,
+                 stringsAsFactors = FALSE)
+head(qc)
+```
+
+## Remove bad quality cells
+### Remove cells with total reads < 2 millons
+```{r remove}
+#reads per sample
+summary_per_sample_reads <- summary_per_sample %>% filter(rmdup == "reads")
+
+#create unmapped ratios
+summary_per_sample_reads$unmapped.ratios <- summary_per_sample_reads[,9]/apply(summary_per_sample_reads[,5:13],1,sum)
+
+#create total mapped reads
+summary_per_sample_reads$total.mapped <- apply(summary_per_sample_reads[,5:8],1,sum)
+
+#creat ERCC ratios
+summary_per_sample_reads$ERCC.ratios <- apply(reads[grep("ERCC", rownames(reads)), ],2,sum)/apply(summary_per_sample_reads[,5:8],1,sum)
+
+#remove bulk keep single cell
+summary_per_sample_reads_single <- summary_per_sample_reads[summary_per_sample_reads$well!="bulk",]
+
+#add cell number per well by merging qc file
+summary_per_sample_reads_single_qc <- merge(summary_per_sample_reads_single,qc,by=c("individual","batch","well"))
+
+#qc filter
+summary_per_sample_reads_single_qc$qc_filter <- summary_per_sample_reads_single_qc$cell_number == 1 & summary_per_sample_reads_single_qc$total.mapped > 2 * 10^6
+
+sum(summary_per_sample_reads_single_qc$qc_filter)
+```
+
+## variance of gene expression between individuls from the bulk samples
+
+```{r variance}
+# select bulk samples
+reads_bulk<- reads %>% select(contains("bulk"))
+
+# normalization
+reads_bulk_cpm <- cpm(reads_bulk)
+
+# create a new dataset
+reads_var <- data.frame(reads_bulk_cpm)
+sum(reads_var!=reads_bulk_cpm)
+
+# add mean of each individauls
+reads_var$mean19098 <- apply(reads_var[,grep("NA19098",names(reads_var))], 1, mean)
+reads_var$mean19101 <- apply(reads_var[,grep("NA19101",names(reads_var))], 1, mean)
+reads_var$mean19239 <- apply(reads_var[,grep("NA19239",names(reads_var))], 1, mean)
+
+# add variance of bulk means
+reads_var$bulk_variance <- apply(reads_var[,c("mean19098","mean19101","mean19239")],1,var)
+
+# select single cell samples
+reads_single <- reads %>% select(-contains("bulk"))
+
+# apply qc_filter
+reads_single_qc <- reads_single[,summary_per_sample_reads_single_qc$qc_filter]
+dim(reads_single_qc)
+
+# normalization
+reads_single_cpm <- data.frame(cpm(reads_single_qc))
+
+# means of single cells within individauls
+reads_var$mean.single19098 <- apply(reads_single_cpm[,grep("NA19098",names(reads_single_cpm))], 1, mean)
+
+reads_var$mean.single19101 <- apply(reads_single_cpm[,grep("NA19101",names(reads_single_cpm))], 1, mean)
+
+reads_var$mean.single19239 <- apply(reads_single_cpm[,grep("NA19239",names(reads_single_cpm))], 1, mean)
+
+# variance of means from single cells
+reads_var$single_variance <- apply(reads_var[,c("mean.single19098","mean.single19101","mean.single19239")],1,var)
+
+# sellect ERCC
+reads_var$ERCC <- grepl("ERCC",rownames(reads_var))
+
+# remove non-expressed 
+reads_single_qc_expressed <- reads_single_qc_w_mean_cv[reads_single_qc_w_mean_cv$mean >0,]
+dim(reads_single_qc_expressed)
+
+
+# plot with color-blind-friendly palettes
+cbPalette <- c("#999999", "#0000FF", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+
+ggplot(reads_var, aes(x = bulk_variance, y = single_variance, col = ERCC)) + geom_point(size = 2, alpha = 0.5) + scale_colour_manual(values=cbPalette)
+
+ggplot(reads_var, aes(x = bulk_variance, y = single_variance, col = ERCC)) + geom_point(size = 2, alpha = 0.5) + scale_colour_manual(values=cbPalette) + scale_x_log10() + scale_y_log10() 
+
+```
+
+```{r Ftest}
+### create a function for f.test by anova
+### compare the to fits:
+### 1. lm from all single cells
+### 2. lm from each individaul
+f.test <- function(data.in){
+  tt <- names(data.in)
+  individual.id <- rep("19098",length(tt))
+  individual.id[grep("19101",tt)] <- "19101"
+  individual.id[grep("19239",tt)] <- "19239"
+  
+  dd <- data.frame(reads=unlist(data.in),individual.id=individual.id)
+  fit1 <- lm(reads~1,data=dd)
+  fit2 <- lm(reads~1 + individual.id,data=dd)
+  anova(fit1,fit2)[2,"Pr(>F)"]
+}
+
+# creat the f test table
+f.test.table <- do.call(rbind,lapply(rownames(reads_single_cpm),function(x){
+  data.frame(gene_name=x,p_of_f=f.test(reads_single_cpm[x,]))  
+}))
+
+# sellect ERCC
+f.test.table$ERCC <- grepl("ERCC",f.test.table[,1])
+
+# sort 
+f.test.table.sort <- f.test.table[order(f.test.table[,2]),]
+head(f.test.table.sort)
+
+plot(f.test.table.sort[,2], log = "y",col=as.numeric(f.test.table.sort$ERCC+1))
+
+plot(f.test.table.sort[1:5000,2], log = "y",col=as.numeric(f.test.table.sort$ERCC[1:5000]+1))
+
+plot(f.test.table.sort[1:5000,2],col=as.numeric(f.test.table.sort$ERCC[1:5000]+1),pch=20,cex=.3)
+
+```
+
+## Session information
+
+```{r info}
+sessionInfo()
+```
