@@ -17,6 +17,11 @@ Compare counts via three methods:
 *  **molecules** - counts of molecules identified using UMIs
 *  **molecules_per_lane** - counts of molecules identified using UMIs per each sequencing lane and then summed per sample
 
+
+Also investigated the relationship between sequencing depth and total molecule count per sample.
+Found that sequencing depth affects the total molecule count, which in turn affects PC1.
+Will use TMM-normalize molecule counts per million mapped (cpm) for downstream analyses.
+
 ## Input
 
 ```{r packages, message=FALSE}
@@ -24,6 +29,7 @@ library("dplyr")
 library("ggplot2")
 theme_set(theme_bw(base_size = 16))
 library("edgeR")
+source("functions.R")
 ```
 
 Input annotation.
@@ -78,10 +84,13 @@ stopifnot(dim(reads) == dim(molecules),
           nrow(anno) == ncol(molecules_per_lane))
 ```
 
-Remove genes with zero read counts.
+Remove genes with zero read or molecule counts in the single cell or bulk samples.
 
 ```{r remove-non-expressed-genes}
-expressed <- rowSums(reads) > 0
+expressed <- rowSums(reads[anno$well == "bulk"]) > 0 &
+             rowSums(reads[anno$well != "bulk"]) > 0 &
+             rowSums(molecules[anno$well == "bulk"]) > 0 &
+             rowSums(molecules[anno$well != "bulk"]) > 0
 reads <- reads[expressed, ]
 molecules <- molecules[expressed, ]
 molecules_per_lane <- molecules_per_lane[expressed, ]
@@ -150,6 +159,110 @@ ggplot(mean_data, aes(x = molecules_per_lane, y = molecules)) +
   geom_smooth(method = "lm") +
   facet_wrap(~ type)
 ```
+
+## Effect of sequencing depth on molecule count
+
+How dependent are the molecule counts on the total molecule count for a given sample?
+Should we standardize by the total molecule count per sample?
+[Islam et al. 2014][Islam2014] argue that this is not necessary, "scales for molecule-counting scatterplots (Fig. 2d,e) are absolute and would not change appreciably if the number of reads were increased."
+Let's check this assumption.
+
+[Islam2014]: http://www.nature.com/nmeth/journal/v11/n2/full/nmeth.2772.html
+
+Does the total number of molecules per sample vary with the total number of reads?
+If it is not necessary to standardize the molecule counts, the molecule counts should be consistent across varying read depths.
+
+```{r total-mol-v-reads-single}
+total_reads_single <- colSums(reads)[anno$well != "bulk"]
+total_molecules_single <- colSums(molecules)[anno$well != "bulk"]
+plot(total_reads_single, total_molecules_single,
+     xlab = "Total number of reads",
+     ylab = "Total number of molecules",
+     main = "Effect of read depth on single cells")
+abline(lm(total_molecules_single ~ total_reads_single), col = "red")
+```
+
+```{r total-mol-v-reads-bulk}
+total_reads_bulk <- colSums(reads)[anno$well == "bulk"]
+total_molecules_bulk <- colSums(molecules)[anno$well == "bulk"]
+plot(total_reads_bulk, total_molecules_bulk,
+     xlab = "Total number of reads",
+     ylab = "Total number of molecules",
+     main = "Effect of read depth on bulk samples")
+abline(lm(total_molecules_bulk ~ total_reads_bulk), col = "red")
+```
+
+So this is clearly not the case.
+Perhaps in the ideal case where all the cells are sequenced to saturation, then any increasing sequencing would not make a difference in the molecule counts.
+
+What effect does this difference in total molecule count have in PCA?
+
+```{r pca-single}
+pca_single <- run_pca(molecules[, anno$well != "bulk"])
+```
+
+```{r pca-single-uncorrected}
+plot(pca_single$PCs[, "PC1"], pca_single$PCs[, "PC2"],
+     col = anno$individual[anno$well != "bulk"],
+     xlab = "PC1", ylab = "PC2", main = "PCA single cells uncorrected for depth")
+```
+
+```{r pc1-v-total-molecules-uncorrected}
+plot(total_molecules_single, pca_single$PCs[, "PC1"],
+     col = anno$individual[anno$well != "bulk"],
+     main = sprintf("Pearson r: %.2f",
+                    cor(total_molecules_single, pca_single$PCs[, "PC1"])),
+     xlab = "Total number of molecules", ylab = "PC1")
+```
+
+```{r pc2-v-total-molecules-uncorrected}
+plot(total_molecules_single, pca_single$PCs[, "PC2"],
+     col = anno$individual[anno$well != "bulk"],
+     main = sprintf("Pearson r: %.2f",
+                    cor(total_molecules_single, pca_single$PCs[, "PC2"])),
+     xlab = "Total number of molecules", ylab = "PC2")
+```
+
+The total molecule depth per sample is highly correlated with PC1.
+However, it did not affect PC2, which captures the individual effect.
+
+What happens to the PCA results when depth is properly accounted for using TMM-normalized counts per million?
+
+```{r single-tmm-cpm}
+norm_factors_mol_single <- calcNormFactors(molecules[, anno$well != "bulk"],
+                                           method = "TMM")
+molecules_cpm_single <- cpm(molecules[, anno$well != "bulk"],
+                            lib.size = colSums(molecules[, anno$well != "bulk"]) *
+                                       norm_factors_mol_single)
+```
+
+```{r pca-single-cpm}
+pca_single_cpm <- run_pca(molecules_cpm_single)
+```
+
+```{r pca-single-corrected}
+plot(pca_single_cpm$PCs[, "PC1"], pca_single_cpm$PCs[, "PC2"],
+     col = anno$individual[anno$well != "bulk"],
+     xlab = "PC1", ylab = "PC2", main = "PCA single cells *corrected* for depth")
+```
+
+```{r pc1-v-total-molecules-corrected}
+plot(total_molecules_single, pca_single_cpm$PCs[, "PC1"],
+     col = anno$individual[anno$well != "bulk"],
+     main = sprintf("Pearson r: %.2f",
+                    cor(total_molecules_single, pca_single_cpm$PCs[, "PC1"])),
+     xlab = "Total number of molecules", ylab = "PC1")
+```
+
+```{r pc2-v-total-molecules-corrected}
+plot(total_molecules_single, pca_single_cpm$PCs[, "PC2"],
+     col = anno$individual[anno$well != "bulk"],
+     main = sprintf("Pearson r: %.2f",
+                    cor(total_molecules_single, pca_single_cpm$PCs[, "PC2"])),
+     xlab = "Total number of molecules", ylab = "PC2")
+```
+
+PC1 is no longer associated with sequencing depth!
 
 ## Session information
 
