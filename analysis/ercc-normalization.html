@@ -134,7 +134,7 @@ img {
 </div>
 
 <p><strong>Last updated:</strong> 2015-06-16</p>
-<p><strong>Code version:</strong> a43ca3288509e4f90d216b0d2d36ed1db5770a6e</p>
+<p><strong>Code version:</strong> dca3dbcd2f0cae21284d34daf90ba29ceae05e35</p>
 <p>In this analysis:</p>
 <ul>
 <li>Investigate the fit between ERCC counts and the concentration for each sample</li>
@@ -245,11 +245,14 @@ str(ercc_per_sample)</code></pre>
  $ intercept : num  41.4 61.8 30.2 52.1 53.7 ...
  $ slope     : num  57.9 52.6 55.6 54.2 56.5 ...
  $ r2        : num  0.967 0.987 0.987 0.967 0.987 ...</code></pre>
-<pre class="r"><code>boxplot(intercept ~ individual + batch, data = ercc_per_sample)</code></pre>
+<pre class="r"><code>boxplot(intercept ~ batch + individual, data = ercc_per_sample, las = 2,
+        main = &quot;Variation in the intercept term&quot;, ylab = &quot;Intercept&quot;)</code></pre>
 <p><img src="figure/ercc-normalization.Rmd/ercc-intercept-per-sample-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>boxplot(slope ~ individual + batch, data = ercc_per_sample)</code></pre>
+<pre class="r"><code>boxplot(slope ~ batch + individual, data = ercc_per_sample, las = 2,
+        main = &quot;Variation in the slope term&quot;, ylab = &quot;Slope&quot;)</code></pre>
 <p><img src="figure/ercc-normalization.Rmd/ercc-slope-per-sample-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>boxplot(r2 ~ individual + batch, data = ercc_per_sample)</code></pre>
+<pre class="r"><code>boxplot(r2 ~ batch + individual, data = ercc_per_sample, las = 2,
+        main = &quot;Variation in R-squared&quot;, ylab = &quot;R-squared&quot;)</code></pre>
 <p><img src="figure/ercc-normalization.Rmd/ercc-r2-per-sample-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
 <div id="linear-shift-normalization" class="section level2">
@@ -304,6 +307,13 @@ plot_pca(pca_bulk_raw$PCs, color = anno$individual[anno$well == &quot;bulk&quot;
 plot_pca(pca_bulk_norm$PCs, color = anno$individual[anno$well == &quot;bulk&quot;])</code></pre>
 <p><img src="figure/ercc-normalization.Rmd/pca-bulk-norm-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <p>RUVg-normalized bulk data:</p>
+<p>Some genes are assigned a count of 1 across all the cells. These invariant genes must be removed before performing PCA.</p>
+<pre class="r"><code># Variance = 0
+sum(apply(bulk_ruv, 1, var) == 0)</code></pre>
+<pre><code>[1] 28</code></pre>
+<pre class="r"><code># All assigned a count of 1
+all(bulk_ruv[apply(bulk_ruv, 1, var) == 0, ] == 1)</code></pre>
+<pre><code>[1] TRUE</code></pre>
 <pre class="r"><code>pca_bulk_ruv &lt;- run_pca(bulk_ruv[apply(bulk_ruv, 1, var) &gt; 0, ])
 plot_pca(pca_bulk_ruv$PCs, color = anno$individual[anno$well == &quot;bulk&quot;])</code></pre>
 <p><img src="figure/ercc-normalization.Rmd/pca-bulk-ruv-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
@@ -316,7 +326,11 @@ plot_pca(pca_single_raw$PCs, color = anno$individual[anno$well != &quot;bulk&quo
 plot_pca(pca_single_norm$PCs, color = anno$individual[anno$well != &quot;bulk&quot;])</code></pre>
 <p><img src="figure/ercc-normalization.Rmd/pca-single-norm-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <p>RUVg-normalized single cell data:</p>
-<pre class="r"><code>pca_single_ruv &lt;- run_pca(single_ruv[apply(single_ruv, 1, var) &gt; 0, ])
+<p>The single cell data has no invariant genes:</p>
+<pre class="r"><code># Variance = 0
+sum(apply(single_ruv, 1, var) == 0)</code></pre>
+<pre><code>[1] 0</code></pre>
+<pre class="r"><code>pca_single_ruv &lt;- run_pca(single_ruv)
 plot_pca(pca_single_ruv$PCs, color = anno$individual[anno$well != &quot;bulk&quot;])</code></pre>
 <p><img src="figure/ercc-normalization.Rmd/pca-single-ruv-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>

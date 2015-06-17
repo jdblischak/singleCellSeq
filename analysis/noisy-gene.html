@@ -133,18 +133,19 @@ img {
 <li><a href="#poisson-sucks">Poisson sucks!</a></li>
 <li><a href="#noisy-genes">noisy genes</a></li>
 <li><a href="#variation-between-individuals">variation between individuals</a></li>
-<li><a href="#variance-of-batches">variance of batches</a></li>
+<li><a href="#variance-of-batches-by-molecules">variance of batches by molecules</a></li>
 <li><a href="#session-information">Session information</a></li>
 </ul>
 </div>
 
 <p><strong>Last updated:</strong> 2015-06-16</p>
-<p><strong>Code version:</strong> a43ca3288509e4f90d216b0d2d36ed1db5770a6e</p>
+<p><strong>Code version:</strong> dca3dbcd2f0cae21284d34daf90ba29ceae05e35</p>
 <div id="input" class="section level2">
 <h2>Input</h2>
 <pre class="r"><code>library(&quot;dplyr&quot;)
 library(&quot;ggplot2&quot;)
 theme_set(theme_bw(base_size = 16))
+library(&quot;gplots&quot;)
 library(&quot;edgeR&quot;)</code></pre>
 <p>Summary counts from featureCounts. Created with <a href="https://github.com/jdblischak/singleCellSeq/blob/master/code/gather-summary-counts.py">gather-summary-counts.py</a>.</p>
 <pre class="r"><code>summary_counts &lt;- read.table(&quot;../data/summary-counts.txt&quot;, header = TRUE,
@@ -625,11 +626,12 @@ whatever_list[whatever_list %in% noisy_gene_all]</code></pre>
 <pre><code>[1] &quot;ENSG00000069275&quot; &quot;ENSG00000088305&quot; &quot;ENSG00000112306&quot; &quot;ENSG00000117724&quot;
 [5] &quot;ENSG00000163041&quot; &quot;ENSG00000166426&quot; &quot;ENSG00000185088&quot; &quot;ENSG00000256618&quot;</code></pre>
 </div>
-<div id="variance-of-batches" class="section level2">
-<h2>variance of batches</h2>
-<pre class="r"><code># re create table
+<div id="variance-of-batches-by-molecules" class="section level2">
+<h2>variance of batches by molecules</h2>
+<pre class="r"><code># re create table using the molecule counts
 group_list &lt;- c(&quot;19&quot;,&quot;19098&quot;,&quot;19101&quot;,&quot;19239&quot;,&quot;19098.1&quot;,&quot;19098.2&quot;,&quot;19098.3&quot;,&quot;19101.1&quot;,&quot;19101.2&quot;,&quot;19101.3&quot;,&quot;19239.1&quot;,&quot;19239.2&quot;,&quot;19239.3&quot;)
 
+### create a function to generate tables of mean,
 create_info_table &lt;- function(statistics=&quot;mean&quot;){
   # first correct
   molecules.crt &lt;- -1024*log(1-molecules_single_qc/1024)
@@ -654,6 +656,7 @@ create_info_table &lt;- function(statistics=&quot;mean&quot;){
     big_table$gene_name &lt;- rownames(molecules_single_qc)
     big_table
 }
+
 # create big table for mean, var and cv
 table_mean &lt;- create_info_table(statistics=&quot;mean&quot;)
 table_var &lt;- create_info_table(statistics=&quot;var&quot;)
@@ -785,53 +788,33 @@ CV_19101.3  0.8260138
 CV_19239.1  0.8118347
 CV_19239.2  0.8283073
 CV_19239.3  1.0000000</code></pre>
-<pre class="r"><code>heatmap(cor(table_mean[,5:13],use=&quot;pairwise.complete.obs&quot;))</code></pre>
+<pre class="r"><code>heatmap.2(cor(table_mean[,5:13],use=&quot;pairwise.complete.obs&quot;), trace=&quot;none&quot;,cexRow=1,cexCol=1,margins=c(8,8))</code></pre>
 <p><img src="figure/noisy-gene.Rmd/variance-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>heatmap(cor(table_var[,2:13],use=&quot;pairwise.complete.obs&quot;))</code></pre>
+<pre class="r"><code>heatmap.2(cor(table_var[,2:13],use=&quot;pairwise.complete.obs&quot;), trace=&quot;none&quot;,cexRow=1,cexCol=1,margins=c(8,8))</code></pre>
 <p><img src="figure/noisy-gene.Rmd/variance-2.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>heatmap(cor(table_cv[,2:13],use=&quot;pairwise.complete.obs&quot;))</code></pre>
+<pre class="r"><code>heatmap.2(cor(table_cv[,2:13],use=&quot;pairwise.complete.obs&quot;), trace=&quot;none&quot;,cexRow=1,cexCol=1,margins=c(8,8))</code></pre>
 <p><img src="figure/noisy-gene.Rmd/variance-3.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <pre class="r"><code># create a table for boxplot of CV correlation 
 corr_CV &lt;- cor(table_cv[,2:13],use=&quot;pairwise.complete.obs&quot;)
+
 corr_boxplot &lt;- data.frame(
-cor=c(corr_CV[4,5:6],corr_CV[7,8:9],corr_CV[10,11:12],corr_CV[4:6,7:12],corr_CV[7:9,10:12]),
-cor_source=c(rep(&quot;within&quot;,6),rep(&quot;between&quot;,27)))
-corr_boxplot</code></pre>
-<pre><code>         cor cor_source
-1  0.8267383     within
-2  0.8050309     within
-3  0.8340485     within
-4  0.8505097     within
-5  0.8156697     within
-6  0.8118347     within
-7  0.8238322    between
-8  0.8247450    between
-9  0.7890156    between
-10 0.8117253    between
-11 0.8180696    between
-12 0.8068085    between
-13 0.8333849    between
-14 0.8350337    between
-15 0.8189758    between
-16 0.7885392    between
-17 0.7918402    between
-18 0.7846490    between
-19 0.8001410    between
-20 0.8053174    between
-21 0.7880042    between
-22 0.7882794    between
-23 0.7941985    between
-24 0.7833103    between
-25 0.7931791    between
-26 0.8024025    between
-27 0.8105332    between
-28 0.8114995    between
-29 0.8122885    between
-30 0.8277353    between
-31 0.7998317    between
-32 0.8121711    between
-33 0.8260138    between</code></pre>
-<pre class="r"><code>boxplot(cor~cor_source,data=corr_boxplot)</code></pre>
+correlation=c(corr_CV[4,5:6],corr_CV[7,8:9],corr_CV[10,11:12],corr_CV[4:6,7:12],corr_CV[7:9,10:12]), cor_source=c(rep(&quot;within&quot;,6),rep(&quot;between&quot;,27)), individual=c(rep(&quot;19098&quot;,2),rep(&quot;19101&quot;,2),rep(&quot;19239&quot;,2),rep(&quot;between&quot;,27)))
+
+# t test
+t_test &lt;- t.test(corr_boxplot[1:6,1],corr_boxplot[7:33,1],alternative = &quot;greater&quot;)
+t_test</code></pre>
+<pre><code>
+    Welch Two Sample t-test
+
+data:  corr_boxplot[1:6, 1] and corr_boxplot[7:33, 1]
+t = 2.3178, df = 7.1069, p-value = 0.02651
+alternative hypothesis: true difference in means is greater than 0
+95 percent confidence interval:
+ 0.003181359         Inf
+sample estimates:
+mean of x mean of y 
+0.8239720 0.8067231 </code></pre>
+<pre class="r"><code>ggplot(corr_boxplot, aes(cor_source,correlation)) + geom_boxplot() + geom_jitter(aes(colour = individual, size = 2, width = 0.5)) </code></pre>
 <p><img src="figure/noisy-gene.Rmd/variance-4.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 </div>
 <div id="session-information" class="section level2">
@@ -852,16 +835,20 @@ attached base packages:
 [1] stats     graphics  grDevices utils     datasets  methods   base     
 
 other attached packages:
-[1] edgeR_3.10.2  limma_3.24.9  ggplot2_1.0.1 dplyr_0.4.1   knitr_1.10.5 
+[1] edgeR_3.10.2  limma_3.24.9  gplots_2.17.0 ggplot2_1.0.1 dplyr_0.4.1  
+[6] knitr_1.10.5 
 
 loaded via a namespace (and not attached):
- [1] Rcpp_0.11.6      magrittr_1.5     MASS_7.3-40      munsell_0.4.2   
- [5] colorspace_1.2-6 stringr_1.0.0    plyr_1.8.2       tools_3.2.0     
- [9] parallel_3.2.0   grid_3.2.0       gtable_0.1.2     DBI_0.3.1       
-[13] htmltools_0.2.6  lazyeval_0.1.10  yaml_2.1.13      assertthat_0.1  
-[17] digest_0.6.8     reshape2_1.4.1   formatR_1.2      evaluate_0.7    
-[21] rmarkdown_0.6.1  labeling_0.3     stringi_0.4-1    scales_0.2.4    
-[25] proto_0.3-10    </code></pre>
+ [1] Rcpp_0.11.6        magrittr_1.5       MASS_7.3-40       
+ [4] munsell_0.4.2      colorspace_1.2-6   stringr_1.0.0     
+ [7] plyr_1.8.2         caTools_1.17.1     tools_3.2.0       
+[10] parallel_3.2.0     grid_3.2.0         gtable_0.1.2      
+[13] KernSmooth_2.23-14 DBI_0.3.1          htmltools_0.2.6   
+[16] gtools_3.5.0       lazyeval_0.1.10    yaml_2.1.13       
+[19] assertthat_0.1     digest_0.6.8       reshape2_1.4.1    
+[22] formatR_1.2        bitops_1.0-6       evaluate_0.7      
+[25] rmarkdown_0.6.1    labeling_0.3       gdata_2.16.1      
+[28] stringi_0.4-1      scales_0.2.4       proto_0.3-10      </code></pre>
 </div>
 
 

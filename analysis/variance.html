@@ -134,7 +134,7 @@ img {
 </div>
 
 <p><strong>Last updated:</strong> 2015-06-16</p>
-<p><strong>Code version:</strong> a43ca3288509e4f90d216b0d2d36ed1db5770a6e</p>
+<p><strong>Code version:</strong> dca3dbcd2f0cae21284d34daf90ba29ceae05e35</p>
 <div id="input" class="section level2">
 <h2>Input</h2>
 <pre class="r"><code>library(&quot;dplyr&quot;)
@@ -254,10 +254,8 @@ reads_var$ERCC &lt;- grepl(&quot;ERCC&quot;,rownames(reads_var))
 # plot with color-blind-friendly palettes
 cbPalette &lt;- c(&quot;#999999&quot;, &quot;#0000FF&quot;, &quot;#56B4E9&quot;, &quot;#009E73&quot;, &quot;#F0E442&quot;, &quot;#0072B2&quot;, &quot;#D55E00&quot;, &quot;#CC79A7&quot;)
 
-ggplot(reads_var, aes(x = bulk_variance, y = single_variance, col = ERCC)) + geom_point(size = 2, alpha = 0.5) + scale_colour_manual(values=cbPalette)</code></pre>
+ggplot(reads_var, aes(x = bulk_variance, y = single_variance, col = ERCC)) + geom_point(size = 2, alpha = 0.5) + scale_colour_manual(values=cbPalette) + scale_x_log10() + scale_y_log10() </code></pre>
 <p><img src="figure/variance.Rmd/variance-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>ggplot(reads_var, aes(x = bulk_variance, y = single_variance, col = ERCC)) + geom_point(size = 2, alpha = 0.5) + scale_colour_manual(values=cbPalette) + scale_x_log10() + scale_y_log10() </code></pre>
-<p><img src="figure/variance.Rmd/variance-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>### create a function for f.test by anova
 ### compare the to fits:
 ### 1. lm from all single cells
@@ -298,6 +296,41 @@ head(f.test.table.sort)</code></pre>
 <p><img src="figure/variance.Rmd/Ftest-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>plot(f.test.table.sort[1:5000,2],col=as.numeric(f.test.table.sort$ERCC[1:5000]+1),pch=20,cex=.3)</code></pre>
 <p><img src="figure/variance.Rmd/Ftest-3.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code># plot the variance and show p 0f f
+reads_var$p_of_f &lt;- f.test.table$p_of_f
+
+ggplot(reads_var, aes(x = bulk_variance, y = single_variance, shape = as.factor(ERCC), col = p_of_f)) + geom_point(size = 2, alpha = 0.25) + scale_x_log10() + scale_y_log10() + scale_colour_gradient2(midpoint= 0.5, space=&quot;Lab&quot;)</code></pre>
+<p><img src="figure/variance.Rmd/Ftest-4.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code># looking at the F value
+f.test.F &lt;- function(data.in){
+  tt &lt;- names(data.in)
+  individual.id &lt;- rep(&quot;19098&quot;,length(tt))
+  individual.id[grep(&quot;19101&quot;,tt)] &lt;- &quot;19101&quot;
+  individual.id[grep(&quot;19239&quot;,tt)] &lt;- &quot;19239&quot;
+  
+  dd &lt;- data.frame(reads=unlist(data.in),individual.id=individual.id)
+  fit1 &lt;- lm(reads~1,data=dd)
+  fit2 &lt;- lm(reads~1 + individual.id,data=dd)
+  anova(fit1,fit2)[2,&quot;F&quot;]
+}
+# creat the f test table of F value
+f.test.F.table &lt;- do.call(rbind,lapply(rownames(reads_single_cpm),function(x){
+  data.frame(gene_name=x,F_value=f.test.F(reads_single_cpm[x,]))  
+}))
+
+# sellect ERCC
+f.test.F.table$ERCC &lt;- grepl(&quot;ERCC&quot;,f.test.F.table[,1])
+
+# plot the variance and show F value
+reads_var$F_value &lt;- f.test.F.table$F_value
+
+# calculate F value from p
+# when p=0.01
+qf(1-0.05,2,629)</code></pre>
+<pre><code>[1] 3.010045</code></pre>
+<pre class="r"><code># use the F value from p to scale the gradient
+ggplot(reads_var, aes(x = bulk_variance, y = single_variance, shape = as.factor(ERCC), col = F_value)) + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_y_log10() + scale_colour_gradient2(midpoint= 1.5, limits=c(0,3),space=&quot;Lab&quot;)</code></pre>
+<p><img src="figure/variance.Rmd/Ftest-5.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
 <div id="session-information" class="section level2">
 <h2>Session information</h2>
