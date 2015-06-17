@@ -11,16 +11,18 @@ date: 2015-06-11
 source("chunk-options.R")
 ```
 
-Compare counts via three methods:
+First, compared counts via three methods:
 
 *  **reads_cpm** - standard counts per million
 *  **molecules** - counts of molecules identified using UMIs
 *  **molecules_per_lane** - counts of molecules identified using UMIs per each sequencing lane and then summed per sample
 
-
-Also investigated the relationship between sequencing depth and total molecule count per sample.
+Then investigated the relationship between sequencing depth and total molecule count per sample.
 Found that sequencing depth affects the total molecule count, which in turn affects PC1.
 Will use TMM-normalize molecule counts per million mapped (cpm) for downstream analyses.
+
+Therefore reran the original comparisons between reads and molecules, but this time using TMM-normalized counts per million for the molecules similar to the reads.
+The correlation of the mean expression improved.
 
 ## Input
 
@@ -100,9 +102,25 @@ molecules_per_lane <- molecules_per_lane[expressed, ]
 
 Calculate cpm for the reads data using TMM-normalization.
 
-```{r calc-cpm}
-norm_factors <- calcNormFactors(reads, method = "TMM")
-reads_cpm <- cpm(reads, lib.size = colSums(reads) * norm_factors)
+```{r calc-cpm-reads}
+norm_factors_reads <- calcNormFactors(reads, method = "TMM")
+reads_cpm <- cpm(reads, lib.size = colSums(reads) * norm_factors_reads)
+```
+
+And for the molecules.
+
+```{r calc-cpm-molecules}
+norm_factors_mol <- calcNormFactors(molecules, method = "TMM")
+molecules_cpm <- cpm(molecules, lib.size = colSums(molecules) * norm_factors_mol)
+```
+
+And for the molecules summed per lane.
+
+```{r calc-cpm-molecules-per-lane}
+norm_factors_mol_per_lane <- calcNormFactors(molecules_per_lane, method = "TMM")
+molecules_per_lane_cpm <- cpm(molecules_per_lane,
+                              lib.size = colSums(molecules_per_lane) *
+                                         norm_factors_mol_per_lane)
 ```
 
 ## Compare reads and molecules
@@ -263,6 +281,57 @@ plot(total_molecules_single, pca_single_cpm$PCs[, "PC2"],
 ```
 
 PC1 is no longer associated with sequencing depth!
+
+## Compare reads and standardized molecules
+
+This time standardize the molecule counts for the sequencing depth.
+
+Compare the means of each gene obtained via the different methods.
+
+```{r calc-means-std}
+mean_data_std <- data.frame(reads_cpm = rowMeans(reads_cpm),
+                        molecules_cpm = rowMeans(molecules_cpm),
+                        molecules_per_lane_cpm = rowMeans(molecules_per_lane_cpm))
+cor(mean_data_std)
+```
+
+All three are even more highly correlated now that the molecules are standardized.
+
+```{r reads-v-molecules-std}
+mean_data_std$type <- ifelse(grepl("ERCC", rownames(mean_data_std)), "ERCC", "gene")
+ggplot(mean_data_std, aes(x = reads_cpm, y = molecules_cpm)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  facet_wrap(~ type)
+```
+
+Examining the lower range where most genes are:
+
+```{r reads-v-molecules-range-restricted-std, warning=FALSE}
+ggplot(mean_data_std, aes(x = reads_cpm, y = molecules_cpm)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  facet_wrap(~ type) +
+  ylim(0, 10000)
+```
+
+
+```{r reads-v-molecules-per-lane-std, warning=FALSE}
+ggplot(mean_data_std, aes(x = reads_cpm, y = molecules_per_lane_cpm)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  facet_wrap(~ type)
+```
+
+And as above, the molecule counts and the molecule counts summed per sequencing lane are highly correlated,
+which indicates that most of the bias is introduced in the library preparation step and not during sequencing.
+
+```{r molecules-v-molecules-per-lane-std, warning=FALSE}
+ggplot(mean_data_std, aes(x = molecules_per_lane_cpm, y = molecules_cpm)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  facet_wrap(~ type)
+```
 
 ## Session information
 
