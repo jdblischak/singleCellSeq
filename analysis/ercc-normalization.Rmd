@@ -149,15 +149,18 @@ str(ercc_per_sample)
 ```
 
 ```{r ercc-intercept-per-sample}
-boxplot(intercept ~ individual + batch, data = ercc_per_sample)
+boxplot(intercept ~ batch + individual, data = ercc_per_sample, las = 2,
+        main = "Variation in the intercept term", ylab = "Intercept")
 ```
 
 ```{r ercc-slope-per-sample}
-boxplot(slope ~ individual + batch, data = ercc_per_sample)
+boxplot(slope ~ batch + individual, data = ercc_per_sample, las = 2,
+        main = "Variation in the slope term", ylab = "Slope")
 ```
 
 ```{r ercc-r2-per-sample}
-boxplot(r2 ~ individual + batch, data = ercc_per_sample)
+boxplot(r2 ~ batch + individual, data = ercc_per_sample, las = 2,
+        main = "Variation in R-squared", ylab = "R-squared")
 ```
 
 ## Linear shift normalization
@@ -238,6 +241,16 @@ plot_pca(pca_bulk_norm$PCs, color = anno$individual[anno$well == "bulk"])
 
 RUVg-normalized bulk data:
 
+Some genes are assigned a count of 1 across all the cells.
+These invariant genes must be removed before performing PCA.
+
+```{r bulk-ruv-invariant-genes}
+# Variance = 0
+sum(apply(bulk_ruv, 1, var) == 0)
+# All assigned a count of 1
+all(bulk_ruv[apply(bulk_ruv, 1, var) == 0, ] == 1)
+```
+
 ```{r pca-bulk-ruv}
 pca_bulk_ruv <- run_pca(bulk_ruv[apply(bulk_ruv, 1, var) > 0, ])
 plot_pca(pca_bulk_ruv$PCs, color = anno$individual[anno$well == "bulk"])
@@ -259,8 +272,15 @@ plot_pca(pca_single_norm$PCs, color = anno$individual[anno$well != "bulk"])
 
 RUVg-normalized single cell data:
 
+The single cell data has no invariant genes:
+
+```{r single-ruv-invariant-genes}
+# Variance = 0
+sum(apply(single_ruv, 1, var) == 0)
+```
+
 ```{r pca-single-ruv}
-pca_single_ruv <- run_pca(single_ruv[apply(single_ruv, 1, var) > 0, ])
+pca_single_ruv <- run_pca(single_ruv)
 plot_pca(pca_single_ruv$PCs, color = anno$individual[anno$well != "bulk"])
 ```
 

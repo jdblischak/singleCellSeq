@@ -139,8 +139,6 @@ reads_var$ERCC <- grepl("ERCC",rownames(reads_var))
 # plot with color-blind-friendly palettes
 cbPalette <- c("#999999", "#0000FF", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
 
-ggplot(reads_var, aes(x = bulk_variance, y = single_variance, col = ERCC)) + geom_point(size = 2, alpha = 0.5) + scale_colour_manual(values=cbPalette)
-
 ggplot(reads_var, aes(x = bulk_variance, y = single_variance, col = ERCC)) + geom_point(size = 2, alpha = 0.5) + scale_colour_manual(values=cbPalette) + scale_x_log10() + scale_y_log10() 
 
 ```
@@ -179,6 +177,41 @@ plot(f.test.table.sort[,2], log = "y",col=as.numeric(f.test.table.sort$ERCC+1))
 plot(f.test.table.sort[1:5000,2], log = "y",col=as.numeric(f.test.table.sort$ERCC[1:5000]+1))
 
 plot(f.test.table.sort[1:5000,2],col=as.numeric(f.test.table.sort$ERCC[1:5000]+1),pch=20,cex=.3)
+
+# plot the variance and show p 0f f
+reads_var$p_of_f <- f.test.table$p_of_f
+
+ggplot(reads_var, aes(x = bulk_variance, y = single_variance, shape = as.factor(ERCC), col = p_of_f)) + geom_point(size = 2, alpha = 0.25) + scale_x_log10() + scale_y_log10() + scale_colour_gradient2(midpoint= 0.5, space="Lab")
+
+# looking at the F value
+f.test.F <- function(data.in){
+  tt <- names(data.in)
+  individual.id <- rep("19098",length(tt))
+  individual.id[grep("19101",tt)] <- "19101"
+  individual.id[grep("19239",tt)] <- "19239"
+  
+  dd <- data.frame(reads=unlist(data.in),individual.id=individual.id)
+  fit1 <- lm(reads~1,data=dd)
+  fit2 <- lm(reads~1 + individual.id,data=dd)
+  anova(fit1,fit2)[2,"F"]
+}
+# creat the f test table of F value
+f.test.F.table <- do.call(rbind,lapply(rownames(reads_single_cpm),function(x){
+  data.frame(gene_name=x,F_value=f.test.F(reads_single_cpm[x,]))  
+}))
+
+# sellect ERCC
+f.test.F.table$ERCC <- grepl("ERCC",f.test.F.table[,1])
+
+# plot the variance and show F value
+reads_var$F_value <- f.test.F.table$F_value
+
+# calculate F value from p
+# when p=0.01
+qf(1-0.05,2,629)
+
+# use the F value from p to scale the gradient
+ggplot(reads_var, aes(x = bulk_variance, y = single_variance, shape = as.factor(ERCC), col = F_value)) + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_y_log10() + scale_colour_gradient2(midpoint= 1.5, limits=c(0,3),space="Lab")
 
 ```
 
