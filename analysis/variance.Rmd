@@ -91,7 +91,7 @@ summary_per_sample_reads_single_qc$qc_filter <- summary_per_sample_reads_single_
 sum(summary_per_sample_reads_single_qc$qc_filter)
 ```
 
-## variance of gene expression between individuls from the bulk samples
+## variance of gene expression between individuls using the bulk samples
 
 ```{r variance}
 # select bulk samples
@@ -122,28 +122,76 @@ dim(reads_single_qc)
 # normalization
 reads_single_cpm <- data.frame(cpm(reads_single_qc))
 
-# means of single cells within individauls
-reads_var$mean.single19098 <- apply(reads_single_cpm[,grep("NA19098",names(reads_single_cpm))], 1, mean)
+# remove the ERCC of 19098.2 
+  ## identify 19098.2
+     sample_name <- names(reads_single_cpm)
+     target.column <- sample_name[grep("19098.2",sample_name)]
+  ## find out ERCC rows
+		 g <- rownames(reads_single_cpm)
+		 target.row <- g[grep("ERCC",g)]
+	## replace the molecules numbers with NA 
+		 reads_single_cpm[target.row,target.column] <- NA
+		
+# means of single cells within individuals
+reads_var$mean.single19098 <- apply(reads_single_cpm[,grep("NA19098",names(reads_single_cpm))], 1, mean, na.rm = TRUE)
+reads_var$mean.single19101 <- apply(reads_single_cpm[,grep("NA19101",names(reads_single_cpm))], 1, mean, na.rm = TRUE)
+reads_var$mean.single19239 <- apply(reads_single_cpm[,grep("NA19239",names(reads_single_cpm))], 1, mean, na.rm = TRUE)
 
-reads_var$mean.single19101 <- apply(reads_single_cpm[,grep("NA19101",names(reads_single_cpm))], 1, mean)
-
-reads_var$mean.single19239 <- apply(reads_single_cpm[,grep("NA19239",names(reads_single_cpm))], 1, mean)
-
-# variance of means from single cells
-reads_var$single_variance <- apply(reads_var[,c("mean.single19098","mean.single19101","mean.single19239")],1,var)
+## variance of means from single cells
+reads_var$mean_single_variance <- apply(reads_var[,c("mean.single19098","mean.single19101","mean.single19239")],1,var)
 
 # sellect ERCC
 reads_var$ERCC <- grepl("ERCC",rownames(reads_var))
 
-
 # plot with color-blind-friendly palettes
 cbPalette <- c("#999999", "#0000FF", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
 
-ggplot(reads_var, aes(x = bulk_variance, y = single_variance, col = ERCC)) + geom_point(size = 2, alpha = 0.5) + scale_colour_manual(values=cbPalette) + scale_x_log10() + scale_y_log10() 
+ggplot(reads_var, aes(x = bulk_variance, y = mean_single_variance, col = ERCC)) + geom_point(size = 2, alpha = 0.5) + scale_colour_manual(values=cbPalette) + scale_x_log10() + scale_y_log10() + stat_function(fun= function(x) {x}, col= "#56B4E9")
+
+## variance within individual 
+variance.single19098 <- apply(reads_single_cpm[,grep("NA19098",names(reads_single_cpm))], 1, var, na.rm = TRUE)
+variance.single19101 <- apply(reads_single_cpm[,grep("NA19101",names(reads_single_cpm))], 1, var, na.rm = TRUE)
+variance.single19239 <- apply(reads_single_cpm[,grep("NA19239",names(reads_single_cpm))], 1, var, na.rm = TRUE)
+
+# number of cell
+number.of.cell.all   <- sum(grepl("19",sample_name))
+number.of.cell.19098 <- sum(grepl("19098",sample_name))
+number.of.cell.19101 <- sum(grepl("19101",sample_name))
+number.of.cell.19239 <- sum(grepl("19239",sample_name))
+
+reads_var$var_within_individual<-  
+ (variance.single19098   *(number.of.cell.19098)  +      
+  variance.single19101   *(number.of.cell.19101)  + 
+  variance.single19239   *(number.of.cell.19239)  ) / 
+ (number.of.cell.all)
+
+ggplot(reads_var, aes(x = bulk_variance, y = var_within_individual, col = ERCC)) + geom_point(size = 2, alpha = 0.5) + scale_colour_manual(values=cbPalette) + scale_x_log10() + scale_y_log10() + stat_function(fun= function(x) {x}, col= "#56B4E9")
+
+## variance between individauls
+var_all_single <- apply(reads_single_cpm, 1, var, na.rm = TRUE)
+reads_var$var_between_individual<-( 
+  var_all_single         *(number.of.cell.all-1)-
+  variance.single19098   *(number.of.cell.19098-1)  -      
+  variance.single19101   *(number.of.cell.19101-1)  - 
+  variance.single19239   *(number.of.cell.19239-1)  ) / 
+ (number.of.cell.all-1)
+
+reads_var$ratio_var_between_individual <- reads_var$var_between_individual/var_all_single
+
+ggplot(reads_var, aes(x = var_all_single, y = var_between_individual, col = ERCC)) + geom_point(size = 2, alpha = 0.5) + scale_colour_manual(values=cbPalette) + scale_x_log10() + scale_y_log10() + stat_function(fun= function(x) {x}, col= "#56B4E9")
+
+ggplot(reads_var, aes(x = bulk_variance, y = var_between_individual, col = ERCC)) + geom_point(size = 2, alpha = 0.5) + scale_colour_manual(values=cbPalette) + scale_x_log10() + scale_y_log10() + stat_function(fun= function(x) {x}, col= "#56B4E9")
+
+## variance of 3 variances from 3 individaul
+reads_var$variance.single19098<-variance.single19098
+reads_var$variance.single19101<-variance.single19101
+reads_var$variance.single19239<-variance.single19239
+
+reads_var$var_of_var <- apply(reads_var[,c("variance.single19098","variance.single19098","variance.single19098")], 1, var, na.rm = TRUE)
 
 ```
 
-```{r Ftest}
+```{r p_of_f}
 ### create a function for f.test by anova
 ### compare the to fits:
 ### 1. lm from all single cells
@@ -181,8 +229,16 @@ plot(f.test.table.sort[1:5000,2],col=as.numeric(f.test.table.sort$ERCC[1:5000]+1
 # plot the variance and show p 0f f
 reads_var$p_of_f <- f.test.table$p_of_f
 
-ggplot(reads_var, aes(x = bulk_variance, y = single_variance, shape = as.factor(ERCC), col = p_of_f)) + geom_point(size = 2, alpha = 0.25) + scale_x_log10() + scale_y_log10() + scale_colour_gradient2(midpoint= 0.5, space="Lab")
+ggplot(reads_var, aes(x = bulk_variance, y = mean_single_variance, shape = as.factor(ERCC), col = p_of_f)) + geom_point(size = 2, alpha = 0.25) + scale_x_log10() + scale_y_log10() + scale_colour_gradient2(midpoint= 0.5, space="Lab") + stat_function(fun= function(x) {x}, col= "#56B4E9")
 
+ggplot(reads_var, aes(x = bulk_variance, y = var_within_individual, shape = as.factor(ERCC), col = p_of_f)) + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_y_log10() + scale_colour_gradient2(midpoint= 0.5, space="Lab") + stat_function(fun= function(x) {x}, col= "#56B4E9")
+
+ggplot(reads_var, aes(x = bulk_variance, y = var_between_individual, shape = as.factor(ERCC), col = p_of_f)) + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_y_log10() + scale_colour_gradient2(midpoint= 0.5, space="Lab") + stat_function(fun= function(x) {x}, col= "#56B4E9")
+
+ggplot(reads_var, aes(x = var_all_single, y = var_between_individual, shape = as.factor(ERCC), col = p_of_f)) + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_y_log10() + scale_colour_gradient2(midpoint= 0.5, space="Lab") + stat_function(fun= function(x) {x}, col= "#56B4E9")
+```
+
+```{r Fvalue}
 # looking at the F value
 f.test.F <- function(data.in){
   tt <- names(data.in)
@@ -211,7 +267,15 @@ reads_var$F_value <- f.test.F.table$F_value
 qf(1-0.05,2,629)
 
 # use the F value from p to scale the gradient
-ggplot(reads_var, aes(x = bulk_variance, y = single_variance, shape = as.factor(ERCC), col = F_value)) + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_y_log10() + scale_colour_gradient2(midpoint= 1.5, limits=c(0,3),space="Lab")
+ggplot(reads_var, aes(x = bulk_variance, y = mean_single_variance, shape = as.factor(ERCC), col = F_value)) + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_y_log10() + scale_colour_gradient2(midpoint= 1.5, limits=c(0,3),space="Lab") + stat_function(fun= function(x) {x}, col= "#56B4E9")
+
+ggplot(reads_var, aes(x = bulk_variance, y = var_within_individual, shape = as.factor(ERCC), col = F_value)) + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_y_log10() + scale_colour_gradient2(midpoint= 1.5, limits=c(0,3),space="Lab") + stat_function(fun= function(x) {x}, col= "#56B4E9")
+
+ggplot(reads_var, aes(x = bulk_variance, y = var_between_individual, shape = as.factor(ERCC), col = F_value)) + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_y_log10() + scale_colour_gradient2(midpoint= 1.5, limits=c(0,3),space="Lab") + stat_function(fun= function(x) {x}, col= "#56B4E9")
+
+ggplot(reads_var, aes(x = var_all_single, y = var_within_individual, shape = as.factor(ERCC), col = F_value)) + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_y_log10() + scale_colour_gradient2(midpoint= 1.5, limits=c(0,3),space="Lab") + stat_function(fun= function(x) {x}, col= "#56B4E9")
+
+ggplot(reads_var, aes(x = var_all_single, y = var_between_individual, shape = as.factor(ERCC), col = F_value)) + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_y_log10() + scale_colour_gradient2(midpoint= 1.5,limits=c(0,3), space="Lab") + stat_function(fun= function(x) {x}, col= "#56B4E9")
 
 ```
 
