@@ -26,6 +26,7 @@ library("ggplot2")
 theme_set(theme_bw(base_size = 16))
 library("RUVSeq")
 library("preprocessCore")
+library("affy")
 source("functions.R")
 ```
 
@@ -334,6 +335,35 @@ bulk_quant <- normalize.quantiles(as.matrix(molecules_bulk_cpm))
 single_quant <- normalize.quantiles(as.matrix(molecules_single_cpm))
 ```
 
+## Loess normalization
+
+[Lovén et al. 2014][Lovén2014] used a loess regression to normalize expression data with the ERCC probes.
+Below is their description:
+
+> We used a loess regression to renormalize these MAS5 normalized probe set values by using only the spike-in probe sets to fit the loess. The affy package provides a function, loess.normalize, which will perform loess regression on a matrix of values (defined by using the parameter mat) and allows for the user to specify which subset of data to use when fitting the loess (defined by using the parameter subset, see the affy package documentation for further details). For this application, the parameters mat and subset were set as the MAS5-normalized values and the row indices of the ERCC control probe sets, respectively. The default settings for all other parameters were used. The result of this was a matrix of expression values normalized to the control ERCC probes.
+
+[Lovén2014]: http://www.sciencedirect.com/science/article/pii/S0092867412012263
+
+[Risso et al. 2014][Risso2014] argue that regression-based approaches like this and the linear shift performed above do not work well:
+
+> The good performance of RUVg compared to global-scaling and regression-based normalization can be explained by the different assumptions underlying each approach. Global-scaling and regression-based normalization methods assume that unwanted technical effects (i.e., between-sample differences excluding biological effects of interest) are roughly the same for genes and spike-ins and are captured by either a single parameter per sample or a regression function between pairs of samples. Such assumptions were clearly violated for our data sets (e.g., Fig. 4d). RUVg, on the other hand, only assumes that the factors of unwanted variation estimated from the spike-ins span the same linear space as the factors of unwanted variation W for all of the genes. 
+
+```{r bulk-loess}
+# From the package affy
+bulk_loess <- normalize.loess(mat = as.matrix(molecules_bulk_cpm),
+                              subset = ercc_rows, log.it = FALSE)
+```
+
+There is an issue with the ercc controls when trying to perform loess regression.
+It appears fine when there is no subsetting, but it takes so long to run I didn't let it finish.
+Since the loess regression on the bulk samples gives a similar to result to the linear shift (not surprisingly since they are both regression-based methods), this does not seem worth the effort to debug.
+The code below is a record of what I tried and is not evaluated.
+
+```{r single-loess, eval=FALSE}
+single_loess <- normalize.loess(mat = as.matrix(molecules_single_cpm),
+                                subset = ercc_rows, log.it = FALSE)
+```
+
 ## PCA comparison
 
 These analyses exclude the ERCC controls.
@@ -379,6 +409,15 @@ Quantile-normalized bulk data:
 ```{r pca-bulk-quant}
 pca_bulk_quant <- run_pca(bulk_quant[gene_rows, ])
 plot_pca(pca_bulk_quant$PCs, explained = pca_bulk_quant$explained,
+         metadata = anno[anno$well == "bulk", ], color = "individual",
+         shape = "batch", factors = c("individual", "batch"))
+```
+
+Loess-normalized bulk data:
+
+```{r pca-bulk-loess}
+pca_bulk_loess <- run_pca(bulk_loess[gene_rows, ])
+plot_pca(pca_bulk_loess$PCs, explained = pca_bulk_loess$explained,
          metadata = anno[anno$well == "bulk", ], color = "individual",
          shape = "batch", factors = c("individual", "batch"))
 ```
