@@ -252,21 +252,73 @@ stopifnot(!is.na(single_norm))
 Use RUVg from [Risso et al., 2014][Risso2014].
 It uses the ERCC spike-ins as negative control genes to correct for unwanted variation.
 It uses counts as input and output.
+It requires one parameter to be chosen:
+`k` is the "number of factors of unwanted variation to be estimated from the data".
 
 [Risso2014]: http://www.nature.com/nbt/journal/v32/n9/full/nbt.2931.html
 
-```{r bulk-ruv}
-bulk_ruv_object <- RUVg(x = as.matrix(molecules_bulk), cIdx = ercc_rows, k = 1)
-bulk_ruv <- bulk_ruv_object$normalizedCounts
-bulk_ruv_cpm <- cpm(bulk_ruv, log = TRUE,
-                    lib.size = calcNormFactors(bulk_ruv) * colSums(bulk_ruv))
+For k = 1:
+
+```{r bulk-ruv-k1}
+bulk_ruv_object_k1 <- RUVg(x = as.matrix(molecules_bulk), cIdx = ercc_rows, k = 1)
+bulk_ruv_k1 <- bulk_ruv_object_k1$normalizedCounts
+bulk_ruv_cpm_k1 <- cpm(bulk_ruv_k1, log = TRUE,
+                       lib.size = calcNormFactors(bulk_ruv_k1) * colSums(bulk_ruv_k1))
 ```
 
-```{r single-ruv}
-single_ruv_object <- RUVg(x = as.matrix(molecules_single), cIdx = ercc_rows, k = 1)
-single_ruv <- single_ruv_object$normalizedCounts
-single_ruv_cpm <- cpm(single_ruv, log = TRUE,
-                      lib.size = calcNormFactors(single_ruv) * colSums(single_ruv))
+```{r single-ruv-k1}
+single_ruv_object_k1 <- RUVg(x = as.matrix(molecules_single), cIdx = ercc_rows, k = 1)
+single_ruv_k1 <- single_ruv_object_k1$normalizedCounts
+single_ruv_cpm_k1 <- cpm(single_ruv_k1, log = TRUE,
+                      lib.size = calcNormFactors(single_ruv_k1) * colSums(single_ruv_k1))
+```
+
+For k = 5:
+
+```{r bulk-ruv-k5}
+bulk_ruv_object_k5 <- RUVg(x = as.matrix(molecules_bulk), cIdx = ercc_rows, k = 5)
+bulk_ruv_k5 <- bulk_ruv_object_k5$normalizedCounts
+bulk_ruv_cpm_k5 <- cpm(bulk_ruv_k5, log = TRUE,
+                       lib.size = calcNormFactors(bulk_ruv_k5) * colSums(bulk_ruv_k5))
+```
+
+```{r single-ruv-k5}
+single_ruv_object_k5 <- RUVg(x = as.matrix(molecules_single), cIdx = ercc_rows, k = 5)
+single_ruv_k5 <- single_ruv_object_k5$normalizedCounts
+single_ruv_cpm_k5 <- cpm(single_ruv_k5, log = TRUE,
+                      lib.size = calcNormFactors(single_ruv_k5) * colSums(single_ruv_k5))
+```
+
+For k = 10:
+
+```{r bulk-ruv-k10}
+bulk_ruv_object_k10 <- RUVg(x = as.matrix(molecules_bulk), cIdx = ercc_rows, k = 10)
+bulk_ruv_k10 <- bulk_ruv_object_k10$normalizedCounts
+bulk_ruv_cpm_k10 <- cpm(bulk_ruv_k10, log = TRUE,
+                       lib.size = calcNormFactors(bulk_ruv_k10) * colSums(bulk_ruv_k10))
+```
+
+```{r single-ruv-k10}
+single_ruv_object_k10 <- RUVg(x = as.matrix(molecules_single), cIdx = ercc_rows, k = 10)
+single_ruv_k10 <- single_ruv_object_k10$normalizedCounts
+single_ruv_cpm_k10 <- cpm(single_ruv_k10, log = TRUE,
+                      lib.size = calcNormFactors(single_ruv_k10) * colSums(single_ruv_k10))
+```
+
+k = 10 removes all gene expression variation from the bulk data:
+
+```{r}
+sum(apply(bulk_ruv_cpm_k10[gene_rows, ], 1, var) == 0)
+nrow(bulk_ruv_cpm_k10[gene_rows, ])
+```
+
+For k = 30 for single cells only:
+
+```{r single-ruv-k30}
+single_ruv_object_k30 <- RUVg(x = as.matrix(molecules_single), cIdx = ercc_rows, k = 30)
+single_ruv_k30 <- single_ruv_object_k30$normalizedCounts
+single_ruv_cpm_k30 <- cpm(single_ruv_k30, log = TRUE,
+                      lib.size = calcNormFactors(single_ruv_k30) * colSums(single_ruv_k30))
 ```
 
 ## Empirical quantile normalization
@@ -304,11 +356,20 @@ plot_pca(pca_bulk_norm$PCs, explained = pca_bulk_norm$explained,
          shape = "batch", factors = c("individual", "batch"))
 ```
 
-RUVg-normalized bulk data:
+RUVg-normalized bulk data with k = 1:
 
-```{r pca-bulk-ruv}
-pca_bulk_ruv <- run_pca(bulk_ruv_cpm[gene_rows, ])
-plot_pca(pca_bulk_ruv$PCs, explained = pca_bulk_ruv$explained,
+```{r pca-bulk-ruv-k1}
+pca_bulk_ruv_k1 <- run_pca(bulk_ruv_cpm_k1[gene_rows, ])
+plot_pca(pca_bulk_ruv_k1$PCs, explained = pca_bulk_ruv_k1$explained,
+         metadata = anno[anno$well == "bulk", ], color = "individual",
+         shape = "batch", factors = c("individual", "batch"))
+```
+
+RUVg-normalized bulk data with k = 5:
+
+```{r pca-bulk-ruv-k5}
+pca_bulk_ruv_k5 <- run_pca(bulk_ruv_cpm_k5[gene_rows, ])
+plot_pca(pca_bulk_ruv_k5$PCs, explained = pca_bulk_ruv_k5$explained,
          metadata = anno[anno$well == "bulk", ], color = "individual",
          shape = "batch", factors = c("individual", "batch"))
 ```
@@ -340,11 +401,38 @@ plot_pca(pca_single_norm$PCs, explained = pca_single_norm$explained,
          shape = "batch", factors = c("individual", "batch"))
 ```
 
-RUVg-normalized single cell data:
+RUVg-normalized single cell data with k = 1:
 
-```{r pca-single-ruv}
-pca_single_ruv <- run_pca(single_ruv_cpm[gene_rows, ])
-plot_pca(pca_single_ruv$PCs, explained = pca_single_ruv$explained,
+```{r pca-single-ruv-k1}
+pca_single_ruv_k1 <- run_pca(single_ruv_cpm_k1[gene_rows, ])
+plot_pca(pca_single_ruv_k1$PCs, explained = pca_single_ruv_k1$explained,
+         metadata = anno[anno$well != "bulk", ], color = "individual",
+         shape = "batch", factors = c("individual", "batch"))
+```
+
+RUVg-normalized single cell data with k = 5:
+
+```{r pca-single-ruv-k5}
+pca_single_ruv_k5 <- run_pca(single_ruv_cpm_k5[gene_rows, ])
+plot_pca(pca_single_ruv_k5$PCs, explained = pca_single_ruv_k5$explained,
+         metadata = anno[anno$well != "bulk", ], color = "individual",
+         shape = "batch", factors = c("individual", "batch"))
+```
+
+RUVg-normalized single cell data with k = 10:
+
+```{r pca-single-ruv-k10}
+pca_single_ruv_k10 <- run_pca(single_ruv_cpm_k10[gene_rows, ])
+plot_pca(pca_single_ruv_k10$PCs, explained = pca_single_ruv_k10$explained,
+         metadata = anno[anno$well != "bulk", ], color = "individual",
+         shape = "batch", factors = c("individual", "batch"))
+```
+
+RUVg-normalized single cell data with k = 30:
+
+```{r pca-single-ruv-k30}
+pca_single_ruv_k30 <- run_pca(single_ruv_cpm_k30[gene_rows, ])
+plot_pca(pca_single_ruv_k30$PCs, explained = pca_single_ruv_k30$explained,
          metadata = anno[anno$well != "bulk", ], color = "individual",
          shape = "batch", factors = c("individual", "batch"))
 ```
