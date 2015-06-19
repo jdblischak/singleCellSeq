@@ -214,7 +214,7 @@ prep_molecules.cv.mean <- function(filter,adj.19098.batch2=0){
 		g <- rownames(data.in)
 		target.row <- g[grep("ERCC",g)]
 		
-		#### replace the molecules numbers via dividing by NA 
+		#### replace the molecules numbers with NA 
 		data.in[target.row,target.column] <- NA
 		
 	}
@@ -267,30 +267,15 @@ individual_19098_mean_CV <- prep_molecules.cv.mean(filter="19098",adj.19098.batc
 
 ggplot(individual_19098_mean_CV, aes(x = mean, y = CV, col = ERCC))  + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_colour_manual(values=cbPalette)
 
-# 19098 by batch
-individual_19098.1_mean_CV <- prep_molecules.cv.mean(filter="19098.1",adj.19098.batch2 = 0)
-individual_19098.2_mean_CV <- prep_molecules.cv.mean(filter="19098.2",adj.19098.batch2 = 1)
-individual_19098.3_mean_CV <- prep_molecules.cv.mean(filter="19098.3",adj.19098.batch2 = 0)
-
 ## 19101
 individual_19101_mean_CV <- prep_molecules.cv.mean(filter="19101",adj.19098.batch2 = 0)
 
 ggplot(individual_19101_mean_CV, aes(x = mean, y = CV, col = ERCC))  + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_colour_manual(values=cbPalette)
 
-# 19101 by batch
-individual_19101.1_mean_CV <- prep_molecules.cv.mean(filter="19101.1",adj.19098.batch2 = 0)
-individual_19101.2_mean_CV <- prep_molecules.cv.mean(filter="19101.2",adj.19098.batch2 = 0)
-individual_19101.3_mean_CV <- prep_molecules.cv.mean(filter="19101.3",adj.19098.batch2 = 0)
-
 ## 19239
 individual_19239_mean_CV <- prep_molecules.cv.mean(filter="19239",adj.19098.batch2 = 0)
 
 ggplot(individual_19239_mean_CV, aes(x = mean, y = CV, col = ERCC))  + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_colour_manual(values=cbPalette)
-
-# 19239 by batch
-individual_19239.1_mean_CV <- prep_molecules.cv.mean(filter="19239.1",adj.19098.batch2 = 0)
-individual_19239.2_mean_CV <- prep_molecules.cv.mean(filter="19239.2",adj.19098.batch2 = 0)
-individual_19239.3_mean_CV <- prep_molecules.cv.mean(filter="19239.3",adj.19098.batch2 = 0)
 
 ```
 
@@ -462,12 +447,14 @@ table_variance$between_indi_var <- (table_variance$variance_all*(number.of.cell.
  table_variance$var_19239   *(number.of.cell.19239 -1)  ) / 
  (number.of.cell.all -1)
 
-# plot overall variance vs inter-individaul variance
-plot(table_variance$variance_all,table_variance$between_indi_var)
+# ratio of inter-individual variance
+table_variance$ratio_between_individaul_variance <- table_variance$between_indi_var/table_variance$variance_all
+
+# sellect ERCC
+table_variance$ERCC <- grepl("ERCC",table_variance[,1])
 
 # plot ratio of inter-individual variance
-plot(table_variance$between_indi_var/table_variance$variance_all)
-abline(h=0.5,col=2)
+ggplot(table_variance, aes(x = variance_all, y = ratio_between_individaul_variance, col = ERCC)) + geom_point(size = 2, alpha = 0.5) + scale_colour_manual(values=cbPalette) + scale_x_log10() + xlab("Variance of all single cell") + ylab("percentage of inter-individual variance") 
 
 # identify genes that are noisy across all cells and also with a certain level of inter-individual variance 
 whatever_list <- table_variance[(table_variance$between_indi_var/table_variance$variance_all) > 0.35,][,1]
@@ -530,13 +517,23 @@ heatmap.2(cor(table_cv[,2:13],use="pairwise.complete.obs"), trace="none",cexRow=
 corr_CV <- cor(table_cv[,2:13],use="pairwise.complete.obs")
 
 corr_boxplot <- data.frame(
-correlation=c(corr_CV[4,5:6],corr_CV[7,8:9],corr_CV[10,11:12],corr_CV[4:6,7:12],corr_CV[7:9,10:12]), cor_source=c(rep("within",6),rep("between",27)), individual=c(rep("19098",2),rep("19101",2),rep("19239",2),rep("between",27)))
+correlation=c(corr_CV[4,5:6],corr_CV[5,6],corr_CV[7,8:9],corr_CV[8,9],corr_CV[7,8:9],corr_CV[11,12],corr_CV[4:6,7:12],corr_CV[7:9,10:12]), cor_source=c(rep("within",9),rep("between",27)), individual=c(rep("19098",3),rep("19101",3),rep("19239",3),rep("19098.19101",9),rep("19098.19239",9),rep("19101.19239",9)))
 
 # t test
 t_test <- t.test(corr_boxplot[1:6,1],corr_boxplot[7:33,1],alternative = "greater")
 t_test
 
 ggplot(corr_boxplot, aes(cor_source,correlation)) + geom_boxplot() + geom_jitter(aes(colour = individual, size = 2, width = 0.5)) 
+
+# create a table for boxplot of CV correlation without 19098.2
+corr_boxplot_no <- data.frame(
+correlation=c(corr_CV[4,6],corr_CV[7,8:9],corr_CV[8,9],corr_CV[7,8:9],corr_CV[11,12],corr_CV[4,7:12],corr_CV[6,7:12],corr_CV[7:9,10:12]), cor_source=c(rep("within",7),rep("between",21)), individual=c(rep("19098",1),rep("19101",3),rep("19239",3),rep("19098.19101",3),rep("19098.19239",3),rep("19098.19101",3),rep("19098.19239",3), rep("19101.19239",9)))
+
+# t test
+t_test <- t.test(corr_boxplot_no[1:6,1],corr_boxplot_no[7:33,1],alternative = "greater")
+t_test
+
+ggplot(corr_boxplot_no, aes(cor_source,correlation)) + geom_boxplot() + geom_jitter(aes(colour = individual, size = 2, width = 0.5))
 ```
 
 ## Session information
