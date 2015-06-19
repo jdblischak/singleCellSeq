@@ -25,6 +25,7 @@ library("edgeR")
 library("ggplot2")
 theme_set(theme_bw(base_size = 16))
 library("RUVSeq")
+library("preprocessCore")
 source("functions.R")
 ```
 
@@ -268,6 +269,19 @@ single_ruv_cpm <- cpm(single_ruv, log = TRUE,
                       lib.size = calcNormFactors(single_ruv) * colSums(single_ruv))
 ```
 
+## Empirical quantile normalization
+
+Instead of using the ERCC specifically as a guide, simply perform an empirical quantile normalization (including both the genes and ERCC controls).
+
+```{r bulk-quant}
+# from package preprocessCore
+bulk_quant <- normalize.quantiles(as.matrix(molecules_bulk_cpm))
+```
+
+```{r single-quant}
+single_quant <- normalize.quantiles(as.matrix(molecules_single_cpm))
+```
+
 ## PCA comparison
 
 These analyses exclude the ERCC controls.
@@ -293,6 +307,13 @@ pca_bulk_ruv <- run_pca(bulk_ruv_cpm[gene_rows, ])
 plot_pca(pca_bulk_ruv$PCs, color = anno$individual[anno$well == "bulk"])
 ```
 
+Quantile-normalized bulk data:
+
+```{r pca-bulk-quant}
+pca_bulk_quant <- run_pca(bulk_quant[gene_rows, ])
+plot_pca(pca_bulk_quant$PCs, color = anno$individual[anno$well == "bulk"])
+```
+
 Raw single cell data:
 
 ```{r pca-single-raw}
@@ -312,6 +333,13 @@ RUVg-normalized single cell data:
 ```{r pca-single-ruv}
 pca_single_ruv <- run_pca(single_ruv_cpm[gene_rows, ])
 plot_pca(pca_single_ruv$PCs, color = anno$individual[anno$well != "bulk"])
+```
+
+Quantile-normalized single cell data:
+
+```{r pca-single-quant}
+pca_single_quant <- run_pca(single_quant[gene_rows, ])
+plot_pca(pca_single_quant$PCs, color = anno$individual[anno$well != "bulk"])
 ```
 
 ## Session information
