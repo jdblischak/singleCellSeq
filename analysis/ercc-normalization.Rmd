@@ -132,8 +132,8 @@ What is the correlation of the mean molecule counts in the single cells to the e
 
 ```{r ercc-correlation-mean-counts-single}
 cor(rowMeans(molecules_single[ercc_rows, ]), ercc$conc_mix1)
-plot(rowMeans(molecules_single[ercc_rows, ]), ercc$conc_mix1)
-ercc_fit <- lm(ercc$conc_mix1 ~ rowMeans(molecules_single[ercc_rows, ]))
+plot(ercc$conc_mix1, rowMeans(molecules_single[ercc_rows, ]))
+ercc_fit <- lm(rowMeans(molecules_single[ercc_rows, ]) ~ ercc$conc_mix1)
 abline(ercc_fit, col = "red")
 title(sprintf("Y ~ %.2fX + %.2f \n R-squared: %.2f", ercc_fit$coefficients[2],
               ercc_fit$coefficients[1], summary(ercc_fit)$r.squared))
@@ -165,7 +165,7 @@ ercc_per_sample <- matrix(nrow = ncol(molecules_single_cpm), ncol = 6)
 colnames(ercc_per_sample) <- c("individual", "batch", "well",
                                "intercept", "slope", "r2")
 for (i in 1:ncol(molecules_single_cpm)) {
-  fit <- lm(log2(ercc$conc_mix1) ~ molecules_single_cpm[ercc_rows, i])
+  fit <- lm(molecules_single_cpm[ercc_rows, i] ~ log2(ercc$conc_mix1))
   
   ercc_per_sample[i, ] <- c(anno$individual[i], anno$batch[i], anno$well[i],
                             fit$coefficients[1], fit$coefficients[2],
@@ -205,9 +205,10 @@ Adjust each individual sample based on its ERCC counts.
 bulk_norm <- molecules_bulk_cpm
 bulk_norm[, ] <- NA
 for (i in 1:ncol(bulk_norm)) {
-  bulk_fit <- lm(log2(ercc$conc_mix1) ~ molecules_bulk_cpm[ercc_rows, i])
-  bulk_norm[, i] <- molecules_bulk_cpm[, i] * bulk_fit$coefficients[2] +
-                    bulk_fit$coefficients[1]
+  bulk_fit <- lm(molecules_bulk_cpm[ercc_rows, i] ~ log2(ercc$conc_mix1))
+  # Y = mX + b -> X = (Y + b) / m
+  bulk_norm[, i] <- (molecules_bulk_cpm[, i] + bulk_fit$coefficients[1]) /
+                     bulk_fit$coefficients[2]
 }
 stopifnot(!is.na(bulk_norm))
 ```
@@ -216,9 +217,10 @@ stopifnot(!is.na(bulk_norm))
 single_norm <- molecules_single_cpm
 single_norm[, ] <- NA
 for (i in 1:ncol(single_norm)) {
-  single_fit <- lm(log2(ercc$conc_mix1) ~ molecules_single_cpm[ercc_rows, i])
-  single_norm[, i] <- molecules_single_cpm[, i] * single_fit$coefficients[2] +
-                      single_fit$coefficients[1]
+  single_fit <- lm(molecules_single_cpm[ercc_rows, i] ~ log2(ercc$conc_mix1))
+  # Y = mX + b -> X = (Y + b) / m
+  single_norm[, i] <- (molecules_single_cpm[, i] + single_fit$coefficients[1]) /
+                       single_fit$coefficients[2]
 }
 stopifnot(!is.na(single_norm))
 ```
