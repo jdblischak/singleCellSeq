@@ -128,37 +128,56 @@ ercc <- ercc[ercc$id %in% rownames(molecules), ]
 stopifnot(rownames(molecules[ercc_rows, ]) == ercc$id)
 ```
 
+Create function for investigating the correlation with the ERCC concentration.
+
+```{r ercc-cor-function}
+correlate_ercc <- function(observed, expected, description = "") {
+  # Plots the relationship between the observed ERCC data and the expected ERCC
+  # concentrations.
+
+  # Args:
+  #  observed: vector of summary statistic of observed ERCC counts
+  #  expected: vector of ERCC concentrations
+  #  description: optional string to add to title
+  plot(expected, observed)
+  ercc_fit <- lm(observed ~ expected)
+  abline(ercc_fit, col = "red")
+  title(sprintf("%s\nY ~ %.2fX + %.2f ; R-squared: %.2f", description,
+                ercc_fit$coefficients[2], ercc_fit$coefficients[1],
+                summary(ercc_fit)$r.squared))
+}
+```
+
 What is the correlation of the mean molecule counts in the single cells to the expected concentrations?
 
 ```{r ercc-correlation-mean-counts-single}
-cor(rowMeans(molecules_single[ercc_rows, ]), ercc$conc_mix1)
-plot(ercc$conc_mix1, rowMeans(molecules_single[ercc_rows, ]))
-ercc_fit <- lm(rowMeans(molecules_single[ercc_rows, ]) ~ ercc$conc_mix1)
-abline(ercc_fit, col = "red")
-title(sprintf("Y ~ %.2fX + %.2f \n R-squared: %.2f", ercc_fit$coefficients[2],
-              ercc_fit$coefficients[1], summary(ercc_fit)$r.squared))
+correlate_ercc(rowMeans(molecules_single[ercc_rows, ]), ercc$conc_mix1,
+               description = "single cell molecule counts")
 ```
 
 What is the correlation of the mean molecule counts in the bulk samples to the expected concentrations?
 
 ```{r ercc-correlation-mean-counts-bulk}
-cor(rowMeans(molecules_bulk[ercc_rows, ]), ercc$conc_mix1)
+correlate_ercc(rowMeans(molecules_bulk[ercc_rows, ]), ercc$conc_mix1,
+               description =  "bulk molecule counts")
 ```
 
-What is the correlation of the mean molecule counts per million in the single cells to the expected concentrations?
+What is the correlation of the mean molecule log2 counts per million in the single cells to the expected concentrations?
 
 ```{r ercc-correlation-mean-cpm-single}
-cor(rowMeans(molecules_single_cpm[ercc_rows, ]), log2(ercc$conc_mix1))
+correlate_ercc(rowMeans(molecules_single_cpm[ercc_rows, ]), log2(ercc$conc_mix1),
+               description = "single cell log2 cpm")
 ```
 
-What is the correlation of the mean molecule counts per million in the bulk samples to the expected concentrations?
+What is the correlation of the mean molecule log2 counts per million in the bulk samples to the expected concentrations?
 
 ```{r ercc-correlation-mean-cpm-bulk}
-cor(rowMeans(molecules_bulk_cpm[ercc_rows, ]), log2(ercc$conc_mix1))
+correlate_ercc(rowMeans(molecules_bulk_cpm[ercc_rows, ]), log2(ercc$conc_mix1),
+               description = "bulk log2 cpm")
 ```
 
 How much variation is there in the correlation between the samples?
-The following analysis uses the cpm in single cells.
+The following analysis uses the log2 cpm in single cells.
 
 ```{r ercc-correlation-variation}
 ercc_per_sample <- matrix(nrow = ncol(molecules_single_cpm), ncol = 6)
@@ -193,6 +212,8 @@ boxplot(slope ~ batch + individual, data = ercc_per_sample, las = 2,
 boxplot(r2 ~ batch + individual, data = ercc_per_sample, las = 2,
         main = "Variation in R-squared", ylab = "R-squared")
 ```
+
+As expected, batch 2 of individual 19098 is an outlier.
 
 ## Linear shift normalization
 
