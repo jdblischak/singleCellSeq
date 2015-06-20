@@ -128,13 +128,14 @@ img {
 <ul>
 <li><a href="#input">Input</a></li>
 <li><a href="#remove-bad-quality-cells">Remove bad quality cells</a></li>
-<li><a href="#variance-of-gene-expression-between-individuls-using-the-bulk-samples">variance of gene expression between individuls using the bulk samples</a></li>
+<li><a href="#variance-of-gene-expression-between-individuls">variance of gene expression between individuls</a></li>
+<li><a href="#avona-f-statistics">AVONA F-statistics</a></li>
 <li><a href="#session-information">Session information</a></li>
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-06-19</p>
-<p><strong>Code version:</strong> 750e4602c9938fd588568d94a8ce5d36ba79522d</p>
+<p><strong>Last updated:</strong> 2015-06-20</p>
+<p><strong>Code version:</strong> 870a709fb088f0287b899424ce69db87cb64e477</p>
 <div id="input" class="section level2">
 <h2>Input</h2>
 <pre class="r"><code>library(&quot;dplyr&quot;)
@@ -207,8 +208,9 @@ sum(summary_per_sample_reads_single_qc$qc_filter)</code></pre>
 <pre><code>[1] 632</code></pre>
 </div>
 </div>
-<div id="variance-of-gene-expression-between-individuls-using-the-bulk-samples" class="section level2">
-<h2>variance of gene expression between individuls using the bulk samples</h2>
+<div id="variance-of-gene-expression-between-individuls" class="section level2">
+<h2>variance of gene expression between individuls</h2>
+<p>Calculate the variance betwwen individuls from the bulk samples</p>
 <pre class="r"><code># select bulk samples
 reads_bulk&lt;- reads %&gt;% select(contains(&quot;bulk&quot;))
 
@@ -225,9 +227,9 @@ reads_var$mean19101 &lt;- apply(reads_var[,grep(&quot;NA19101&quot;,names(reads_
 reads_var$mean19239 &lt;- apply(reads_var[,grep(&quot;NA19239&quot;,names(reads_var))], 1, mean)
 
 # add variance of bulk means
-reads_var$bulk_variance &lt;- apply(reads_var[,c(&quot;mean19098&quot;,&quot;mean19101&quot;,&quot;mean19239&quot;)],1,var)
-
-# select single cell samples
+reads_var$bulk_variance &lt;- apply(reads_var[,c(&quot;mean19098&quot;,&quot;mean19101&quot;,&quot;mean19239&quot;)],1,var)</code></pre>
+<p>Calculate the variance between individuals using the means from single cells</p>
+<pre class="r"><code># select single cell samples
 reads_single &lt;- reads %&gt;% select(-contains(&quot;bulk&quot;))
 
 # apply qc_filter
@@ -252,6 +254,7 @@ reads_var$mean.single19098 &lt;- apply(reads_single_cpm[,grep(&quot;NA19098&quot
 reads_var$mean.single19101 &lt;- apply(reads_single_cpm[,grep(&quot;NA19101&quot;,names(reads_single_cpm))], 1, mean, na.rm = TRUE)
 reads_var$mean.single19239 &lt;- apply(reads_single_cpm[,grep(&quot;NA19239&quot;,names(reads_single_cpm))], 1, mean, na.rm = TRUE)
 
+
 ## variance of means from single cells
 reads_var$mean_single_variance &lt;- apply(reads_var[,c(&quot;mean.single19098&quot;,&quot;mean.single19101&quot;,&quot;mean.single19239&quot;)],1,var)
 
@@ -262,7 +265,8 @@ reads_var$ERCC &lt;- grepl(&quot;ERCC&quot;,rownames(reads_var))
 cbPalette &lt;- c(&quot;#999999&quot;, &quot;#0000FF&quot;, &quot;#990033&quot;, &quot;#F0E442&quot;, &quot;#0072B2&quot;, &quot;#D55E00&quot;, &quot;#CC79A7&quot;, &quot;#009E73&quot;)
 
 ggplot(reads_var, aes(x = bulk_variance, y = mean_single_variance, col = ERCC)) + geom_point(size = 2, alpha = 0.5) + scale_colour_manual(values=cbPalette) + scale_x_log10() + scale_y_log10() + stat_function(fun= function(x) {x}, col= &quot;#56B4E9&quot;)</code></pre>
-<p><img src="figure/variance.Rmd/variance-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="figure/variance.Rmd/variance-single-mean-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>Calculate the variance between and within individuals using the single cell data</p>
 <pre class="r"><code>## variance within individual 
 variance.single19098 &lt;- apply(reads_single_cpm[,grep(&quot;NA19098&quot;,names(reads_single_cpm))], 1, var, na.rm = TRUE)
 variance.single19101 &lt;- apply(reads_single_cpm[,grep(&quot;NA19101&quot;,names(reads_single_cpm))], 1, var, na.rm = TRUE)
@@ -274,6 +278,7 @@ number.of.cell.19098 &lt;- sum(grepl(&quot;19098&quot;,sample_name))
 number.of.cell.19101 &lt;- sum(grepl(&quot;19101&quot;,sample_name))
 number.of.cell.19239 &lt;- sum(grepl(&quot;19239&quot;,sample_name))
 
+# total within individual variance 
 reads_var$var_within_individual&lt;-  
  (variance.single19098   *(number.of.cell.19098)  +      
   variance.single19101   *(number.of.cell.19101)  + 
@@ -281,9 +286,12 @@ reads_var$var_within_individual&lt;-
  (number.of.cell.all)
 
 ggplot(reads_var, aes(x = bulk_variance, y = var_within_individual, col = ERCC)) + geom_point(size = 2, alpha = 0.5) + scale_colour_manual(values=cbPalette) + scale_x_log10() + scale_y_log10() + stat_function(fun= function(x) {x}, col= &quot;#56B4E9&quot;)</code></pre>
-<p><img src="figure/variance.Rmd/variance-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>## variance between individauls
+<p><img src="figure/variance.Rmd/variance-single-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>## variance between all single cells
 var_all_single &lt;- apply(reads_single_cpm, 1, var, na.rm = TRUE)
+reads_var$var_all_single &lt;- var_all_single
+
+## variance between individauls
 reads_var$var_between_individual&lt;-( 
   var_all_single         *(number.of.cell.all-1)-
   variance.single19098   *(number.of.cell.19098-1)  -      
@@ -291,26 +299,29 @@ reads_var$var_between_individual&lt;-(
   variance.single19239   *(number.of.cell.19239-1)  ) / 
  (number.of.cell.all-1)
 
-reads_var$ratio_var_between_individual &lt;- reads_var$var_between_individual/var_all_single
+## the variaance contributed by between individual
+reads_var$ratio_var_between_individual &lt;- reads_var[,&quot;var_between_individual&quot;]/var_all_single
 
-ggplot(reads_var, aes(x = var_all_single, y = var_between_individual, col = ERCC)) + geom_point(size = 2, alpha = 0.5) + scale_colour_manual(values=cbPalette) + scale_x_log10() + scale_y_log10() + stat_function(fun= function(x) {x}, col= &quot;#56B4E9&quot;)</code></pre>
+ggplot(reads_var, aes(x = var_all_single, y = ratio_var_between_individual, col = ERCC)) + geom_point(size = 2, alpha = 0.5) + scale_colour_manual(values=cbPalette) + scale_x_log10()</code></pre>
+<pre><code>Warning in loop_apply(n, do.ply): Removed 2812 rows containing missing
+values (geom_point).</code></pre>
+<p><img src="figure/variance.Rmd/variance-single-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(reads_var, aes(x = var_all_single, y = var_between_individual, col = ERCC)) + geom_point(size = 2, alpha = 0.5) + scale_colour_manual(values=cbPalette) + scale_x_log10() + scale_y_log10() + stat_function(fun= function(x) {x}, col= &quot;#56B4E9&quot;)</code></pre>
 <pre><code>Warning in scale$trans$trans(x): NaNs produced</code></pre>
 <pre><code>Warning in scale$trans$trans(x): NaNs produced</code></pre>
 <pre><code>Warning in loop_apply(n, do.ply): Removed 28 rows containing missing values
 (geom_point).</code></pre>
-<p><img src="figure/variance.Rmd/variance-3.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="figure/variance.Rmd/variance-single-3.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>ggplot(reads_var, aes(x = bulk_variance, y = var_between_individual, col = ERCC)) + geom_point(size = 2, alpha = 0.5) + scale_colour_manual(values=cbPalette) + scale_x_log10() + scale_y_log10() + stat_function(fun= function(x) {x}, col= &quot;#56B4E9&quot;)</code></pre>
 <pre><code>Warning in scale$trans$trans(x): NaNs produced</code></pre>
 <pre><code>Warning in scale$trans$trans(x): NaNs produced</code></pre>
 <pre><code>Warning in loop_apply(n, do.ply): Removed 28 rows containing missing values
 (geom_point).</code></pre>
-<p><img src="figure/variance.Rmd/variance-4.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>## variance of 3 variances from 3 individaul
-reads_var$variance.single19098&lt;-variance.single19098
-reads_var$variance.single19101&lt;-variance.single19101
-reads_var$variance.single19239&lt;-variance.single19239
-
-reads_var$var_of_var &lt;- apply(reads_var[,c(&quot;variance.single19098&quot;,&quot;variance.single19098&quot;,&quot;variance.single19098&quot;)], 1, var, na.rm = TRUE)</code></pre>
+<p><img src="figure/variance.Rmd/variance-single-4.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="avona-f-statistics" class="section level2">
+<h2>AVONA F-statistics</h2>
+<p>Pull the p-value</p>
 <pre class="r"><code>### create a function for f.test by anova
 ### compare the to fits:
 ### 1. lm from all single cells
@@ -370,6 +381,7 @@ ggplot(reads_var, aes(x = bulk_variance, y = mean_single_variance, shape = as.fa
 <pre><code>Warning in loop_apply(n, do.ply): Removed 28 rows containing missing values
 (geom_point).</code></pre>
 <p><img src="figure/variance.Rmd/p_of_f-7.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>Pull the F value</p>
 <pre class="r"><code># looking at the F value
 f.test.F &lt;- function(data.in){
   tt &lt;- names(data.in)
@@ -403,17 +415,17 @@ reads_var$F_color[reads_var$F_value &gt;=3] &lt;- &quot;F &gt;= 3&quot;
 reads_var$F_color[reads_var$F_value &lt;=1] &lt;- &quot;F &lt;= 1&quot;
 
 # use the F value from p to scale the gradient
-ggplot(reads_var, aes(x = bulk_variance, y = mean_single_variance, shape = as.factor(ERCC), col = F_value)) + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_y_log10() + scale_colour_gradient2(midpoint= 1.5, limits=c(0,3),space=&quot;Lab&quot;) + stat_function(fun= function(x) {x}, col= &quot;#56B4E9&quot;)</code></pre>
+ggplot(reads_var, aes(x = bulk_variance, y = mean_single_variance, shape = as.factor(ERCC), col = F_color)) + scale_colour_manual(values=cbPalette) + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_y_log10() + stat_function(fun= function(x) {x}, col= &quot;#56B4E9&quot;)</code></pre>
 <p><img src="figure/variance.Rmd/Fvalue-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>ggplot(reads_var, aes(x = bulk_variance, y = var_within_individual, shape = as.factor(ERCC), col = F_value)) + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_y_log10() + scale_colour_gradient2(midpoint= 1.5, limits=c(0,3),space=&quot;Lab&quot;) + stat_function(fun= function(x) {x}, col= &quot;#56B4E9&quot;)</code></pre>
+<pre class="r"><code>ggplot(reads_var, aes(x = bulk_variance, y = var_within_individual, shape = as.factor(ERCC), col = F_color)) + scale_colour_manual(values=cbPalette) + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_y_log10() + stat_function(fun= function(x) {x}, col= &quot;#56B4E9&quot;)</code></pre>
 <p><img src="figure/variance.Rmd/Fvalue-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>ggplot(reads_var, aes(x = bulk_variance, y = var_between_individual, shape = as.factor(ERCC), col = F_value)) + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_y_log10() + scale_colour_gradient2(midpoint= 1.5, limits=c(0,3),space=&quot;Lab&quot;) + stat_function(fun= function(x) {x}, col= &quot;#56B4E9&quot;)</code></pre>
+<pre class="r"><code>ggplot(reads_var, aes(x = bulk_variance, y = var_between_individual, shape = as.factor(ERCC), col = F_color)) + scale_colour_manual(values=cbPalette) + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_y_log10() + stat_function(fun= function(x) {x}, col= &quot;#56B4E9&quot;)</code></pre>
 <pre><code>Warning in scale$trans$trans(x): NaNs produced</code></pre>
 <pre><code>Warning in scale$trans$trans(x): NaNs produced</code></pre>
 <pre><code>Warning in loop_apply(n, do.ply): Removed 28 rows containing missing values
 (geom_point).</code></pre>
 <p><img src="figure/variance.Rmd/Fvalue-3.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>ggplot(reads_var, aes(x = var_all_single, y = var_within_individual, shape = as.factor(ERCC), col = F_value)) + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_y_log10() + scale_colour_gradient2(midpoint= 1.5, limits=c(0,3),space=&quot;Lab&quot;) + stat_function(fun= function(x) {x}, col= &quot;#56B4E9&quot;)</code></pre>
+<pre class="r"><code>ggplot(reads_var, aes(x = var_all_single, y = var_within_individual, shape = as.factor(ERCC), col = F_color)) + scale_colour_manual(values=cbPalette) + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_y_log10() + stat_function(fun= function(x) {x}, col= &quot;#56B4E9&quot;)</code></pre>
 <p><img src="figure/variance.Rmd/Fvalue-4.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>ggplot(reads_var, aes(x = var_all_single, y = var_between_individual, shape = as.factor(ERCC), col = F_color)) + scale_colour_manual(values=cbPalette) + geom_point(size = 2, alpha = 0.2) + scale_x_log10() + scale_y_log10() + stat_function(fun= function(x) {x}, col= &quot;#56B4E9&quot;)</code></pre>
 <pre><code>Warning in scale$trans$trans(x): NaNs produced</code></pre>
