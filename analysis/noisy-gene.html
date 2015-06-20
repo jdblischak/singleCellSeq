@@ -138,8 +138,8 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-06-16</p>
-<p><strong>Code version:</strong> dca3dbcd2f0cae21284d34daf90ba29ceae05e35</p>
+<p><strong>Last updated:</strong> 2015-06-19</p>
+<p><strong>Code version:</strong> 750e4602c9938fd588568d94a8ce5d36ba79522d</p>
 <div id="input" class="section level2">
 <h2>Input</h2>
 <pre class="r"><code>library(&quot;dplyr&quot;)
@@ -337,7 +337,7 @@ prep_molecules.cv.mean &lt;- function(filter,adj.19098.batch2=0){
         g &lt;- rownames(data.in)
         target.row &lt;- g[grep(&quot;ERCC&quot;,g)]
         
-        #### replace the molecules numbers via dividing by NA 
+        #### replace the molecules numbers with NA 
         data.in[target.row,target.column] &lt;- NA
         
     }
@@ -390,30 +390,16 @@ individual_19098_mean_CV &lt;- prep_molecules.cv.mean(filter=&quot;19098&quot;,a
 
 ggplot(individual_19098_mean_CV, aes(x = mean, y = CV, col = ERCC))  + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_colour_manual(values=cbPalette)</code></pre>
 <p><img src="figure/noisy-gene.Rmd/CV-mean-molecule-3.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
-<pre class="r"><code># 19098 by batch
-individual_19098.1_mean_CV &lt;- prep_molecules.cv.mean(filter=&quot;19098.1&quot;,adj.19098.batch2 = 0)
-individual_19098.2_mean_CV &lt;- prep_molecules.cv.mean(filter=&quot;19098.2&quot;,adj.19098.batch2 = 1)
-individual_19098.3_mean_CV &lt;- prep_molecules.cv.mean(filter=&quot;19098.3&quot;,adj.19098.batch2 = 0)
-
-## 19101
+<pre class="r"><code>## 19101
 individual_19101_mean_CV &lt;- prep_molecules.cv.mean(filter=&quot;19101&quot;,adj.19098.batch2 = 0)
 
 ggplot(individual_19101_mean_CV, aes(x = mean, y = CV, col = ERCC))  + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_colour_manual(values=cbPalette)</code></pre>
 <p><img src="figure/noisy-gene.Rmd/CV-mean-molecule-4.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
-<pre class="r"><code># 19101 by batch
-individual_19101.1_mean_CV &lt;- prep_molecules.cv.mean(filter=&quot;19101.1&quot;,adj.19098.batch2 = 0)
-individual_19101.2_mean_CV &lt;- prep_molecules.cv.mean(filter=&quot;19101.2&quot;,adj.19098.batch2 = 0)
-individual_19101.3_mean_CV &lt;- prep_molecules.cv.mean(filter=&quot;19101.3&quot;,adj.19098.batch2 = 0)
-
-## 19239
+<pre class="r"><code>## 19239
 individual_19239_mean_CV &lt;- prep_molecules.cv.mean(filter=&quot;19239&quot;,adj.19098.batch2 = 0)
 
 ggplot(individual_19239_mean_CV, aes(x = mean, y = CV, col = ERCC))  + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_colour_manual(values=cbPalette)</code></pre>
 <p><img src="figure/noisy-gene.Rmd/CV-mean-molecule-5.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
-<pre class="r"><code># 19239 by batch
-individual_19239.1_mean_CV &lt;- prep_molecules.cv.mean(filter=&quot;19239.1&quot;,adj.19098.batch2 = 0)
-individual_19239.2_mean_CV &lt;- prep_molecules.cv.mean(filter=&quot;19239.2&quot;,adj.19098.batch2 = 0)
-individual_19239.3_mean_CV &lt;- prep_molecules.cv.mean(filter=&quot;19239.3&quot;,adj.19098.batch2 = 0)</code></pre>
 </div>
 <div id="looking-at-reads" class="section level3">
 <h3>Looking at reads</h3>
@@ -612,13 +598,15 @@ table_variance$between_indi_var &lt;- (table_variance$variance_all*(number.of.ce
  table_variance$var_19239   *(number.of.cell.19239 -1)  ) / 
  (number.of.cell.all -1)
 
-# plot overall variance vs inter-individaul variance
-plot(table_variance$variance_all,table_variance$between_indi_var)</code></pre>
+# ratio of inter-individual variance
+table_variance$ratio_between_individaul_variance &lt;- table_variance$between_indi_var/table_variance$variance_all
+
+# sellect ERCC
+table_variance$ERCC &lt;- grepl(&quot;ERCC&quot;,table_variance[,1])
+
+# plot ratio of inter-individual variance
+ggplot(table_variance, aes(x = variance_all, y = ratio_between_individaul_variance, col = ERCC)) + geom_point(size = 2, alpha = 0.5) + scale_colour_manual(values=cbPalette) + scale_x_log10() + xlab(&quot;Variance of all single cell&quot;) + ylab(&quot;percentage of inter-individual variance&quot;) </code></pre>
 <p><img src="figure/noisy-gene.Rmd/var-individual-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
-<pre class="r"><code># plot ratio of inter-individual variance
-plot(table_variance$between_indi_var/table_variance$variance_all)
-abline(h=0.5,col=2)</code></pre>
-<p><img src="figure/noisy-gene.Rmd/var-individual-2.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <pre class="r"><code># identify genes that are noisy across all cells and also with a certain level of inter-individual variance 
 whatever_list &lt;- table_variance[(table_variance$between_indi_var/table_variance$variance_all) &gt; 0.35,][,1]
 
@@ -798,7 +786,7 @@ CV_19239.3  1.0000000</code></pre>
 corr_CV &lt;- cor(table_cv[,2:13],use=&quot;pairwise.complete.obs&quot;)
 
 corr_boxplot &lt;- data.frame(
-correlation=c(corr_CV[4,5:6],corr_CV[7,8:9],corr_CV[10,11:12],corr_CV[4:6,7:12],corr_CV[7:9,10:12]), cor_source=c(rep(&quot;within&quot;,6),rep(&quot;between&quot;,27)), individual=c(rep(&quot;19098&quot;,2),rep(&quot;19101&quot;,2),rep(&quot;19239&quot;,2),rep(&quot;between&quot;,27)))
+correlation=c(corr_CV[4,5:6],corr_CV[5,6],corr_CV[7,8:9],corr_CV[8,9],corr_CV[7,8:9],corr_CV[11,12],corr_CV[4:6,7:12],corr_CV[7:9,10:12]), cor_source=c(rep(&quot;within&quot;,9),rep(&quot;between&quot;,27)), individual=c(rep(&quot;19098&quot;,3),rep(&quot;19101&quot;,3),rep(&quot;19239&quot;,3),rep(&quot;19098.19101&quot;,9),rep(&quot;19098.19239&quot;,9),rep(&quot;19101.19239&quot;,9)))
 
 # t test
 t_test &lt;- t.test(corr_boxplot[1:6,1],corr_boxplot[7:33,1],alternative = &quot;greater&quot;)
@@ -807,15 +795,35 @@ t_test</code></pre>
     Welch Two Sample t-test
 
 data:  corr_boxplot[1:6, 1] and corr_boxplot[7:33, 1]
-t = 2.3178, df = 7.1069, p-value = 0.02651
+t = 2.1948, df = 7.0444, p-value = 0.03199
 alternative hypothesis: true difference in means is greater than 0
 95 percent confidence interval:
- 0.003181359         Inf
+ 0.002678837         Inf
 sample estimates:
 mean of x mean of y 
-0.8239720 0.8067231 </code></pre>
+0.8289628 0.8094953 </code></pre>
 <pre class="r"><code>ggplot(corr_boxplot, aes(cor_source,correlation)) + geom_boxplot() + geom_jitter(aes(colour = individual, size = 2, width = 0.5)) </code></pre>
 <p><img src="figure/noisy-gene.Rmd/variance-4.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code># create a table for boxplot of CV correlation without 19098.2
+corr_boxplot_no &lt;- data.frame(
+correlation=c(corr_CV[4,6],corr_CV[7,8:9],corr_CV[8,9],corr_CV[7,8:9],corr_CV[11,12],corr_CV[4,7:12],corr_CV[6,7:12],corr_CV[7:9,10:12]), cor_source=c(rep(&quot;within&quot;,7),rep(&quot;between&quot;,21)), individual=c(rep(&quot;19098&quot;,1),rep(&quot;19101&quot;,3),rep(&quot;19239&quot;,3),rep(&quot;19098.19101&quot;,3),rep(&quot;19098.19239&quot;,3),rep(&quot;19098.19101&quot;,3),rep(&quot;19098.19239&quot;,3), rep(&quot;19101.19239&quot;,9)))
+
+# t test
+t_test &lt;- t.test(corr_boxplot_no[1:6,1],corr_boxplot_no[7:33,1],alternative = &quot;greater&quot;)
+t_test</code></pre>
+<pre><code>
+    Welch Two Sample t-test
+
+data:  corr_boxplot_no[1:6, 1] and corr_boxplot_no[7:33, 1]
+t = 3.8789, df = 7.3015, p-value = 0.002793
+alternative hypothesis: true difference in means is greater than 0
+95 percent confidence interval:
+ 0.01594276        Inf
+sample estimates:
+mean of x mean of y 
+0.8373741 0.8063922 </code></pre>
+<pre class="r"><code>ggplot(corr_boxplot_no, aes(cor_source,correlation)) + geom_boxplot() + geom_jitter(aes(colour = individual, size = 2, width = 0.5))</code></pre>
+<p><img src="figure/noisy-gene.Rmd/variance-5.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 </div>
 <div id="session-information" class="section level2">
 <h2>Session information</h2>

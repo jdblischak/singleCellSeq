@@ -128,24 +128,29 @@ img {
 <li><a href="#filter">Filter</a></li>
 <li><a href="#calculate-counts-per-million-cpm">Calculate counts per million (cpm)</a></li>
 <li><a href="#compare-reads-and-molecules">Compare reads and molecules</a></li>
+<li><a href="#effect-of-sequencing-depth-on-molecule-count">Effect of sequencing depth on molecule count</a></li>
+<li><a href="#compare-reads-and-standardized-molecules">Compare reads and standardized molecules</a></li>
 <li><a href="#session-information">Session information</a></li>
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-06-11</p>
-<p><strong>Code version:</strong> 3e13fe536f90a993c343dabab9b2cfa4217b9adf</p>
-<p>Compare counts via three methods:</p>
+<p><strong>Last updated:</strong> 2015-06-19</p>
+<p><strong>Code version:</strong> 750e4602c9938fd588568d94a8ce5d36ba79522d</p>
+<p>First, compared counts via three methods:</p>
 <ul>
 <li><strong>reads_cpm</strong> - standard counts per million</li>
 <li><strong>molecules</strong> - counts of molecules identified using UMIs</li>
 <li><strong>molecules_per_lane</strong> - counts of molecules identified using UMIs per each sequencing lane and then summed per sample</li>
 </ul>
+<p>Then investigated the relationship between sequencing depth and total molecule count per sample. Found that sequencing depth affects the total molecule count, which in turn affects PC1. Will use TMM-normalize molecule counts per million mapped (cpm) for downstream analyses.</p>
+<p>Therefore reran the original comparisons between reads and molecules, but this time using TMM-normalized counts per million for the molecules similar to the reads. The correlation of the mean expression improved.</p>
 <div id="input" class="section level2">
 <h2>Input</h2>
 <pre class="r"><code>library(&quot;dplyr&quot;)
 library(&quot;ggplot2&quot;)
 theme_set(theme_bw(base_size = 16))
-library(&quot;edgeR&quot;)</code></pre>
+library(&quot;edgeR&quot;)
+source(&quot;functions.R&quot;)</code></pre>
 <p>Input annotation.</p>
 <pre class="r"><code>anno &lt;- read.table(&quot;../data/annotation.txt&quot;, header = TRUE,
                    stringsAsFactors = FALSE)
@@ -182,8 +187,11 @@ molecules_per_lane &lt;- molecules_per_lane[, grepl(&quot;bulk&quot;, colnames(m
 anno &lt;- anno[anno$well == &quot;bulk&quot; | anno$sample_id %in% quality_single_cells, ]
 stopifnot(dim(reads) == dim(molecules),
           nrow(anno) == ncol(molecules_per_lane))</code></pre>
-<p>Remove genes with zero read counts.</p>
-<pre class="r"><code>expressed &lt;- rowSums(reads) &gt; 0
+<p>Remove genes with zero read or molecule counts in the single cell or bulk samples.</p>
+<pre class="r"><code>expressed &lt;- rowSums(reads[anno$well == &quot;bulk&quot;]) &gt; 0 &amp;
+             rowSums(reads[anno$well != &quot;bulk&quot;]) &gt; 0 &amp;
+             rowSums(molecules[anno$well == &quot;bulk&quot;]) &gt; 0 &amp;
+             rowSums(molecules[anno$well != &quot;bulk&quot;]) &gt; 0
 reads &lt;- reads[expressed, ]
 molecules &lt;- molecules[expressed, ]
 molecules_per_lane &lt;- molecules_per_lane[expressed, ]</code></pre>
@@ -191,8 +199,16 @@ molecules_per_lane &lt;- molecules_per_lane[expressed, ]</code></pre>
 <div id="calculate-counts-per-million-cpm" class="section level2">
 <h2>Calculate counts per million (cpm)</h2>
 <p>Calculate cpm for the reads data using TMM-normalization.</p>
-<pre class="r"><code>norm_factors &lt;- calcNormFactors(reads, method = &quot;TMM&quot;)
-reads_cpm &lt;- cpm(reads, lib.size = colSums(reads) * norm_factors)</code></pre>
+<pre class="r"><code>norm_factors_reads &lt;- calcNormFactors(reads, method = &quot;TMM&quot;)
+reads_cpm &lt;- cpm(reads, lib.size = colSums(reads) * norm_factors_reads)</code></pre>
+<p>And for the molecules.</p>
+<pre class="r"><code>norm_factors_mol &lt;- calcNormFactors(molecules, method = &quot;TMM&quot;)
+molecules_cpm &lt;- cpm(molecules, lib.size = colSums(molecules) * norm_factors_mol)</code></pre>
+<p>And for the molecules summed per lane.</p>
+<pre class="r"><code>norm_factors_mol_per_lane &lt;- calcNormFactors(molecules_per_lane, method = &quot;TMM&quot;)
+molecules_per_lane_cpm &lt;- cpm(molecules_per_lane,
+                              lib.size = colSums(molecules_per_lane) *
+                                         norm_factors_mol_per_lane)</code></pre>
 </div>
 <div id="compare-reads-and-molecules" class="section level2">
 <h2>Compare reads and molecules</h2>
@@ -202,9 +218,9 @@ reads_cpm &lt;- cpm(reads, lib.size = colSums(reads) * norm_factors)</code></pre
                         molecules_per_lane = rowMeans(molecules_per_lane))
 cor(mean_data)</code></pre>
 <pre><code>                   reads_cpm molecules molecules_per_lane
-reads_cpm          1.0000000 0.8967744          0.8822635
-molecules          0.8967744 1.0000000          0.9947736
-molecules_per_lane 0.8822635 0.9947736          1.0000000</code></pre>
+reads_cpm          1.0000000 0.8967257          0.8819679
+molecules          0.8967257 1.0000000          0.9947502
+molecules_per_lane 0.8819679 0.9947502          1.0000000</code></pre>
 <p>All three are highly correlated.</p>
 <pre class="r"><code>mean_data$type &lt;- ifelse(grepl(&quot;ERCC&quot;, rownames(mean_data)), &quot;ERCC&quot;, &quot;gene&quot;)
 ggplot(mean_data, aes(x = reads_cpm, y = molecules)) +
@@ -233,6 +249,109 @@ ggplot(mean_data, aes(x = reads_cpm, y = molecules)) +
   geom_smooth(method = &quot;lm&quot;) +
   facet_wrap(~ type)</code></pre>
 <p><img src="figure/compare-reads-v-molecules.Rmd/molecules-v-molecules-per-lane-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="effect-of-sequencing-depth-on-molecule-count" class="section level2">
+<h2>Effect of sequencing depth on molecule count</h2>
+<p>How dependent are the molecule counts on the total molecule count for a given sample? Should we standardize by the total molecule count per sample? <a href="http://www.nature.com/nmeth/journal/v11/n2/full/nmeth.2772.html">Islam et al. 2014</a> argue that this is not necessary, “scales for molecule-counting scatterplots (Fig. 2d,e) are absolute and would not change appreciably if the number of reads were increased.” Let’s check this assumption.</p>
+<p>Does the total number of molecules per sample vary with the total number of reads? If it is not necessary to standardize the molecule counts, the molecule counts should be consistent across varying read depths.</p>
+<pre class="r"><code>total_reads_single &lt;- colSums(reads)[anno$well != &quot;bulk&quot;]
+total_molecules_single &lt;- colSums(molecules)[anno$well != &quot;bulk&quot;]
+plot(total_reads_single, total_molecules_single,
+     xlab = &quot;Total number of reads&quot;,
+     ylab = &quot;Total number of molecules&quot;,
+     main = &quot;Effect of read depth on single cells&quot;)
+abline(lm(total_molecules_single ~ total_reads_single), col = &quot;red&quot;)</code></pre>
+<p><img src="figure/compare-reads-v-molecules.Rmd/total-mol-v-reads-single-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>total_reads_bulk &lt;- colSums(reads)[anno$well == &quot;bulk&quot;]
+total_molecules_bulk &lt;- colSums(molecules)[anno$well == &quot;bulk&quot;]
+plot(total_reads_bulk, total_molecules_bulk,
+     xlab = &quot;Total number of reads&quot;,
+     ylab = &quot;Total number of molecules&quot;,
+     main = &quot;Effect of read depth on bulk samples&quot;)
+abline(lm(total_molecules_bulk ~ total_reads_bulk), col = &quot;red&quot;)</code></pre>
+<p><img src="figure/compare-reads-v-molecules.Rmd/total-mol-v-reads-bulk-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>So this is clearly not the case. Perhaps in the ideal case where all the cells are sequenced to saturation, then any increasing sequencing would not make a difference in the molecule counts.</p>
+<p>What effect does this difference in total molecule count have in PCA?</p>
+<pre class="r"><code>pca_single &lt;- run_pca(molecules[, anno$well != &quot;bulk&quot;])</code></pre>
+<pre class="r"><code>plot(pca_single$PCs[, &quot;PC1&quot;], pca_single$PCs[, &quot;PC2&quot;],
+     col = anno$individual[anno$well != &quot;bulk&quot;],
+     xlab = &quot;PC1&quot;, ylab = &quot;PC2&quot;, main = &quot;PCA single cells uncorrected for depth&quot;)</code></pre>
+<p><img src="figure/compare-reads-v-molecules.Rmd/pca-single-uncorrected-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>plot(total_molecules_single, pca_single$PCs[, &quot;PC1&quot;],
+     col = anno$individual[anno$well != &quot;bulk&quot;],
+     main = sprintf(&quot;Pearson r: %.2f&quot;,
+                    cor(total_molecules_single, pca_single$PCs[, &quot;PC1&quot;])),
+     xlab = &quot;Total number of molecules&quot;, ylab = &quot;PC1&quot;)</code></pre>
+<p><img src="figure/compare-reads-v-molecules.Rmd/pc1-v-total-molecules-uncorrected-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>plot(total_molecules_single, pca_single$PCs[, &quot;PC2&quot;],
+     col = anno$individual[anno$well != &quot;bulk&quot;],
+     main = sprintf(&quot;Pearson r: %.2f&quot;,
+                    cor(total_molecules_single, pca_single$PCs[, &quot;PC2&quot;])),
+     xlab = &quot;Total number of molecules&quot;, ylab = &quot;PC2&quot;)</code></pre>
+<p><img src="figure/compare-reads-v-molecules.Rmd/pc2-v-total-molecules-uncorrected-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>The total molecule depth per sample is highly correlated with PC1. However, it did not affect PC2, which captures the individual effect.</p>
+<p>What happens to the PCA results when depth is properly accounted for using TMM-normalized counts per million?</p>
+<pre class="r"><code>norm_factors_mol_single &lt;- calcNormFactors(molecules[, anno$well != &quot;bulk&quot;],
+                                           method = &quot;TMM&quot;)
+molecules_cpm_single &lt;- cpm(molecules[, anno$well != &quot;bulk&quot;],
+                            lib.size = colSums(molecules[, anno$well != &quot;bulk&quot;]) *
+                                       norm_factors_mol_single)</code></pre>
+<pre class="r"><code>pca_single_cpm &lt;- run_pca(molecules_cpm_single)</code></pre>
+<pre class="r"><code>plot(pca_single_cpm$PCs[, &quot;PC1&quot;], pca_single_cpm$PCs[, &quot;PC2&quot;],
+     col = anno$individual[anno$well != &quot;bulk&quot;],
+     xlab = &quot;PC1&quot;, ylab = &quot;PC2&quot;, main = &quot;PCA single cells *corrected* for depth&quot;)</code></pre>
+<p><img src="figure/compare-reads-v-molecules.Rmd/pca-single-corrected-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>plot(total_molecules_single, pca_single_cpm$PCs[, &quot;PC1&quot;],
+     col = anno$individual[anno$well != &quot;bulk&quot;],
+     main = sprintf(&quot;Pearson r: %.2f&quot;,
+                    cor(total_molecules_single, pca_single_cpm$PCs[, &quot;PC1&quot;])),
+     xlab = &quot;Total number of molecules&quot;, ylab = &quot;PC1&quot;)</code></pre>
+<p><img src="figure/compare-reads-v-molecules.Rmd/pc1-v-total-molecules-corrected-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>plot(total_molecules_single, pca_single_cpm$PCs[, &quot;PC2&quot;],
+     col = anno$individual[anno$well != &quot;bulk&quot;],
+     main = sprintf(&quot;Pearson r: %.2f&quot;,
+                    cor(total_molecules_single, pca_single_cpm$PCs[, &quot;PC2&quot;])),
+     xlab = &quot;Total number of molecules&quot;, ylab = &quot;PC2&quot;)</code></pre>
+<p><img src="figure/compare-reads-v-molecules.Rmd/pc2-v-total-molecules-corrected-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>PC1 is no longer associated with sequencing depth!</p>
+</div>
+<div id="compare-reads-and-standardized-molecules" class="section level2">
+<h2>Compare reads and standardized molecules</h2>
+<p>This time standardize the molecule counts for the sequencing depth.</p>
+<p>Compare the means of each gene obtained via the different methods.</p>
+<pre class="r"><code>mean_data_std &lt;- data.frame(reads_cpm = rowMeans(reads_cpm),
+                        molecules_cpm = rowMeans(molecules_cpm),
+                        molecules_per_lane_cpm = rowMeans(molecules_per_lane_cpm))
+cor(mean_data_std)</code></pre>
+<pre><code>                       reads_cpm molecules_cpm molecules_per_lane_cpm
+reads_cpm              1.0000000     0.9705950              0.9710289
+molecules_cpm          0.9705950     1.0000000              0.9986052
+molecules_per_lane_cpm 0.9710289     0.9986052              1.0000000</code></pre>
+<p>All three are even more highly correlated now that the molecules are standardized.</p>
+<pre class="r"><code>mean_data_std$type &lt;- ifelse(grepl(&quot;ERCC&quot;, rownames(mean_data_std)), &quot;ERCC&quot;, &quot;gene&quot;)
+ggplot(mean_data_std, aes(x = reads_cpm, y = molecules_cpm)) +
+  geom_point() +
+  geom_smooth(method = &quot;lm&quot;) +
+  facet_wrap(~ type)</code></pre>
+<p><img src="figure/compare-reads-v-molecules.Rmd/reads-v-molecules-std-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>Examining the lower range where most genes are:</p>
+<pre class="r"><code>ggplot(mean_data_std, aes(x = reads_cpm, y = molecules_cpm)) +
+  geom_point() +
+  geom_smooth(method = &quot;lm&quot;) +
+  facet_wrap(~ type) +
+  ylim(0, 10000)</code></pre>
+<p><img src="figure/compare-reads-v-molecules.Rmd/reads-v-molecules-range-restricted-std-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(mean_data_std, aes(x = reads_cpm, y = molecules_per_lane_cpm)) +
+  geom_point() +
+  geom_smooth(method = &quot;lm&quot;) +
+  facet_wrap(~ type)</code></pre>
+<p><img src="figure/compare-reads-v-molecules.Rmd/reads-v-molecules-per-lane-std-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>And as above, the molecule counts and the molecule counts summed per sequencing lane are highly correlated, which indicates that most of the bias is introduced in the library preparation step and not during sequencing.</p>
+<pre class="r"><code>ggplot(mean_data_std, aes(x = molecules_per_lane_cpm, y = molecules_cpm)) +
+  geom_point() +
+  geom_smooth(method = &quot;lm&quot;) +
+  facet_wrap(~ type)</code></pre>
+<p><img src="figure/compare-reads-v-molecules.Rmd/molecules-v-molecules-per-lane-std-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
 <div id="session-information" class="section level2">
 <h2>Session information</h2>
