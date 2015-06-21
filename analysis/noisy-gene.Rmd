@@ -19,7 +19,6 @@ opts_chunk$set(fig.width = 8, fig.height = 8)
 library("dplyr")
 library("ggplot2")
 theme_set(theme_bw(base_size = 16))
-library("gplots")
 library("edgeR")
 ```
 
@@ -460,81 +459,8 @@ ggplot(table_variance, aes(x = variance_all, y = ratio_between_individaul_varian
 whatever_list <- table_variance[(table_variance$between_indi_var/table_variance$variance_all) > 0.35,][,1]
 
 whatever_list[whatever_list %in% noisy_gene_all]
-
 ```
 
-## variance of batches by molecules
-```{r variance}
-# re create table using the molecule counts
-group_list <- c("19","19098","19101","19239","19098.1","19098.2","19098.3","19101.1","19101.2","19101.3","19239.1","19239.2","19239.3")
-
-### create a function to generate tables of mean,
-create_info_table <- function(statistics="mean"){
-  # first correct
-  molecules.crt <- -1024*log(1-molecules_single_qc/1024)
-  # loop all possible combinations
-  big_table <- do.call(cbind,lapply(group_list,function(x){
-      # subset data
-      data_ref <- molecules.crt[grep(x,names(molecules.crt))]
-      if(statistics=="mean"){
-        ans <- apply(data_ref,1,function(xx) mean(xx,na.rm=TRUE))  
-      }
-      if(statistics=="var"){
-        ans <- apply(data_ref,1,function(xx) var(xx,na.rm=TRUE))  
-      }
-      if(statistics=="CV"){
-        ans <- apply(data_ref,1,function(xx)  sd(xx,na.rm=TRUE)) / apply(data_ref,1,function(xx)  mean(xx,na.rm=TRUE))   
-      }
-    ans
-    })
-  )
-    big_table <- data.frame(big_table)
-    names(big_table) <- paste(statistics,group_list,sep="_")
-    big_table$gene_name <- rownames(molecules_single_qc)
-    big_table
-}
-
-# create big table for mean, var and cv
-table_mean <- create_info_table(statistics="mean")
-table_var <- create_info_table(statistics="var")
-table_cv <- create_info_table(statistics="CV")
-
-# replace 0 as NA
-table_mean[table_mean==0] <- NA
-table_var[table_mean==0] <- NA
-table_cv[table_mean==0] <- NA
-
-# calculate the correlation
-cor(table_mean[,2:13],use="pairwise.complete.obs")
-cor(table_var[,2:13],use="pairwise.complete.obs")
-cor(table_cv[,2:13],use="pairwise.complete.obs")
-
-heatmap.2(cor(table_mean[,5:13],use="pairwise.complete.obs"), trace="none",cexRow=1,cexCol=1,margins=c(8,8))
-heatmap.2(cor(table_var[,2:13],use="pairwise.complete.obs"), trace="none",cexRow=1,cexCol=1,margins=c(8,8))
-heatmap.2(cor(table_cv[,2:13],use="pairwise.complete.obs"), trace="none",cexRow=1,cexCol=1,margins=c(8,8))
-
-# create a table for boxplot of CV correlation 
-corr_CV <- cor(table_cv[,2:13],use="pairwise.complete.obs")
-
-corr_boxplot <- data.frame(
-correlation=c(corr_CV[4,5:6],corr_CV[5,6],corr_CV[7,8:9],corr_CV[8,9],corr_CV[7,8:9],corr_CV[11,12],corr_CV[4:6,7:12],corr_CV[7:9,10:12]), cor_source=c(rep("within",9),rep("between",27)), individual=c(rep("19098",3),rep("19101",3),rep("19239",3),rep("19098.19101",9),rep("19098.19239",9),rep("19101.19239",9)))
-
-# t test
-t_test <- t.test(corr_boxplot[1:6,1],corr_boxplot[7:33,1],alternative = "greater")
-t_test
-
-ggplot(corr_boxplot, aes(cor_source,correlation)) + geom_boxplot() + geom_jitter(aes(colour = individual, size = 2, width = 0.5)) 
-
-# create a table for boxplot of CV correlation without 19098.2
-corr_boxplot_no <- data.frame(
-correlation=c(corr_CV[4,6],corr_CV[7,8:9],corr_CV[8,9],corr_CV[7,8:9],corr_CV[11,12],corr_CV[4,7:12],corr_CV[6,7:12],corr_CV[7:9,10:12]), cor_source=c(rep("within",7),rep("between",21)), individual=c(rep("19098",1),rep("19101",3),rep("19239",3),rep("19098.19101",3),rep("19098.19239",3),rep("19098.19101",3),rep("19098.19239",3), rep("19101.19239",9)))
-
-# t test
-t_test <- t.test(corr_boxplot_no[1:6,1],corr_boxplot_no[7:33,1],alternative = "greater")
-t_test
-
-ggplot(corr_boxplot_no, aes(cor_source,correlation)) + geom_boxplot() + geom_jitter(aes(colour = individual, size = 2, width = 0.5))
-```
 
 ## Session information
 
