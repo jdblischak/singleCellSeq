@@ -19,19 +19,7 @@ library("dplyr")
 library("ggplot2")
 theme_set(theme_bw(base_size = 16))
 library("edgeR")
-```
-
-Summary counts from featureCounts.
-Created with [gather-summary-counts.py](https://github.com/jdblischak/singleCellSeq/blob/master/code/gather-summary-counts.py).
-
-```{r input-summary-counts}
-summary_counts <- read.table("../data/summary-counts.txt", header = TRUE,
-                             stringsAsFactors = FALSE)
-summary_per_sample <- summary_counts %>%
-  filter(sickle == "quality-trimmed") %>%
-  select(-sickle) %>%
-  arrange(individual, batch, well, rmdup) %>%
-  as.data.frame
+library("gplots")
 ```
 
 Input annotation.
@@ -56,48 +44,138 @@ molecules <- read.table("../data/molecules.txt", header = TRUE,
                     stringsAsFactors = FALSE)
 ```
 
-Input single cell observational quality control data.
+Input list of quality single cells.
 
-```{r input-qc}
-qc <- read.table("../data/qc-ipsc.txt", header = TRUE,
-                 stringsAsFactors = FALSE)
-head(qc)
+```{r input-quality-single-cells}
+quality_single_cells <- scan("../data/quality-single-cells.txt",
+                             what = "character")
 ```
 
-## Remove bad quality cells
-### Remove cells with total reads < 2 millons
-```{r remove}
-#reads per sample
-summary_per_sample_reads <- summary_per_sample %>% filter(rmdup == "reads")
+Keep only the single cells that passed the [QC filters](qc-cell-ipsc.html) and the bulk samples.
 
-#create unmapped ratios
-summary_per_sample_reads$unmapped.ratios <- summary_per_sample_reads[,9]/apply(summary_per_sample_reads[,5:13],1,sum)
+```{r qc-filter}
+molecules <- molecules[, grepl("bulk", colnames(molecules)) |
+                         colnames(molecules) %in% quality_single_cells]
+anno <- anno[anno$well == "bulk" | anno$sample_id %in% quality_single_cells, ]
+stopifnot(ncol(molecules) == nrow(anno),
+          colnames(molecules) == anno$sample_id)
 
-#create total mapped reads
-summary_per_sample_reads$total.mapped <- apply(summary_per_sample_reads[,5:8],1,sum)
+reads <- reads[, grepl("bulk", colnames(reads)) |
+                         colnames(reads) %in% quality_single_cells]
+stopifnot(ncol(reads) == nrow(anno),
+          colnames(reads) == anno$sample_id)
+```
 
-#creat ERCC ratios
-summary_per_sample_reads$ERCC.ratios <- apply(reads[grep("ERCC", rownames(reads)), ],2,sum)/apply(summary_per_sample_reads[,5:8],1,sum)
+Remove genes with zero read counts in the single cells or bulk samples.
 
-#remove bulk keep single cell
-summary_per_sample_reads_single <- summary_per_sample_reads[summary_per_sample_reads$well!="bulk",]
+```{r remove-non-expressed-genes}
+expressed <- rowSums(molecules[, anno$well == "bulk"]) > 0 &
+             rowSums(molecules[, anno$well != "bulk"]) > 0
+molecules <- molecules[expressed, ]
+dim(molecules)
 
-#add cell number per well by merging qc file
-summary_per_sample_reads_single_qc <- merge(summary_per_sample_reads_single,qc,by=c("individual","batch","well"))
+expressed <- rowSums(reads[, anno$well == "bulk"]) > 0 &
+             rowSums(reads[, anno$well != "bulk"]) > 0
+reads <- reads[expressed, ]
+dim(reads)
+```
 
-#qc filter
-summary_per_sample_reads_single_qc$qc_filter <- summary_per_sample_reads_single_qc$cell_number == 1 & summary_per_sample_reads_single_qc$total.mapped > 2 * 10^6
+Split the bulk and single samples.
 
-sum(summary_per_sample_reads_single_qc$qc_filter)
+```{r split-bulk-single}
+molecules_bulk <- molecules[, anno$well == "bulk"]
+molecules_single <- molecules[, anno$well != "bulk"]
+reads_bulk <- reads[, anno$well == "bulk"]
+reads_single <- reads[, anno$well != "bulk"]
+```
+
+Remove genes with max molecule numer larger than 1024
+```{r remove-1024}
+molecules_single <- molecules_single[apply(molecules_single,1,max) < 1024,]
+```
+
+## variance between batches (C1 prep) by molecules
+
+See if batches from the same individual cluster together
+```{r batch-variance}
+# create table using the molecule counts
+group_list <- c("19","19098","19101","19239","19098.1","19098.2","19098.3","19101.1","19101.2","19101.3","19239.1","19239.2","19239.3")
+
+### create a function to generate tables of mean,
+create_info_table <- function(statistics="mean"){
+  # first correct
+  molecules.crt <- -1024*log(1-molecules_single/1024)
+  # loop all possible combinations
+  big_table <- do.call(cbind,lapply(group_list,function(x){
+      # subset data
+      data_ref <- molecules.crt[grep(x,names(molecules.crt))]
+      if(statistics=="mean"){
+        ans <- apply(data_ref,1,function(xx) mean(xx,na.rm=TRUE))  
+      }
+      if(statistics=="var"){
+        ans <- apply(data_ref,1,function(xx) var(xx,na.rm=TRUE))  
+      }
+      if(statistics=="CV"){
+        ans <- apply(data_ref,1,function(xx)  sd(xx,na.rm=TRUE)) / apply(data_ref,1,function(xx)  mean(xx,na.rm=TRUE))   
+      }
+    ans
+    })
+  )
+    big_table <- data.frame(big_table)
+    names(big_table) <- paste(statistics,group_list,sep="_")
+    big_table$gene_name <- rownames(molecules_single)
+    big_table
+}
+
+# create big table for mean, var and cv
+table_mean <- create_info_table(statistics="mean")
+table_var <- create_info_table(statistics="var")
+table_cv <- create_info_table(statistics="CV")
+
+# replace 0 as NA
+table_mean[table_mean==0] <- NA
+table_var[table_mean==0] <- NA
+table_cv[table_mean==0] <- NA
+
+# calculate the correlation
+cor(table_mean[,2:13],use="pairwise.complete.obs")
+cor(table_var[,2:13],use="pairwise.complete.obs")
+cor(table_cv[,2:13],use="pairwise.complete.obs")
+
+heatmap.2(cor(table_mean[,2:13],use="pairwise.complete.obs"), trace="none",cexRow=1,cexCol=1,margins=c(8,8))
+heatmap.2(cor(table_var[,2:13],use="pairwise.complete.obs"), trace="none",cexRow=1,cexCol=1,margins=c(8,8))
+heatmap.2(cor(table_cv[,2:13],use="pairwise.complete.obs"), trace="none",cexRow=1,cexCol=1,margins=c(8,8))
+```
+
+Look at the correlation of CV from batches 
+```{r CV}
+# create a table for boxplot of CV correlation 
+corr_CV <- cor(table_cv[,2:13],use="pairwise.complete.obs")
+
+corr_boxplot <- data.frame(
+correlation=c(corr_CV[4,5:6],corr_CV[5,6],corr_CV[7,8:9],corr_CV[8,9],corr_CV[7,8:9],corr_CV[11,12],corr_CV[4:6,7:12],corr_CV[7:9,10:12]), cor_source=c(rep("within",9),rep("between",27)), individual=c(rep("19098",3),rep("19101",3),rep("19239",3),rep("19098.19101",9),rep("19098.19239",9),rep("19101.19239",9)))
+
+# t test
+t_test <- t.test(corr_boxplot[1:6,1],corr_boxplot[7:33,1],alternative = "greater")
+t_test
+
+ggplot(corr_boxplot, aes(cor_source,correlation)) + geom_boxplot() + geom_jitter(aes(colour = individual, size = 2, width = 0.5)) 
+
+# create a table for boxplot of CV correlation without 19098.2
+corr_boxplot_no <- data.frame(
+correlation=c(corr_CV[4,6],corr_CV[7,8:9],corr_CV[8,9],corr_CV[7,8:9],corr_CV[11,12],corr_CV[4,7:12],corr_CV[6,7:12],corr_CV[7:9,10:12]), cor_source=c(rep("within",7),rep("between",21)), individual=c(rep("19098",1),rep("19101",3),rep("19239",3),rep("19098.19101",3),rep("19098.19239",3),rep("19098.19101",3),rep("19098.19239",3), rep("19101.19239",9)))
+
+# t test
+t_test <- t.test(corr_boxplot_no[1:6,1],corr_boxplot_no[7:33,1],alternative = "greater")
+t_test
+
+ggplot(corr_boxplot_no, aes(cor_source,correlation)) + geom_boxplot() + geom_jitter(aes(colour = individual, size = 2, width = 0.5))
 ```
 
 ## variance of gene expression between individuls
 
 Calculate the variance betwwen individuls from the bulk samples
 ```{r variance-bulk}
-# select bulk samples
-reads_bulk<- reads %>% select(contains("bulk"))
-
 # normalization
 reads_bulk_cpm <- cpm(reads_bulk)
 
@@ -118,15 +196,8 @@ reads_var$bulk_variance <- apply(reads_var[,c("mean19098","mean19101","mean19239
 Calculate the variance between individuals using the means from single cells
 
 ```{r variance-single-mean}
-# select single cell samples
-reads_single <- reads %>% select(-contains("bulk"))
-
-# apply qc_filter
-reads_single_qc <- reads_single[,summary_per_sample_reads_single_qc$qc_filter]
-dim(reads_single_qc)
-
 # normalization
-reads_single_cpm <- data.frame(cpm(reads_single_qc))
+reads_single_cpm <- data.frame(cpm(reads_single))
 
 # remove the ERCC of 19098.2 
   ## identify 19098.2
