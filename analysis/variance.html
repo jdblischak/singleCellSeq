@@ -127,29 +127,22 @@ img {
 <div id="TOC">
 <ul>
 <li><a href="#input">Input</a></li>
-<li><a href="#remove-bad-quality-cells">Remove bad quality cells</a></li>
+<li><a href="#variance-between-batches-c1-prep-by-molecules">variance between batches (C1 prep) by molecules</a></li>
 <li><a href="#variance-of-gene-expression-between-individuls">variance of gene expression between individuls</a></li>
 <li><a href="#avona-f-statistics">AVONA F-statistics</a></li>
 <li><a href="#session-information">Session information</a></li>
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-06-20</p>
-<p><strong>Code version:</strong> 870a709fb088f0287b899424ce69db87cb64e477</p>
+<p><strong>Last updated:</strong> 2015-06-29</p>
+<p><strong>Code version:</strong> e927fac891c5ab5af9b62b9eecc0232855931c96</p>
 <div id="input" class="section level2">
 <h2>Input</h2>
 <pre class="r"><code>library(&quot;dplyr&quot;)
 library(&quot;ggplot2&quot;)
 theme_set(theme_bw(base_size = 16))
-library(&quot;edgeR&quot;)</code></pre>
-<p>Summary counts from featureCounts. Created with <a href="https://github.com/jdblischak/singleCellSeq/blob/master/code/gather-summary-counts.py">gather-summary-counts.py</a>.</p>
-<pre class="r"><code>summary_counts &lt;- read.table(&quot;../data/summary-counts.txt&quot;, header = TRUE,
-                             stringsAsFactors = FALSE)
-summary_per_sample &lt;- summary_counts %&gt;%
-  filter(sickle == &quot;quality-trimmed&quot;) %&gt;%
-  select(-sickle) %&gt;%
-  arrange(individual, batch, well, rmdup) %&gt;%
-  as.data.frame</code></pre>
+library(&quot;edgeR&quot;)
+library(&quot;gplots&quot;)</code></pre>
 <p>Input annotation.</p>
 <pre class="r"><code>anno &lt;- read.table(&quot;../data/annotation.txt&quot;, header = TRUE,
                    stringsAsFactors = FALSE)
@@ -167,54 +160,256 @@ head(anno)</code></pre>
 <p>Input molecule counts.</p>
 <pre class="r"><code>molecules &lt;- read.table(&quot;../data/molecules.txt&quot;, header = TRUE,
                     stringsAsFactors = FALSE)</code></pre>
-<p>Input single cell observational quality control data.</p>
-<pre class="r"><code>qc &lt;- read.table(&quot;../data/qc-ipsc.txt&quot;, header = TRUE,
-                 stringsAsFactors = FALSE)
-head(qc)</code></pre>
-<pre><code>  individual batch well cell_number concentration tra1.60
-1      19098     1  A01           1      1.734785       1
-2      19098     1  A02           1      1.723038       1
-3      19098     1  A03           1      1.512786       1
-4      19098     1  A04           1      1.347492       1
-5      19098     1  A05           1      2.313047       1
-6      19098     1  A06           1      2.056803       1</code></pre>
+<p>Input list of quality single cells.</p>
+<pre class="r"><code>quality_single_cells &lt;- scan(&quot;../data/quality-single-cells.txt&quot;,
+                             what = &quot;character&quot;)</code></pre>
+<p>Keep only the single cells that passed the <a href="qc-cell-ipsc.html">QC filters</a> and the bulk samples.</p>
+<pre class="r"><code>molecules &lt;- molecules[, grepl(&quot;bulk&quot;, colnames(molecules)) |
+                         colnames(molecules) %in% quality_single_cells]
+anno &lt;- anno[anno$well == &quot;bulk&quot; | anno$sample_id %in% quality_single_cells, ]
+stopifnot(ncol(molecules) == nrow(anno),
+          colnames(molecules) == anno$sample_id)
+
+reads &lt;- reads[, grepl(&quot;bulk&quot;, colnames(reads)) |
+                         colnames(reads) %in% quality_single_cells]
+stopifnot(ncol(reads) == nrow(anno),
+          colnames(reads) == anno$sample_id)</code></pre>
+<p>Remove genes with zero read counts in the single cells or bulk samples.</p>
+<pre class="r"><code>expressed &lt;- rowSums(molecules[, anno$well == &quot;bulk&quot;]) &gt; 0 &amp;
+             rowSums(molecules[, anno$well != &quot;bulk&quot;]) &gt; 0
+molecules &lt;- molecules[expressed, ]
+dim(molecules)</code></pre>
+<pre><code>[1] 17208   641</code></pre>
+<pre class="r"><code>expressed &lt;- rowSums(reads[, anno$well == &quot;bulk&quot;]) &gt; 0 &amp;
+             rowSums(reads[, anno$well != &quot;bulk&quot;]) &gt; 0
+reads &lt;- reads[expressed, ]
+dim(reads)</code></pre>
+<pre><code>[1] 17218   641</code></pre>
+<p>Split the bulk and single samples.</p>
+<pre class="r"><code>molecules_bulk &lt;- molecules[, anno$well == &quot;bulk&quot;]
+molecules_single &lt;- molecules[, anno$well != &quot;bulk&quot;]
+reads_bulk &lt;- reads[, anno$well == &quot;bulk&quot;]
+reads_single &lt;- reads[, anno$well != &quot;bulk&quot;]</code></pre>
+<p>Remove genes with max molecule numer larger than 1024</p>
+<pre class="r"><code>molecules_single &lt;- molecules_single[apply(molecules_single,1,max) &lt; 1024,]</code></pre>
 </div>
-<div id="remove-bad-quality-cells" class="section level2">
-<h2>Remove bad quality cells</h2>
-<div id="remove-cells-with-total-reads-2-millons" class="section level3">
-<h3>Remove cells with total reads &lt; 2 millons</h3>
-<pre class="r"><code>#reads per sample
-summary_per_sample_reads &lt;- summary_per_sample %&gt;% filter(rmdup == &quot;reads&quot;)
+<div id="variance-between-batches-c1-prep-by-molecules" class="section level2">
+<h2>variance between batches (C1 prep) by molecules</h2>
+<p>See if batches from the same individual cluster together</p>
+<pre class="r"><code># create table using the molecule counts
+group_list &lt;- c(&quot;19&quot;,&quot;19098&quot;,&quot;19101&quot;,&quot;19239&quot;,&quot;19098.1&quot;,&quot;19098.2&quot;,&quot;19098.3&quot;,&quot;19101.1&quot;,&quot;19101.2&quot;,&quot;19101.3&quot;,&quot;19239.1&quot;,&quot;19239.2&quot;,&quot;19239.3&quot;)
 
-#create unmapped ratios
-summary_per_sample_reads$unmapped.ratios &lt;- summary_per_sample_reads[,9]/apply(summary_per_sample_reads[,5:13],1,sum)
+### create a function to generate tables of mean,
+create_info_table &lt;- function(statistics=&quot;mean&quot;){
+  # first correct
+  molecules.crt &lt;- -1024*log(1-molecules_single/1024)
+  # loop all possible combinations
+  big_table &lt;- do.call(cbind,lapply(group_list,function(x){
+      # subset data
+      data_ref &lt;- molecules.crt[grep(x,names(molecules.crt))]
+      if(statistics==&quot;mean&quot;){
+        ans &lt;- apply(data_ref,1,function(xx) mean(xx,na.rm=TRUE))  
+      }
+      if(statistics==&quot;var&quot;){
+        ans &lt;- apply(data_ref,1,function(xx) var(xx,na.rm=TRUE))  
+      }
+      if(statistics==&quot;CV&quot;){
+        ans &lt;- apply(data_ref,1,function(xx)  sd(xx,na.rm=TRUE)) / apply(data_ref,1,function(xx)  mean(xx,na.rm=TRUE))   
+      }
+    ans
+    })
+  )
+    big_table &lt;- data.frame(big_table)
+    names(big_table) &lt;- paste(statistics,group_list,sep=&quot;_&quot;)
+    big_table$gene_name &lt;- rownames(molecules_single)
+    big_table
+}
 
-#create total mapped reads
-summary_per_sample_reads$total.mapped &lt;- apply(summary_per_sample_reads[,5:8],1,sum)
+# create big table for mean, var and cv
+table_mean &lt;- create_info_table(statistics=&quot;mean&quot;)
+table_var &lt;- create_info_table(statistics=&quot;var&quot;)
+table_cv &lt;- create_info_table(statistics=&quot;CV&quot;)
 
-#creat ERCC ratios
-summary_per_sample_reads$ERCC.ratios &lt;- apply(reads[grep(&quot;ERCC&quot;, rownames(reads)), ],2,sum)/apply(summary_per_sample_reads[,5:8],1,sum)
+# replace 0 as NA
+table_mean[table_mean==0] &lt;- NA
+table_var[table_mean==0] &lt;- NA
+table_cv[table_mean==0] &lt;- NA
 
-#remove bulk keep single cell
-summary_per_sample_reads_single &lt;- summary_per_sample_reads[summary_per_sample_reads$well!=&quot;bulk&quot;,]
+# calculate the correlation
+cor(table_mean[,2:13],use=&quot;pairwise.complete.obs&quot;)</code></pre>
+<pre><code>             mean_19098 mean_19101 mean_19239 mean_19098.1 mean_19098.2
+mean_19098    1.0000000  0.9852974  0.9789826    0.9890853    0.9659667
+mean_19101    0.9852974  1.0000000  0.9879295    0.9856922    0.9254189
+mean_19239    0.9789826  0.9879295  1.0000000    0.9809677    0.9166417
+mean_19098.1  0.9890853  0.9856922  0.9809677    1.0000000    0.9205102
+mean_19098.2  0.9659667  0.9254189  0.9166417    0.9205102    1.0000000
+mean_19098.3  0.9897683  0.9898391  0.9844379    0.9886098    0.9265197
+mean_19101.1  0.9813595  0.9958857  0.9822822    0.9863789    0.9160428
+mean_19101.2  0.9750097  0.9907745  0.9791731    0.9665583    0.9267378
+mean_19101.3  0.9824474  0.9963364  0.9858818    0.9852461    0.9191901
+mean_19239.1  0.9751169  0.9836778  0.9961752    0.9762399    0.9141762
+mean_19239.2  0.9819749  0.9906238  0.9966978    0.9837043    0.9190592
+mean_19239.3  0.9695992  0.9791607  0.9958848    0.9726513    0.9065916
+             mean_19098.3 mean_19101.1 mean_19101.2 mean_19101.3
+mean_19098      0.9897683    0.9813595    0.9750097    0.9824474
+mean_19101      0.9898391    0.9958857    0.9907745    0.9963364
+mean_19239      0.9844379    0.9822822    0.9791731    0.9858818
+mean_19098.1    0.9886098    0.9863789    0.9665583    0.9852461
+mean_19098.2    0.9265197    0.9160428    0.9267378    0.9191901
+mean_19098.3    1.0000000    0.9858418    0.9789881    0.9876076
+mean_19101.1    0.9858418    1.0000000    0.9771253    0.9903586
+mean_19101.2    0.9789881    0.9771253    1.0000000    0.9820900
+mean_19101.3    0.9876076    0.9903586    0.9820900    1.0000000
+mean_19239.1    0.9802797    0.9777765    0.9777544    0.9792898
+mean_19239.2    0.9882042    0.9868162    0.9795495    0.9883365
+mean_19239.3    0.9747475    0.9722657    0.9698328    0.9794403
+             mean_19239.1 mean_19239.2 mean_19239.3
+mean_19098      0.9751169    0.9819749    0.9695992
+mean_19101      0.9836778    0.9906238    0.9791607
+mean_19239      0.9961752    0.9966978    0.9958848
+mean_19098.1    0.9762399    0.9837043    0.9726513
+mean_19098.2    0.9141762    0.9190592    0.9065916
+mean_19098.3    0.9802797    0.9882042    0.9747475
+mean_19101.1    0.9777765    0.9868162    0.9722657
+mean_19101.2    0.9777544    0.9795495    0.9698328
+mean_19101.3    0.9792898    0.9883365    0.9794403
+mean_19239.1    1.0000000    0.9913432    0.9865966
+mean_19239.2    0.9913432    1.0000000    0.9884642
+mean_19239.3    0.9865966    0.9884642    1.0000000</code></pre>
+<pre class="r"><code>cor(table_var[,2:13],use=&quot;pairwise.complete.obs&quot;)</code></pre>
+<pre><code>            var_19098 var_19101 var_19239 var_19098.1 var_19098.2
+var_19098   1.0000000 0.4457268 0.4937791   0.4976387   0.9618056
+var_19101   0.4457268 1.0000000 0.8782272   0.8620967   0.5626504
+var_19239   0.4937791 0.8782272 1.0000000   0.8879291   0.6283549
+var_19098.1 0.4976387 0.8620967 0.8879291   1.0000000   0.5491121
+var_19098.2 0.9618056 0.5626504 0.6283549   0.5491121   1.0000000
+var_19098.3 0.5033991 0.8042806 0.9520294   0.9051561   0.6058795
+var_19101.1 0.4593402 0.8919549 0.8764965   0.8894759   0.5661045
+var_19101.2 0.4646436 0.8613854 0.9552923   0.8151788   0.6148337
+var_19101.3 0.3819232 0.9552264 0.7674670   0.7448572   0.4888928
+var_19239.1 0.4792729 0.7715627 0.9604927   0.8367994   0.6036163
+var_19239.2 0.4940503 0.9313876 0.9769478   0.9248669   0.6164329
+var_19239.3 0.4684518 0.8392077 0.9805642   0.8127816   0.6212588
+            var_19098.3 var_19101.1 var_19101.2 var_19101.3 var_19239.1
+var_19098     0.5033991   0.4593402   0.4646436   0.3819232   0.4792729
+var_19101     0.8042806   0.8919549   0.8613854   0.9552264   0.7715627
+var_19239     0.9520294   0.8764965   0.9552923   0.7674670   0.9604927
+var_19098.1   0.9051561   0.8894759   0.8151788   0.7448572   0.8367994
+var_19098.2   0.6058795   0.5661045   0.6148337   0.4888928   0.6036163
+var_19098.3   1.0000000   0.7998802   0.9139139   0.7084104   0.9612885
+var_19101.1   0.7998802   1.0000000   0.8005423   0.7231277   0.7723457
+var_19101.2   0.9139139   0.8005423   1.0000000   0.7814277   0.9411226
+var_19101.3   0.7084104   0.7231277   0.7814277   1.0000000   0.6693945
+var_19239.1   0.9612885   0.7723457   0.9411226   0.6693945   1.0000000
+var_19239.2   0.9263464   0.9209996   0.9271934   0.8234919   0.9068348
+var_19239.3   0.9208955   0.8273502   0.9459670   0.7373678   0.9351080
+            var_19239.2 var_19239.3
+var_19098     0.4940503   0.4684518
+var_19101     0.9313876   0.8392077
+var_19239     0.9769478   0.9805642
+var_19098.1   0.9248669   0.8127816
+var_19098.2   0.6164329   0.6212588
+var_19098.3   0.9263464   0.9208955
+var_19101.1   0.9209996   0.8273502
+var_19101.2   0.9271934   0.9459670
+var_19101.3   0.8234919   0.7373678
+var_19239.1   0.9068348   0.9351080
+var_19239.2   1.0000000   0.9414995
+var_19239.3   0.9414995   1.0000000</code></pre>
+<pre class="r"><code>cor(table_cv[,2:13],use=&quot;pairwise.complete.obs&quot;)</code></pre>
+<pre><code>            CV_19098  CV_19101  CV_19239 CV_19098.1 CV_19098.2 CV_19098.3
+CV_19098   1.0000000 0.8525950 0.8203035  0.9196700  0.9016564  0.8797393
+CV_19101   0.8525950 1.0000000 0.8380438  0.8306933  0.8270444  0.8008779
+CV_19239   0.8203035 0.8380438 1.0000000  0.8016100  0.8027402  0.7844651
+CV_19098.1 0.9196700 0.8306933 0.8016100  1.0000000  0.8247774  0.8050655
+CV_19098.2 0.9016564 0.8270444 0.8027402  0.8247774  1.0000000  0.8071659
+CV_19098.3 0.8797393 0.8008779 0.7844651  0.8050655  0.8071659  1.0000000
+CV_19101.1 0.8149290 0.9196720 0.8004435  0.8230621  0.8245842  0.7883248
+CV_19101.2 0.8148629 0.9139575 0.8105231  0.8100857  0.8171736  0.8066706
+CV_19101.3 0.8194759 0.8972533 0.8210178  0.8327272  0.8342135  0.8183561
+CV_19239.1 0.7723207 0.7940978 0.8878040  0.7877285  0.7909112  0.7842425
+CV_19239.2 0.7932015 0.8078961 0.9014403  0.7997803  0.8038477  0.7877058
+CV_19239.3 0.7850551 0.8094105 0.9155776  0.7864117  0.7918676  0.7829476
+           CV_19101.1 CV_19101.2 CV_19101.3 CV_19239.1 CV_19239.2
+CV_19098    0.8149290  0.8148629  0.8194759  0.7723207  0.7932015
+CV_19101    0.9196720  0.9139575  0.8972533  0.7940978  0.8078961
+CV_19239    0.8004435  0.8105231  0.8210178  0.8878040  0.9014403
+CV_19098.1  0.8230621  0.8100857  0.8327272  0.7877285  0.7997803
+CV_19098.2  0.8245842  0.8171736  0.8342135  0.7909112  0.8038477
+CV_19098.3  0.7883248  0.8066706  0.8183561  0.7842425  0.7877058
+CV_19101.1  1.0000000  0.8328967  0.8503940  0.7923881  0.8108956
+CV_19101.2  0.8328967  1.0000000  0.8499119  0.8018922  0.8119385
+CV_19101.3  0.8503940  0.8499119  1.0000000  0.8103150  0.8269014
+CV_19239.1  0.7923881  0.8018922  0.8103150  1.0000000  0.8155535
+CV_19239.2  0.8108956  0.8119385  0.8269014  0.8155535  1.0000000
+CV_19239.3  0.7989245  0.8110615  0.8252111  0.8107193  0.8278178
+           CV_19239.3
+CV_19098    0.7850551
+CV_19101    0.8094105
+CV_19239    0.9155776
+CV_19098.1  0.7864117
+CV_19098.2  0.7918676
+CV_19098.3  0.7829476
+CV_19101.1  0.7989245
+CV_19101.2  0.8110615
+CV_19101.3  0.8252111
+CV_19239.1  0.8107193
+CV_19239.2  0.8278178
+CV_19239.3  1.0000000</code></pre>
+<pre class="r"><code>heatmap.2(cor(table_mean[,2:13],use=&quot;pairwise.complete.obs&quot;), trace=&quot;none&quot;,cexRow=1,cexCol=1,margins=c(8,8))</code></pre>
+<p><img src="figure/variance.Rmd/batch-variance-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>heatmap.2(cor(table_var[,2:13],use=&quot;pairwise.complete.obs&quot;), trace=&quot;none&quot;,cexRow=1,cexCol=1,margins=c(8,8))</code></pre>
+<p><img src="figure/variance.Rmd/batch-variance-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>heatmap.2(cor(table_cv[,2:13],use=&quot;pairwise.complete.obs&quot;), trace=&quot;none&quot;,cexRow=1,cexCol=1,margins=c(8,8))</code></pre>
+<p><img src="figure/variance.Rmd/batch-variance-3.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>Look at the correlation of CV from batches</p>
+<pre class="r"><code># create a table for boxplot of CV correlation 
+corr_CV &lt;- cor(table_cv[,2:13],use=&quot;pairwise.complete.obs&quot;)
 
-#add cell number per well by merging qc file
-summary_per_sample_reads_single_qc &lt;- merge(summary_per_sample_reads_single,qc,by=c(&quot;individual&quot;,&quot;batch&quot;,&quot;well&quot;))
+corr_boxplot &lt;- data.frame(
+correlation=c(corr_CV[4,5:6],corr_CV[5,6],corr_CV[7,8:9],corr_CV[8,9],corr_CV[7,8:9],corr_CV[11,12],corr_CV[4:6,7:12],corr_CV[7:9,10:12]), cor_source=c(rep(&quot;within&quot;,9),rep(&quot;between&quot;,27)), individual=c(rep(&quot;19098&quot;,3),rep(&quot;19101&quot;,3),rep(&quot;19239&quot;,3),rep(&quot;19098.19101&quot;,9),rep(&quot;19098.19239&quot;,9),rep(&quot;19101.19239&quot;,9)))
 
-#qc filter
-summary_per_sample_reads_single_qc$qc_filter &lt;- summary_per_sample_reads_single_qc$cell_number == 1 &amp; summary_per_sample_reads_single_qc$total.mapped &gt; 2 * 10^6
+# t test
+t_test &lt;- t.test(corr_boxplot[1:6,1],corr_boxplot[7:33,1],alternative = &quot;greater&quot;)
+t_test</code></pre>
+<pre><code>
+    Welch Two Sample t-test
 
-sum(summary_per_sample_reads_single_qc$qc_filter)</code></pre>
-<pre><code>[1] 632</code></pre>
-</div>
+data:  corr_boxplot[1:6, 1] and corr_boxplot[7:33, 1]
+t = 2.2134, df = 7.0767, p-value = 0.03104
+alternative hypothesis: true difference in means is greater than 0
+95 percent confidence interval:
+ 0.002854199         Inf
+sample estimates:
+mean of x mean of y 
+0.8283686 0.8087437 </code></pre>
+<pre class="r"><code>ggplot(corr_boxplot, aes(cor_source,correlation)) + geom_boxplot() + geom_jitter(aes(colour = individual, size = 2, width = 0.5)) </code></pre>
+<p><img src="figure/variance.Rmd/CV-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code># create a table for boxplot of CV correlation without 19098.2
+corr_boxplot_no &lt;- data.frame(
+correlation=c(corr_CV[4,6],corr_CV[7,8:9],corr_CV[8,9],corr_CV[7,8:9],corr_CV[11,12],corr_CV[4,7:12],corr_CV[6,7:12],corr_CV[7:9,10:12]), cor_source=c(rep(&quot;within&quot;,7),rep(&quot;between&quot;,21)), individual=c(rep(&quot;19098&quot;,1),rep(&quot;19101&quot;,3),rep(&quot;19239&quot;,3),rep(&quot;19098.19101&quot;,3),rep(&quot;19098.19239&quot;,3),rep(&quot;19098.19101&quot;,3),rep(&quot;19098.19239&quot;,3), rep(&quot;19101.19239&quot;,9)))
+
+# t test
+t_test &lt;- t.test(corr_boxplot_no[1:6,1],corr_boxplot_no[7:33,1],alternative = &quot;greater&quot;)
+t_test</code></pre>
+<pre><code>
+    Welch Two Sample t-test
+
+data:  corr_boxplot_no[1:6, 1] and corr_boxplot_no[7:33, 1]
+t = 3.9055, df = 7.2966, p-value = 0.002699
+alternative hypothesis: true difference in means is greater than 0
+95 percent confidence interval:
+ 0.0161709       Inf
+sample estimates:
+mean of x mean of y 
+0.8369265 0.8056995 </code></pre>
+<pre class="r"><code>ggplot(corr_boxplot_no, aes(cor_source,correlation)) + geom_boxplot() + geom_jitter(aes(colour = individual, size = 2, width = 0.5))</code></pre>
+<p><img src="figure/variance.Rmd/CV-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
 <div id="variance-of-gene-expression-between-individuls" class="section level2">
 <h2>variance of gene expression between individuls</h2>
 <p>Calculate the variance betwwen individuls from the bulk samples</p>
-<pre class="r"><code># select bulk samples
-reads_bulk&lt;- reads %&gt;% select(contains(&quot;bulk&quot;))
-
-# normalization
+<pre class="r"><code># normalization
 reads_bulk_cpm &lt;- cpm(reads_bulk)
 
 # create a new dataset
@@ -229,15 +424,8 @@ reads_var$mean19239 &lt;- apply(reads_var[,grep(&quot;NA19239&quot;,names(reads_
 # add variance of bulk means
 reads_var$bulk_variance &lt;- apply(reads_var[,c(&quot;mean19098&quot;,&quot;mean19101&quot;,&quot;mean19239&quot;)],1,var)</code></pre>
 <p>Calculate the variance between individuals using the means from single cells</p>
-<pre class="r"><code># select single cell samples
-reads_single &lt;- reads %&gt;% select(-contains(&quot;bulk&quot;))
-
-# apply qc_filter
-reads_single_qc &lt;- reads_single[,summary_per_sample_reads_single_qc$qc_filter]
-dim(reads_single_qc)</code></pre>
-<pre><code>[1] 20419   632</code></pre>
 <pre class="r"><code># normalization
-reads_single_cpm &lt;- data.frame(cpm(reads_single_qc))
+reads_single_cpm &lt;- data.frame(cpm(reads_single))
 
 # remove the ERCC of 19098.2 
   ## identify 19098.2
@@ -303,19 +491,17 @@ reads_var$var_between_individual&lt;-(
 reads_var$ratio_var_between_individual &lt;- reads_var[,&quot;var_between_individual&quot;]/var_all_single
 
 ggplot(reads_var, aes(x = var_all_single, y = ratio_var_between_individual, col = ERCC)) + geom_point(size = 2, alpha = 0.5) + scale_colour_manual(values=cbPalette) + scale_x_log10()</code></pre>
-<pre><code>Warning in loop_apply(n, do.ply): Removed 2812 rows containing missing
-values (geom_point).</code></pre>
 <p><img src="figure/variance.Rmd/variance-single-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>ggplot(reads_var, aes(x = var_all_single, y = var_between_individual, col = ERCC)) + geom_point(size = 2, alpha = 0.5) + scale_colour_manual(values=cbPalette) + scale_x_log10() + scale_y_log10() + stat_function(fun= function(x) {x}, col= &quot;#56B4E9&quot;)</code></pre>
 <pre><code>Warning in scale$trans$trans(x): NaNs produced</code></pre>
 <pre><code>Warning in scale$trans$trans(x): NaNs produced</code></pre>
-<pre><code>Warning in loop_apply(n, do.ply): Removed 28 rows containing missing values
+<pre><code>Warning in loop_apply(n, do.ply): Removed 24 rows containing missing values
 (geom_point).</code></pre>
 <p><img src="figure/variance.Rmd/variance-single-3.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>ggplot(reads_var, aes(x = bulk_variance, y = var_between_individual, col = ERCC)) + geom_point(size = 2, alpha = 0.5) + scale_colour_manual(values=cbPalette) + scale_x_log10() + scale_y_log10() + stat_function(fun= function(x) {x}, col= &quot;#56B4E9&quot;)</code></pre>
 <pre><code>Warning in scale$trans$trans(x): NaNs produced</code></pre>
 <pre><code>Warning in scale$trans$trans(x): NaNs produced</code></pre>
-<pre><code>Warning in loop_apply(n, do.ply): Removed 28 rows containing missing values
+<pre><code>Warning in loop_apply(n, do.ply): Removed 24 rows containing missing values
 (geom_point).</code></pre>
 <p><img src="figure/variance.Rmd/variance-single-4.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
@@ -350,12 +536,12 @@ f.test.table$ERCC &lt;- grepl(&quot;ERCC&quot;,f.test.table[,1])
 f.test.table.sort &lt;- f.test.table[order(f.test.table[,2]),]
 head(f.test.table.sort)</code></pre>
 <pre><code>            gene_name        p_of_f  ERCC
-17307 ENSG00000106153 1.096914e-139 FALSE
-8060  ENSG00000256618 5.541342e-115 FALSE
-6079  ENSG00000183648 6.039660e-104 FALSE
-10536 ENSG00000022556 1.795330e-102 FALSE
-16832 ENSG00000112306  8.905248e-96 FALSE
-19106 ENSG00000176386  2.422581e-88 FALSE</code></pre>
+14654 ENSG00000106153 1.095160e-139 FALSE
+6757  ENSG00000256618 5.551611e-115 FALSE
+5028  ENSG00000183648 6.035838e-104 FALSE
+8833  ENSG00000022556 1.794451e-102 FALSE
+14243 ENSG00000112306  8.897942e-96 FALSE
+16181 ENSG00000176386  2.418442e-88 FALSE</code></pre>
 <pre class="r"><code>plot(f.test.table.sort[,2], log = &quot;y&quot;,col=as.numeric(f.test.table.sort$ERCC+1))</code></pre>
 <p><img src="figure/variance.Rmd/p_of_f-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>plot(f.test.table.sort[1:5000,2], log = &quot;y&quot;,col=as.numeric(f.test.table.sort$ERCC[1:5000]+1))</code></pre>
@@ -372,13 +558,13 @@ ggplot(reads_var, aes(x = bulk_variance, y = mean_single_variance, shape = as.fa
 <pre class="r"><code>ggplot(reads_var, aes(x = bulk_variance, y = var_between_individual, shape = as.factor(ERCC), col = p_of_f)) + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_y_log10() + scale_colour_gradient2(midpoint= 0.5, space=&quot;Lab&quot;) + stat_function(fun= function(x) {x}, col= &quot;#56B4E9&quot;)</code></pre>
 <pre><code>Warning in scale$trans$trans(x): NaNs produced</code></pre>
 <pre><code>Warning in scale$trans$trans(x): NaNs produced</code></pre>
-<pre><code>Warning in loop_apply(n, do.ply): Removed 28 rows containing missing values
+<pre><code>Warning in loop_apply(n, do.ply): Removed 24 rows containing missing values
 (geom_point).</code></pre>
 <p><img src="figure/variance.Rmd/p_of_f-6.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>ggplot(reads_var, aes(x = var_all_single, y = var_between_individual, shape = as.factor(ERCC), col = p_of_f)) + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_y_log10() + scale_colour_gradient2(midpoint= 0.5, space=&quot;Lab&quot;) + stat_function(fun= function(x) {x}, col= &quot;#56B4E9&quot;)</code></pre>
 <pre><code>Warning in scale$trans$trans(x): NaNs produced</code></pre>
 <pre><code>Warning in scale$trans$trans(x): NaNs produced</code></pre>
-<pre><code>Warning in loop_apply(n, do.ply): Removed 28 rows containing missing values
+<pre><code>Warning in loop_apply(n, do.ply): Removed 24 rows containing missing values
 (geom_point).</code></pre>
 <p><img src="figure/variance.Rmd/p_of_f-7.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <p>Pull the F value</p>
@@ -422,7 +608,7 @@ ggplot(reads_var, aes(x = bulk_variance, y = mean_single_variance, shape = as.fa
 <pre class="r"><code>ggplot(reads_var, aes(x = bulk_variance, y = var_between_individual, shape = as.factor(ERCC), col = F_color)) + scale_colour_manual(values=cbPalette) + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_y_log10() + stat_function(fun= function(x) {x}, col= &quot;#56B4E9&quot;)</code></pre>
 <pre><code>Warning in scale$trans$trans(x): NaNs produced</code></pre>
 <pre><code>Warning in scale$trans$trans(x): NaNs produced</code></pre>
-<pre><code>Warning in loop_apply(n, do.ply): Removed 28 rows containing missing values
+<pre><code>Warning in loop_apply(n, do.ply): Removed 24 rows containing missing values
 (geom_point).</code></pre>
 <p><img src="figure/variance.Rmd/Fvalue-3.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>ggplot(reads_var, aes(x = var_all_single, y = var_within_individual, shape = as.factor(ERCC), col = F_color)) + scale_colour_manual(values=cbPalette) + geom_point(size = 2, alpha = 0.5) + scale_x_log10() + scale_y_log10() + stat_function(fun= function(x) {x}, col= &quot;#56B4E9&quot;)</code></pre>
@@ -430,7 +616,7 @@ ggplot(reads_var, aes(x = bulk_variance, y = mean_single_variance, shape = as.fa
 <pre class="r"><code>ggplot(reads_var, aes(x = var_all_single, y = var_between_individual, shape = as.factor(ERCC), col = F_color)) + scale_colour_manual(values=cbPalette) + geom_point(size = 2, alpha = 0.2) + scale_x_log10() + scale_y_log10() + stat_function(fun= function(x) {x}, col= &quot;#56B4E9&quot;)</code></pre>
 <pre><code>Warning in scale$trans$trans(x): NaNs produced</code></pre>
 <pre><code>Warning in scale$trans$trans(x): NaNs produced</code></pre>
-<pre><code>Warning in loop_apply(n, do.ply): Removed 28 rows containing missing values
+<pre><code>Warning in loop_apply(n, do.ply): Removed 24 rows containing missing values
 (geom_point).</code></pre>
 <p><img src="figure/variance.Rmd/Fvalue-5.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
@@ -452,16 +638,20 @@ attached base packages:
 [1] stats     graphics  grDevices utils     datasets  methods   base     
 
 other attached packages:
-[1] edgeR_3.10.2  limma_3.24.9  ggplot2_1.0.1 dplyr_0.4.1   knitr_1.10.5 
+[1] gplots_2.17.0 edgeR_3.10.2  limma_3.24.9  ggplot2_1.0.1 dplyr_0.4.1  
+[6] knitr_1.10.5 
 
 loaded via a namespace (and not attached):
- [1] Rcpp_0.11.6      magrittr_1.5     MASS_7.3-40      munsell_0.4.2   
- [5] colorspace_1.2-6 stringr_1.0.0    plyr_1.8.2       tools_3.2.0     
- [9] parallel_3.2.0   grid_3.2.0       gtable_0.1.2     DBI_0.3.1       
-[13] htmltools_0.2.6  lazyeval_0.1.10  yaml_2.1.13      assertthat_0.1  
-[17] digest_0.6.8     reshape2_1.4.1   formatR_1.2      evaluate_0.7    
-[21] rmarkdown_0.6.1  labeling_0.3     stringi_0.4-1    scales_0.2.4    
-[25] proto_0.3-10    </code></pre>
+ [1] Rcpp_0.11.6        magrittr_1.5       MASS_7.3-40       
+ [4] munsell_0.4.2      colorspace_1.2-6   stringr_1.0.0     
+ [7] plyr_1.8.2         caTools_1.17.1     tools_3.2.0       
+[10] parallel_3.2.0     grid_3.2.0         gtable_0.1.2      
+[13] KernSmooth_2.23-14 DBI_0.3.1          gtools_3.5.0      
+[16] htmltools_0.2.6    yaml_2.1.13        assertthat_0.1    
+[19] digest_0.6.8       reshape2_1.4.1     formatR_1.2       
+[22] bitops_1.0-6       evaluate_0.7       rmarkdown_0.6.1   
+[25] labeling_0.3       gdata_2.16.1       stringi_0.4-1     
+[28] scales_0.2.4       proto_0.3-10      </code></pre>
 </div>
 
 

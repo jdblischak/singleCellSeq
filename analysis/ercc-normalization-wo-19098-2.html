@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+
+<meta name="date" content="2015-06-15" />
+
+<title>ERCC normalization</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">ERCC normalization</h1>
+<h4 class="date"><em>2015-06-15</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#setup">Setup</a></li>
+<li><a href="#correlation-with-ercc">Correlation with ERCC</a></li>
+<li><a href="#linear-shift-normalization">Linear shift normalization</a></li>
+<li><a href="#ruvseq-normalization">RUVseq normalization</a></li>
+<li><a href="#empirical-quantile-normalization">Empirical quantile normalization</a></li>
+<li><a href="#loess-normalization">Loess normalization</a></li>
+<li><a href="#pca-comparison">PCA comparison</a></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2015-06-29</p>
+<p><strong>Code version:</strong> e927fac891c5ab5af9b62b9eecc0232855931c96</p>
+<p><strong>Version with outlier 19098 batch 2 removed</strong></p>
+<p>In this analysis:</p>
+<ul>
+<li>Investigate the fit between ERCC counts per million and the concentration for each sample</li>
+<li>Perform a simple linear shift normalization where the fit between the ERCC counts per million from a sample and the expected concentrations are used to convert the gene counts per million to concentrations.</li>
+<li>Normalize with RUVg using the ERCC spike-ins as negative control genes.</li>
+<li>Compare the normalization approaches.</li>
+</ul>
+<div id="setup" class="section level2">
+<h2>Setup</h2>
+<pre class="r"><code>library(&quot;edgeR&quot;)
+library(&quot;ggplot2&quot;)
+theme_set(theme_bw(base_size = 16))
+library(&quot;RUVSeq&quot;)
+library(&quot;preprocessCore&quot;)
+library(&quot;affy&quot;)
+source(&quot;functions.R&quot;)</code></pre>
+<p>Input annotation.</p>
+<pre class="r"><code>anno &lt;- read.table(&quot;../data/annotation.txt&quot;, header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno)</code></pre>
+<pre><code>  individual batch well     sample_id
+1      19098     1  A01 NA19098.1.A01
+2      19098     1  A02 NA19098.1.A02
+3      19098     1  A03 NA19098.1.A03
+4      19098     1  A04 NA19098.1.A04
+5      19098     1  A05 NA19098.1.A05
+6      19098     1  A06 NA19098.1.A06</code></pre>
+<p>Input molecule counts.</p>
+<pre class="r"><code>molecules &lt;- read.table(&quot;../data/molecules.txt&quot;, header = TRUE,
+                    stringsAsFactors = FALSE)</code></pre>
+<p>Input ERCC concentration information.</p>
+<pre class="r"><code>ercc &lt;- read.table(&quot;../data/ercc-info.txt&quot;, header = TRUE, sep = &quot;\t&quot;,
+                   stringsAsFactors = FALSE)
+colnames(ercc) &lt;- c(&quot;num&quot;, &quot;id&quot;, &quot;subgroup&quot;, &quot;conc_mix1&quot;, &quot;conc_mix2&quot;,
+                    &quot;expected_fc&quot;, &quot;log2_mix1_mix2&quot;)
+head(ercc)</code></pre>
+<pre><code>  num         id subgroup conc_mix1  conc_mix2 expected_fc log2_mix1_mix2
+1   1 ERCC-00130        A 30000.000 7500.00000           4              2
+2   2 ERCC-00004        A  7500.000 1875.00000           4              2
+3   3 ERCC-00136        A  1875.000  468.75000           4              2
+4   4 ERCC-00108        A   937.500  234.37500           4              2
+5   5 ERCC-00116        A   468.750  117.18750           4              2
+6   6 ERCC-00092        A   234.375   58.59375           4              2</code></pre>
+<pre class="r"><code>stopifnot(nrow(ercc) == 92)</code></pre>
+<p>Input list of quality single cells.</p>
+<pre class="r"><code>quality_single_cells &lt;- scan(&quot;../data/quality-single-cells.txt&quot;,
+                             what = &quot;character&quot;)</code></pre>
+<p>Keep only the single cells that passed the <a href="qc-cell-ipsc.html">QC filters</a> and the bulk samples.</p>
+<pre class="r"><code>molecules &lt;- molecules[, grepl(&quot;bulk&quot;, colnames(molecules)) |
+                         colnames(molecules) %in% quality_single_cells]
+anno &lt;- anno[anno$well == &quot;bulk&quot; | anno$sample_id %in% quality_single_cells, ]
+stopifnot(ncol(molecules) == nrow(anno),
+          colnames(molecules) == anno$sample_id)</code></pre>
+<p>Remove all samples from 19098 batch 2.</p>
+<pre class="r"><code>molecules &lt;- molecules[, !(anno$individual == 19098 &amp; anno$batch == 2)]
+anno &lt;- anno[!(anno$individual == 19098 &amp; anno$batch == 2), ]
+stopifnot(ncol(molecules) == nrow(anno))</code></pre>
+<p>Remove genes with zero read counts in the single cells or bulk samples.</p>
+<pre class="r"><code>expressed &lt;- rowSums(molecules[, anno$well == &quot;bulk&quot;]) &gt; 0 &amp;
+             rowSums(molecules[, anno$well != &quot;bulk&quot;]) &gt; 0
+molecules &lt;- molecules[expressed, ]
+dim(molecules)</code></pre>
+<pre><code>[1] 17088   571</code></pre>
+<p>Split the bulk and single samples.</p>
+<pre class="r"><code>molecules_bulk &lt;- molecules[, anno$well == &quot;bulk&quot;]
+molecules_single &lt;- molecules[, anno$well != &quot;bulk&quot;]</code></pre>
+<p>Standardize the molecule counts to account for differences in sequencing depth. This is necessary because the <a href="compare-reads-v-molecules.html#effect-of-sequencing-depth-on-molecule-count">sequencing depth affects the total molecule counts</a>.</p>
+<pre class="r"><code>norm_factors_bulk &lt;- calcNormFactors(molecules_bulk, method = &quot;TMM&quot;)
+molecules_bulk_cpm &lt;- cpm(molecules_bulk, log = TRUE,
+                          lib.size = colSums(molecules_bulk) * norm_factors_bulk)</code></pre>
+<pre class="r"><code>norm_factors_single &lt;- calcNormFactors(molecules_single, method = &quot;TMM&quot;)
+molecules_single_cpm &lt;- cpm(molecules_single, log = TRUE,
+                            lib.size = colSums(molecules_single) * norm_factors_single)</code></pre>
+</div>
+<div id="correlation-with-ercc" class="section level2">
+<h2>Correlation with ERCC</h2>
+<p>How many of the 92 ERCC spike-ins had at least one read sequenced in at least one of the samples?</p>
+<pre class="r"><code>sum(grepl(&quot;ERCC&quot;, rownames(molecules)))</code></pre>
+<pre><code>[1] 67</code></pre>
+<p>Obtain the row indices for the ERCC spike-ins and the genes.</p>
+<pre class="r"><code>ercc_rows &lt;- grep(&quot;ERCC&quot;, rownames(molecules))
+gene_rows &lt;- grep(&quot;ERCC&quot;, rownames(molecules), invert = TRUE)</code></pre>
+<p>Sort ERCC data file by the spike-in ID. The molecules file is already sorted.</p>
+<pre class="r"><code># ercc_counts &lt;- ercc_counts[order(rownames(ercc_counts)), ]
+ercc &lt;- ercc[order(ercc$id), ]
+# Also remove spike-ins with no counts
+ercc &lt;- ercc[ercc$id %in% rownames(molecules), ]
+stopifnot(rownames(molecules[ercc_rows, ]) == ercc$id)</code></pre>
+<p>Create function for investigating the correlation with the ERCC concentration.</p>
+<pre class="r"><code>correlate_ercc &lt;- function(observed, expected, description = &quot;&quot;) {
+  # Plots the relationship between the observed ERCC data and the expected ERCC
+  # concentrations.
+
+  # Args:
+  #  observed: vector of summary statistic of observed ERCC counts
+  #  expected: vector of ERCC concentrations
+  #  description: optional string to add to title
+  plot(expected, observed)
+  ercc_fit &lt;- lm(observed ~ expected)
+  abline(ercc_fit, col = &quot;red&quot;)
+  title(sprintf(&quot;%s\nY ~ %.2fX + %.2f ; R-squared: %.2f&quot;, description,
+                ercc_fit$coefficients[2], ercc_fit$coefficients[1],
+                summary(ercc_fit)$r.squared))
+}</code></pre>
+<p>What is the correlation of the mean molecule counts in the single cells to the expected concentrations?</p>
+<pre class="r"><code>correlate_ercc(rowMeans(molecules_single[ercc_rows, ]), ercc$conc_mix1,
+               description = &quot;single cell molecule counts&quot;)</code></pre>
+<p><img src="figure/ercc-normalization-wo-19098-2.Rmd/ercc-correlation-mean-counts-single-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>What is the correlation of the mean molecule counts in the bulk samples to the expected concentrations?</p>
+<pre class="r"><code>correlate_ercc(rowMeans(molecules_bulk[ercc_rows, ]), ercc$conc_mix1,
+               description =  &quot;bulk molecule counts&quot;)</code></pre>
+<p><img src="figure/ercc-normalization-wo-19098-2.Rmd/ercc-correlation-mean-counts-bulk-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>What is the correlation of the mean molecule log2 counts per million in the single cells to the expected concentrations?</p>
+<pre class="r"><code>correlate_ercc(rowMeans(molecules_single_cpm[ercc_rows, ]), log2(ercc$conc_mix1),
+               description = &quot;single cell log2 cpm&quot;)</code></pre>
+<p><img src="figure/ercc-normalization-wo-19098-2.Rmd/ercc-correlation-mean-cpm-single-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>What is the correlation of the mean molecule log2 counts per million in the bulk samples to the expected concentrations?</p>
+<pre class="r"><code>correlate_ercc(rowMeans(molecules_bulk_cpm[ercc_rows, ]), log2(ercc$conc_mix1),
+               description = &quot;bulk log2 cpm&quot;)</code></pre>
+<p><img src="figure/ercc-normalization-wo-19098-2.Rmd/ercc-correlation-mean-cpm-bulk-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>How much variation is there in the correlation between the samples? The following analysis uses the log2 cpm in single cells.</p>
+<pre class="r"><code>ercc_per_sample &lt;- matrix(nrow = ncol(molecules_single_cpm), ncol = 6)
+colnames(ercc_per_sample) &lt;- c(&quot;individual&quot;, &quot;batch&quot;, &quot;well&quot;,
+                               &quot;intercept&quot;, &quot;slope&quot;, &quot;r2&quot;)
+for (i in 1:ncol(molecules_single_cpm)) {
+  fit &lt;- lm(molecules_single_cpm[ercc_rows, i] ~ log2(ercc$conc_mix1))
+  
+  ercc_per_sample[i, ] &lt;- c(anno$individual[i], anno$batch[i], anno$well[i],
+                            fit$coefficients[1], fit$coefficients[2],
+                            summary(fit)$r.squared)
+}
+ercc_per_sample &lt;- as.data.frame(ercc_per_sample, stringsAsFactors = FALSE)
+ercc_per_sample$intercept &lt;- as.numeric(ercc_per_sample$intercept)
+ercc_per_sample$slope &lt;- as.numeric(ercc_per_sample$slope)
+ercc_per_sample$r2 &lt;- as.numeric(ercc_per_sample$r2)
+stopifnot(!is.na(ercc_per_sample))
+str(ercc_per_sample)</code></pre>
+<pre><code>&#39;data.frame&#39;:   563 obs. of  6 variables:
+ $ individual: chr  &quot;19098&quot; &quot;19098&quot; &quot;19098&quot; &quot;19098&quot; ...
+ $ batch     : chr  &quot;1&quot; &quot;1&quot; &quot;1&quot; &quot;1&quot; ...
+ $ well      : chr  &quot;A01&quot; &quot;A02&quot; &quot;A05&quot; &quot;A06&quot; ...
+ $ intercept : num  0.0923 -0.2623 0.0195 -0.2267 0.1145 ...
+ $ slope     : num  0.702 0.705 0.669 0.717 0.714 ...
+ $ r2        : num  0.761 0.747 0.717 0.789 0.785 ...</code></pre>
+<pre class="r"><code>boxplot(intercept ~ batch + individual, data = ercc_per_sample, las = 2,
+        main = &quot;Variation in the intercept term&quot;, ylab = &quot;Intercept&quot;)</code></pre>
+<p><img src="figure/ercc-normalization-wo-19098-2.Rmd/ercc-intercept-per-sample-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>boxplot(slope ~ batch + individual, data = ercc_per_sample, las = 2,
+        main = &quot;Variation in the slope term&quot;, ylab = &quot;Slope&quot;)</code></pre>
+<p><img src="figure/ercc-normalization-wo-19098-2.Rmd/ercc-slope-per-sample-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>boxplot(r2 ~ batch + individual, data = ercc_per_sample, las = 2,
+        main = &quot;Variation in R-squared&quot;, ylab = &quot;R-squared&quot;)</code></pre>
+<p><img src="figure/ercc-normalization-wo-19098-2.Rmd/ercc-r2-per-sample-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>As expected, batch 2 of individual 19098 is an outlier.</p>
+</div>
+<div id="linear-shift-normalization" class="section level2">
+<h2>Linear shift normalization</h2>
+<p>Perform the normalization separately for bulk and single cells. Use the counts per million.</p>
+<p>Adjust each individual sample based on its ERCC counts.</p>
+<pre class="r"><code>bulk_norm &lt;- molecules_bulk_cpm
+bulk_norm[, ] &lt;- NA
+for (i in 1:ncol(bulk_norm)) {
+  bulk_fit &lt;- lm(molecules_bulk_cpm[ercc_rows, i] ~ log2(ercc$conc_mix1))
+  # Y = mX + b -&gt; X = (Y + b) / m
+  bulk_norm[, i] &lt;- (molecules_bulk_cpm[, i] + bulk_fit$coefficients[1]) /
+                     bulk_fit$coefficients[2]
+}
+stopifnot(!is.na(bulk_norm))</code></pre>
+<pre class="r"><code>single_norm &lt;- molecules_single_cpm
+single_norm[, ] &lt;- NA
+for (i in 1:ncol(single_norm)) {
+  single_fit &lt;- lm(molecules_single_cpm[ercc_rows, i] ~ log2(ercc$conc_mix1))
+  # Y = mX + b -&gt; X = (Y + b) / m
+  single_norm[, i] &lt;- (molecules_single_cpm[, i] + single_fit$coefficients[1]) /
+                       single_fit$coefficients[2]
+}
+stopifnot(!is.na(single_norm))</code></pre>
+</div>
+<div id="ruvseq-normalization" class="section level2">
+<h2>RUVseq normalization</h2>
+<p>Use RUVg from <a href="http://www.nature.com/nbt/journal/v32/n9/full/nbt.2931.html">Risso et al., 2014</a>. It uses the ERCC spike-ins as negative control genes to correct for unwanted variation. It uses counts as input and output. It requires one parameter to be chosen: <code>k</code> is the “number of factors of unwanted variation to be estimated from the data”.</p>
+<p>For k = 1:</p>
+<pre class="r"><code>bulk_ruv_object_k1 &lt;- RUVg(x = as.matrix(molecules_bulk), cIdx = ercc_rows, k = 1)
+bulk_ruv_k1 &lt;- bulk_ruv_object_k1$normalizedCounts
+bulk_ruv_cpm_k1 &lt;- cpm(bulk_ruv_k1, log = TRUE,
+                       lib.size = calcNormFactors(bulk_ruv_k1) * colSums(bulk_ruv_k1))</code></pre>
+<pre class="r"><code>single_ruv_object_k1 &lt;- RUVg(x = as.matrix(molecules_single), cIdx = ercc_rows, k = 1)
+single_ruv_k1 &lt;- single_ruv_object_k1$normalizedCounts
+single_ruv_cpm_k1 &lt;- cpm(single_ruv_k1, log = TRUE,
+                      lib.size = calcNormFactors(single_ruv_k1) * colSums(single_ruv_k1))</code></pre>
+<p>For k = 5:</p>
+<pre class="r"><code>bulk_ruv_object_k5 &lt;- RUVg(x = as.matrix(molecules_bulk), cIdx = ercc_rows, k = 5)
+bulk_ruv_k5 &lt;- bulk_ruv_object_k5$normalizedCounts
+bulk_ruv_cpm_k5 &lt;- cpm(bulk_ruv_k5, log = TRUE,
+                       lib.size = calcNormFactors(bulk_ruv_k5) * colSums(bulk_ruv_k5))</code></pre>
+<pre class="r"><code>single_ruv_object_k5 &lt;- RUVg(x = as.matrix(molecules_single), cIdx = ercc_rows, k = 5)
+single_ruv_k5 &lt;- single_ruv_object_k5$normalizedCounts
+single_ruv_cpm_k5 &lt;- cpm(single_ruv_k5, log = TRUE,
+                      lib.size = calcNormFactors(single_ruv_k5) * colSums(single_ruv_k5))</code></pre>
+<p>For k = 10:</p>
+<pre class="r"><code>bulk_ruv_object_k10 &lt;- RUVg(x = as.matrix(molecules_bulk), cIdx = ercc_rows, k = 10)
+bulk_ruv_k10 &lt;- bulk_ruv_object_k10$normalizedCounts
+bulk_ruv_cpm_k10 &lt;- cpm(bulk_ruv_k10, log = TRUE,
+                       lib.size = calcNormFactors(bulk_ruv_k10) * colSums(bulk_ruv_k10))</code></pre>
+<pre class="r"><code>single_ruv_object_k10 &lt;- RUVg(x = as.matrix(molecules_single), cIdx = ercc_rows, k = 10)
+single_ruv_k10 &lt;- single_ruv_object_k10$normalizedCounts
+single_ruv_cpm_k10 &lt;- cpm(single_ruv_k10, log = TRUE,
+                      lib.size = calcNormFactors(single_ruv_k10) * colSums(single_ruv_k10))</code></pre>
+<p>k = 10 removes all gene expression variation from the bulk data:</p>
+<pre class="r"><code>sum(apply(bulk_ruv_cpm_k10[gene_rows, ], 1, var) == 0)</code></pre>
+<pre><code>[1] 17021</code></pre>
+<pre class="r"><code>nrow(bulk_ruv_cpm_k10[gene_rows, ])</code></pre>
+<pre><code>[1] 17021</code></pre>
+<p>For k = 30 for single cells only:</p>
+<pre class="r"><code>single_ruv_object_k30 &lt;- RUVg(x = as.matrix(molecules_single), cIdx = ercc_rows, k = 30)
+single_ruv_k30 &lt;- single_ruv_object_k30$normalizedCounts
+single_ruv_cpm_k30 &lt;- cpm(single_ruv_k30, log = TRUE,
+                      lib.size = calcNormFactors(single_ruv_k30) * colSums(single_ruv_k30))</code></pre>
+</div>
+<div id="empirical-quantile-normalization" class="section level2">
+<h2>Empirical quantile normalization</h2>
+<p>Instead of using the ERCC specifically as a guide, simply perform an empirical quantile normalization (including both the genes and ERCC controls).</p>
+<pre class="r"><code># from package preprocessCore
+bulk_quant &lt;- normalize.quantiles(as.matrix(molecules_bulk_cpm))</code></pre>
+<pre class="r"><code>single_quant &lt;- normalize.quantiles(as.matrix(molecules_single_cpm))</code></pre>
+</div>
+<div id="loess-normalization" class="section level2">
+<h2>Loess normalization</h2>
+<p><a href="http://www.sciencedirect.com/science/article/pii/S0092867412012263">Lovén et al. 2014</a> used a loess regression to normalize expression data with the ERCC probes. Below is their description:</p>
+<blockquote>
+<p>We used a loess regression to renormalize these MAS5 normalized probe set values by using only the spike-in probe sets to fit the loess. The affy package provides a function, loess.normalize, which will perform loess regression on a matrix of values (defined by using the parameter mat) and allows for the user to specify which subset of data to use when fitting the loess (defined by using the parameter subset, see the affy package documentation for further details). For this application, the parameters mat and subset were set as the MAS5-normalized values and the row indices of the ERCC control probe sets, respectively. The default settings for all other parameters were used. The result of this was a matrix of expression values normalized to the control ERCC probes.</p>
+</blockquote>
+<p><a href="http://www.nature.com/nbt/journal/v32/n9/full/nbt.2931.html">Risso et al. 2014</a> argue that regression-based approaches like this and the linear shift performed above do not work well:</p>
+<blockquote>
+<p>The good performance of RUVg compared to global-scaling and regression-based normalization can be explained by the different assumptions underlying each approach. Global-scaling and regression-based normalization methods assume that unwanted technical effects (i.e., between-sample differences excluding biological effects of interest) are roughly the same for genes and spike-ins and are captured by either a single parameter per sample or a regression function between pairs of samples. Such assumptions were clearly violated for our data sets (e.g., Fig. 4d). RUVg, on the other hand, only assumes that the factors of unwanted variation estimated from the spike-ins span the same linear space as the factors of unwanted variation W for all of the genes.</p>
+</blockquote>
+<pre class="r"><code># From the package affy
+bulk_loess &lt;- normalize.loess(mat = as.matrix(molecules_bulk_cpm),
+                              subset = ercc_rows, log.it = FALSE)</code></pre>
+<pre><code>Done with 1 vs 2 in iteration 1 
+Done with 1 vs 3 in iteration 1 
+Done with 1 vs 4 in iteration 1 
+Done with 1 vs 5 in iteration 1 
+Done with 1 vs 6 in iteration 1 
+Done with 1 vs 7 in iteration 1 
+Done with 1 vs 8 in iteration 1 
+Done with 2 vs 3 in iteration 1 
+Done with 2 vs 4 in iteration 1 
+Done with 2 vs 5 in iteration 1 
+Done with 2 vs 6 in iteration 1 
+Done with 2 vs 7 in iteration 1 
+Done with 2 vs 8 in iteration 1 
+Done with 3 vs 4 in iteration 1 
+Done with 3 vs 5 in iteration 1 
+Done with 3 vs 6 in iteration 1 
+Done with 3 vs 7 in iteration 1 
+Done with 3 vs 8 in iteration 1 
+Done with 4 vs 5 in iteration 1 
+Done with 4 vs 6 in iteration 1 
+Done with 4 vs 7 in iteration 1 
+Done with 4 vs 8 in iteration 1 
+Done with 5 vs 6 in iteration 1 
+Done with 5 vs 7 in iteration 1 
+Done with 5 vs 8 in iteration 1 
+Done with 6 vs 7 in iteration 1 
+Done with 6 vs 8 in iteration 1 
+Done with 7 vs 8 in iteration 1 
+1 2.066825 </code></pre>
+<p>There is an issue with the ercc controls when trying to perform loess regression. It appears fine when there is no subsetting, but it takes so long to run I didn’t let it finish. Since the loess regression on the bulk samples gives a similar to result to the linear shift (not surprisingly since they are both regression-based methods), this does not seem worth the effort to debug. The code below is a record of what I tried and is not evaluated.</p>
+<pre class="r"><code>single_loess &lt;- normalize.loess(mat = as.matrix(molecules_single_cpm),
+                                subset = ercc_rows, log.it = FALSE)</code></pre>
+</div>
+<div id="pca-comparison" class="section level2">
+<h2>PCA comparison</h2>
+<p>These analyses exclude the ERCC controls.</p>
+<p>Raw bulk data:</p>
+<pre class="r"><code>pca_bulk_raw &lt;- run_pca(molecules_bulk_cpm[gene_rows, ])
+plot_pca(pca_bulk_raw$PCs, explained = pca_bulk_raw$explained,
+         metadata = anno[anno$well == &quot;bulk&quot;, ], color = &quot;individual&quot;,
+         shape = &quot;batch&quot;, factors = c(&quot;individual&quot;, &quot;batch&quot;))</code></pre>
+<p><img src="figure/ercc-normalization-wo-19098-2.Rmd/pca-bulk-raw-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>Normalized with a linear shift bulk data:</p>
+<pre class="r"><code>pca_bulk_norm &lt;- run_pca(bulk_norm[gene_rows, ])
+plot_pca(pca_bulk_norm$PCs, explained = pca_bulk_norm$explained,
+         metadata = anno[anno$well == &quot;bulk&quot;, ], color = &quot;individual&quot;,
+         shape = &quot;batch&quot;, factors = c(&quot;individual&quot;, &quot;batch&quot;))</code></pre>
+<p><img src="figure/ercc-normalization-wo-19098-2.Rmd/pca-bulk-norm-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>RUVg-normalized bulk data with k = 1:</p>
+<pre class="r"><code>pca_bulk_ruv_k1 &lt;- run_pca(bulk_ruv_cpm_k1[gene_rows, ])
+plot_pca(pca_bulk_ruv_k1$PCs, explained = pca_bulk_ruv_k1$explained,
+         metadata = anno[anno$well == &quot;bulk&quot;, ], color = &quot;individual&quot;,
+         shape = &quot;batch&quot;, factors = c(&quot;individual&quot;, &quot;batch&quot;))</code></pre>
+<p><img src="figure/ercc-normalization-wo-19098-2.Rmd/pca-bulk-ruv-k1-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>RUVg-normalized bulk data with k = 5:</p>
+<pre class="r"><code>pca_bulk_ruv_k5 &lt;- run_pca(bulk_ruv_cpm_k5[gene_rows, ])
+plot_pca(pca_bulk_ruv_k5$PCs, explained = pca_bulk_ruv_k5$explained,
+         metadata = anno[anno$well == &quot;bulk&quot;, ], color = &quot;individual&quot;,
+         shape = &quot;batch&quot;, factors = c(&quot;individual&quot;, &quot;batch&quot;))</code></pre>
+<p><img src="figure/ercc-normalization-wo-19098-2.Rmd/pca-bulk-ruv-k5-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>Quantile-normalized bulk data:</p>
+<pre class="r"><code>pca_bulk_quant &lt;- run_pca(bulk_quant[gene_rows, ])
+plot_pca(pca_bulk_quant$PCs, explained = pca_bulk_quant$explained,
+         metadata = anno[anno$well == &quot;bulk&quot;, ], color = &quot;individual&quot;,
+         shape = &quot;batch&quot;, factors = c(&quot;individual&quot;, &quot;batch&quot;))</code></pre>
+<p><img src="figure/ercc-normalization-wo-19098-2.Rmd/pca-bulk-quant-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>Loess-normalized bulk data:</p>
+<pre class="r"><code>pca_bulk_loess &lt;- run_pca(bulk_loess[gene_rows, ])
+plot_pca(pca_bulk_loess$PCs, explained = pca_bulk_loess$explained,
+         metadata = anno[anno$well == &quot;bulk&quot;, ], color = &quot;individual&quot;,
+         shape = &quot;batch&quot;, factors = c(&quot;individual&quot;, &quot;batch&quot;))</code></pre>
+<p><img src="figure/ercc-normalization-wo-19098-2.Rmd/pca-bulk-loess-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>Raw single cell data:</p>
+<pre class="r"><code>pca_single_raw &lt;- run_pca(molecules_single_cpm[gene_rows, ])
+plot_pca(pca_single_raw$PCs, explained = pca_single_raw$explained,
+         metadata = anno[anno$well != &quot;bulk&quot;, ], color = &quot;individual&quot;,
+         shape = &quot;batch&quot;, factors = c(&quot;individual&quot;, &quot;batch&quot;))</code></pre>
+<p><img src="figure/ercc-normalization-wo-19098-2.Rmd/pca-single-raw-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>Normalized with a linear shift single cell data:</p>
+<pre class="r"><code>pca_single_norm &lt;- run_pca(single_norm[gene_rows, ])
+plot_pca(pca_single_norm$PCs, explained = pca_single_norm$explained,
+         metadata = anno[anno$well != &quot;bulk&quot;, ], color = &quot;individual&quot;,
+         shape = &quot;batch&quot;, factors = c(&quot;individual&quot;, &quot;batch&quot;))</code></pre>
+<p><img src="figure/ercc-normalization-wo-19098-2.Rmd/pca-single-norm-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>RUVg-normalized single cell data with k = 1:</p>
+<pre class="r"><code>pca_single_ruv_k1 &lt;- run_pca(single_ruv_cpm_k1[gene_rows, ])
+plot_pca(pca_single_ruv_k1$PCs, explained = pca_single_ruv_k1$explained,
+         metadata = anno[anno$well != &quot;bulk&quot;, ], color = &quot;individual&quot;,
+         shape = &quot;batch&quot;, factors = c(&quot;individual&quot;, &quot;batch&quot;))</code></pre>
+<p><img src="figure/ercc-normalization-wo-19098-2.Rmd/pca-single-ruv-k1-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>RUVg-normalized single cell data with k = 5:</p>
+<pre class="r"><code>pca_single_ruv_k5 &lt;- run_pca(single_ruv_cpm_k5[gene_rows, ])
+plot_pca(pca_single_ruv_k5$PCs, explained = pca_single_ruv_k5$explained,
+         metadata = anno[anno$well != &quot;bulk&quot;, ], color = &quot;individual&quot;,
+         shape = &quot;batch&quot;, factors = c(&quot;individual&quot;, &quot;batch&quot;))</code></pre>
+<p><img src="figure/ercc-normalization-wo-19098-2.Rmd/pca-single-ruv-k5-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>RUVg-normalized single cell data with k = 10:</p>
+<pre class="r"><code>pca_single_ruv_k10 &lt;- run_pca(single_ruv_cpm_k10[gene_rows, ])
+plot_pca(pca_single_ruv_k10$PCs, explained = pca_single_ruv_k10$explained,
+         metadata = anno[anno$well != &quot;bulk&quot;, ], color = &quot;individual&quot;,
+         shape = &quot;batch&quot;, factors = c(&quot;individual&quot;, &quot;batch&quot;))</code></pre>
+<p><img src="figure/ercc-normalization-wo-19098-2.Rmd/pca-single-ruv-k10-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>RUVg-normalized single cell data with k = 30:</p>
+<pre class="r"><code>pca_single_ruv_k30 &lt;- run_pca(single_ruv_cpm_k30[gene_rows, ])
+plot_pca(pca_single_ruv_k30$PCs, explained = pca_single_ruv_k30$explained,
+         metadata = anno[anno$well != &quot;bulk&quot;, ], color = &quot;individual&quot;,
+         shape = &quot;batch&quot;, factors = c(&quot;individual&quot;, &quot;batch&quot;))</code></pre>
+<p><img src="figure/ercc-normalization-wo-19098-2.Rmd/pca-single-ruv-k30-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>Quantile-normalized single cell data:</p>
+<pre class="r"><code>pca_single_quant &lt;- run_pca(single_quant[gene_rows, ])
+plot_pca(pca_single_quant$PCs, explained = pca_single_quant$explained,
+         metadata = anno[anno$well != &quot;bulk&quot;, ], color = &quot;individual&quot;,
+         shape = &quot;batch&quot;, factors = c(&quot;individual&quot;, &quot;batch&quot;))</code></pre>
+<p><img src="figure/ercc-normalization-wo-19098-2.Rmd/pca-single-quant-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] stats4    parallel  stats     graphics  grDevices utils     datasets 
+[8] methods   base     
+
+other attached packages:
+ [1] testit_0.4              affy_1.46.0            
+ [3] preprocessCore_1.30.0   RUVSeq_1.2.0           
+ [5] EDASeq_2.2.0            ShortRead_1.26.0       
+ [7] GenomicAlignments_1.4.1 Rsamtools_1.20.4       
+ [9] GenomicRanges_1.20.5    GenomeInfoDb_1.4.0     
+[11] Biostrings_2.36.1       XVector_0.8.0          
+[13] IRanges_2.2.4           S4Vectors_0.6.0        
+[15] BiocParallel_1.2.2      Biobase_2.28.0         
+[17] BiocGenerics_0.14.0     ggplot2_1.0.1          
+[19] edgeR_3.10.2            limma_3.24.9           
+[21] knitr_1.10.5           
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.11.6          lattice_0.20-31      digest_0.6.8        
+ [4] plyr_1.8.2           futile.options_1.0.0 aroma.light_2.4.0   
+ [7] RSQLite_1.0.0        DESeq_1.20.0         evaluate_0.7        
+[10] BiocInstaller_1.18.2 zlibbioc_1.14.0      annotate_1.46.0     
+[13] R.utils_2.1.0        R.oo_1.19.0          rmarkdown_0.6.1     
+[16] proto_0.3-10         labeling_0.3         splines_3.2.0       
+[19] geneplotter_1.46.0   stringr_1.0.0        munsell_0.4.2       
+[22] htmltools_0.2.6      matrixStats_0.14.0   XML_3.98-1.2        
+[25] MASS_7.3-40          bitops_1.0-6         R.methodsS3_1.7.0   
+[28] grid_3.2.0           xtable_1.7-4         gtable_0.1.2        
+[31] DBI_0.3.1            magrittr_1.5         formatR_1.2         
+[34] scales_0.2.4         stringi_0.4-1        hwriter_1.3.2       
+[37] reshape2_1.4.1       genefilter_1.50.0    affyio_1.36.0       
+[40] latticeExtra_0.6-26  futile.logger_1.4.1  lambda.r_1.1.7      
+[43] RColorBrewer_1.1-2   tools_3.2.0          survival_2.38-1     
+[46] yaml_2.1.13          AnnotationDbi_1.30.1 colorspace_1.2-6    </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+
+</body>
+</html>

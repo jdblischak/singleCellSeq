@@ -134,8 +134,8 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-06-20</p>
-<p><strong>Code version:</strong> b6dbdcd4a7c0469b52ff6467aaedf5711f5179a2</p>
+<p><strong>Last updated:</strong> 2015-06-29</p>
+<p><strong>Code version:</strong> e927fac891c5ab5af9b62b9eecc0232855931c96</p>
 <p>First, compared counts via three methods:</p>
 <ul>
 <li><strong>reads_cpm</strong> - standard counts per million</li>
@@ -254,23 +254,40 @@ ggplot(mean_data, aes(x = reads_cpm, y = molecules)) +
 <h2>Effect of sequencing depth on molecule count</h2>
 <p>How dependent are the molecule counts on the total molecule count for a given sample? Should we standardize by the total molecule count per sample? <a href="http://www.nature.com/nmeth/journal/v11/n2/full/nmeth.2772.html">Islam et al. 2014</a> argue that this is not necessary, “scales for molecule-counting scatterplots (Fig. 2d,e) are absolute and would not change appreciably if the number of reads were increased.” Let’s check this assumption.</p>
 <p>Does the total number of molecules per sample vary with the total number of reads? If it is not necessary to standardize the molecule counts, the molecule counts should be consistent across varying read depths.</p>
-<pre class="r"><code>total_reads_single &lt;- colSums(reads)[anno$well != &quot;bulk&quot;]
-total_molecules_single &lt;- colSums(molecules)[anno$well != &quot;bulk&quot;]
+<pre class="r"><code>total_reads_single &lt;- colSums(reads)[anno$well != &quot;bulk&quot;] / 10^6
+total_molecules_single &lt;- colSums(molecules)[anno$well != &quot;bulk&quot;] / 10^3
 plot(total_reads_single, total_molecules_single,
-     xlab = &quot;Total number of reads&quot;,
-     ylab = &quot;Total number of molecules&quot;,
-     main = &quot;Effect of read depth on single cells&quot;)
+     xlab = &quot;Total number of reads (x10^6)&quot;,
+     ylab = &quot;Total number of molecules (x10^3)&quot;,
+     main = &quot;Effect of read depth on single cells&quot;,
+     col = anno$individual[anno$well != &quot;bulk&quot;])
 abline(lm(total_molecules_single ~ total_reads_single), col = &quot;red&quot;)</code></pre>
 <p><img src="figure/compare-reads-v-molecules.Rmd/total-mol-v-reads-single-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>total_reads_bulk &lt;- colSums(reads)[anno$well == &quot;bulk&quot;]
-total_molecules_bulk &lt;- colSums(molecules)[anno$well == &quot;bulk&quot;]
+<pre class="r"><code>total_reads_bulk &lt;- colSums(reads)[anno$well == &quot;bulk&quot;] / 10^6
+total_molecules_bulk &lt;- colSums(molecules)[anno$well == &quot;bulk&quot;] / 10^3
 plot(total_reads_bulk, total_molecules_bulk,
-     xlab = &quot;Total number of reads&quot;,
-     ylab = &quot;Total number of molecules&quot;,
-     main = &quot;Effect of read depth on bulk samples&quot;)
-abline(lm(total_molecules_bulk ~ total_reads_bulk), col = &quot;red&quot;)</code></pre>
+     xlab = &quot;Total number of reads (x10^6)&quot;,
+     ylab = &quot;Total number of molecules (x10^3)&quot;,
+     main = &quot;Effect of read depth on bulk samples&quot;,
+     col = anno$individual[anno$well == &quot;bulk&quot;],
+     pch = 19)
+abline(lm((total_molecules_bulk) ~ (total_reads_bulk)), col = &quot;red&quot;)</code></pre>
 <p><img src="figure/compare-reads-v-molecules.Rmd/total-mol-v-reads-bulk-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <p>So this is clearly not the case. Perhaps in the ideal case where all the cells are sequenced to saturation, then any increasing sequencing would not make a difference in the molecule counts.</p>
+<p>Also, there is a difference in total molecule count between the three individuals.</p>
+<pre class="r"><code>boxplot(total_molecules_single ~ anno$individual[anno$well != &quot;bulk&quot;],
+        xlab = &quot;Individual&quot;,
+        ylab = &quot;Molecules (x10^3)&quot;,
+        main = &quot;Total molecule counts vary across individuals&quot;,
+        col = c(19098, 19101, 19239))</code></pre>
+<p><img src="figure/compare-reads-v-molecules.Rmd/total-molecules-by-ind-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>But not for the total number of reads, as expected from the plot above of the effect of read depth where all three individuals span the x-axis of the total number of reads.</p>
+<pre class="r"><code>boxplot(total_reads_single ~ anno$individual[anno$well != &quot;bulk&quot;],
+        xlab = &quot;Individual&quot;,
+        ylab = &quot;Reads (x10^6)&quot;,
+        main = &quot;Total read counts vary across individuals&quot;,
+        col = c(19098, 19101, 19239))</code></pre>
+<p><img src="figure/compare-reads-v-molecules.Rmd/total-reads-by-ind-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <p>What effect does this difference in total molecule count have in PCA?</p>
 <pre class="r"><code>pca_single &lt;- run_pca(molecules[, anno$well != &quot;bulk&quot;])</code></pre>
 <pre class="r"><code>plot(pca_single$PCs[, &quot;PC1&quot;], pca_single$PCs[, &quot;PC2&quot;],

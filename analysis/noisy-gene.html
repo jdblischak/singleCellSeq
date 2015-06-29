@@ -133,19 +133,17 @@ img {
 <li><a href="#poisson-sucks">Poisson sucks!</a></li>
 <li><a href="#noisy-genes">noisy genes</a></li>
 <li><a href="#variation-between-individuals">variation between individuals</a></li>
-<li><a href="#variance-of-batches-by-molecules">variance of batches by molecules</a></li>
 <li><a href="#session-information">Session information</a></li>
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-06-19</p>
-<p><strong>Code version:</strong> 750e4602c9938fd588568d94a8ce5d36ba79522d</p>
+<p><strong>Last updated:</strong> 2015-06-29</p>
+<p><strong>Code version:</strong> e927fac891c5ab5af9b62b9eecc0232855931c96</p>
 <div id="input" class="section level2">
 <h2>Input</h2>
 <pre class="r"><code>library(&quot;dplyr&quot;)
 library(&quot;ggplot2&quot;)
 theme_set(theme_bw(base_size = 16))
-library(&quot;gplots&quot;)
 library(&quot;edgeR&quot;)</code></pre>
 <p>Summary counts from featureCounts. Created with <a href="https://github.com/jdblischak/singleCellSeq/blob/master/code/gather-summary-counts.py">gather-summary-counts.py</a>.</p>
 <pre class="r"><code>summary_counts &lt;- read.table(&quot;../data/summary-counts.txt&quot;, header = TRUE,
@@ -614,217 +612,6 @@ whatever_list[whatever_list %in% noisy_gene_all]</code></pre>
 <pre><code>[1] &quot;ENSG00000069275&quot; &quot;ENSG00000088305&quot; &quot;ENSG00000112306&quot; &quot;ENSG00000117724&quot;
 [5] &quot;ENSG00000163041&quot; &quot;ENSG00000166426&quot; &quot;ENSG00000185088&quot; &quot;ENSG00000256618&quot;</code></pre>
 </div>
-<div id="variance-of-batches-by-molecules" class="section level2">
-<h2>variance of batches by molecules</h2>
-<pre class="r"><code># re create table using the molecule counts
-group_list &lt;- c(&quot;19&quot;,&quot;19098&quot;,&quot;19101&quot;,&quot;19239&quot;,&quot;19098.1&quot;,&quot;19098.2&quot;,&quot;19098.3&quot;,&quot;19101.1&quot;,&quot;19101.2&quot;,&quot;19101.3&quot;,&quot;19239.1&quot;,&quot;19239.2&quot;,&quot;19239.3&quot;)
-
-### create a function to generate tables of mean,
-create_info_table &lt;- function(statistics=&quot;mean&quot;){
-  # first correct
-  molecules.crt &lt;- -1024*log(1-molecules_single_qc/1024)
-  # loop all possible combinations
-  big_table &lt;- do.call(cbind,lapply(group_list,function(x){
-      # subset data
-      data_ref &lt;- molecules.crt[grep(x,names(molecules.crt))]
-      if(statistics==&quot;mean&quot;){
-        ans &lt;- apply(data_ref,1,function(xx) mean(xx,na.rm=TRUE))  
-      }
-      if(statistics==&quot;var&quot;){
-        ans &lt;- apply(data_ref,1,function(xx) var(xx,na.rm=TRUE))  
-      }
-      if(statistics==&quot;CV&quot;){
-        ans &lt;- apply(data_ref,1,function(xx)  sd(xx,na.rm=TRUE)) / apply(data_ref,1,function(xx)  mean(xx,na.rm=TRUE))   
-      }
-    ans
-    })
-  )
-    big_table &lt;- data.frame(big_table)
-    names(big_table) &lt;- paste(statistics,group_list,sep=&quot;_&quot;)
-    big_table$gene_name &lt;- rownames(molecules_single_qc)
-    big_table
-}
-
-# create big table for mean, var and cv
-table_mean &lt;- create_info_table(statistics=&quot;mean&quot;)
-table_var &lt;- create_info_table(statistics=&quot;var&quot;)
-table_cv &lt;- create_info_table(statistics=&quot;CV&quot;)
-
-# replace 0 as NA
-table_mean[table_mean==0] &lt;- NA
-table_var[table_mean==0] &lt;- NA
-table_cv[table_mean==0] &lt;- NA
-
-# calculate the correlation
-cor(table_mean[,2:13],use=&quot;pairwise.complete.obs&quot;)</code></pre>
-<pre><code>             mean_19098 mean_19101 mean_19239 mean_19098.1 mean_19098.2
-mean_19098    1.0000000  0.9839797  0.9773575    0.9871971    0.9614158
-mean_19101    0.9839797  1.0000000  0.9893402    0.9858694    0.9142195
-mean_19239    0.9773575  0.9893402  1.0000000    0.9816673    0.9037504
-mean_19098.1  0.9871971  0.9858694  0.9816673    1.0000000    0.9086919
-mean_19098.2  0.9614158  0.9142195  0.9037504    0.9086919    1.0000000
-mean_19098.3  0.9878344  0.9892384  0.9841899    0.9873431    0.9146105
-mean_19101.1  0.9805656  0.9966921  0.9874818    0.9876623    0.9053233
-mean_19101.2  0.9740632  0.9917666  0.9766555    0.9667400    0.9160665
-mean_19101.3  0.9825218  0.9967820  0.9885803    0.9866976    0.9087439
-mean_19239.1  0.9725655  0.9853198  0.9958314    0.9755938    0.9009354
-mean_19239.2  0.9792602  0.9903917  0.9967592    0.9827195    0.9055948
-mean_19239.3  0.9694068  0.9814716  0.9958566    0.9756376    0.8941624
-             mean_19098.3 mean_19101.1 mean_19101.2 mean_19101.3
-mean_19098      0.9878344    0.9805656    0.9740632    0.9825218
-mean_19101      0.9892384    0.9966921    0.9917666    0.9967820
-mean_19239      0.9841899    0.9874818    0.9766555    0.9885803
-mean_19098.1    0.9873431    0.9876623    0.9667400    0.9866976
-mean_19098.2    0.9146105    0.9053233    0.9160665    0.9087439
-mean_19098.3    1.0000000    0.9852131    0.9785996    0.9893563
-mean_19101.1    0.9852131    1.0000000    0.9802413    0.9927300
-mean_19101.2    0.9785996    0.9802413    1.0000000    0.9830524
-mean_19101.3    0.9893563    0.9927300    0.9830524    1.0000000
-mean_19239.1    0.9789886    0.9824673    0.9759193    0.9826403
-mean_19239.2    0.9870813    0.9892975    0.9772578    0.9890488
-mean_19239.3    0.9759095    0.9799011    0.9662680    0.9829137
-             mean_19239.1 mean_19239.2 mean_19239.3
-mean_19098      0.9725655    0.9792602    0.9694068
-mean_19101      0.9853198    0.9903917    0.9814716
-mean_19239      0.9958314    0.9967592    0.9958566
-mean_19098.1    0.9755938    0.9827195    0.9756376
-mean_19098.2    0.9009354    0.9055948    0.8941624
-mean_19098.3    0.9789886    0.9870813    0.9759095
-mean_19101.1    0.9824673    0.9892975    0.9799011
-mean_19101.2    0.9759193    0.9772578    0.9662680
-mean_19101.3    0.9826403    0.9890488    0.9829137
-mean_19239.1    1.0000000    0.9909036    0.9857779
-mean_19239.2    0.9909036    1.0000000    0.9888008
-mean_19239.3    0.9857779    0.9888008    1.0000000</code></pre>
-<pre class="r"><code>cor(table_var[,2:13],use=&quot;pairwise.complete.obs&quot;)</code></pre>
-<pre><code>            var_19098 var_19101 var_19239 var_19098.1 var_19098.2
-var_19098   1.0000000 0.3419450 0.3435378   0.3336636   0.9602641
-var_19101   0.3419450 1.0000000 0.9487677   0.9497947   0.5040645
-var_19239   0.3435378 0.9487677 1.0000000   0.8901502   0.5244850
-var_19098.1 0.3336636 0.9497947 0.8901502   1.0000000   0.4510561
-var_19098.2 0.9602641 0.5040645 0.5244850   0.4510561   1.0000000
-var_19098.3 0.3505174 0.9369877 0.9660533   0.8777131   0.5309666
-var_19101.1 0.3356185 0.9685944 0.9436496   0.9197784   0.4938717
-var_19101.2 0.3316902 0.9157452 0.9453922   0.8461736   0.5182894
-var_19101.3 0.3215757 0.9779003 0.8966859   0.9148404   0.4821452
-var_19239.1 0.3309118 0.8895149 0.9674818   0.8216700   0.5153712
-var_19239.2 0.3429557 0.9649179 0.9791316   0.9211523   0.5131457
-var_19239.3 0.3384715 0.9460159 0.9861921   0.8644694   0.5250110
-            var_19098.3 var_19101.1 var_19101.2 var_19101.3 var_19239.1
-var_19098     0.3505174   0.3356185   0.3316902   0.3215757   0.3309118
-var_19101     0.9369877   0.9685944   0.9157452   0.9779003   0.8895149
-var_19239     0.9660533   0.9436496   0.9453922   0.8966859   0.9674818
-var_19098.1   0.8777131   0.9197784   0.8461736   0.9148404   0.8216700
-var_19098.2   0.5309666   0.4938717   0.5182894   0.4821452   0.5153712
-var_19098.3   1.0000000   0.9239458   0.9403346   0.8879576   0.9479596
-var_19101.1   0.9239458   1.0000000   0.8959693   0.9068708   0.8822269
-var_19101.2   0.9403346   0.8959693   1.0000000   0.8582519   0.9567067
-var_19101.3   0.8879576   0.9068708   0.8582519   1.0000000   0.8251826
-var_19239.1   0.9479596   0.8822269   0.9567067   0.8251826   1.0000000
-var_19239.2   0.9609943   0.9518805   0.9220763   0.9256289   0.9338517
-var_19239.3   0.9579057   0.9448598   0.9274619   0.9017937   0.9424065
-            var_19239.2 var_19239.3
-var_19098     0.3429557   0.3384715
-var_19101     0.9649179   0.9460159
-var_19239     0.9791316   0.9861921
-var_19098.1   0.9211523   0.8644694
-var_19098.2   0.5131457   0.5250110
-var_19098.3   0.9609943   0.9579057
-var_19101.1   0.9518805   0.9448598
-var_19101.2   0.9220763   0.9274619
-var_19101.3   0.9256289   0.9017937
-var_19239.1   0.9338517   0.9424065
-var_19239.2   1.0000000   0.9614775
-var_19239.3   0.9614775   1.0000000</code></pre>
-<pre class="r"><code>cor(table_cv[,2:13],use=&quot;pairwise.complete.obs&quot;)</code></pre>
-<pre><code>            CV_19098  CV_19101  CV_19239 CV_19098.1 CV_19098.2 CV_19098.3
-CV_19098   1.0000000 0.8543569 0.8228936  0.9219708  0.9024714  0.8789688
-CV_19101   0.8543569 1.0000000 0.8410627  0.8321088  0.8276016  0.8020921
-CV_19239   0.8228936 0.8410627 1.0000000  0.8033804  0.8049631  0.7850614
-CV_19098.1 0.9219708 0.8321088 0.8033804  1.0000000  0.8267383  0.8050309
-CV_19098.2 0.9024714 0.8276016 0.8049631  0.8267383  1.0000000  0.8073521
-CV_19098.3 0.8789688 0.8020921 0.7850614  0.8050309  0.8073521  1.0000000
-CV_19101.1 0.8150080 0.9203036 0.8024635  0.8238322  0.8247450  0.7890156
-CV_19101.2 0.8158548 0.9144696 0.8117982  0.8117253  0.8180696  0.8068085
-CV_19101.3 0.8195806 0.8966496 0.8218339  0.8333849  0.8350337  0.8189758
-CV_19239.1 0.7731554 0.7942944 0.8882743  0.7885392  0.7918402  0.7846490
-CV_19239.2 0.7943118 0.8088916 0.9020943  0.8001410  0.8053174  0.7880042
-CV_19239.3 0.7873795 0.8109269 0.9164561  0.7882794  0.7941985  0.7833103
-           CV_19101.1 CV_19101.2 CV_19101.3 CV_19239.1 CV_19239.2
-CV_19098    0.8150080  0.8158548  0.8195806  0.7731554  0.7943118
-CV_19101    0.9203036  0.9144696  0.8966496  0.7942944  0.8088916
-CV_19239    0.8024635  0.8117982  0.8218339  0.8882743  0.9020943
-CV_19098.1  0.8238322  0.8117253  0.8333849  0.7885392  0.8001410
-CV_19098.2  0.8247450  0.8180696  0.8350337  0.7918402  0.8053174
-CV_19098.3  0.7890156  0.8068085  0.8189758  0.7846490  0.7880042
-CV_19101.1  1.0000000  0.8340485  0.8505097  0.7931791  0.8114995
-CV_19101.2  0.8340485  1.0000000  0.8500972  0.8024025  0.8122885
-CV_19101.3  0.8505097  0.8500972  1.0000000  0.8105332  0.8277353
-CV_19239.1  0.7931791  0.8024025  0.8105332  1.0000000  0.8156697
-CV_19239.2  0.8114995  0.8122885  0.8277353  0.8156697  1.0000000
-CV_19239.3  0.7998317  0.8121711  0.8260138  0.8118347  0.8283073
-           CV_19239.3
-CV_19098    0.7873795
-CV_19101    0.8109269
-CV_19239    0.9164561
-CV_19098.1  0.7882794
-CV_19098.2  0.7941985
-CV_19098.3  0.7833103
-CV_19101.1  0.7998317
-CV_19101.2  0.8121711
-CV_19101.3  0.8260138
-CV_19239.1  0.8118347
-CV_19239.2  0.8283073
-CV_19239.3  1.0000000</code></pre>
-<pre class="r"><code>heatmap.2(cor(table_mean[,5:13],use=&quot;pairwise.complete.obs&quot;), trace=&quot;none&quot;,cexRow=1,cexCol=1,margins=c(8,8))</code></pre>
-<p><img src="figure/noisy-gene.Rmd/variance-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>heatmap.2(cor(table_var[,2:13],use=&quot;pairwise.complete.obs&quot;), trace=&quot;none&quot;,cexRow=1,cexCol=1,margins=c(8,8))</code></pre>
-<p><img src="figure/noisy-gene.Rmd/variance-2.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>heatmap.2(cor(table_cv[,2:13],use=&quot;pairwise.complete.obs&quot;), trace=&quot;none&quot;,cexRow=1,cexCol=1,margins=c(8,8))</code></pre>
-<p><img src="figure/noisy-gene.Rmd/variance-3.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
-<pre class="r"><code># create a table for boxplot of CV correlation 
-corr_CV &lt;- cor(table_cv[,2:13],use=&quot;pairwise.complete.obs&quot;)
-
-corr_boxplot &lt;- data.frame(
-correlation=c(corr_CV[4,5:6],corr_CV[5,6],corr_CV[7,8:9],corr_CV[8,9],corr_CV[7,8:9],corr_CV[11,12],corr_CV[4:6,7:12],corr_CV[7:9,10:12]), cor_source=c(rep(&quot;within&quot;,9),rep(&quot;between&quot;,27)), individual=c(rep(&quot;19098&quot;,3),rep(&quot;19101&quot;,3),rep(&quot;19239&quot;,3),rep(&quot;19098.19101&quot;,9),rep(&quot;19098.19239&quot;,9),rep(&quot;19101.19239&quot;,9)))
-
-# t test
-t_test &lt;- t.test(corr_boxplot[1:6,1],corr_boxplot[7:33,1],alternative = &quot;greater&quot;)
-t_test</code></pre>
-<pre><code>
-    Welch Two Sample t-test
-
-data:  corr_boxplot[1:6, 1] and corr_boxplot[7:33, 1]
-t = 2.1948, df = 7.0444, p-value = 0.03199
-alternative hypothesis: true difference in means is greater than 0
-95 percent confidence interval:
- 0.002678837         Inf
-sample estimates:
-mean of x mean of y 
-0.8289628 0.8094953 </code></pre>
-<pre class="r"><code>ggplot(corr_boxplot, aes(cor_source,correlation)) + geom_boxplot() + geom_jitter(aes(colour = individual, size = 2, width = 0.5)) </code></pre>
-<p><img src="figure/noisy-gene.Rmd/variance-4.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
-<pre class="r"><code># create a table for boxplot of CV correlation without 19098.2
-corr_boxplot_no &lt;- data.frame(
-correlation=c(corr_CV[4,6],corr_CV[7,8:9],corr_CV[8,9],corr_CV[7,8:9],corr_CV[11,12],corr_CV[4,7:12],corr_CV[6,7:12],corr_CV[7:9,10:12]), cor_source=c(rep(&quot;within&quot;,7),rep(&quot;between&quot;,21)), individual=c(rep(&quot;19098&quot;,1),rep(&quot;19101&quot;,3),rep(&quot;19239&quot;,3),rep(&quot;19098.19101&quot;,3),rep(&quot;19098.19239&quot;,3),rep(&quot;19098.19101&quot;,3),rep(&quot;19098.19239&quot;,3), rep(&quot;19101.19239&quot;,9)))
-
-# t test
-t_test &lt;- t.test(corr_boxplot_no[1:6,1],corr_boxplot_no[7:33,1],alternative = &quot;greater&quot;)
-t_test</code></pre>
-<pre><code>
-    Welch Two Sample t-test
-
-data:  corr_boxplot_no[1:6, 1] and corr_boxplot_no[7:33, 1]
-t = 3.8789, df = 7.3015, p-value = 0.002793
-alternative hypothesis: true difference in means is greater than 0
-95 percent confidence interval:
- 0.01594276        Inf
-sample estimates:
-mean of x mean of y 
-0.8373741 0.8063922 </code></pre>
-<pre class="r"><code>ggplot(corr_boxplot_no, aes(cor_source,correlation)) + geom_boxplot() + geom_jitter(aes(colour = individual, size = 2, width = 0.5))</code></pre>
-<p><img src="figure/noisy-gene.Rmd/variance-5.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
-</div>
 <div id="session-information" class="section level2">
 <h2>Session information</h2>
 <pre class="r"><code>sessionInfo()</code></pre>
@@ -843,20 +630,16 @@ attached base packages:
 [1] stats     graphics  grDevices utils     datasets  methods   base     
 
 other attached packages:
-[1] edgeR_3.10.2  limma_3.24.9  gplots_2.17.0 ggplot2_1.0.1 dplyr_0.4.1  
-[6] knitr_1.10.5 
+[1] edgeR_3.10.2  limma_3.24.9  ggplot2_1.0.1 dplyr_0.4.1   knitr_1.10.5 
 
 loaded via a namespace (and not attached):
- [1] Rcpp_0.11.6        magrittr_1.5       MASS_7.3-40       
- [4] munsell_0.4.2      colorspace_1.2-6   stringr_1.0.0     
- [7] plyr_1.8.2         caTools_1.17.1     tools_3.2.0       
-[10] parallel_3.2.0     grid_3.2.0         gtable_0.1.2      
-[13] KernSmooth_2.23-14 DBI_0.3.1          htmltools_0.2.6   
-[16] gtools_3.5.0       lazyeval_0.1.10    yaml_2.1.13       
-[19] assertthat_0.1     digest_0.6.8       reshape2_1.4.1    
-[22] formatR_1.2        bitops_1.0-6       evaluate_0.7      
-[25] rmarkdown_0.6.1    labeling_0.3       gdata_2.16.1      
-[28] stringi_0.4-1      scales_0.2.4       proto_0.3-10      </code></pre>
+ [1] Rcpp_0.11.6      magrittr_1.5     MASS_7.3-40      munsell_0.4.2   
+ [5] colorspace_1.2-6 stringr_1.0.0    plyr_1.8.2       tools_3.2.0     
+ [9] parallel_3.2.0   grid_3.2.0       gtable_0.1.2     DBI_0.3.1       
+[13] htmltools_0.2.6  lazyeval_0.1.10  yaml_2.1.13      assertthat_0.1  
+[17] digest_0.6.8     reshape2_1.4.1   formatR_1.2      evaluate_0.7    
+[21] rmarkdown_0.6.1  labeling_0.3     stringi_0.4-1    scales_0.2.4    
+[25] proto_0.3-10    </code></pre>
 </div>
 
 
