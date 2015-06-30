@@ -1,12 +1,25 @@
 
-
+# Perform Principal Components Analysis (PCA).
+#
+# Args:
+#   x: gene-by-sample matrix
+#   retx, center, scale - see ?prcomp
+#
+# Returns a list with the following elements:
+#   PCs - sample-by-PC matrix of principal components
+#   explained - proportion of variance explained by each PC
+#
+# Reference: Zhang et al. 2009 (http://www.ncbi.nlm.nih.gov/pubmed/19763933)
 run_pca <- function(x, retx = TRUE, center = TRUE, scale = TRUE) {
-  pca <- prcomp(t(x), retx = TRUE, center = center, scale. = scale)
+  library("testit")
+
+  pca <- prcomp(t(x), retx = retx, center = center, scale. = scale)
   variances <- pca$sdev^2
   explained <- variances / sum(variances)
+  assert("Variance explained is calculated correctly.",
+         explained[1:2] - summary(pca)$importance[2, 1:2] < 0.0001)
   return(list(PCs = pca$x, explained = explained))
 }
-
 
 # Plot PCA results.
 #
