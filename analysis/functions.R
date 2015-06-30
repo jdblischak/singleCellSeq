@@ -17,8 +17,7 @@ run_pca <- function(x, retx = TRUE, center = TRUE, scale = TRUE) {
   variances <- pca$sdev^2
   explained <- variances / sum(variances)
   assert("Variance explained is calculated correctly.",
-         round(explained[1:2], digits = 4) ==
-         round(summary(pca)$importance[2, 1:2], digits = 4))
+         explained[1:2] - summary(pca)$importance[2, 1:2] < 0.0001)
   return(list(PCs = pca$x, explained = explained))
 }
 
