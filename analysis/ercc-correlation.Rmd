@@ -13,7 +13,9 @@ source("chunk-options.R")
 
 In this analysis:
 
-*  Investigate the fit between ERCC counts per million and the concentration for each sample
+*  Investigate the fit between the observed ERCC data and the expected concentrations
+*  Investigate how the ERCC fit varies across individuals and batches
+     *  Identify 19098 batch 2 as a clear outlier
 
 ## Input
 
@@ -66,7 +68,7 @@ quality_single_cells <- scan("../data/quality-single-cells.txt",
 
 ## Prepare data
 
-### single molecule
+### single molecules
 
 Keep only the single cells that passed the [QC filters](qc-cell-ipsc.html).
 This also removes the bulk samples.
@@ -78,7 +80,7 @@ stopifnot(ncol(molecules_single) == nrow(anno_single),
           colnames(molecules_single) == anno_single$sample_id)
 ```
 
-Remove genes with zero read counts in the single cells.
+Remove genes with zero molecules in the single cells.
 
 ```{r remove-non-expressed-genes}
 expressed_single <- rowSums(molecules_single) > 0
@@ -88,7 +90,7 @@ dim(molecules_single)
 
 ### single log2 molecules per million
 
-Standardize the molecule counts to account for differences in sequencing depth.
+Standardize the molecules to account for differences in sequencing depth.
 This is necessary because the [sequencing depth affects the total molecule counts](compare-reads-v-molecules.html#effect-of-sequencing-depth-on-molecule-count).
 
 ```{r calc-cpm-single}
@@ -108,7 +110,7 @@ stopifnot(ncol(molecules_bulk) == nrow(anno_bulk),
           colnames(molecules_bulk) == anno_bulk$sample_id)
 ```
 
-Remove genes with zero read counts in the bulk cells.
+Remove genes with zero molecules in the bulk cells.
 
 ```{r remove-non-expressed-genes-bulk}
 expressed_bulk <- rowSums(molecules_bulk) > 0
@@ -122,6 +124,61 @@ dim(molecules_bulk)
 norm_factors_bulk <- calcNormFactors(molecules_bulk, method = "TMM")
 molecules_bulk_cpm <- cpm(molecules_bulk, log = TRUE,
                           lib.size = colSums(molecules_bulk) * norm_factors_bulk)
+```
+
+### single reads
+
+Keep only the single cells that passed the [QC filters](qc-cell-ipsc.html).
+This also removes the bulk samples.
+
+```{r qc-filter-reads}
+reads_single <- reads[, colnames(reads) %in% quality_single_cells]
+stopifnot(ncol(reads_single) == nrow(anno_single),
+          colnames(reads_single) == anno_single$sample_id)
+```
+
+Remove genes with zero reads in the single cells.
+
+```{r remove-non-expressed-genes-reads}
+expressed_single <- rowSums(reads_single) > 0
+reads_single <- reads_single[expressed_single, ]
+dim(reads_single)
+```
+
+### single log2 reads per million
+
+Standardize the reads to account for differences in sequencing depth.
+
+```{r calc-cpm-single-reads}
+norm_factors_single <- calcNormFactors(reads_single, method = "TMM")
+reads_single_cpm <- cpm(reads_single, log = TRUE,
+                            lib.size = colSums(reads_single) * norm_factors_single)
+```
+
+### bulk reads
+
+Select bulk samples.
+
+```{r select-bulk-reads}
+reads_bulk <- reads[, anno$well == "bulk"]
+stopifnot(ncol(reads_bulk) == nrow(anno_bulk),
+          colnames(reads_bulk) == anno_bulk$sample_id)
+```
+
+Remove genes with zero reads in the bulk cells.
+
+```{r remove-non-expressed-genes-bulk-reads}
+expressed_bulk <- rowSums(reads_bulk) > 0
+reads_bulk <- reads_bulk[expressed_bulk, ]
+dim(reads_bulk)
+```
+
+### bulk log2 reads per million
+
+```{r calc-cpm-bulk-reads}
+norm_factors_bulk <- calcNormFactors(reads_bulk, method = "TMM")
+reads_bulk_cpm <- cpm(reads_bulk, log = TRUE,
+                          lib.size = colSums(reads_bulk) * norm_factors_bulk)
 ```
 
 ## Functions
@@ -172,18 +229,18 @@ stopifnot(rownames(molecules_single[ercc_rows_molecules_single, ]) ==
           ercc_molecules_single$id)
 ```
 
-What is the correlation of the mean molecule counts in the single cells to the expected concentrations?
+What is the correlation of the mean molecules in the single cells to the expected concentrations?
 
-```{r ercc-correlation-mean-counts-single}
+```{r ercc-correlation-mean-molecules-single}
 correlate_ercc(rowMeans(molecules_single[ercc_rows_molecules_single, ]), ercc_molecules_single$conc_mix1,
-               description = "single cell molecule counts")
+               description = "single cell molecules")
 ```
 
 ### single log2 molecules per million
 
-What is the correlation of the mean molecule counts in the single cells to the expected concentrations?
+What is the correlation of the mean log2 molecules per million in the single cells to the expected concentrations?
 
-```{r ercc-correlation-mean-counts-single-cpm}
+```{r ercc-correlation-mean-molecules-single-cpm}
 correlate_ercc(rowMeans(molecules_single_cpm[ercc_rows_molecules_single, ]), log2(ercc_molecules_single$conc_mix1),
                description = "single log2 molecules per million")
 ```
@@ -206,20 +263,88 @@ stopifnot(rownames(molecules_bulk[ercc_rows_molecules_bulk, ]) ==
           ercc_molecules_bulk$id)
 ```
 
-What is the correlation of the mean molecule counts in the bulk cells to the expected concentrations?
+What is the correlation of the mean molecules in the bulk cells to the expected concentrations?
 
-```{r ercc-correlation-mean-counts-bulk}
+```{r ercc-correlation-mean-molecules-bulk}
 correlate_ercc(rowMeans(molecules_bulk[ercc_rows_molecules_bulk, ]), ercc_molecules_bulk$conc_mix1,
-               description = "bulk cell molecule counts")
+               description = "bulk cell molecules")
 ```
 
 ### bulk log2 molecules per million
 
-What is the correlation of the mean molecule counts in the bulk cells to the expected concentrations?
+What is the correlation of the mean log2 molecules per million in the bulk cells to the expected concentrations?
 
-```{r ercc-correlation-mean-counts-bulk-cpm}
+```{r ercc-correlation-mean-molecules-bulk-cpm}
 correlate_ercc(rowMeans(molecules_bulk_cpm[ercc_rows_molecules_bulk, ]), log2(ercc_molecules_bulk$conc_mix1),
                description = "bulk log2 molecules per million")
+```
+
+### reads single
+
+How many of the 92 ERCC spike-ins had at least one read sequenced in at least one of the samples?
+
+```{r num-ercc-present-reads-single}
+ercc_rows_reads_single <- grep("ERCC", rownames(reads_single))
+length(ercc_rows_reads_single)
+```
+
+Prepare ERCC data.
+
+```{r ercc-reads-single}
+# Remove spike-ins with no counts
+ercc_reads_single <- ercc[ercc$id %in% rownames(reads_single), ]
+stopifnot(rownames(reads_single[ercc_rows_reads_single, ]) ==
+          ercc_reads_single$id)
+```
+
+What is the correlation of the mean reads in the single cells to the expected concentrations?
+
+```{r ercc-correlation-mean-reads-single}
+correlate_ercc(rowMeans(reads_single[ercc_rows_reads_single, ]), ercc_reads_single$conc_mix1,
+               description = "single cell reads")
+```
+
+### single log2 reads per million
+
+What is the correlation of the mean log2 reads per million in the single cells to the expected concentrations?
+
+```{r ercc-correlation-mean-reads-single-cpm}
+correlate_ercc(rowMeans(reads_single_cpm[ercc_rows_reads_single, ]), log2(ercc_reads_single$conc_mix1),
+               description = "single log2 reads per million")
+```
+
+### reads bulk
+
+How many of the 92 ERCC spike-ins had at least one read sequenced in at least one of the samples?
+
+```{r num-ercc-present-reads-bulk}
+ercc_rows_reads_bulk <- grep("ERCC", rownames(reads_bulk))
+length(ercc_rows_reads_bulk)
+```
+
+Prepare ERCC data.
+
+```{r ercc-reads-bulk}
+# Remove spike-ins with no counts
+ercc_reads_bulk <- ercc[ercc$id %in% rownames(reads_bulk), ]
+stopifnot(rownames(reads_bulk[ercc_rows_reads_bulk, ]) ==
+          ercc_reads_bulk$id)
+```
+
+What is the correlation of the mean reads in the bulk cells to the expected concentrations?
+
+```{r ercc-correlation-mean-reads-bulk}
+correlate_ercc(rowMeans(reads_bulk[ercc_rows_reads_bulk, ]), ercc_reads_bulk$conc_mix1,
+               description = "bulk cell molecules")
+```
+
+### bulk log2 reads per million
+
+What is the correlation of the mean reads per million in the bulk cells to the expected concentrations?
+
+```{r ercc-correlation-mean-reads-bulk-cpm}
+correlate_ercc(rowMeans(reads_bulk_cpm[ercc_rows_reads_bulk, ]), log2(ercc_reads_bulk$conc_mix1),
+               description = "bulk log2 reads per million")
 ```
 
 ## Variation in the correlation across samples
