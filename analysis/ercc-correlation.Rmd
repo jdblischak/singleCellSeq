@@ -1,0 +1,270 @@
+---
+title: "ERCC correlation"
+date: 2015-06-15
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+```
+
+In this analysis:
+
+*  Investigate the fit between ERCC counts per million and the concentration for each sample
+
+## Input
+
+```{r packages, message=FALSE}
+library("edgeR")
+library("ggplot2")
+theme_set(theme_bw(base_size = 16))
+source("functions.R")
+```
+
+Input annotation.
+
+```{r input-annotation}
+anno <- read.table("../data/annotation.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno)
+```
+
+Input read counts.
+
+```{r input-read-counts}
+reads <- read.table("../data/reads.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+```
+
+Input molecule counts.
+
+```{r input-molecule-counts}
+molecules <- read.table("../data/molecules.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+```
+
+Input ERCC concentration information.
+
+```{r input-ercc}
+ercc <- read.table("../data/ercc-info.txt", header = TRUE, sep = "\t",
+                   stringsAsFactors = FALSE)
+colnames(ercc) <- c("num", "id", "subgroup", "conc_mix1", "conc_mix2",
+                    "expected_fc", "log2_mix1_mix2")
+head(ercc)
+stopifnot(nrow(ercc) == 92)
+```
+
+Input list of quality single cells.
+
+```{r input-quality-single-cells}
+quality_single_cells <- scan("../data/quality-single-cells.txt",
+                             what = "character")
+```
+
+## Prepare data
+
+### single molecule
+
+Keep only the single cells that passed the [QC filters](qc-cell-ipsc.html).
+This also removes the bulk samples.
+
+```{r qc-filter}
+molecules_single <- molecules[, colnames(molecules) %in% quality_single_cells]
+anno_single <- anno[anno$sample_id %in% quality_single_cells, ]
+stopifnot(ncol(molecules_single) == nrow(anno_single),
+          colnames(molecules_single) == anno_single$sample_id)
+```
+
+Remove genes with zero read counts in the single cells.
+
+```{r remove-non-expressed-genes}
+expressed_single <- rowSums(molecules_single) > 0
+molecules_single <- molecules_single[expressed_single, ]
+dim(molecules_single)
+```
+
+### single log2 molecules per million
+
+Standardize the molecule counts to account for differences in sequencing depth.
+This is necessary because the [sequencing depth affects the total molecule counts](compare-reads-v-molecules.html#effect-of-sequencing-depth-on-molecule-count).
+
+```{r calc-cpm-single}
+norm_factors_single <- calcNormFactors(molecules_single, method = "TMM")
+molecules_single_cpm <- cpm(molecules_single, log = TRUE,
+                            lib.size = colSums(molecules_single) * norm_factors_single)
+```
+
+### bulk molecules
+
+Select bulk samples.
+
+```{r select-bulk-molecules}
+molecules_bulk <- molecules[, anno$well == "bulk"]
+anno_bulk <- anno[anno$well == "bulk", ]
+stopifnot(ncol(molecules_bulk) == nrow(anno_bulk),
+          colnames(molecules_bulk) == anno_bulk$sample_id)
+```
+
+Remove genes with zero read counts in the bulk cells.
+
+```{r remove-non-expressed-genes-bulk}
+expressed_bulk <- rowSums(molecules_bulk) > 0
+molecules_bulk <- molecules_bulk[expressed_bulk, ]
+dim(molecules_bulk)
+```
+
+### bulk log2 molecules per million
+
+```{r calc-cpm-bulk}
+norm_factors_bulk <- calcNormFactors(molecules_bulk, method = "TMM")
+molecules_bulk_cpm <- cpm(molecules_bulk, log = TRUE,
+                          lib.size = colSums(molecules_bulk) * norm_factors_bulk)
+```
+
+## Functions
+
+Create function for investigating the correlation with the ERCC concentration.
+
+```{r ercc-cor-function}
+correlate_ercc <- function(observed, expected, description = "") {
+  # Plots the relationship between the observed ERCC data and the expected ERCC
+  # concentrations.
+
+  # Args:
+  #  observed: vector of summary statistic of observed ERCC counts
+  #  expected: vector of ERCC concentrations
+  #  description: optional string to add to title
+  plot(expected, observed)
+  ercc_fit <- lm(observed ~ expected)
+  abline(ercc_fit, col = "red")
+  title(sprintf("%s\nY ~ %.2fX + %.2f ; R-squared: %.2f", description,
+                ercc_fit$coefficients[2], ercc_fit$coefficients[1],
+                summary(ercc_fit)$r.squared))
+}
+```
+
+## Correlation with ERCC
+
+Sort ERCC data file by the spike-in ID.
+
+```{r sort-ercc}
+ercc <- ercc[order(ercc$id), ]
+```
+
+### molecules single
+
+How many of the 92 ERCC spike-ins had at least one read sequenced in at least one of the samples?
+
+```{r num-ercc-present-molecules-single}
+ercc_rows_molecules_single <- grep("ERCC", rownames(molecules_single))
+length(ercc_rows_molecules_single)
+```
+
+Prepare ERCC data.
+
+```{r ercc-molecules-single}
+# Remove spike-ins with no counts
+ercc_molecules_single <- ercc[ercc$id %in% rownames(molecules_single), ]
+stopifnot(rownames(molecules_single[ercc_rows_molecules_single, ]) ==
+          ercc_molecules_single$id)
+```
+
+What is the correlation of the mean molecule counts in the single cells to the expected concentrations?
+
+```{r ercc-correlation-mean-counts-single}
+correlate_ercc(rowMeans(molecules_single[ercc_rows_molecules_single, ]), ercc_molecules_single$conc_mix1,
+               description = "single cell molecule counts")
+```
+
+### single log2 molecules per million
+
+What is the correlation of the mean molecule counts in the single cells to the expected concentrations?
+
+```{r ercc-correlation-mean-counts-single-cpm}
+correlate_ercc(rowMeans(molecules_single_cpm[ercc_rows_molecules_single, ]), log2(ercc_molecules_single$conc_mix1),
+               description = "single log2 molecules per million")
+```
+
+### molecules bulk
+
+How many of the 92 ERCC spike-ins had at least one read sequenced in at least one of the samples?
+
+```{r num-ercc-present-molecules-bulk}
+ercc_rows_molecules_bulk <- grep("ERCC", rownames(molecules_bulk))
+length(ercc_rows_molecules_bulk)
+```
+
+Prepare ERCC data.
+
+```{r ercc-molecules-bulk}
+# Remove spike-ins with no counts
+ercc_molecules_bulk <- ercc[ercc$id %in% rownames(molecules_bulk), ]
+stopifnot(rownames(molecules_bulk[ercc_rows_molecules_bulk, ]) ==
+          ercc_molecules_bulk$id)
+```
+
+What is the correlation of the mean molecule counts in the bulk cells to the expected concentrations?
+
+```{r ercc-correlation-mean-counts-bulk}
+correlate_ercc(rowMeans(molecules_bulk[ercc_rows_molecules_bulk, ]), ercc_molecules_bulk$conc_mix1,
+               description = "bulk cell molecule counts")
+```
+
+### bulk log2 molecules per million
+
+What is the correlation of the mean molecule counts in the bulk cells to the expected concentrations?
+
+```{r ercc-correlation-mean-counts-bulk-cpm}
+correlate_ercc(rowMeans(molecules_bulk_cpm[ercc_rows_molecules_bulk, ]), log2(ercc_molecules_bulk$conc_mix1),
+               description = "bulk log2 molecules per million")
+```
+
+## Variation in the correlation across samples
+
+How much variation is there in the correlation between the samples?
+The following analysis uses the log2 cpm in single cells.
+
+```{r ercc-correlation-variation}
+ercc_per_sample <- matrix(nrow = ncol(molecules_single_cpm), ncol = 6)
+colnames(ercc_per_sample) <- c("individual", "batch", "well",
+                               "intercept", "slope", "r2")
+for (i in 1:ncol(molecules_single_cpm)) {
+  fit <- lm(molecules_single_cpm[ercc_rows_molecules_single, i] ~ log2(ercc_molecules_single$conc_mix1))
+  
+  ercc_per_sample[i, ] <- c(anno_single$individual[i], anno_single$batch[i], anno_single$well[i],
+                            fit$coefficients[1], fit$coefficients[2],
+                            summary(fit)$r.squared)
+}
+ercc_per_sample <- as.data.frame(ercc_per_sample, stringsAsFactors = FALSE)
+ercc_per_sample$intercept <- as.numeric(ercc_per_sample$intercept)
+ercc_per_sample$slope <- as.numeric(ercc_per_sample$slope)
+ercc_per_sample$r2 <- as.numeric(ercc_per_sample$r2)
+stopifnot(!is.na(ercc_per_sample))
+str(ercc_per_sample)
+```
+
+```{r ercc-intercept-per-sample}
+boxplot(intercept ~ batch + individual, data = ercc_per_sample, las = 2,
+        main = "Variation in the intercept term", ylab = "Intercept")
+```
+
+```{r ercc-slope-per-sample}
+boxplot(slope ~ batch + individual, data = ercc_per_sample, las = 2,
+        main = "Variation in the slope term", ylab = "Slope")
+```
+
+```{r ercc-r2-per-sample}
+boxplot(r2 ~ batch + individual, data = ercc_per_sample, las = 2,
+        main = "Variation in R-squared", ylab = "R-squared")
+```
+
+As expected, batch 2 of individual 19098 is an outlier.
+
+## Session information
+
+```{r info}
+sessionInfo()
+```
