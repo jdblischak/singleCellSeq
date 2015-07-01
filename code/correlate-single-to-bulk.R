@@ -11,7 +11,7 @@ correlate-single-cell-to-bulk.R [--individual=<ind>] <single> <bulk>
 
 Options:
   -h --help              Show this screen.
-  --individual=<ind>     Show version.
+  --individual=<ind>     Only use data from ind, e.g. 19098
 
 Arguments:
   single        sample-by-gene matrix of single cell data
@@ -22,12 +22,12 @@ main <- function(single_fname, bulk_fname, individual = NULL) {
   id <- "single-to-bulk-correlation"
 
   # Load single cell data
-  single_cells <- read.table(single_fname,
-                             header = TRUE, sep = "\t", stringsAsFactors = FALSE)
-
+  single_cells <- read.table(single_fname, header = TRUE, sep = "\t",
+                             stringsAsFactors = FALSE)
   # Filter by individual
-  ind <- "19098"
-  single_cells <- single_cells[single_cells$individual == ind, ]
+  if (!is.null(individual)) {
+    single_cells <- single_cells[single_cells$individual == individual, ]
+  }
   # Remove bulk samples
   single_cells <- single_cells[single_cells$well != "bulk", ]
   # Add rownames
@@ -54,10 +54,12 @@ main <- function(single_fname, bulk_fname, individual = NULL) {
 #   dim(single_cells)
 
   # Load bulk cell data
-  bulk_cells <- read.table(bulk_fname, row.names = 1,
-                           header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+  bulk_cells <- read.table(bulk_fname, row.names = 1, header = TRUE, sep = "\t",
+                           stringsAsFactors = FALSE)
   # Filter by individual
-  bulk_cells <- bulk_cells[, grepl(ind, colnames(bulk_cells))]
+  if (!is.null(individual)) {
+    bulk_cells <- bulk_cells[, grepl(individual, colnames(bulk_cells))]
+  }
   # Remove single cells
   bulk_cells <- bulk_cells[, grepl("bulk", colnames(bulk_cells))]
   # Calculate cpm
@@ -82,7 +84,7 @@ main <- function(single_fname, bulk_fname, individual = NULL) {
   r <- cor(rowMeans(single_cells), rowMeans(bulk_cells))
 
   # Output
-  cat(sprintf("%s\t%d\t%d\t%f\n", ind, num_cells, seed, r),
+  cat(sprintf("%d\t%d\t%f\n", num_cells, seed, r),
       file = sprintf("%s-%d-%d.txt", id, num_cells, seed))
 
 }
@@ -91,9 +93,11 @@ main <- function(single_fname, bulk_fname, individual = NULL) {
 if (!interactive() & getOption('run.main', default = TRUE)) {
   opts <- docopt(doc)
   main(single_fname = opts$single,
-       bulk_fname = opts$bulk)
+       bulk_fname = opts$bulk,
+       individual = opts$individual)
 } else if (interactive() & getOption('run.main', default = TRUE)) {
   # what to do if interactively testing
   main(single_fname = "/mnt/gluster/data/internal_supp/singleCellSeq/subsampled/molecule-counts-200000.txt",
-       bulk_fname = "~/singleCellSeq/data/reads.txt")
+       bulk_fname = "~/singleCellSeq/data/reads.txt",
+       individual = "19098")
 }
