@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+
+<meta name="date" content="2015-06-15" />
+
+<title>ERCC correlation</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">ERCC correlation</h1>
+<h4 class="date"><em>2015-06-15</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#input">Input</a></li>
+<li><a href="#prepare-data">Prepare data</a></li>
+<li><a href="#functions">Functions</a></li>
+<li><a href="#correlation-with-ercc">Correlation with ERCC</a></li>
+<li><a href="#variation-in-the-correlation-across-samples">Variation in the correlation across samples</a></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2015-06-30</p>
+<p><strong>Code version:</strong> bbd04becabb24228433a9d432c2f4d9dd5976bf1</p>
+<p>In this analysis:</p>
+<ul>
+<li>Investigate the fit between the observed ERCC data and the expected concentrations</li>
+<li>Investigate how the ERCC fit varies across individuals and batches
+<ul>
+<li>Identify 19098 batch 2 as a clear outlier</li>
+</ul></li>
+</ul>
+<div id="input" class="section level2">
+<h2>Input</h2>
+<pre class="r"><code>library(&quot;edgeR&quot;)
+library(&quot;ggplot2&quot;)
+theme_set(theme_bw(base_size = 16))
+source(&quot;functions.R&quot;)</code></pre>
+<p>Input annotation.</p>
+<pre class="r"><code>anno &lt;- read.table(&quot;../data/annotation.txt&quot;, header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno)</code></pre>
+<pre><code>  individual batch well     sample_id
+1      19098     1  A01 NA19098.1.A01
+2      19098     1  A02 NA19098.1.A02
+3      19098     1  A03 NA19098.1.A03
+4      19098     1  A04 NA19098.1.A04
+5      19098     1  A05 NA19098.1.A05
+6      19098     1  A06 NA19098.1.A06</code></pre>
+<p>Input read counts.</p>
+<pre class="r"><code>reads &lt;- read.table(&quot;../data/reads.txt&quot;, header = TRUE,
+                    stringsAsFactors = FALSE)</code></pre>
+<p>Input molecule counts.</p>
+<pre class="r"><code>molecules &lt;- read.table(&quot;../data/molecules.txt&quot;, header = TRUE,
+                    stringsAsFactors = FALSE)</code></pre>
+<p>Input ERCC concentration information.</p>
+<pre class="r"><code>ercc &lt;- read.table(&quot;../data/ercc-info.txt&quot;, header = TRUE, sep = &quot;\t&quot;,
+                   stringsAsFactors = FALSE)
+colnames(ercc) &lt;- c(&quot;num&quot;, &quot;id&quot;, &quot;subgroup&quot;, &quot;conc_mix1&quot;, &quot;conc_mix2&quot;,
+                    &quot;expected_fc&quot;, &quot;log2_mix1_mix2&quot;)
+head(ercc)</code></pre>
+<pre><code>  num         id subgroup conc_mix1  conc_mix2 expected_fc log2_mix1_mix2
+1   1 ERCC-00130        A 30000.000 7500.00000           4              2
+2   2 ERCC-00004        A  7500.000 1875.00000           4              2
+3   3 ERCC-00136        A  1875.000  468.75000           4              2
+4   4 ERCC-00108        A   937.500  234.37500           4              2
+5   5 ERCC-00116        A   468.750  117.18750           4              2
+6   6 ERCC-00092        A   234.375   58.59375           4              2</code></pre>
+<pre class="r"><code>stopifnot(nrow(ercc) == 92)</code></pre>
+<p>Input list of quality single cells.</p>
+<pre class="r"><code>quality_single_cells &lt;- scan(&quot;../data/quality-single-cells.txt&quot;,
+                             what = &quot;character&quot;)</code></pre>
+</div>
+<div id="prepare-data" class="section level2">
+<h2>Prepare data</h2>
+<div id="single-molecules" class="section level3">
+<h3>single molecules</h3>
+<p>Keep only the single cells that passed the <a href="qc-cell-ipsc.html">QC filters</a>. This also removes the bulk samples.</p>
+<pre class="r"><code>molecules_single &lt;- molecules[, colnames(molecules) %in% quality_single_cells]
+anno_single &lt;- anno[anno$sample_id %in% quality_single_cells, ]
+stopifnot(ncol(molecules_single) == nrow(anno_single),
+          colnames(molecules_single) == anno_single$sample_id)</code></pre>
+<p>Remove genes with zero molecules in the single cells.</p>
+<pre class="r"><code>expressed_single &lt;- rowSums(molecules_single) &gt; 0
+molecules_single &lt;- molecules_single[expressed_single, ]
+dim(molecules_single)</code></pre>
+<pre><code>[1] 17595   632</code></pre>
+</div>
+<div id="single-log2-molecules-per-million" class="section level3">
+<h3>single log2 molecules per million</h3>
+<p>Standardize the molecules to account for differences in sequencing depth. This is necessary because the <a href="compare-reads-v-molecules.html#effect-of-sequencing-depth-on-molecule-count">sequencing depth affects the total molecule counts</a>.</p>
+<pre class="r"><code>norm_factors_single &lt;- calcNormFactors(molecules_single, method = &quot;TMM&quot;)
+molecules_single_cpm &lt;- cpm(molecules_single, log = TRUE,
+                            lib.size = colSums(molecules_single) * norm_factors_single)</code></pre>
+</div>
+<div id="bulk-molecules" class="section level3">
+<h3>bulk molecules</h3>
+<p>Select bulk samples.</p>
+<pre class="r"><code>molecules_bulk &lt;- molecules[, anno$well == &quot;bulk&quot;]
+anno_bulk &lt;- anno[anno$well == &quot;bulk&quot;, ]
+stopifnot(ncol(molecules_bulk) == nrow(anno_bulk),
+          colnames(molecules_bulk) == anno_bulk$sample_id)</code></pre>
+<p>Remove genes with zero molecules in the bulk cells.</p>
+<pre class="r"><code>expressed_bulk &lt;- rowSums(molecules_bulk) &gt; 0
+molecules_bulk &lt;- molecules_bulk[expressed_bulk, ]
+dim(molecules_bulk)</code></pre>
+<pre><code>[1] 18120     9</code></pre>
+</div>
+<div id="bulk-log2-molecules-per-million" class="section level3">
+<h3>bulk log2 molecules per million</h3>
+<pre class="r"><code>norm_factors_bulk &lt;- calcNormFactors(molecules_bulk, method = &quot;TMM&quot;)
+molecules_bulk_cpm &lt;- cpm(molecules_bulk, log = TRUE,
+                          lib.size = colSums(molecules_bulk) * norm_factors_bulk)</code></pre>
+</div>
+<div id="single-reads" class="section level3">
+<h3>single reads</h3>
+<p>Keep only the single cells that passed the <a href="qc-cell-ipsc.html">QC filters</a>. This also removes the bulk samples.</p>
+<pre class="r"><code>reads_single &lt;- reads[, colnames(reads) %in% quality_single_cells]
+stopifnot(ncol(reads_single) == nrow(anno_single),
+          colnames(reads_single) == anno_single$sample_id)</code></pre>
+<p>Remove genes with zero reads in the single cells.</p>
+<pre class="r"><code>expressed_single &lt;- rowSums(reads_single) &gt; 0
+reads_single &lt;- reads_single[expressed_single, ]
+dim(reads_single)</code></pre>
+<pre><code>[1] 17609   632</code></pre>
+</div>
+<div id="single-log2-reads-per-million" class="section level3">
+<h3>single log2 reads per million</h3>
+<p>Standardize the reads to account for differences in sequencing depth.</p>
+<pre class="r"><code>norm_factors_single &lt;- calcNormFactors(reads_single, method = &quot;TMM&quot;)
+reads_single_cpm &lt;- cpm(reads_single, log = TRUE,
+                            lib.size = colSums(reads_single) * norm_factors_single)</code></pre>
+</div>
+<div id="bulk-reads" class="section level3">
+<h3>bulk reads</h3>
+<p>Select bulk samples.</p>
+<pre class="r"><code>reads_bulk &lt;- reads[, anno$well == &quot;bulk&quot;]
+stopifnot(ncol(reads_bulk) == nrow(anno_bulk),
+          colnames(reads_bulk) == anno_bulk$sample_id)</code></pre>
+<p>Remove genes with zero reads in the bulk cells.</p>
+<pre class="r"><code>expressed_bulk &lt;- rowSums(reads_bulk) &gt; 0
+reads_bulk &lt;- reads_bulk[expressed_bulk, ]
+dim(reads_bulk)</code></pre>
+<pre><code>[1] 18123     9</code></pre>
+</div>
+<div id="bulk-log2-reads-per-million" class="section level3">
+<h3>bulk log2 reads per million</h3>
+<pre class="r"><code>norm_factors_bulk &lt;- calcNormFactors(reads_bulk, method = &quot;TMM&quot;)
+reads_bulk_cpm &lt;- cpm(reads_bulk, log = TRUE,
+                          lib.size = colSums(reads_bulk) * norm_factors_bulk)</code></pre>
+</div>
+</div>
+<div id="functions" class="section level2">
+<h2>Functions</h2>
+<p>Create function for investigating the correlation with the ERCC concentration.</p>
+<pre class="r"><code>correlate_ercc &lt;- function(observed, expected, description = &quot;&quot;) {
+  # Plots the relationship between the observed ERCC data and the expected ERCC
+  # concentrations.
+
+  # Args:
+  #  observed: vector of summary statistic of observed ERCC counts
+  #  expected: vector of ERCC concentrations
+  #  description: optional string to add to title
+  plot(expected, observed)
+  ercc_fit &lt;- lm(observed ~ expected)
+  abline(ercc_fit, col = &quot;red&quot;)
+  title(sprintf(&quot;%s\nY ~ %.2fX + %.2f ; R-squared: %.2f&quot;, description,
+                ercc_fit$coefficients[2], ercc_fit$coefficients[1],
+                summary(ercc_fit)$r.squared))
+}</code></pre>
+</div>
+<div id="correlation-with-ercc" class="section level2">
+<h2>Correlation with ERCC</h2>
+<p>Sort ERCC data file by the spike-in ID.</p>
+<pre class="r"><code>ercc &lt;- ercc[order(ercc$id), ]</code></pre>
+<div id="molecules-single" class="section level3">
+<h3>molecules single</h3>
+<p>How many of the 92 ERCC spike-ins had at least one read sequenced in at least one of the samples?</p>
+<pre class="r"><code>ercc_rows_molecules_single &lt;- grep(&quot;ERCC&quot;, rownames(molecules_single))
+length(ercc_rows_molecules_single)</code></pre>
+<pre><code>[1] 83</code></pre>
+<p>Prepare ERCC data.</p>
+<pre class="r"><code># Remove spike-ins with no counts
+ercc_molecules_single &lt;- ercc[ercc$id %in% rownames(molecules_single), ]
+stopifnot(rownames(molecules_single[ercc_rows_molecules_single, ]) ==
+          ercc_molecules_single$id)</code></pre>
+<p>What is the correlation of the mean molecules in the single cells to the expected concentrations?</p>
+<pre class="r"><code>correlate_ercc(rowMeans(molecules_single[ercc_rows_molecules_single, ]), ercc_molecules_single$conc_mix1,
+               description = &quot;single cell molecules&quot;)</code></pre>
+<p><img src="figure/ercc-correlation.Rmd/ercc-correlation-mean-molecules-single-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="single-log2-molecules-per-million-1" class="section level3">
+<h3>single log2 molecules per million</h3>
+<p>What is the correlation of the mean log2 molecules per million in the single cells to the expected concentrations?</p>
+<pre class="r"><code>correlate_ercc(rowMeans(molecules_single_cpm[ercc_rows_molecules_single, ]), log2(ercc_molecules_single$conc_mix1),
+               description = &quot;single log2 molecules per million&quot;)</code></pre>
+<p><img src="figure/ercc-correlation.Rmd/ercc-correlation-mean-molecules-single-cpm-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="molecules-bulk" class="section level3">
+<h3>molecules bulk</h3>
+<p>How many of the 92 ERCC spike-ins had at least one read sequenced in at least one of the samples?</p>
+<pre class="r"><code>ercc_rows_molecules_bulk &lt;- grep(&quot;ERCC&quot;, rownames(molecules_bulk))
+length(ercc_rows_molecules_bulk)</code></pre>
+<pre><code>[1] 70</code></pre>
+<p>Prepare ERCC data.</p>
+<pre class="r"><code># Remove spike-ins with no counts
+ercc_molecules_bulk &lt;- ercc[ercc$id %in% rownames(molecules_bulk), ]
+stopifnot(rownames(molecules_bulk[ercc_rows_molecules_bulk, ]) ==
+          ercc_molecules_bulk$id)</code></pre>
+<p>What is the correlation of the mean molecules in the bulk cells to the expected concentrations?</p>
+<pre class="r"><code>correlate_ercc(rowMeans(molecules_bulk[ercc_rows_molecules_bulk, ]), ercc_molecules_bulk$conc_mix1,
+               description = &quot;bulk cell molecules&quot;)</code></pre>
+<p><img src="figure/ercc-correlation.Rmd/ercc-correlation-mean-molecules-bulk-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="bulk-log2-molecules-per-million-1" class="section level3">
+<h3>bulk log2 molecules per million</h3>
+<p>What is the correlation of the mean log2 molecules per million in the bulk cells to the expected concentrations?</p>
+<pre class="r"><code>correlate_ercc(rowMeans(molecules_bulk_cpm[ercc_rows_molecules_bulk, ]), log2(ercc_molecules_bulk$conc_mix1),
+               description = &quot;bulk log2 molecules per million&quot;)</code></pre>
+<p><img src="figure/ercc-correlation.Rmd/ercc-correlation-mean-molecules-bulk-cpm-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="reads-single" class="section level3">
+<h3>reads single</h3>
+<p>How many of the 92 ERCC spike-ins had at least one read sequenced in at least one of the samples?</p>
+<pre class="r"><code>ercc_rows_reads_single &lt;- grep(&quot;ERCC&quot;, rownames(reads_single))
+length(ercc_rows_reads_single)</code></pre>
+<pre><code>[1] 83</code></pre>
+<p>Prepare ERCC data.</p>
+<pre class="r"><code># Remove spike-ins with no counts
+ercc_reads_single &lt;- ercc[ercc$id %in% rownames(reads_single), ]
+stopifnot(rownames(reads_single[ercc_rows_reads_single, ]) ==
+          ercc_reads_single$id)</code></pre>
+<p>What is the correlation of the mean reads in the single cells to the expected concentrations?</p>
+<pre class="r"><code>correlate_ercc(rowMeans(reads_single[ercc_rows_reads_single, ]), ercc_reads_single$conc_mix1,
+               description = &quot;single cell reads&quot;)</code></pre>
+<p><img src="figure/ercc-correlation.Rmd/ercc-correlation-mean-reads-single-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="single-log2-reads-per-million-1" class="section level3">
+<h3>single log2 reads per million</h3>
+<p>What is the correlation of the mean log2 reads per million in the single cells to the expected concentrations?</p>
+<pre class="r"><code>correlate_ercc(rowMeans(reads_single_cpm[ercc_rows_reads_single, ]), log2(ercc_reads_single$conc_mix1),
+               description = &quot;single log2 reads per million&quot;)</code></pre>
+<p><img src="figure/ercc-correlation.Rmd/ercc-correlation-mean-reads-single-cpm-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="reads-bulk" class="section level3">
+<h3>reads bulk</h3>
+<p>How many of the 92 ERCC spike-ins had at least one read sequenced in at least one of the samples?</p>
+<pre class="r"><code>ercc_rows_reads_bulk &lt;- grep(&quot;ERCC&quot;, rownames(reads_bulk))
+length(ercc_rows_reads_bulk)</code></pre>
+<pre><code>[1] 70</code></pre>
+<p>Prepare ERCC data.</p>
+<pre class="r"><code># Remove spike-ins with no counts
+ercc_reads_bulk &lt;- ercc[ercc$id %in% rownames(reads_bulk), ]
+stopifnot(rownames(reads_bulk[ercc_rows_reads_bulk, ]) ==
+          ercc_reads_bulk$id)</code></pre>
+<p>What is the correlation of the mean reads in the bulk cells to the expected concentrations?</p>
+<pre class="r"><code>correlate_ercc(rowMeans(reads_bulk[ercc_rows_reads_bulk, ]), ercc_reads_bulk$conc_mix1,
+               description = &quot;bulk cell molecules&quot;)</code></pre>
+<p><img src="figure/ercc-correlation.Rmd/ercc-correlation-mean-reads-bulk-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="bulk-log2-reads-per-million-1" class="section level3">
+<h3>bulk log2 reads per million</h3>
+<p>What is the correlation of the mean reads per million in the bulk cells to the expected concentrations?</p>
+<pre class="r"><code>correlate_ercc(rowMeans(reads_bulk_cpm[ercc_rows_reads_bulk, ]), log2(ercc_reads_bulk$conc_mix1),
+               description = &quot;bulk log2 reads per million&quot;)</code></pre>
+<p><img src="figure/ercc-correlation.Rmd/ercc-correlation-mean-reads-bulk-cpm-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+</div>
+<div id="variation-in-the-correlation-across-samples" class="section level2">
+<h2>Variation in the correlation across samples</h2>
+<p>How much variation is there in the correlation between the samples? The following analysis uses the log2 cpm in single cells.</p>
+<pre class="r"><code>ercc_per_sample &lt;- matrix(nrow = ncol(molecules_single_cpm), ncol = 6)
+colnames(ercc_per_sample) &lt;- c(&quot;individual&quot;, &quot;batch&quot;, &quot;well&quot;,
+                               &quot;intercept&quot;, &quot;slope&quot;, &quot;r2&quot;)
+for (i in 1:ncol(molecules_single_cpm)) {
+  fit &lt;- lm(molecules_single_cpm[ercc_rows_molecules_single, i] ~ log2(ercc_molecules_single$conc_mix1))
+  
+  ercc_per_sample[i, ] &lt;- c(anno_single$individual[i], anno_single$batch[i], anno_single$well[i],
+                            fit$coefficients[1], fit$coefficients[2],
+                            summary(fit)$r.squared)
+}
+ercc_per_sample &lt;- as.data.frame(ercc_per_sample, stringsAsFactors = FALSE)
+ercc_per_sample$intercept &lt;- as.numeric(ercc_per_sample$intercept)
+ercc_per_sample$slope &lt;- as.numeric(ercc_per_sample$slope)
+ercc_per_sample$r2 &lt;- as.numeric(ercc_per_sample$r2)
+stopifnot(!is.na(ercc_per_sample))
+str(ercc_per_sample)</code></pre>
+<pre><code>&#39;data.frame&#39;:   632 obs. of  6 variables:
+ $ individual: chr  &quot;19098&quot; &quot;19098&quot; &quot;19098&quot; &quot;19098&quot; ...
+ $ batch     : chr  &quot;1&quot; &quot;1&quot; &quot;1&quot; &quot;1&quot; ...
+ $ well      : chr  &quot;A01&quot; &quot;A02&quot; &quot;A05&quot; &quot;A06&quot; ...
+ $ intercept : num  1.063 0.96 1.055 0.883 1.086 ...
+ $ slope     : num  0.566 0.546 0.525 0.56 0.577 ...
+ $ r2        : num  0.715 0.665 0.654 0.719 0.737 ...</code></pre>
+<pre class="r"><code>boxplot(intercept ~ batch + individual, data = ercc_per_sample, las = 2,
+        main = &quot;Variation in the intercept term&quot;, ylab = &quot;Intercept&quot;)</code></pre>
+<p><img src="figure/ercc-correlation.Rmd/ercc-intercept-per-sample-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>boxplot(slope ~ batch + individual, data = ercc_per_sample, las = 2,
+        main = &quot;Variation in the slope term&quot;, ylab = &quot;Slope&quot;)</code></pre>
+<p><img src="figure/ercc-correlation.Rmd/ercc-slope-per-sample-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>boxplot(r2 ~ batch + individual, data = ercc_per_sample, las = 2,
+        main = &quot;Variation in R-squared&quot;, ylab = &quot;R-squared&quot;)</code></pre>
+<p><img src="figure/ercc-correlation.Rmd/ercc-r2-per-sample-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>As expected, batch 2 of individual 19098 is an outlier.</p>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] ggplot2_1.0.1 edgeR_3.10.2  limma_3.24.9  knitr_1.10.5 
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.11.6      digest_0.6.8     MASS_7.3-40      grid_3.2.0      
+ [5] plyr_1.8.2       gtable_0.1.2     formatR_1.2      magrittr_1.5    
+ [9] scales_0.2.4     evaluate_0.7     stringi_0.4-1    reshape2_1.4.1  
+[13] rmarkdown_0.6.1  proto_0.3-10     tools_3.2.0      stringr_1.0.0   
+[17] munsell_0.4.2    yaml_2.1.13      colorspace_1.2-6 htmltools_0.2.6 </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+
+</body>
+</html>
