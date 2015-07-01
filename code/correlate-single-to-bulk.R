@@ -7,18 +7,21 @@ suppressMessages(library("docopt"))
 "Correlate the expression in single cells to the bulk sample.
 
 Usage:
-correlate-single-cell-to-bulk.R [--individual=<ind>] <single> <bulk>
+correlate-single-cell-to-bulk.R [--individual=<ind>] <num_cells> <seed> <single> <bulk>
 
 Options:
   -h --help              Show this screen.
   --individual=<ind>     Only use data from ind, e.g. 19098
 
 Arguments:
+  num_cells     number of single cells to subsample
+  seed          seed for random number generator
   single        sample-by-gene matrix of single cell data
   bulk          gene-by-sample matrix of bulk cell data" -> doc
 
-main <- function(single_fname, bulk_fname, individual = NULL) {
-
+main <- function(num_cells, seed, single_fname, bulk_fname, individual = NULL) {
+  suppressPackageStartupMessages(library("edgeR"))
+  library("testit")
   id <- "single-to-bulk-correlation"
 
   # Load single cell data
@@ -43,12 +46,10 @@ main <- function(single_fname, bulk_fname, individual = NULL) {
                                 rownames(single_cells))
 
   # Subsample number of single cells
-  num_cells <- 20
-  seed <- 1
   set.seed(seed)
   single_cells <- single_cells[, sample(1:ncol(single_cells), size = num_cells)]
   # Calculate cpm
-  suppressPackageStartupMessages(library("edgeR"))
+
   single_cells <- cpm(single_cells)
 #   single_cells[1:10, 1:10]
 #   dim(single_cells)
@@ -76,7 +77,7 @@ main <- function(single_fname, bulk_fname, individual = NULL) {
   bulk_cells <- bulk_cells[rowMeans(bulk_cells) > quantile(rowMeans(bulk_cells), .25), ]
   # Filter genes in single cells
   single_cells <- single_cells[rownames(single_cells) %in% rownames(bulk_cells), ]
-  library("testit")
+
   assert("Same number of genes in bulk and single cells.",
          nrow(bulk_cells) == nrow(single_cells))
 
@@ -84,20 +85,22 @@ main <- function(single_fname, bulk_fname, individual = NULL) {
   r <- cor(rowMeans(single_cells), rowMeans(bulk_cells))
 
   # Output
-  cat(sprintf("%d\t%d\t%f\n", num_cells, seed, r),
-      file = sprintf("%s-%d-%d.txt", id, num_cells, seed))
-
+  cat(sprintf("%d\t%d\t%f\n", num_cells, seed, r))
 }
 
 
 if (!interactive() & getOption('run.main', default = TRUE)) {
   opts <- docopt(doc)
-  main(single_fname = opts$single,
+  main(num_cells = as.numeric(opts$num_cells),
+       seed = as.numeric(opts$seed),
+       single_fname = opts$single,
        bulk_fname = opts$bulk,
        individual = opts$individual)
 } else if (interactive() & getOption('run.main', default = TRUE)) {
   # what to do if interactively testing
-  main(single_fname = "/mnt/gluster/data/internal_supp/singleCellSeq/subsampled/molecule-counts-200000.txt",
+  main(num_cells = 20,
+       seed = 1,
+       single_fname = "/mnt/gluster/data/internal_supp/singleCellSeq/subsampled/molecule-counts-200000.txt",
        bulk_fname = "~/singleCellSeq/data/reads.txt",
        individual = "19098")
 }
