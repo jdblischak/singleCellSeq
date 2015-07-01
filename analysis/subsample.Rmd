@@ -1,0 +1,76 @@
+---
+title: "Subsample"
+date: 2015-06-30
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+```
+
+Subsample reads post-mapping.
+Includes both mapped and unmapped reads.
+
+```bash
+cd $ssd
+mdkir -p subsampled/bam-combined
+for FILE in bam-combined/*bam
+do
+  for NUM in 200000 400000 600000 800000 1000000 1200000 1400000 1600000 1800000 2000000
+  do
+    echo "subsample-bam.py 12345 $NUM subsampled/bam-combined $FILE" | qsub -l h_vmem=3g -V -cwd -N sub -j y -o ~/log
+  done
+done
+```
+
+Switch to directory `subsampled`.
+Symlink `exons.saf`.
+
+```bash
+cd subsampled
+mkdir genome
+ln -s /mnt/lustre/home/jdblischak/singleCellSeq/data/exons.saf genome/exons.saf
+```
+
+Remove duplicate UMIs.
+
+```bash
+submit-array.sh rmdup-umi.sh 2g bam-combined/*bam
+```
+
+```bash
+ls bam-rmdup-umi/*bam | wc -l
+grep -w success ~/log/rmdup-umi.sh/* | wc -l
+grep -w failure ~/log/rmdup-umi.sh/* | wc -l
+```
+
+Count reads per gene.
+
+```bash
+submit-array.sh count-reads-per-gene.sh 2g bam-combined/*bam bam-rmdup-umi/*bam
+```
+
+```bash
+ls counts/*genecounts.txt | wc -l
+grep -w success ~/log/count-reads-per-gene.sh/* | wc -l
+grep -w failure ~/log/count-reads-per-gene.sh/* | wc -l
+```
+
+Gather the gene counts.
+
+```bash
+mkdir -p ~/log/gather-gene-counts.py
+for NUM in 200000 400000 600000 800000 1000000 1200000 1400000 1600000 1800000 2000000
+do
+  echo "gather-gene-counts.py counts/*.$NUM.genecounts.txt > gene-counts-$NUM.txt" | qsub -l h_vmem=8g -cwd -V -j y -o ~/log/gather-gene-counts.py -N gene-counts-$NUM
+done
+```
+
+## Session information
+
+```{r info}
+sessionInfo()
+```

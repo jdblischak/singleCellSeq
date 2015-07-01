@@ -1,13 +1,17 @@
 #!/usr/bin/env python
 
 # Gathers all the counts per gene.
-# usage: gather-gene-counts.py > gene-counts.txt
+# usage: gather-gene-counts.py [files] > gene-counts.txt
+#   e.g. gather-gene-counts.py counts/*genecounts.txt > gene-counts.txt
 # Should be run from data directory.
 
 import glob
 import sys
 
-files = glob.glob("counts/*genecounts.txt")
+if len(sys.argv) > 1:
+    files = sys.argv[1:]
+else:
+    files = glob.glob("counts/*genecounts.txt")
 
 # print(len(files))
 
