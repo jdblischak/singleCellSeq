@@ -380,14 +380,20 @@ ggplot(pca_reads_cells_anno, aes(x = reads_single_gene_number, y = PC1)) +
 Using various simple filtering cutoffs, it is not possible to capture all the cells that have low values of PC1.
 
 ```{r filter-total}
-pca_reads_cells_anno$total_cutoff <- pca_reads_cells_anno$total.mapped > 2.0 * 10^6
+pca_reads_cells_anno$total_cutoff <- pca_reads_cells_anno$total.mapped > 1.5 * 10^6
 ggplot(pca_reads_cells_anno, aes(x = PC1, y = PC2, col = total_cutoff)) +
   geom_point()
 ```
 
 ```{r filter-unmapped}
-pca_reads_cells_anno$unmapped_cutoff <- pca_reads_cells_anno$unmapped.ratios < 0.5
+pca_reads_cells_anno$unmapped_cutoff <- pca_reads_cells_anno$unmapped.ratios < 0.4
 ggplot(pca_reads_cells_anno, aes(x = PC1, y = PC2, col = unmapped_cutoff)) +
+  geom_point()
+```
+
+```{r filter-ERCC}
+pca_reads_cells_anno$ERCC_cutoff <- pca_reads_cells_anno$ERCC.ratios < 0.05
+ggplot(pca_reads_cells_anno, aes(x = PC1, y = PC2, col = ERCC_cutoff)) +
   geom_point()
 ```
 
@@ -403,27 +409,45 @@ ggplot(pca_reads_cells_anno, aes(x = PC1, y = PC2, col = cell_filter)) +
   geom_point()
 ```
 
+The two cutoffs largely overlap.
+
+```{r cell-total-filter-overlap}
+table(pca_reads_cells_anno$cell_filter, pca_reads_cells_anno$total_cutoff,
+      dnn = c("Num cells == 1", "Total reads > 1e6"))
+```
+
 Add the third cutoff, 6000 genes detected, help a bit.
 ```{r filter-total-cell-num}
-pca_reads_cells_anno$qc_filter <- pca_reads_cells_anno$cell_filter &
-                                  pca_reads_cells_anno$total_cutoff &
-                                  pca_reads_cells_anno$gene_filter
+pca_reads_cells_anno$qc_filter <- pca_reads_cells_anno$total_cutoff &
+                                  pca_reads_cells_anno$gene_filter &
+                                  pca_reads_cells_anno$cell_filter
+  
 ggplot(pca_reads_cells_anno, aes(x = PC1, y = PC2, col = qc_filter,
                                  label = as.character(cell_number))) +
   geom_text(fontface=3)
 ```
 
-The two cutoffs largely overlap.
+Apply all the cutoffs
 
-```{r cell-total-filter-overlap}
-table(pca_reads_cells_anno$cell_filter, pca_reads_cells_anno$total_cutoff,
-      dnn = c("Num cells == 1", "Total reads > 2e6"))
+```{r filter-all}
+pca_reads_cells_anno$qc_filter_all <- pca_reads_cells_anno$total_cutoff &
+                                      pca_reads_cells_anno$unmapped_cutoff &
+                                      pca_reads_cells_anno$ERCC_cutoff &
+                                      pca_reads_cells_anno$gene_filter &
+                                      pca_reads_cells_anno$cell_filter
+  
+ggplot(pca_reads_cells_anno, aes(x = PC1, y = PC2, col = qc_filter_all,
+                                 label = as.character(cell_number))) +
+  geom_text(fontface=3)
 ```
 
 How many cells do we keep from each individual and batch using this filter?
 
 ```{r individuals-remaining}
 table(pca_reads_cells_anno[pca_reads_cells_anno$qc_filter,
+                           c("individual", "batch")])
+
+table(pca_reads_cells_anno[pca_reads_cells_anno$qc_filter_all,
                            c("individual", "batch")])
 ```
 
