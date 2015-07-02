@@ -46,6 +46,10 @@ main <- function(num_cells, seed, single_fname, bulk_fname, individual = NULL) {
                                 rownames(single_cells))
 
   # Subsample number of single cells
+  if (ncol(single_cells) < num_cells) {
+    cat(sprintf("%d\t%d\tNA\n", num_cells, seed))
+    quit()
+  }
   set.seed(seed)
   single_cells <- single_cells[, sample(1:ncol(single_cells), size = num_cells)]
   # Calculate cpm
