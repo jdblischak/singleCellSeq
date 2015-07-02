@@ -9,9 +9,9 @@
 <meta name="generator" content="pandoc" />
 
 
-<meta name="date" content="2015-06-30" />
+<meta name="date" content="2015-07-02" />
 
-<title>Subsample</title>
+<title>Subsample: Correlation of single and bulk cells</title>
 
 <script src="libs/jquery-1.11.0/jquery.min.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -118,49 +118,79 @@ img {
 </div><!--/.navbar -->
 
 <div id="header">
-<h1 class="title">Subsample</h1>
-<h4 class="date"><em>2015-06-30</em></h4>
+<h1 class="title">Subsample: Correlation of single and bulk cells</h1>
+<h4 class="date"><em>2015-07-02</em></h4>
 </div>
 
 <div id="TOC">
 <ul>
+<li><a href="#batch-process-each-subsampled-data-set">Batch process each subsampled data set</a></li>
+<li><a href="#results">Results</a></li>
 <li><a href="#session-information">Session information</a></li>
 </ul>
 </div>
 
 <p><strong>Last updated:</strong> 2015-07-02</p>
 <p><strong>Code version:</strong> 7bb9ae37e360f8cae9e1d9ccb00035590d88ba5b</p>
-<p>Subsample reads post-mapping. Includes both mapped and unmapped reads.</p>
-<pre class="bash"><code>cd $ssd
-mdkir -p subsampled/bam-combined
-for FILE in bam-combined/*bam
+<p>The mean counts per million in a subsampled set of single cells (both sequencing depth and number of cells is varied) is compared to the mean counts per million of the bulk cells (mean across the three batches).</p>
+<pre class="r"><code>library(&quot;dplyr&quot;)
+library(&quot;ggplot2&quot;)
+theme_set(theme_bw(base_size = 14))</code></pre>
+<div id="batch-process-each-subsampled-data-set" class="section level2">
+<h2>Batch process each subsampled data set</h2>
+<p>Run 10 iterations for each individual for each sequencing depth for each subsample of cells. The analysis is performed by <a href="https://github.com/jdblischak/singleCellSeq/blob/master/code/correlate-single-to-bulk.R">correlate-single-to-bulk.R</a>.</p>
+<pre class="bash"><code>cd $ssd/subsampled
+mkdir -p correlation
+mkdir -p ~/log/correlate-single-to-bulk.R
+for IND in 19098 19101 19239
 do
   for NUM in 200000 400000 600000 800000 1000000 1200000 1400000 1600000 1800000 2000000
   do
-    echo &quot;subsample-bam.py 12345 $NUM subsampled/bam-combined $FILE&quot; | qsub -l h_vmem=3g -V -cwd -N sub -j y -o ~/log
+    for CELLS in 10 20 30 40 50
+    do
+      for SEED in {1..10}
+      do
+        CMD=&quot;correlate-single-to-bulk.R $CELLS $SEED molecule-counts-$NUM.txt $ssc/data/reads.txt --individual=$IND&quot;
+        DEST=&quot;correlation/$IND-$CELLS-$SEED-$NUM.txt&quot;
+        echo &quot;$CMD &gt; $DEST&quot; | qsub -l h_vmem=2g -cwd -V -N cor-$IND-$CELLS-$SEED-$NUM -j y -o ~/log/correlate-single-to-bulk.R
+      done
+    done
   done
 done</code></pre>
-<p>Switch to directory <code>subsampled</code>. Symlink <code>exons.saf</code>.</p>
-<pre class="bash"><code>cd subsampled
-mkdir genome
-ln -s /mnt/lustre/home/jdblischak/singleCellSeq/data/exons.saf genome/exons.saf</code></pre>
-<p>Remove duplicate UMIs.</p>
-<pre class="bash"><code>submit-array.sh rmdup-umi.sh 2g bam-combined/*bam</code></pre>
-<pre class="bash"><code>ls bam-rmdup-umi/*bam | wc -l
-grep -w success ~/log/rmdup-umi.sh/* | wc -l
-grep -w failure ~/log/rmdup-umi.sh/* | wc -l</code></pre>
-<p>Count reads per gene.</p>
-<pre class="bash"><code>submit-array.sh count-reads-per-gene.sh 2g bam-combined/*bam bam-rmdup-umi/*bam</code></pre>
-<pre class="bash"><code>ls counts/*genecounts.txt | wc -l
-grep -w success ~/log/count-reads-per-gene.sh/* | wc -l
-grep -w failure ~/log/count-reads-per-gene.sh/* | wc -l</code></pre>
-<p>Gather the gene counts.</p>
-<pre class="bash"><code>mkdir -p ~/log/gather-gene-counts.py
-for NUM in 200000 400000 600000 800000 1000000 1200000 1400000 1600000 1800000 2000000
-do
-  echo &quot;gather-gene-counts.py counts/*.$NUM.genecounts.txt &gt; read-counts-$NUM.txt&quot; | qsub -l h_vmem=8g -cwd -V -j y -o ~/log/gather-gene-counts.py -N read-counts-$NUM
-  echo &quot;gather-gene-counts.py counts/*.$NUM.rmdup.genecounts.txt &gt; molecule-counts-$NUM.txt&quot; | qsub -l h_vmem=8g -cwd -V -j y -o ~/log/gather-gene-counts.py -N molecule-counts-$NUM
-done</code></pre>
+<p>Convert to one file using Python. Run from <code>$ssd/subsampled</code>.</p>
+<pre class="python"><code>import os
+import glob
+files = glob.glob(&quot;correlation/*txt&quot;)
+out = open(&quot;correlation.txt&quot;, &quot;w&quot;)
+out.write(&quot;ind\tdepth\tnum_cells\tseed\tr\n&quot;)
+for fname in files:
+    fname_parts = os.path.basename(fname).rstrip(&quot;.txt&quot;).split(&quot;-&quot;)
+    ind = fname_parts[0]
+    depth = fname_parts[3]
+    f = open(fname, &quot;r&quot;)
+    out.write(ind + &quot;\t&quot; + depth + &quot;\t&quot; + f.read())
+    f.close()
+
+out.close()</code></pre>
+</div>
+<div id="results" class="section level2">
+<h2>Results</h2>
+<pre class="r"><code>r_data &lt;- read.table(&quot;/mnt/gluster/data/internal_supp/singleCellSeq/subsampled/correlation.txt&quot;,
+                     header = TRUE, sep = &quot;\t&quot;, stringsAsFactors = FALSE)</code></pre>
+<p>Calculate the mean and standard error of the mean (sem) for each of the 10 iterations.</p>
+<pre class="r"><code>r_data_plot &lt;- r_data %&gt;%
+  group_by(ind, depth, num_cells) %&gt;%
+  summarize(mean = mean(r), sem = sd(r) / length(r))</code></pre>
+<pre class="r"><code>ggplot(r_data_plot, aes(x = num_cells, y = mean, color = as.factor(depth))) +
+  geom_line() +
+  geom_errorbar(aes(ymin = mean - sem, ymax = mean + sem), width = 1) +
+  facet_wrap(~ind) +
+  labs(x = &quot;Number of subsampled cells&quot;,
+       y = &quot;Pearson&#39;s r (mean +/- sem)&quot;,
+       color = &quot;Depth&quot;,
+       title = &quot;Subsample: Correlation of single and bulk cells&quot;)</code></pre>
+<p><img src="figure/correlate-single-to-bulk.Rmd/subsample-correlate-single-cell-to-bulk-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
 <div id="session-information" class="section level2">
 <h2>Session information</h2>
 <pre class="r"><code>sessionInfo()</code></pre>
@@ -179,12 +209,16 @@ attached base packages:
 [1] stats     graphics  grDevices utils     datasets  methods   base     
 
 other attached packages:
-[1] knitr_1.10.5
+[1] ggplot2_1.0.1 dplyr_0.4.1   knitr_1.10.5 
 
 loaded via a namespace (and not attached):
- [1] magrittr_1.5    formatR_1.2     tools_3.2.0     htmltools_0.2.6
- [5] yaml_2.1.13     stringi_0.4-1   rmarkdown_0.6.1 stringr_1.0.0  
- [9] digest_0.6.8    evaluate_0.7   </code></pre>
+ [1] Rcpp_0.11.6      magrittr_1.5     MASS_7.3-40      munsell_0.4.2   
+ [5] colorspace_1.2-6 stringr_1.0.0    plyr_1.8.2       tools_3.2.0     
+ [9] parallel_3.2.0   grid_3.2.0       gtable_0.1.2     DBI_0.3.1       
+[13] htmltools_0.2.6  yaml_2.1.13      lazyeval_0.1.10  assertthat_0.1  
+[17] digest_0.6.8     reshape2_1.4.1   formatR_1.2      evaluate_0.7    
+[21] rmarkdown_0.6.1  labeling_0.3     stringi_0.4-1    scales_0.2.4    
+[25] proto_0.3-10    </code></pre>
 </div>
 
 
