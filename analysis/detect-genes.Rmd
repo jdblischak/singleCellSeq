@@ -1,0 +1,106 @@
+---
+title: "Subsample: Number of genes detected"
+date: 2015-07-03
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+```
+
+The number of genes is detected in a subsampled set of single cells (both sequencing depth and number of cells is varied).
+
+```{r message=FALSE}
+library("dplyr")
+library("ggplot2")
+theme_set(theme_bw(base_size = 14))
+```
+
+## Batch process each subsampled data set
+
+Run 10 iterations for each individual for each sequencing depth for each subsample of cells.
+The analysis is performed by [detect-genes.R](https://github.com/jdblischak/singleCellSeq/blob/master/code/detect-genes.R).
+
+```bash
+cd $ssd/subsampled
+mkdir -p genes-detected
+mkdir -p ~/log/detect-genes.R
+for IND in 19098 19101 19239
+do
+  for NUM in 200000 400000 600000 800000 1000000 1200000 1400000 1600000 1800000 2000000 2200000 2400000 2600000 2800000 3000000 3200000 3400000 3600000 3800000 4000000
+  do
+    for CELLS in 10 20 30 40 50 60 70 80 90 100
+    do
+      for SEED in {1..10}
+      do
+        # Molecules
+        CMD="detect-genes.R $CELLS $SEED molecule-counts-$NUM.txt --individual=$IND --count=10 --fraction=0.5"
+        DEST="genes-detected/molecule-$IND-$CELLS-$SEED-$NUM.txt"
+        echo "$CMD > $DEST" | qsub -l h_vmem=2g -cwd -V -N detect-molecule-$IND-$CELLS-$SEED-$NUM -j y -o ~/log/detect-genes.R
+        # Reads
+        CMD="detect-genes.R $CELLS $SEED read-counts-$NUM.txt --individual=$IND --count=10 --fraction=0.5"
+        DEST="genes-detected/read-$IND-$CELLS-$SEED-$NUM.txt"
+        echo "$CMD > $DEST" | qsub -l h_vmem=2g -cwd -V -N detect-read-$IND-$CELLS-$SEED-$NUM -j y -o ~/log/detect-genes.R
+      done
+    done
+  done
+done
+```
+
+Convert to one file using Python.
+Run from `$ssd/subsampled`.
+
+```python
+import os
+import glob
+files = glob.glob("genes-detected/*txt")
+out = open("genes-detected.txt", "w")
+out.write("type\tind\tdepth\tnum_cells\tseed\tgenes\n")
+for fname in files:
+    fname_parts = os.path.basename(fname).rstrip(".txt").split("-")
+    type = fname_parts[0]
+    ind = fname_parts[1]
+    depth = fname_parts[4]
+    f = open(fname, "r")
+    out.write(type + "\t" + ind + "\t" + depth + "\t" + f.read())
+    f.close()
+
+out.close()
+```
+
+## Results
+
+```{r input}
+genes_data <- read.table("/mnt/gluster/data/internal_supp/singleCellSeq/subsampled/genes-detected.txt",
+                         header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+```
+
+Calculate the mean and standard error of the mean (sem) for each of the 10 iterations.
+
+```{r calculate-mean-and-sem}
+genes_data_plot <- genes_data %>%
+  group_by(type, ind, depth, num_cells) %>%
+  summarize(mean = mean(genes), sem = sd(genes) / length(genes))
+```
+
+Results for a minimum count of 10 and a minumum fraction of cells of 0.5.
+
+```{r subsample-genes-detected, fig.width=10, fig.height=10}
+ggplot(genes_data_plot, aes(x = num_cells, y = mean, color = as.factor(depth))) +
+  geom_line() +
+  geom_errorbar(aes(ymin = mean - sem, ymax = mean + sem), width = 1) +
+  facet_grid(type~ind) +
+  labs(x = "Number of subsampled cells",
+       y = "Number of genes detected",
+       color = "Depth",
+       title = "Subsample: Number of genes detected")
+```
+
+## Session information
+
+```{r info}
+sessionInfo()
+```
