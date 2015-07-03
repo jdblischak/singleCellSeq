@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 
-"Detect the number of expressed genes.
+"Detect the number of expressed genes and the number of counts.
 
 Usage:
 detect-genes.R [options] <num_cells> <seed> <exp>
@@ -50,11 +50,18 @@ main <- function(num_cells, seed, exp_fname, individual = NULL, min_count = 1,
   exp_dat <- exp_dat[, sample(1:ncol(exp_dat), size = num_cells)]
 #   exp_dat[1:10, 1:10]
 #   dim(exp_dat)
+
+  # Detect number of expressed genes
   detected <- apply(exp_dat, 1, detect_expression, min_count = min_count, min_cells = min_cells)
   num_detected <- sum(detected)
 
+  # Caculate mean number of total counts, using only genes which meet the
+  # criteria for detection.
+  exp_dat_detected <- exp_dat[detected, ]
+  mean_counts <- mean(rowSums(exp_dat_detected))
+
   # Output
-  cat(sprintf("%d\t%d\t%d\n", num_cells, seed, num_detected))
+  cat(sprintf("%d\t%d\t%d\t%.2f\n", num_cells, seed, num_detected, mean_counts))
 }
 
 detect_expression <- function(x, min_count, min_cells) {

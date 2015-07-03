@@ -39,11 +39,11 @@ do
         # Molecules
         CMD="detect-genes.R $CELLS $SEED molecule-counts-$NUM.txt --individual=$IND --min_count=10 --min_cells=5"
         DEST="genes-detected/molecule-$IND-$CELLS-$SEED-$NUM.txt"
-        echo "$CMD > $DEST" | qsub -l h_vmem=2g -cwd -V -N detect-molecule-$IND-$CELLS-$SEED-$NUM -j y -o ~/log/detect-genes.R
+        echo "$CMD > $DEST" | qsub -l h_vmem=2g -cwd -V -N detect-molecule-$IND-$CELLS-$SEED-$NUM -j y -o ~/log/detect-genes.R -l 'hostname=!bigmem01'
         # Reads
         CMD="detect-genes.R $CELLS $SEED read-counts-$NUM.txt --individual=$IND --min_count=10 --min_cells=5"
         DEST="genes-detected/read-$IND-$CELLS-$SEED-$NUM.txt"
-        echo "$CMD > $DEST" | qsub -l h_vmem=2g -cwd -V -N detect-read-$IND-$CELLS-$SEED-$NUM -j y -o ~/log/detect-genes.R
+        echo "$CMD > $DEST" | qsub -l h_vmem=2g -cwd -V -N detect-read-$IND-$CELLS-$SEED-$NUM -j y -o ~/log/detect-genes.R -l 'hostname=!bigmem01'
       done
     done
   done
@@ -58,7 +58,7 @@ import os
 import glob
 files = glob.glob("genes-detected/*txt")
 out = open("genes-detected.txt", "w")
-out.write("type\tind\tdepth\tnum_cells\tseed\tgenes\n")
+out.write("type\tind\tdepth\tnum_cells\tseed\tgenes\tmean_counts\n")
 for fname in files:
     fname_parts = os.path.basename(fname).rstrip(".txt").split("-")
     type = fname_parts[0]
@@ -71,7 +71,7 @@ for fname in files:
 out.close()
 ```
 
-## Results
+## Number of genes detected
 
 ```{r input}
 genes_data <- read.table("/mnt/gluster/data/internal_supp/singleCellSeq/subsampled/genes-detected.txt",
@@ -86,7 +86,7 @@ genes_data_plot <- genes_data %>%
   summarize(mean = mean(genes), sem = sd(genes) / length(genes))
 ```
 
-Results for a minimum count of 10 and a minumum min_cells of cells of 5.
+Results for a minimum count of 10 and a minumum number of cells of 5.
 
 ```{r subsample-genes-detected, fig.width=10, fig.height=10}
 ggplot(genes_data_plot, aes(x = num_cells, y = mean, color = as.factor(depth))) +
@@ -99,6 +99,8 @@ ggplot(genes_data_plot, aes(x = num_cells, y = mean, color = as.factor(depth))) 
        title = "Subsample: Number of genes detected")
 ```
 
+## Wu et al. 2014
+
 [Wu et al. 2014][Wu2014] observed quickly diminishing returns in the number of genes detected at a threshold of FPKM > 1 after 500,000 reads.
 In their Figure 5 below, each point represents the mean (+/- standard error) of four random subsamplings of the given sequencing depth.
 The different lines are for different single cell technologies.
@@ -106,6 +108,47 @@ The different lines are for different single cell technologies.
 ![Wu](http://www.ncbi.nlm.nih.gov/pmc/articles/PMC4022966/bin/nihms570678f5.jpg)
 
 [Wu2014]: http://www.ncbi.nlm.nih.gov/pmc/articles/PMC4022966
+
+## Mean number of total counts
+
+Explore the effect of subsampling sequencing depth and number of cells on the mean total count.
+Only includes counts of genes which had the minumum count (10) in the minimum number of cells (5).
+
+Calculate the mean and standard error of the mean (sem) for each of the 10 iterations.
+
+```{r calculate-mean-and-sem-counts}
+mean_counts_data_plot <- genes_data %>%
+  group_by(type, ind, depth, num_cells) %>%
+  summarize(mean = mean(mean_counts), sem = sd(mean_counts) / length(mean_counts))
+```
+
+Results for a minimum count of 10 and a minumum number of cells of 5.
+
+```{r subsample-mean-counts, fig.width=10, fig.height=10}
+ggplot(mean_counts_data_plot, aes(x = num_cells, y = mean, color = as.factor(depth))) +
+  geom_line() +
+  geom_errorbar(aes(ymin = mean - sem, ymax = mean + sem), width = 1) +
+  facet_grid(type~ind) +
+  labs(x = "Number of subsampled cells",
+       y = "Mean total count",
+       color = "Depth",
+       title = "Subsample: Mean total count")
+```
+
+It's difficult to see the differences in the molecule counts because of the range of the y-axis.
+Here is the molecule counts alone.
+
+```{r subsample-mean-counts-molecules-only, fig.width=10, fig.height=10}
+ggplot(mean_counts_data_plot[mean_counts_data_plot$type == "molecule", ],
+       aes(x = num_cells, y = mean, color = as.factor(depth))) +
+  geom_line() +
+  geom_errorbar(aes(ymin = mean - sem, ymax = mean + sem), width = 1) +
+  facet_wrap(~ind) +
+  labs(x = "Number of subsampled cells",
+       y = "Mean count",
+       color = "Depth",
+       title = "Subsample: Mean count, molecules only")
+```
 
 ## Session information
 
