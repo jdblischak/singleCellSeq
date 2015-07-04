@@ -71,7 +71,7 @@ qc <- read.table("../data/qc-ipsc.txt", header = TRUE,
 head(qc)
 ```
 
-## total mapped reads, unmapped ratios, and ERCC ratios
+## Total mapped reads, unmapped ratios, and ERCC ratios
 
 Looking at the unmapped ratio and ERCC ratio of each cell based on number of reads.
 
@@ -111,7 +111,7 @@ Looking at only the single cell libraries
 # remove bulk keep single cell
 summary_per_sample_reads_single <- summary_per_sample_reads[summary_per_sample_reads$well!="bulk",]
 
-# so mamy plots
+# many plots
 ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + xlab("Number of mapped reads") + ylab("Umapped reads ratio")
 
 ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + xlab("Number of mapped reads") + ylab("Spike-in reads ratio")
@@ -123,7 +123,7 @@ ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = ERCC.ratios, c
 ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = total.ERCC, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))
 ```
 
-### adjust the ERCC total reads of 19098 batch 2
+### Adjust the ERCC total reads of 19098 batch 2
 
 It is obvious that the 19098 batch 2 have a lot more ERCC than all the other. Here is trying to fix it by adjusting the ERCC of the super sad batch.
 ```{r 19098-2}
@@ -132,8 +132,7 @@ summary_per_sample_reads_single$index_19098_2 <- (summary_per_sample_reads_singl
 #calculating the ratio of 19098 batch 2 to the rest
 adjusted_ratio <- mean(summary_per_sample_reads_single$total.ERCC[summary_per_sample_reads_single$index_19098_2])/mean(summary_per_sample_reads_single$total.ERCC[!summary_per_sample_reads_single$index_19098_2])
 
-#calculating the pippetting error rate before 21 cycle amplification
-adjusted_ratio^(1/22)
+adjusted_ratio
 
 #adjusted total ERCC reads
 summary_per_sample_reads_single$adj.total.ERCC <- summary_per_sample_reads_single$total.ERCC  
@@ -147,7 +146,7 @@ summary_per_sample_reads_single$adj.total.ERCC/summary_per_sample_reads_single$t
 ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = adj.ERCC.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))
 ```
 
-### QC by cell number
+## Cell number
 
 The cell number of each capture site is recorded after the cell corting step and before the cells got lysed.
 ```{r cell-number}
@@ -169,21 +168,7 @@ ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = unmapped.ra
 ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = ERCC.ratios, col = qc_filter, label = as.character(cell_number))) + geom_text(fontface=3) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + xlab("Number of mapped reads") + ylab("Spike-in reads ratio")
 ```
 
-We decided to apply the same cutoff for all the C1 preps. This is just a test.
-```{r by-C1}
-#individual 19098 batch2
-C1_19098_2 <- summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$individual == "19098" & summary_per_sample_reads_single_qc$batch =="2",]
-
-ggplot(C1_19098_2, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)
-
-ggplot(C1_19098_2, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)
-
-C1_19098_2_retained <- C1_19098_2[C1_19098_2$unmapped.ratios< 0.6 & C1_19098_2$ERCC.ratios< 0.35 & C1_19098_2$cell_number == 1,]
-
-dim(C1_19098_2_retained)
-```
-
-## Number of genes deteced
+## Number of genes detected
 ```{r gene-number}
 ## remove genes with no read in both single cells and bulk
 expressed <- rowSums(reads[, anno$well == "bulk"]) > 0 &
@@ -199,6 +184,28 @@ summary_per_sample_reads_single_qc$reads_single_gene_number <- reads_single_gene
 ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = reads_single_gene_number, col = qc_filter, label = as.character(cell_number))) + geom_text(fontface=3) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + xlab("Number of mapped reads") + ylab("Number of genes")
 
 ggplot(summary_per_sample_reads_single_qc, aes(x = reads_single_gene_number, y = ERCC.ratios, col = qc_filter, label = as.character(cell_number))) + geom_text(fontface=3) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + xlab("Number of genes") + ylab("Spike-in reads ratio")
+```
+
+## Reads mapped to mitochondrial genes
+```{r mitochondrial}
+## create a list of mitochondrial genes (13 protein-coding genes)
+## MT-ATP6, MT-CYB, MT-ND1, MT-ND4, MT-ND4L, MT-ND5, MT-ND6, MT-CO2, MT-CO1, MT-ND2, MT-ATP8, MT-CO3, MT-ND3
+mtgene <- c("ENSG00000198899", "ENSG00000198727", "ENSG00000198888", "ENSG00000198886", "ENSG00000212907", "ENSG00000198786", "ENSG00000198695", "ENSG00000198712", "ENSG00000198804", "ENSG00000198763","ENSG00000228253", "ENSG00000198938", "ENSG00000198840")
+
+## reads of mt genes in single cells
+mt_reads <- reads_single[mtgene,]
+dim(mt_reads)
+
+## mt ratio of single cell
+mt_reads_total <- apply(mt_reads, 2, sum)
+summary_per_sample_reads_single_qc$mt_reads_total <- mt_reads_total
+summary_per_sample_reads_single_qc$mt_reads_ratio <- summary_per_sample_reads_single_qc$mt_reads_total/summary_per_sample_reads_single_qc$total.mapped
+
+ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = mt_reads_ratio, col = qc_filter, label = as.character(cell_number))) + geom_text(fontface=3) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + xlab("Number of mapped reads") + ylab("Mitochondrial ratio")
+
+ggplot(summary_per_sample_reads_single_qc, aes(x = mt_reads_ratio, y = ERCC.ratios, col = qc_filter, label = as.character(cell_number))) + geom_text(fontface=3) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + xlab("Mitochondrial ratio") + ylab("Spike-in reads ratio")
+
+ggplot(summary_per_sample_reads_single_qc, aes(x = reads_single_gene_number, y = mt_reads_ratio, col = qc_filter, label = as.character(cell_number))) + geom_text(fontface=3) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + xlab("Number of genes") + ylab("Mitochondrial ratio")
 ```
 
 ## Effect of cell QC data on sequencing results
@@ -377,7 +384,20 @@ ggplot(pca_reads_cells_anno, aes(x = reads_single_gene_number, y = PC1)) +
   geom_smooth()
 ```
 
+PC1 is negatively correlated with the ratio of mitochondrial reads
+```{r pc1-mt-gene}
+ggplot(pca_reads_cells_anno, aes(x = mt_reads_ratio, y = PC1)) +
+  geom_point() +
+  geom_smooth()
+```
+
 Using various simple filtering cutoffs, it is not possible to capture all the cells that have low values of PC1.
+
+```{r filter-cell-num}
+pca_reads_cells_anno$cell_filter <- pca_reads_cells_anno$cell_number == 1
+ggplot(pca_reads_cells_anno, aes(x = PC1, y = PC2, col = cell_filter)) +
+  geom_point()
+```
 
 ```{r filter-total}
 pca_reads_cells_anno$total_cutoff <- pca_reads_cells_anno$total.mapped > 1.5 * 10^6
@@ -403,17 +423,17 @@ ggplot(pca_reads_cells_anno, aes(x = PC1, y = PC2, col = gene_filter)) +
   geom_point()
 ```
 
-```{r filter-cell-num}
-pca_reads_cells_anno$cell_filter <- pca_reads_cells_anno$cell_number == 1
-ggplot(pca_reads_cells_anno, aes(x = PC1, y = PC2, col = cell_filter)) +
+```{r filter-mt-genes}
+pca_reads_cells_anno$mt_filter <- pca_reads_cells_anno$mt_reads_ratio < 0.15
+ggplot(pca_reads_cells_anno, aes(x = PC1, y = PC2, col = mt_filter)) +
   geom_point()
 ```
 
-The two cutoffs largely overlap.
+The two cutoffs, total reads and cell number, largely overlap.
 
 ```{r cell-total-filter-overlap}
 table(pca_reads_cells_anno$cell_filter, pca_reads_cells_anno$total_cutoff,
-      dnn = c("Num cells == 1", "Total reads > 1e6"))
+      dnn = c("Num cells == 1", "Total reads > 1.5e6"))
 ```
 
 Add the third cutoff, 6000 genes detected, help a bit.
@@ -430,11 +450,12 @@ ggplot(pca_reads_cells_anno, aes(x = PC1, y = PC2, col = qc_filter,
 Apply all the cutoffs
 
 ```{r filter-all}
-pca_reads_cells_anno$qc_filter_all <- pca_reads_cells_anno$total_cutoff &
+pca_reads_cells_anno$qc_filter_all <- pca_reads_cells_anno$cell_filter &
+                                      pca_reads_cells_anno$total_cutoff &
                                       pca_reads_cells_anno$unmapped_cutoff &
                                       pca_reads_cells_anno$ERCC_cutoff &
                                       pca_reads_cells_anno$gene_filter &
-                                      pca_reads_cells_anno$cell_filter
+                                      pca_reads_cells_anno$mt_filter
   
 ggplot(pca_reads_cells_anno, aes(x = PC1, y = PC2, col = qc_filter_all,
                                  label = as.character(cell_number))) +
