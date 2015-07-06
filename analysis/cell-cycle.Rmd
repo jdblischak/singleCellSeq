@@ -1,0 +1,131 @@
+---
+title: "Cell-Cycle Analysis"
+author: "Po-Yuan Tung"
+date: 2015-07-06
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+Carry out cell cycle analysis of single cell iPSCs using the method by [Macosko2015]
+[Macosko2015]:http://www.sciencedirect.com/science/article/pii/S0092867415005498
+Gene sets reflecting five phases of the HeLa cell cycle (G1/S, S, G2/M, M and M/G1) were taken from Whitfield et al. (Whitfield et al., 2002) (Table S2), and refined by examining the correlation between the expression pattern of each gene and the average expression pattern of all genes in the respective gene-set, and excluding genes with a low correlation (R<0.3). This step removed genes that were identified as phase-specific in HeLa cells but did not correlate with that phase in our single-cell data. The remaining genes in each refined gene-set were highly correlated (not shown). We then averaged the normalized expression levels (log2(TPM+1)) of the genes in each gene-set to define the phase-specific scores of each cell. These scores were then subjected to two normalization steps. First, for each phase, the scores were centered and divided by their standard deviation. Second, the normalized scores of each cell were centered and normalized.
+To order cells according to their progression along the cell cycle, we first compared the pattern of phase-specific scores of each cell to eight potential patterns along the cell cycle: only G1/S is on, both G1/S and S, only S, only G2/M, G2/M and M, only M, only M/G1, M/G1 and G1. We also added a ninth pattern for equal scores of all phases (either all active or all inactive). Each pattern was defined simply as a vector of ones for active programs and zeros for inactive programs. We then classified the cells by the defined patterns based on the maximal correlation of the phase-specific scores with these potential patterns. Importantly, none of the cells were classified to the ninth pattern of equal activity, while multiple cells were assigned to each of the other patterns. To further order the cells within each class, we sorted the cells based on their relative correlation with the preceding and succeeding patterns, thereby smoothing the transitions between classes (Figure 4A).
+
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+```
+
+## Input
+
+```{r packages, message=FALSE}
+library("dplyr")
+library("ggplot2")
+theme_set(theme_bw(base_size = 16))
+library("edgeR")
+library("gplots")
+```
+
+Input annotation.
+
+```{r input-annotation}
+anno <- read.table("../data/annotation.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno)
+```
+
+Input read counts.
+
+```{r input-read-counts}
+reads <- read.table("../data/reads.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+```
+
+Input molecule counts.
+
+```{r input-molecule-counts}
+molecules <- read.table("../data/molecules.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+```
+
+Input list of quality single cells.
+
+```{r input-quality-single-cells}
+quality_single_cells <- scan("../data/quality-single-cells.txt",
+                             what = "character")
+```
+
+Keep only the single cells that passed the [QC filters](qc-cell-ipsc.html) and the bulk samples.
+
+```{r qc-filter}
+molecules <- molecules[, grepl("bulk", colnames(molecules)) |
+                         colnames(molecules) %in% quality_single_cells]
+anno <- anno[anno$well == "bulk" | anno$sample_id %in% quality_single_cells, ]
+stopifnot(ncol(molecules) == nrow(anno),
+          colnames(molecules) == anno$sample_id)
+
+reads <- reads[, grepl("bulk", colnames(reads)) |
+                         colnames(reads) %in% quality_single_cells]
+stopifnot(ncol(reads) == nrow(anno),
+          colnames(reads) == anno$sample_id)
+```
+
+Remove genes with zero read counts in the single cells or bulk samples.
+
+```{r remove-non-expressed-genes}
+expressed <- rowSums(molecules[, anno$well == "bulk"]) > 0 &
+             rowSums(molecules[, anno$well != "bulk"]) > 0
+molecules <- molecules[expressed, ]
+dim(molecules)
+
+expressed <- rowSums(reads[, anno$well == "bulk"]) > 0 &
+             rowSums(reads[, anno$well != "bulk"]) > 0
+reads <- reads[expressed, ]
+dim(reads)
+```
+
+Keep only single samples.
+
+```{r keep-single}
+molecules_single <- molecules[, anno$well != "bulk"]
+reads_single <- reads[, anno$well != "bulk"]
+```
+
+Remove genes with max molecule numer larger than 1024
+```{r remove-1024}
+molecules_single <- molecules_single[apply(molecules_single,1,max) < 1024,]
+```
+
+Input cell cycle gene
+Gene sets reflecting 5 cell cycle phases were taken from Table S2 of [Macosko2015]
+Gene ID conversion was done by using the DAVID http://david.abcc.ncifcrf.gov
+```{r input-cell-cycle-gene}
+cell_cycle_genes <- read.table("../data/cellcyclegenes.txt", header = TRUE, fill = TRUE)
+```
+
+## Create a gene list specific for our data
+creat table of each cell cycle stage
+```{r table-cell-cycle}
+reads_single_G1.S <- reads_single[cell_cycle_genes[,"G1.S"],]
+reads_single_S    <- reads_single[cell_cycle_genes[,"S"],]
+reads_single_G2.M <- reads_single[cell_cycle_genes[,"G2.M"],]
+reads_single_M    <- reads_single[cell_cycle_genes[,"M"],]
+reads_single_M.G1 <- reads_single[cell_cycle_genes[,"M.G1"],]
+```
+
+Exclue genes with correlation < 0.3
+```{r table-cell-cycle}
+reads_single_G1.S <- reads_single_G1.S[]
+reads_single_S    <- reads_single[cell_cycle_genes[,"S"],]
+reads_single_G2.M <- reads_single[cell_cycle_genes[,"G2.M"],]
+reads_single_M    <- reads_single[cell_cycle_genes[,"M"],]
+reads_single_M.G1 <- reads_single[cell_cycle_genes[,"M.G1"],]
+```
+
+## Session information
+
+```{r info}
+sessionInfo()
+```
