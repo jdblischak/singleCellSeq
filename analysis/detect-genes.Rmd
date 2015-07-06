@@ -37,7 +37,7 @@ do
       for SEED in {1..10}
       do
         # Molecules
-        CMD="detect-genes.R $CELLS $SEED molecule-counts-$NUM.txt --individual=$IND --min_count=10 --min_cells=5 --good_cells=/mnt/lustre/home/jdblischak/singleCellSeq/data/quality-single-cells.txt"
+        CMD="detect-genes.R $CELLS $SEED molecule-counts-$NUM.txt --individual=$IND --min_count=1 --min_cells=5 --good_cells=/mnt/lustre/home/jdblischak/singleCellSeq/data/quality-single-cells.txt"
         DEST="genes-detected/molecule-$IND-$CELLS-$SEED-$NUM.txt"
         echo "$CMD > $DEST" | qsub -l h_vmem=2g -cwd -V -N detect-molecule-$IND-$CELLS-$SEED-$NUM -j y -o ~/log/detect-genes.R -l 'hostname=!bigmem01'
         # Reads
@@ -86,7 +86,8 @@ genes_data_plot <- genes_data %>%
   summarize(mean = mean(genes), sem = sd(genes) / length(genes))
 ```
 
-Results for a minimum count of 10 and a minumum number of cells of 5.
+For the analysis of read counts, a gene was detected if it had greater than 10 reads in at least 5 cells.
+For the analysis of molecule counts, a gene was detected if it had greater than 1 molecule in at least 5 cells.
 
 ```{r subsample-genes-detected, fig.width=10, fig.height=10}
 ggplot(genes_data_plot, aes(x = num_cells, y = mean, color = as.factor(depth))) +
@@ -112,7 +113,7 @@ The different lines are for different single cell technologies.
 ## Mean number of total counts
 
 Explore the effect of subsampling sequencing depth and number of cells on the mean total count.
-Only includes counts of genes which had the minumum count (10) in the minimum number of cells (5).
+Only includes counts of genes which had the minumum count (10 reads; 1 molecule) in the minimum number of cells (5).
 
 Calculate the mean and standard error of the mean (sem) for each of the 10 iterations.
 
@@ -122,7 +123,7 @@ mean_counts_data_plot <- genes_data %>%
   summarize(mean = mean(mean_counts), sem = sd(mean_counts) / length(mean_counts))
 ```
 
-Results for a minimum count of 10 and a minumum number of cells of 5.
+Results for a minimum count of 10 reads or 1 molecule and a minumum number of cells of 5.
 
 ```{r subsample-mean-counts, fig.width=10, fig.height=10}
 ggplot(mean_counts_data_plot, aes(x = num_cells, y = mean, color = as.factor(depth))) +
