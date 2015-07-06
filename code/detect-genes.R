@@ -10,6 +10,7 @@ Options:
   --individual=<ind>     Only use data from ind, e.g. 19098
   --min_count=<x>        The minimum count required for detection [default: 1]
   --min_cells=<x>        The minimum number of cells required for detection [default: 1]
+  --good_cells=<file>    A 1-column file with the names of good quality cells to maintain
 
 Arguments:
   num_cells     number of single cells to subsample
@@ -17,9 +18,10 @@ Arguments:
   exp           sample-by-gene expression matrix" -> doc
 
 suppressMessages(library("docopt"))
+library("testit")
 
 main <- function(num_cells, seed, exp_fname, individual = NULL, min_count = 1,
-                 min_cells = 1) {
+                 min_cells = 1, good_cells = NULL) {
   # Load expression data
   exp_dat <- read.table(exp_fname, header = TRUE, sep = "\t",
                         stringsAsFactors = FALSE)
@@ -40,6 +42,16 @@ main <- function(num_cells, seed, exp_fname, individual = NULL, min_count = 1,
   # Fix ERCC names
   rownames(exp_dat) <- sub(pattern = "\\.", replacement = "-",
                                 rownames(exp_dat))
+  # Keep only good quality cells
+  if (!is.null(good_cells)) {
+    assert("File with list of good quality cells exists.",
+           file.exists(good_cells))
+    good_cells_list <- scan(good_cells, what = "character", quiet = TRUE)
+    good_cells_list <- substr(good_cells_list, start = 3, stop = 13)
+    exp_dat <- exp_dat[, colnames(exp_dat) %in% good_cells_list]
+    assert("There are quality cells to perform the analysis.",
+           ncol(exp_dat) > 0)
+  }
 
   # Subsample number of single cells
   if (ncol(exp_dat) < num_cells) {
@@ -89,7 +101,8 @@ if (!interactive() & getOption('run.main', default = TRUE)) {
        exp_fname = opts$exp,
        min_count = as.numeric(opts$min_count),
        min_cells = as.numeric(opts$min_cells),
-       individual = opts$individual)
+       individual = opts$individual,
+       good_cells = opts$good_cells)
 } else if (interactive() & getOption('run.main', default = TRUE)) {
   # what to do if interactively testing
   main(num_cells = 20,
@@ -97,5 +110,6 @@ if (!interactive() & getOption('run.main', default = TRUE)) {
        exp_fname = "/mnt/gluster/data/internal_supp/singleCellSeq/subsampled/molecule-counts-200000.txt",
        individual = "19098",
        min_count = 10,
-       min_cells = 5)
+       min_cells = 5,
+       good_cells = "../data/quality-single-cells.txt")
 }
