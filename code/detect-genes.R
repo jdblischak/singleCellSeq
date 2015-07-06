@@ -70,7 +70,7 @@ main <- function(num_cells, seed, exp_fname, individual = NULL, min_count = 1,
   # Caculate mean number of total counts, using only genes which meet the
   # criteria for detection.
   exp_dat_detected <- exp_dat[detected, ]
-  mean_counts <- mean(rowSums(exp_dat_detected))
+  mean_counts <- mean(colSums(exp_dat_detected))
 
   # Output
   cat(sprintf("%d\t%d\t%d\t%.2f\n", num_cells, seed, num_detected, mean_counts))
