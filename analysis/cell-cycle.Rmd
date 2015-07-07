@@ -89,8 +89,8 @@ dim(reads)
 Keep only single samples.
 
 ```{r keep-single}
-molecules_single <- molecules[, anno$well != "bulk"]
-reads_single <- reads[, anno$well != "bulk"]
+molecules_single <- molecules %>% select(-contains("bulk"))
+reads_single <- reads %>% select(-contains("bulk"))
 ```
 
 Remove genes with max molecule numer larger than 1024
@@ -133,6 +133,8 @@ sapply(cell_cycle_genes_list,function(xx){
   apply(reads_single_cpm,2,mean)
 
 })
+
+head(ans)
 ```
 
 ## Two step normalization of the phase-specific scores
@@ -165,22 +167,54 @@ ans_normed <- flexible_normalization(ans,by_row=FALSE)
 ## then normalized of each cell
 ans_normed_normed <- flexible_normalization(ans_normed,by_row=TRUE)
 
+head(ans_normed_normed)
+summary(ans_normed_normed)
 heatmap.2(ans_normed_normed, trace="none", cexRow=1,cexCol=1,margins=c(8,8),xlab="cell-cycle phase", ylab= "cells")
 ```
 
 ## assign phase for each cell based on phase-specific score
 ```{r assign-phase}
 cell_phase <- apply(ans_normed_normed,1,function(x) colnames(cell_cycle_genes)[which.max(x)])
-reads_single <- rbind(reads_single, cell_phase = cell_phase)
-
-test <- data.frame(cell_phase)
+assign_cell_phase <- data.frame(cell_phase)
 
 ## plot
-ggplot(test, aes(x=cell_phase)) + geom_histogram()
-
+phase_order <- c("G1.S","S","G2.M","M","M.G1")
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+ggplot(assign_cell_phase, aes(x=cell_phase)) + geom_histogram(aes(fill=factor(cell_phase))) + scale_x_discrete(limits=phase_order, labels=c("G1/S","S","G2/M","M","M/G1")) + scale_fill_manual(values=cbPalette, breaks=phase_order)
 ```
 
+## Total molecule counts and reads counts of each cell
+```{r counts}
+anno_single <- anno %>% filter(well != "bulk")
+anno_single$cell_phase <- assign_cell_phase$cell_phase
+anno_single$total_reads <- apply(reads_single, 2, sum)
+anno_single$total_molecules <- apply(molecules_single, 2, sum)
 
+b <- ggplot(anno_single, aes(x = as.factor(cell_phase), y = total_molecules)) + geom_boxplot(aes(fill=factor(cell_phase))) + scale_x_discrete(limits=phase_order, labels=c("G1/S","S","G2/M","M","M/G1")) + scale_fill_manual(values=cbPalette, breaks=phase_order) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + xlab("Cell cycle phase") + ylab("Total molecules")
+b
+b + facet_grid(individual ~ batch) 
+
+p <- ggplot(anno_single, aes(x = total_reads, y = total_molecules, col = cell_phase)) + geom_point(size = 3, alpha = 0.5, fontface=3) + scale_colour_manual(values=cbPalette, breaks=phase_order) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + xlab("Total reads") + ylab("Total molecules")
+p
+p + facet_grid(individual ~ batch) 
+```
+
+## Use the original assigned phases
+In the original paper that assigned genes to each phase in [Whitfield2002] , they use G1/S, S, G2, G2/M, M/G1 instead of G1/S, S, G2/M, M, M/G1 in [Macosko2015]
+
+[Whitfield2002]:http://www.molbiolcell.org/content/13/6/1977.long
+
+```{r original-phase}
+ggplot(assign_cell_phase, aes(x=cell_phase)) + geom_histogram(aes(fill=factor(cell_phase))) + scale_x_discrete(limits=phase_order, labels=c("G1/S","S","G2","G2/M","M/G1")) + scale_fill_manual(values=cbPalette, breaks=phase_order, labels=c("G1/S","S","G2","G2/M","M/G1"))
+
+b <- ggplot(anno_single, aes(x = as.factor(cell_phase), y = total_molecules)) + geom_boxplot(aes(fill=factor(cell_phase))) + scale_x_discrete(limits=phase_order, labels=c("G1/S","S","G2","G2/M","M/G1")) + scale_fill_manual(values=cbPalette, breaks=phase_order, labels=c("G1/S","S","G2","G2/M","M/G1")) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + xlab("Cell cycle phase") + ylab("Total molecules")
+b
+b + facet_grid(individual ~ batch) 
+
+p <- ggplot(anno_single, aes(x = total_reads, y = total_molecules, col = cell_phase)) + geom_point(size = 3, alpha = 0.5, fontface=3) + scale_colour_manual(values=cbPalette, breaks=phase_order, labels=c("G1/S","S","G2","G2/M","M/G1")) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + xlab("Total reads") + ylab("Total molecules")
+p
+p + facet_grid(individual ~ batch) 
+```
 
 ## Session information
 
