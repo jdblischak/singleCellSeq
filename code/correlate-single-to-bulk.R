@@ -98,7 +98,7 @@ main <- function(num_cells, seed, single_fname, bulk_fname, individual = NULL,
          nrow(bulk_cells) == nrow(single_cells))
 
   # Correlate
-  r <- cor(rowMeans(single_cells), rowMeans(bulk_cells))
+  r <- cor(log2(rowMeans(single_cells) + 1), log2(rowMeans(bulk_cells) + 1))
 
   # Output
   cat(sprintf("%d\t%d\t%f\n", num_cells, seed, r))
