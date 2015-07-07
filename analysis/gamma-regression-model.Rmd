@@ -1,0 +1,160 @@
+---
+title: "Gamma Regression Model (GRM)"
+date: 2015-07-06
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+```
+
+[Ding et al. 2015][Ding2015] developed [GRM][] to perform ERCC-based normalization using a gamma regression model.
+I downloaded GRM-0.2.1.tgz on 2015-06-29.
+
+```bash
+cd ~/src
+wget http://wanglab.ucsd.edu/star/GRM/files/GRM-0.2.1.tgz
+tar xzf GRM-0.2.1.tgz
+```
+
+Unfortunately it is not an R package, but a standalone R script.
+Furthermore, it loads unnecessary libraries (needed for making the plots in their paper) and loads the main function via `source` using a relative path.
+Luckily it appears it will be easier to just use that function directly since the script loads the data as csv files in a specific format.
+
+The main function is `gammareg` in include/GRM_lib.r.
+The only external library it requires is MASS (for the function `gamma.dispersion`).
+
+I looked at the tutorial files.
+The ERCC data it uses are the relative concentrations from the ERCC documentation (it uses Mix 2, whereas our data uses Mix 1).
+
+[Ding2015]: http://bioinformatics.oxfordjournals.org/content/early/2015/03/22/bioinformatics.btv122.full
+[GRM]: http://wanglab.ucsd.edu/star/GRM/
+
+## Setup
+
+```{r packages, message=FALSE}
+library("edgeR")
+source("functions.R")
+```
+
+Input and prepare single cell data.
+
+```{r prepare-molecules}
+molecules <- read.table("../data/molecules.txt", header = TRUE,
+                        stringsAsFactors = FALSE)
+anno <- read.table("../data/annotation.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+molecules_single <- molecules[, grep("bulk", colnames(molecules), invert = TRUE)]
+quality_single_cells <- scan("../data/quality-single-cells.txt",
+                             what = "character")
+# Remove low quality cells
+molecules_single <- molecules_single[, colnames(molecules_single) %in%
+                                       quality_single_cells]
+anno_single <- anno[anno$sample_id %in% quality_single_cells, ]
+# Remove unuexpressed genes
+expressed_single <- rowSums(molecules_single) > 0
+molecules_single <- molecules_single[expressed_single, ]
+# Remove "overexpressed" genes
+# This removes some ERCC b/c of 19098 batch 2
+overexpressed_genes <- apply(molecules_single, 1, function(x) any(x >= 1024))
+molecules_single <- molecules_single[!overexpressed_genes, ]
+# Correct for collision probability
+molecules_single <- -1024 * log(1 - molecules_single / 1024)
+# Calculate cpm
+molecules_single_cpm <- cpm(molecules_single)
+```
+
+The main function is `gammareg`.
+
+```{r source-grm}
+source("GRM.R")
+```
+
+It has four required arguments.
+
+```{r grm-args}
+formals(gammareg)
+```
+
+Below is documentation the authors provided interspersed with my code to prepare the data.
+
+```{r prepare-ercc-response}
+# ercc_response file: the fpkm reads for ERCC across all the samples
+#             format: each row is each ERCC, each column is each sample
+#                     especially sorted by the ERCC names
+ercc_response <- molecules_single_cpm[grep("ERCC", rownames(molecules_single_cpm)), ]
+stopifnot(nrow(ercc_response) <= 92)
+```
+
+`r nrow(ercc_response)` ERCC spike-ins have greater than 0 molecules but less than 1,024.
+
+```{r prepare-ercc}
+# ercc file: the add-in standard ERCC concentration, gotten from the experiments directly
+#    format: each row is each ERCC, each column is each sample
+#            the first column is ERCC name, the second column is ERCC standard concentration.
+#            especially sorted by the ERCC names
+ercc <- read.table("../data/ercc-info.txt", header = TRUE, sep = "\t",
+                   stringsAsFactors = FALSE)
+colnames(ercc) <- c("num", "id", "subgroup", "conc_mix1", "conc_mix2",
+                    "expected_fc", "log2_mix1_mix2")
+head(ercc)
+ercc <- ercc[, c("id", "conc_mix1")]
+stopifnot(nrow(ercc) == 92)
+# Sort by ERCC id
+ercc <- ercc[order(ercc$id), ]
+# Remove those the had been filtered
+ercc <- ercc[ercc$id %in% rownames(ercc_response), ]
+stopifnot(nrow(ercc) == nrow(ercc_response))
+```
+
+```{r prepare-gene}
+# gene file: the fpkm reads for genes across all the sampels
+#    format: each row is each gene, each column is each sample
+#            especially the column names should be in the same order with ercc_response file
+gene <- molecules_single_cpm[grep("ERCC", rownames(molecules_single_cpm),
+                                  invert = TRUE), ]
+```
+
+```{r prepare-filename}
+# filename: the vector for all the samples' names
+#    format: it should be a 1*n vector in character variable type
+filename <- colnames(molecules_single_cpm)
+```
+
+## Gamma regression model
+
+```{r run-gammareg, cache=TRUE, results='hide'}
+results <- gammareg(ercc_response = ercc_response, ercc = ercc, gene = gene,
+                    filename = filename)
+```
+
+## PCA
+
+```{r invariant}
+invariant_genes <- apply(results$predictset, 1, var) == 0
+```
+
+`r sum(invariant_genes)` genes are invariant.
+
+```{r pca-grm, cache=TRUE}
+pca_grm <- run_pca(results$predictset[!invariant_genes, ])
+plot_pca(pca_grm$PCs, explained = pca_grm$explained,
+         metadata = anno_single, color = "individual",
+         shape = "batch", factors = c("individual", "batch"))
+```
+
+```{r pca-grm-faceted}
+plot_pca(pca_grm$PCs, explained = pca_grm$explained,
+         metadata = anno_single, color = "individual",
+         shape = "batch", factors = c("individual", "batch")) +
+  facet_grid(batch~individual)
+```
+
+## Session information
+
+```{r info}
+sessionInfo()
+```

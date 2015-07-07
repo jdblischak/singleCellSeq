@@ -1,0 +1,189 @@
+---
+title: "Cell-Cycle Analysis"
+author: "Po-Yuan Tung"
+date: 2015-07-06
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+```
+
+Carry out cell cycle analysis of single cell iPSCs using the method by [Macosko2015]
+
+[Macosko2015]:http://www.sciencedirect.com/science/article/pii/S0092867415005498
+
+Gene sets reflecting five phases of the HeLa cell cycle (G1/S, S, G2/M, M and M/G1) were taken from Whitfield et al. (Whitfield et al., 2002) (Table S2), and refined by examining the correlation between the expression pattern of each gene and the average expression pattern of all genes in the respective gene-set, and excluding genes with a low correlation (R<0.3). This step removed genes that were identified as phase-specific in HeLa cells but did not correlate with that phase in our single-cell data. The remaining genes in each refined gene-set were highly correlated (not shown). We then averaged the normalized expression levels (log2(TPM+1)) of the genes in each gene-set to define the phase-specific scores of each cell. These scores were then subjected to two normalization steps. First, for each phase, the scores were centered and divided by their standard deviation. Second, the normalized scores of each cell were centered and normalized.
+
+## Input
+
+```{r packages, message=FALSE}
+library("dplyr")
+library("ggplot2")
+theme_set(theme_bw(base_size = 16))
+library("edgeR")
+library("gplots")
+```
+
+Input annotation.
+
+```{r input-annotation}
+anno <- read.table("../data/annotation.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno)
+```
+
+Input read counts.
+
+```{r input-read-counts}
+reads <- read.table("../data/reads.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+```
+
+Input molecule counts.
+
+```{r input-molecule-counts}
+molecules <- read.table("../data/molecules.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+```
+
+Input list of quality single cells.
+
+```{r input-quality-single-cells}
+quality_single_cells <- scan("../data/quality-single-cells.txt",
+                             what = "character")
+```
+
+Keep only the single cells that passed the [QC filters](qc-cell-ipsc.html) and the bulk samples.
+
+```{r qc-filter}
+molecules <- molecules[, grepl("bulk", colnames(molecules)) |
+                         colnames(molecules) %in% quality_single_cells]
+anno <- anno[anno$well == "bulk" | anno$sample_id %in% quality_single_cells, ]
+stopifnot(ncol(molecules) == nrow(anno),
+          colnames(molecules) == anno$sample_id)
+
+reads <- reads[, grepl("bulk", colnames(reads)) |
+                         colnames(reads) %in% quality_single_cells]
+stopifnot(ncol(reads) == nrow(anno),
+          colnames(reads) == anno$sample_id)
+```
+
+Remove genes with zero read counts in the single cells or bulk samples.
+
+```{r remove-non-expressed-genes}
+expressed <- rowSums(molecules[, anno$well == "bulk"]) > 0 &
+             rowSums(molecules[, anno$well != "bulk"]) > 0
+molecules <- molecules[expressed, ]
+dim(molecules)
+
+expressed <- rowSums(reads[, anno$well == "bulk"]) > 0 &
+             rowSums(reads[, anno$well != "bulk"]) > 0
+reads <- reads[expressed, ]
+dim(reads)
+```
+
+Keep only single samples.
+
+```{r keep-single}
+molecules_single <- molecules[, anno$well != "bulk"]
+reads_single <- reads[, anno$well != "bulk"]
+```
+
+Remove genes with max molecule numer larger than 1024
+```{r remove-1024}
+molecules_single <- molecules_single[apply(molecules_single,1,max) < 1024,]
+```
+
+Input cell cycle gene
+Gene sets reflecting 5 cell cycle phases were taken from Table S2 of [Macosko2015]
+Gene ID conversion was done by using the DAVID http://david.abcc.ncifcrf.gov
+```{r input-cell-cycle-gene}
+cell_cycle_genes <- read.table("../data/cellcyclegenes.txt", header = TRUE, sep="\t")
+
+## create 5 lists of 5 phases (de-level and then remove "")
+cell_cycle_genes_list <- lapply(1:5,function(x){
+  temp <- as.character(cell_cycle_genes[,x])
+  temp[temp!=""]
+})
+```
+
+## Create phase scores for each cell
+```{r phase-score}
+ans <-
+sapply(cell_cycle_genes_list,function(xx){
+  #### create table of each phase
+  reads_single_phase <- reads_single[rownames(reads_single) %in% unlist(xx) ,]
+  #### add average expression of all genes in the phase
+  combined_matrix <- rbind(reads_single_phase,average=apply(reads_single_phase,2,mean))
+  #### use transpose to compute cor matrix
+  cor_matrix <- cor(t(combined_matrix))
+  #### take the numbers
+  cor_vector <- cor_matrix[,dim(cor_matrix)[1]]
+  #### restrict to correlation >= 0.3 
+  reads_single_phase_restricted <- reads_single_phase[rownames(reads_single_phase) %in% names(cor_vector[cor_vector >= 0.3]),]
+  #### apply normalization to reads
+  norm_factors_single <- calcNormFactors(reads_single_phase_restricted, method = "TMM")
+  reads_single_cpm <- cpm(reads_single_phase_restricted, log = TRUE,
+                            lib.size = colSums(reads_single) * norm_factors_single)
+  #### output the phase specific scores (mean of normalized expression levels in the phase)
+  apply(reads_single_cpm,2,mean)
+
+})
+```
+
+## Two step normalization of the phase-specific scores
+```{r normalization}
+#### normalization function
+flexible_normalization <- function(data_in,by_row=TRUE){
+  if(by_row){
+    row_mean <- apply(data_in,1,mean)
+    row_sd   <- apply(data_in,1,sd)
+    output <- data_in
+    for(i in 1:dim(data_in)[1]){
+      output[i,] <- (data_in[i,] - row_mean[i])/row_sd[i]
+    }
+  }
+  #### if by column
+  if(!by_row){
+    col_mean <- apply(data_in,2,mean)
+    col_sd   <- apply(data_in,2,sd)
+    output <- data_in
+    for(i in 1:dim(data_in)[2]){
+      output[,i] <- (data_in[,i] - col_mean[i])/col_sd[i]
+    }
+  }
+  output
+}
+
+#### apply the normalization function
+## first normalized for each phase
+ans_normed <- flexible_normalization(ans,by_row=FALSE)
+## then normalized of each cell
+ans_normed_normed <- flexible_normalization(ans_normed,by_row=TRUE)
+
+heatmap.2(ans_normed_normed, trace="none", cexRow=1,cexCol=1,margins=c(8,8),xlab="cell-cycle phase", ylab= "cells")
+```
+
+## assign phase for each cell based on phase-specific score
+```{r assign-phase}
+cell_phase <- apply(ans_normed_normed,1,function(x) colnames(cell_cycle_genes)[which.max(x)])
+reads_single <- rbind(reads_single, cell_phase = cell_phase)
+
+test <- data.frame(cell_phase)
+
+## plot
+ggplot(test, aes(x=cell_phase)) + geom_histogram()
+
+```
+
+
+
+## Session information
+
+```{r info}
+sessionInfo()
+```

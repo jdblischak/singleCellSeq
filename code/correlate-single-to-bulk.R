@@ -7,11 +7,12 @@ suppressMessages(library("docopt"))
 "Correlate the expression in single cells to the bulk sample.
 
 Usage:
-correlate-single-cell-to-bulk.R [--individual=<ind>] <num_cells> <seed> <single> <bulk>
+correlate-single-cell-to-bulk.R [options] <num_cells> <seed> <single> <bulk>
 
 Options:
   -h --help              Show this screen.
   --individual=<ind>     Only use data from ind, e.g. 19098
+  --good_cells=<file>    A 1-column file with the names of good quality cells to maintain
 
 Arguments:
   num_cells     number of single cells to subsample
@@ -19,7 +20,8 @@ Arguments:
   single        sample-by-gene matrix of single cell data
   bulk          gene-by-sample matrix of bulk cell data" -> doc
 
-main <- function(num_cells, seed, single_fname, bulk_fname, individual = NULL) {
+main <- function(num_cells, seed, single_fname, bulk_fname, individual = NULL,
+                 good_cells = NULL) {
   suppressPackageStartupMessages(library("edgeR"))
   library("testit")
   id <- "single-to-bulk-correlation"
@@ -44,6 +46,16 @@ main <- function(num_cells, seed, single_fname, bulk_fname, individual = NULL) {
   # Fix ERCC names
   rownames(single_cells) <- sub(pattern = "\\.", replacement = "-",
                                 rownames(single_cells))
+  # Keep only good quality cells
+  if (!is.null(good_cells)) {
+    assert("File with list of good quality cells exists.",
+           file.exists(good_cells))
+    good_cells_list <- scan(good_cells, what = "character", quiet = TRUE)
+    good_cells_list <- substr(good_cells_list, start = 3, stop = 13)
+    single_cells <- single_cells[, colnames(single_cells) %in% good_cells_list]
+    assert("There are quality cells to perform the analysis.",
+           ncol(single_cells) > 0)
+  }
 
   # Subsample number of single cells
   if (ncol(single_cells) < num_cells) {
@@ -86,7 +98,7 @@ main <- function(num_cells, seed, single_fname, bulk_fname, individual = NULL) {
          nrow(bulk_cells) == nrow(single_cells))
 
   # Correlate
-  r <- cor(rowMeans(single_cells), rowMeans(bulk_cells))
+  r <- cor(log2(rowMeans(single_cells) + 1), log2(rowMeans(bulk_cells) + 1))
 
   # Output
   cat(sprintf("%d\t%d\t%f\n", num_cells, seed, r))
@@ -99,12 +111,14 @@ if (!interactive() & getOption('run.main', default = TRUE)) {
        seed = as.numeric(opts$seed),
        single_fname = opts$single,
        bulk_fname = opts$bulk,
-       individual = opts$individual)
+       individual = opts$individual,
+       good_cells = opts$good_cells)
 } else if (interactive() & getOption('run.main', default = TRUE)) {
   # what to do if interactively testing
   main(num_cells = 20,
        seed = 1,
        single_fname = "/mnt/gluster/data/internal_supp/singleCellSeq/subsampled/molecule-counts-200000.txt",
        bulk_fname = "~/singleCellSeq/data/reads.txt",
-       individual = "19098")
+       individual = "19098",
+       good_cells = "../data/quality-single-cells.txt")
 }

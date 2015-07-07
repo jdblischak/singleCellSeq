@@ -12,6 +12,7 @@ source("chunk-options.R")
 ```
 
 The mean counts per million in a subsampled set of single cells (both sequencing depth and number of cells is varied) is compared to the mean counts per million of the bulk cells (mean across the three batches).
+The mean counts are log~2~ transformed with an added pseudocount of 1.
 
 ```{r message=FALSE}
 library("dplyr")
@@ -36,9 +37,10 @@ do
     do
       for SEED in {1..10}
       do
-        CMD="correlate-single-to-bulk.R $CELLS $SEED molecule-counts-$NUM.txt $ssc/data/reads.txt --individual=$IND"
+        CMD="correlate-single-to-bulk.R $CELLS $SEED molecule-counts-$NUM.txt $ssc/data/reads.txt --individual=$IND --good_cells=/mnt/lustre/home/jdblischak/singleCellSeq/data/quality-single-cells.txt"
         DEST="correlation/$IND-$CELLS-$SEED-$NUM.txt"
         echo "$CMD > $DEST" | qsub -l h_vmem=2g -cwd -V -N cor-$IND-$CELLS-$SEED-$NUM -j y -o ~/log/correlate-single-to-bulk.R -l 'hostname=!bigmem01'
+        sleep .01s
       done
     done
   done
@@ -81,7 +83,7 @@ r_data_plot <- r_data %>%
 ```
 
 ```{r subsample-correlate-single-cell-to-bulk, fig.width=10, fig.height=10}
-ggplot(r_data_plot, aes(x = num_cells, y = mean, color = as.factor(depth))) +
+p <- ggplot(r_data_plot, aes(x = num_cells, y = mean, color = as.factor(depth))) +
   geom_line() +
   geom_errorbar(aes(ymin = mean - sem, ymax = mean + sem), width = 1) +
   facet_wrap(~ind) +
@@ -89,6 +91,13 @@ ggplot(r_data_plot, aes(x = num_cells, y = mean, color = as.factor(depth))) +
        y = "Pearson's r (mean +/- sem)",
        color = "Depth",
        title = "Subsample: Correlation of single and bulk cells")
+p
+```
+
+Focus on the lower end of the distribution of the number of subsampled cells.
+
+```{r subsample-correlate-single-cell-to-bulk-xlim, fig.width=10, fig.height=10, warning=FALSE}
+p + xlim(0, 30)
 ```
 
 ## Pollen et al. 2014
