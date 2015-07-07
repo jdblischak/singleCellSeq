@@ -1,0 +1,136 @@
+---
+title: "ERCC counts"
+author: "PoYuan Tung"
+date: 2015-07-07
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+```
+
+
+## Input
+
+Input annotation.
+
+```{r input-annotation}
+anno <- read.table("../data/annotation.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno)
+```
+
+Input ERCC concentration information.
+
+```{r input-ercc}
+ercc <- read.table("../data/ercc-info.txt", header = TRUE, sep = "\t",
+                   stringsAsFactors = FALSE)
+colnames(ercc) <- c("num", "id", "subgroup", "conc_mix1", "conc_mix2",
+                    "expected_fc", "log2_mix1_mix2")
+head(ercc)
+stopifnot(nrow(ercc) == 92)
+```
+
+Input molecule counts.
+
+```{r input-molecule-counts}
+molecules <- read.table("../data/molecules.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+```
+
+Input list of quality single cells.
+
+```{r input-quality-single-cells}
+quality_single_cells <- scan("../data/quality-single-cells.txt",
+                             what = "character")
+```
+
+## Prepare single cell molecule data
+
+Keep only the single cells that passed the [QC filters](qc-cell-ipsc.html).
+This also removes the bulk samples.
+
+```{r qc-filter}
+molecules_single <- molecules[, colnames(molecules) %in% quality_single_cells]
+anno_single <- anno[anno$sample_id %in% quality_single_cells, ]
+stopifnot(ncol(molecules_single) == nrow(anno_single),
+          colnames(molecules_single) == anno_single$sample_id)
+```
+
+Also remove batch 2 of individual 19098.
+
+```{r remove-19098-batch-2-single}
+molecules_single <- molecules_single[, !(anno_single$individual == 19098 & anno_single$batch == 2)]
+anno_single <- anno_single[!(anno_single$individual == 19098 & anno_single$batch == 2), ]
+stopifnot(ncol(molecules_single) == nrow(anno_single))
+```
+
+Remove genes with zero read counts in the single cells.
+
+```{r remove-non-expressed-genes}
+expressed_single <- rowSums(molecules_single) > 0
+molecules_single <- molecules_single[expressed_single, ]
+dim(molecules_single)
+```
+
+How many genes have greater than or equal to 1,024 molecules in at least one of the cells?
+
+```{r over-expressed}
+overexpressed_genes <- rownames(molecules_single)[apply(molecules_single, 1,
+                                                        function(x) any(x >= 1024))]
+```
+
+`r length(overexpressed_genes)` have greater than or equal to 1,024 molecules.
+Remove them.
+
+```{r remove-over-expressed}
+molecules_single <- molecules_single[!(rownames(molecules_single) %in% overexpressed_genes), ]
+```
+
+Correct for the collision probability.
+See [Grun et al. 2014][Grun2014] for details.
+
+```{r collision-probability}
+molecules_single_collision <- -1024 * log(1 - molecules_single / 1024)
+```
+
+[Grun2014]: http://www.nature.com/nmeth/journal/v11/n6/full/nmeth.2930.html#methods
+
+## Calculate the molecule counts of each ERCC in single cell
+Accorindg to Pollen et al.[Pollen2014], there are total 28,000 ERCC molecule per cell when the ERCC stock is used in 1:20,000 dilution. In our study, I used 1:50,000 dilution. Therefore, we have total 28000/2.5= 11200 ERCC molecule per cell.
+
+[Pollen2014]: http://www.ncbi.nlm.nih.gov/pmc/articles/PMC4191988/
+
+```{r ercc-number}
+#### sort ercc file by gene ID
+ercc <- ercc[order(ercc$id), ]
+
+#### number of genes detected in all single cells
+ercc_rows_molecules_single <- grep("ERCC", rownames(molecules_single))
+length(ercc_rows_molecules_single)
+
+#### keep only the ercc detected in single cells
+ercc_detected <- ercc[ercc$id %in% rownames(molecules_single), ]
+
+#### calculate the number of each ERCC based on the genes detected
+ratio <- 11200/ sum(ercc_detected[,"conc_mix1"])
+ratio
+ercc_detected$counts <- ercc_detected[,"conc_mix1"] * ratio
+head(ercc_detected)
+
+#### try 28000 to see if integers
+ratio_t <- 28000/ sum(ercc_detected[,"conc_mix1"])
+ercc_detected$counts_t <- ercc_detected[,"conc_mix1"] * ratio_t
+head(ercc_detected)
+```
+
+
+
+## Session information
+
+```{r info}
+sessionInfo()
+```
