@@ -92,7 +92,7 @@ For the analysis of read counts, a gene was detected if it had greater than 10 r
 For the analysis of molecule counts, a gene was detected if it had greater than 1 molecule in at least 5 cells.
 
 ```{r subsample-genes-detected, fig.width=10, fig.height=10}
-ggplot(genes_data_plot, aes(x = num_cells, y = mean, color = as.factor(depth))) +
+p <- ggplot(genes_data_plot, aes(x = num_cells, y = mean, color = as.factor(depth))) +
   geom_line() +
   geom_errorbar(aes(ymin = mean - sem, ymax = mean + sem), width = 1) +
   facet_grid(type~ind) +
@@ -100,6 +100,7 @@ ggplot(genes_data_plot, aes(x = num_cells, y = mean, color = as.factor(depth))) 
        y = "Number of genes detected",
        color = "Depth",
        title = "Subsample: Number of genes detected")
+p
 ```
 
 ## Wu et al. 2014
@@ -128,13 +129,8 @@ mean_counts_data_plot <- genes_data %>%
 Results for a minimum count of 10 reads or 1 molecule and a minumum number of cells of 5.
 
 ```{r subsample-mean-counts, fig.width=10, fig.height=10}
-ggplot(mean_counts_data_plot, aes(x = num_cells, y = mean, color = as.factor(depth))) +
-  geom_line() +
-  geom_errorbar(aes(ymin = mean - sem, ymax = mean + sem), width = 1) +
-  facet_grid(type~ind) +
-  labs(x = "Number of subsampled cells",
-       y = "Mean total count",
-       color = "Depth",
+p %+% mean_counts_data_plot +
+  labs(y = "Mean total count",
        title = "Subsample: Mean total count")
 ```
 
@@ -142,15 +138,30 @@ It's difficult to see the differences in the molecule counts because of the rang
 Here is the molecule counts alone.
 
 ```{r subsample-mean-counts-molecules-only, fig.width=10, fig.height=10}
-ggplot(mean_counts_data_plot[mean_counts_data_plot$type == "molecule", ],
-       aes(x = num_cells, y = mean, color = as.factor(depth))) +
-  geom_line() +
-  geom_errorbar(aes(ymin = mean - sem, ymax = mean + sem), width = 1) +
-  facet_wrap(~ind) +
-  labs(x = "Number of subsampled cells",
-       y = "Mean count",
-       color = "Depth",
-       title = "Subsample: Mean count, molecules only")
+p %+% mean_counts_data_plot[mean_counts_data_plot$type == "molecule", ] +
+  labs(y = "Mean total count",
+       title = "Subsample: Mean total count, molecules only")
+```
+
+Keeping the number of subsampled cells constant to focus specifically on changes in sequencing depth.
+
+```{r subsample-effect-of-depth-molecule}
+p_box <- ggplot(genes_data[genes_data$type == "molecule" &
+                           genes_data$num_cells %in% c(25, 75, 125) &
+                           genes_data$depth %in% c(8e5, 1.6e6, 2.4e6, 3.2e6), ],
+                aes(x = as.factor(depth), y = mean_counts)) +
+  geom_boxplot() +
+  facet_grid(num_cells~type) +
+  labs(x = "Depth", y = "Mean total count",
+       title = "Effect of sequencing depth on mean total molecule count")
+p_box
+```
+
+```{r subsample-effect-of-depth-read}
+p_box %+% genes_data[genes_data$type == "read" &
+                  genes_data$num_cells %in% c(25, 75, 125) &
+                  genes_data$depth %in% c(8e5, 1.6e6, 2.4e6, 3.2e6), ] +
+  labs(title = "Effect of sequencing depth on mean total read count")
 ```
 
 ## Session information
