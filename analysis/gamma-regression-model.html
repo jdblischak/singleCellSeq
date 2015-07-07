@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+
+<meta name="date" content="2015-07-06" />
+
+<title>Gamma Regression Model (GRM)</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Gamma Regression Model (GRM)</h1>
+<h4 class="date"><em>2015-07-06</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#setup">Setup</a></li>
+<li><a href="#gamma-regression-model">Gamma regression model</a></li>
+<li><a href="#pca">PCA</a></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2015-07-07</p>
+<p><strong>Code version:</strong> 8e5d336be95361fb60a5dbbed71bbfdaa8ed8ef7</p>
+<p><a href="http://bioinformatics.oxfordjournals.org/content/early/2015/03/22/bioinformatics.btv122.full">Ding et al. 2015</a> developed <a href="http://wanglab.ucsd.edu/star/GRM/">GRM</a> to perform ERCC-based normalization using a gamma regression model. I downloaded GRM-0.2.1.tgz on 2015-06-29.</p>
+<pre class="bash"><code>cd ~/src
+wget http://wanglab.ucsd.edu/star/GRM/files/GRM-0.2.1.tgz
+tar xzf GRM-0.2.1.tgz</code></pre>
+<p>Unfortunately it is not an R package, but a standalone R script. Furthermore, it loads unnecessary libraries (needed for making the plots in their paper) and loads the main function via <code>source</code> using a relative path. Luckily it appears it will be easier to just use that function directly since the script loads the data as csv files in a specific format.</p>
+<p>The main function is <code>gammareg</code> in include/GRM_lib.r. The only external library it requires is MASS (for the function <code>gamma.dispersion</code>).</p>
+<p>I looked at the tutorial files. The ERCC data it uses are the relative concentrations from the ERCC documentation (it uses Mix 2, whereas our data uses Mix 1).</p>
+<div id="setup" class="section level2">
+<h2>Setup</h2>
+<pre class="r"><code>library(&quot;edgeR&quot;)
+source(&quot;functions.R&quot;)</code></pre>
+<p>Input and prepare single cell data.</p>
+<pre class="r"><code>molecules &lt;- read.table(&quot;../data/molecules.txt&quot;, header = TRUE,
+                        stringsAsFactors = FALSE)
+anno &lt;- read.table(&quot;../data/annotation.txt&quot;, header = TRUE,
+                   stringsAsFactors = FALSE)
+molecules_single &lt;- molecules[, grep(&quot;bulk&quot;, colnames(molecules), invert = TRUE)]
+quality_single_cells &lt;- scan(&quot;../data/quality-single-cells.txt&quot;,
+                             what = &quot;character&quot;)
+# Remove low quality cells
+molecules_single &lt;- molecules_single[, colnames(molecules_single) %in%
+                                       quality_single_cells]
+anno_single &lt;- anno[anno$sample_id %in% quality_single_cells, ]
+# Remove unuexpressed genes
+expressed_single &lt;- rowSums(molecules_single) &gt; 0
+molecules_single &lt;- molecules_single[expressed_single, ]
+# Remove &quot;overexpressed&quot; genes
+# This removes some ERCC b/c of 19098 batch 2
+overexpressed_genes &lt;- apply(molecules_single, 1, function(x) any(x &gt;= 1024))
+molecules_single &lt;- molecules_single[!overexpressed_genes, ]
+# Correct for collision probability
+molecules_single &lt;- -1024 * log(1 - molecules_single / 1024)
+# Calculate cpm
+molecules_single_cpm &lt;- cpm(molecules_single)</code></pre>
+<p>The main function is <code>gammareg</code>.</p>
+<pre class="r"><code>source(&quot;GRM.R&quot;)</code></pre>
+<p>It has four required arguments.</p>
+<pre class="r"><code>formals(gammareg)</code></pre>
+<pre><code>$ercc_response
+
+
+$ercc
+
+
+$gene
+
+
+$filename
+
+
+$SE
+[1] FALSE</code></pre>
+<p>Below is documentation the authors provided interspersed with my code to prepare the data.</p>
+<pre class="r"><code># ercc_response file: the fpkm reads for ERCC across all the samples
+#             format: each row is each ERCC, each column is each sample
+#                     especially sorted by the ERCC names
+ercc_response &lt;- molecules_single_cpm[grep(&quot;ERCC&quot;, rownames(molecules_single_cpm)), ]
+stopifnot(nrow(ercc_response) &lt;= 92)</code></pre>
+<p>77 ERCC spike-ins have greater than 0 molecules but less than 1,024.</p>
+<pre class="r"><code># ercc file: the add-in standard ERCC concentration, gotten from the experiments directly
+#    format: each row is each ERCC, each column is each sample
+#            the first column is ERCC name, the second column is ERCC standard concentration.
+#            especially sorted by the ERCC names
+ercc &lt;- read.table(&quot;../data/ercc-info.txt&quot;, header = TRUE, sep = &quot;\t&quot;,
+                   stringsAsFactors = FALSE)
+colnames(ercc) &lt;- c(&quot;num&quot;, &quot;id&quot;, &quot;subgroup&quot;, &quot;conc_mix1&quot;, &quot;conc_mix2&quot;,
+                    &quot;expected_fc&quot;, &quot;log2_mix1_mix2&quot;)
+head(ercc)</code></pre>
+<pre><code>  num         id subgroup conc_mix1  conc_mix2 expected_fc log2_mix1_mix2
+1   1 ERCC-00130        A 30000.000 7500.00000           4              2
+2   2 ERCC-00004        A  7500.000 1875.00000           4              2
+3   3 ERCC-00136        A  1875.000  468.75000           4              2
+4   4 ERCC-00108        A   937.500  234.37500           4              2
+5   5 ERCC-00116        A   468.750  117.18750           4              2
+6   6 ERCC-00092        A   234.375   58.59375           4              2</code></pre>
+<pre class="r"><code>ercc &lt;- ercc[, c(&quot;id&quot;, &quot;conc_mix1&quot;)]
+stopifnot(nrow(ercc) == 92)
+# Sort by ERCC id
+ercc &lt;- ercc[order(ercc$id), ]
+# Remove those the had been filtered
+ercc &lt;- ercc[ercc$id %in% rownames(ercc_response), ]
+stopifnot(nrow(ercc) == nrow(ercc_response))</code></pre>
+<pre class="r"><code># gene file: the fpkm reads for genes across all the sampels
+#    format: each row is each gene, each column is each sample
+#            especially the column names should be in the same order with ercc_response file
+gene &lt;- molecules_single_cpm[grep(&quot;ERCC&quot;, rownames(molecules_single_cpm),
+                                  invert = TRUE), ]</code></pre>
+<pre class="r"><code># filename: the vector for all the samples&#39; names
+#    format: it should be a 1*n vector in character variable type
+filename &lt;- colnames(molecules_single_cpm)</code></pre>
+</div>
+<div id="gamma-regression-model" class="section level2">
+<h2>Gamma regression model</h2>
+<pre class="r"><code>results &lt;- gammareg(ercc_response = ercc_response, ercc = ercc, gene = gene,
+                    filename = filename)</code></pre>
+</div>
+<div id="pca" class="section level2">
+<h2>PCA</h2>
+<pre class="r"><code>invariant_genes &lt;- apply(results$predictset, 1, var) == 0</code></pre>
+<p>0 genes are invariant.</p>
+<pre class="r"><code>pca_grm &lt;- run_pca(results$predictset[!invariant_genes, ])
+plot_pca(pca_grm$PCs, explained = pca_grm$explained,
+         metadata = anno_single, color = &quot;individual&quot;,
+         shape = &quot;batch&quot;, factors = c(&quot;individual&quot;, &quot;batch&quot;))</code></pre>
+<p><img src="figure/gamma-regression-model.Rmd/pca-grm-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>plot_pca(pca_grm$PCs, explained = pca_grm$explained,
+         metadata = anno_single, color = &quot;individual&quot;,
+         shape = &quot;batch&quot;, factors = c(&quot;individual&quot;, &quot;batch&quot;)) +
+  facet_grid(batch~individual)</code></pre>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] MASS_7.3-40  edgeR_3.10.2 limma_3.24.9 knitr_1.10.5
+
+loaded via a namespace (and not attached):
+ [1] magrittr_1.5    formatR_1.2     tools_3.2.0     htmltools_0.2.6
+ [5] yaml_2.1.13     stringi_0.4-1   rmarkdown_0.6.1 stringr_1.0.0  
+ [9] digest_0.6.8    evaluate_0.7   </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+
+</body>
+</html>

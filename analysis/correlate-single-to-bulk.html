@@ -131,9 +131,9 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-07-03</p>
-<p><strong>Code version:</strong> 3c1f920bdab02b4e2092dcc62ffdc6dabb73244c</p>
-<p>The mean counts per million in a subsampled set of single cells (both sequencing depth and number of cells is varied) is compared to the mean counts per million of the bulk cells (mean across the three batches).</p>
+<p><strong>Last updated:</strong> 2015-07-07</p>
+<p><strong>Code version:</strong> 8e5d336be95361fb60a5dbbed71bbfdaa8ed8ef7</p>
+<p>The mean counts per million in a subsampled set of single cells (both sequencing depth and number of cells is varied) is compared to the mean counts per million of the bulk cells (mean across the three batches). The mean counts are log<sub>2</sub> transformed with an added pseudocount of 1.</p>
 <pre class="r"><code>library(&quot;dplyr&quot;)
 library(&quot;ggplot2&quot;)
 theme_set(theme_bw(base_size = 14))</code></pre>
@@ -151,9 +151,10 @@ do
     do
       for SEED in {1..10}
       do
-        CMD=&quot;correlate-single-to-bulk.R $CELLS $SEED molecule-counts-$NUM.txt $ssc/data/reads.txt --individual=$IND&quot;
+        CMD=&quot;correlate-single-to-bulk.R $CELLS $SEED molecule-counts-$NUM.txt $ssc/data/reads.txt --individual=$IND --good_cells=/mnt/lustre/home/jdblischak/singleCellSeq/data/quality-single-cells.txt&quot;
         DEST=&quot;correlation/$IND-$CELLS-$SEED-$NUM.txt&quot;
         echo &quot;$CMD &gt; $DEST&quot; | qsub -l h_vmem=2g -cwd -V -N cor-$IND-$CELLS-$SEED-$NUM -j y -o ~/log/correlate-single-to-bulk.R -l &#39;hostname=!bigmem01&#39;
+        sleep .01s
       done
     done
   done
@@ -182,15 +183,19 @@ out.close()</code></pre>
 <pre class="r"><code>r_data_plot &lt;- r_data %&gt;%
   group_by(ind, depth, num_cells) %&gt;%
   summarize(mean = mean(r), sem = sd(r) / length(r))</code></pre>
-<pre class="r"><code>ggplot(r_data_plot, aes(x = num_cells, y = mean, color = as.factor(depth))) +
+<pre class="r"><code>p &lt;- ggplot(r_data_plot, aes(x = num_cells, y = mean, color = as.factor(depth))) +
   geom_line() +
   geom_errorbar(aes(ymin = mean - sem, ymax = mean + sem), width = 1) +
   facet_wrap(~ind) +
   labs(x = &quot;Number of subsampled cells&quot;,
        y = &quot;Pearson&#39;s r (mean +/- sem)&quot;,
        color = &quot;Depth&quot;,
-       title = &quot;Subsample: Correlation of single and bulk cells&quot;)</code></pre>
+       title = &quot;Subsample: Correlation of single and bulk cells&quot;)
+p</code></pre>
 <p><img src="figure/correlate-single-to-bulk.Rmd/subsample-correlate-single-cell-to-bulk-1.png" title="" alt="" width="960" style="display: block; margin: auto;" /></p>
+<p>Focus on the lower end of the distribution of the number of subsampled cells.</p>
+<pre class="r"><code>p + xlim(0, 30)</code></pre>
+<p><img src="figure/correlate-single-to-bulk.Rmd/subsample-correlate-single-cell-to-bulk-xlim-1.png" title="" alt="" width="960" style="display: block; margin: auto;" /></p>
 </div>
 <div id="pollen-et-al.-2014" class="section level2">
 <h2>Pollen et al. 2014</h2>

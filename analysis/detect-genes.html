@@ -132,8 +132,8 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-07-03</p>
-<p><strong>Code version:</strong> 3c1f920bdab02b4e2092dcc62ffdc6dabb73244c</p>
+<p><strong>Last updated:</strong> 2015-07-07</p>
+<p><strong>Code version:</strong> 8e5d336be95361fb60a5dbbed71bbfdaa8ed8ef7</p>
 <p>The number of genes is detected in a subsampled set of single cells (both sequencing depth and number of cells is varied).</p>
 <pre class="r"><code>library(&quot;dplyr&quot;)
 library(&quot;ggplot2&quot;)
@@ -153,13 +153,15 @@ do
       for SEED in {1..10}
       do
         # Molecules
-        CMD=&quot;detect-genes.R $CELLS $SEED molecule-counts-$NUM.txt --individual=$IND --min_count=10 --min_cells=5&quot;
+        CMD=&quot;detect-genes.R $CELLS $SEED molecule-counts-$NUM.txt --individual=$IND --min_count=1 --min_cells=5 --good_cells=/mnt/lustre/home/jdblischak/singleCellSeq/data/quality-single-cells.txt&quot;
         DEST=&quot;genes-detected/molecule-$IND-$CELLS-$SEED-$NUM.txt&quot;
         echo &quot;$CMD &gt; $DEST&quot; | qsub -l h_vmem=2g -cwd -V -N detect-molecule-$IND-$CELLS-$SEED-$NUM -j y -o ~/log/detect-genes.R -l &#39;hostname=!bigmem01&#39;
+        sleep .01s
         # Reads
-        CMD=&quot;detect-genes.R $CELLS $SEED read-counts-$NUM.txt --individual=$IND --min_count=10 --min_cells=5&quot;
+        CMD=&quot;detect-genes.R $CELLS $SEED read-counts-$NUM.txt --individual=$IND --min_count=10 --min_cells=5 --good_cells=/mnt/lustre/home/jdblischak/singleCellSeq/data/quality-single-cells.txt&quot;
         DEST=&quot;genes-detected/read-$IND-$CELLS-$SEED-$NUM.txt&quot;
         echo &quot;$CMD &gt; $DEST&quot; | qsub -l h_vmem=2g -cwd -V -N detect-read-$IND-$CELLS-$SEED-$NUM -j y -o ~/log/detect-genes.R -l &#39;hostname=!bigmem01&#39;
+        sleep .01s
       done
     done
   done
@@ -189,15 +191,16 @@ out.close()</code></pre>
 <pre class="r"><code>genes_data_plot &lt;- genes_data %&gt;%
   group_by(type, ind, depth, num_cells) %&gt;%
   summarize(mean = mean(genes), sem = sd(genes) / length(genes))</code></pre>
-<p>Results for a minimum count of 10 and a minumum number of cells of 5.</p>
-<pre class="r"><code>ggplot(genes_data_plot, aes(x = num_cells, y = mean, color = as.factor(depth))) +
+<p>For the analysis of read counts, a gene was detected if it had greater than 10 reads in at least 5 cells. For the analysis of molecule counts, a gene was detected if it had greater than 1 molecule in at least 5 cells.</p>
+<pre class="r"><code>p &lt;- ggplot(genes_data_plot, aes(x = num_cells, y = mean, color = as.factor(depth))) +
   geom_line() +
   geom_errorbar(aes(ymin = mean - sem, ymax = mean + sem), width = 1) +
   facet_grid(type~ind) +
   labs(x = &quot;Number of subsampled cells&quot;,
        y = &quot;Number of genes detected&quot;,
        color = &quot;Depth&quot;,
-       title = &quot;Subsample: Number of genes detected&quot;)</code></pre>
+       title = &quot;Subsample: Number of genes detected&quot;)
+p</code></pre>
 <p><img src="figure/detect-genes.Rmd/subsample-genes-detected-1.png" title="" alt="" width="960" style="display: block; margin: auto;" /></p>
 </div>
 <div id="wu-et-al.-2014" class="section level2">
@@ -207,32 +210,37 @@ out.close()</code></pre>
 </div>
 <div id="mean-number-of-total-counts" class="section level2">
 <h2>Mean number of total counts</h2>
-<p>Explore the effect of subsampling sequencing depth and number of cells on the mean total count. Only includes counts of genes which had the minumum count (10) in the minimum number of cells (5).</p>
+<p>Explore the effect of subsampling sequencing depth and number of cells on the mean total count. Only includes counts of genes which had the minumum count (10 reads; 1 molecule) in the minimum number of cells (5).</p>
 <p>Calculate the mean and standard error of the mean (sem) for each of the 10 iterations.</p>
 <pre class="r"><code>mean_counts_data_plot &lt;- genes_data %&gt;%
   group_by(type, ind, depth, num_cells) %&gt;%
   summarize(mean = mean(mean_counts), sem = sd(mean_counts) / length(mean_counts))</code></pre>
-<p>Results for a minimum count of 10 and a minumum number of cells of 5.</p>
-<pre class="r"><code>ggplot(mean_counts_data_plot, aes(x = num_cells, y = mean, color = as.factor(depth))) +
-  geom_line() +
-  geom_errorbar(aes(ymin = mean - sem, ymax = mean + sem), width = 1) +
-  facet_grid(type~ind) +
-  labs(x = &quot;Number of subsampled cells&quot;,
-       y = &quot;Mean total count&quot;,
-       color = &quot;Depth&quot;,
+<p>Results for a minimum count of 10 reads or 1 molecule and a minumum number of cells of 5.</p>
+<pre class="r"><code>p %+% mean_counts_data_plot +
+  labs(y = &quot;Mean total count&quot;,
        title = &quot;Subsample: Mean total count&quot;)</code></pre>
 <p><img src="figure/detect-genes.Rmd/subsample-mean-counts-1.png" title="" alt="" width="960" style="display: block; margin: auto;" /></p>
 <p>It’s difficult to see the differences in the molecule counts because of the range of the y-axis. Here is the molecule counts alone.</p>
-<pre class="r"><code>ggplot(mean_counts_data_plot[mean_counts_data_plot$type == &quot;molecule&quot;, ],
-       aes(x = num_cells, y = mean, color = as.factor(depth))) +
-  geom_line() +
-  geom_errorbar(aes(ymin = mean - sem, ymax = mean + sem), width = 1) +
-  facet_wrap(~ind) +
-  labs(x = &quot;Number of subsampled cells&quot;,
-       y = &quot;Mean count&quot;,
-       color = &quot;Depth&quot;,
-       title = &quot;Subsample: Mean count, molecules only&quot;)</code></pre>
+<pre class="r"><code>p %+% mean_counts_data_plot[mean_counts_data_plot$type == &quot;molecule&quot;, ] +
+  labs(y = &quot;Mean total count&quot;,
+       title = &quot;Subsample: Mean total count, molecules only&quot;)</code></pre>
 <p><img src="figure/detect-genes.Rmd/subsample-mean-counts-molecules-only-1.png" title="" alt="" width="960" style="display: block; margin: auto;" /></p>
+<p>Keeping the number of subsampled cells constant to focus specifically on changes in sequencing depth.</p>
+<pre class="r"><code>p_box &lt;- ggplot(genes_data[genes_data$type == &quot;molecule&quot; &amp;
+                           genes_data$num_cells %in% c(25, 75, 125) &amp;
+                           genes_data$depth %in% c(8e5, 1.6e6, 2.4e6, 3.2e6), ],
+                aes(x = as.factor(depth), y = mean_counts)) +
+  geom_boxplot() +
+  facet_grid(num_cells~type) +
+  labs(x = &quot;Depth&quot;, y = &quot;Mean total count&quot;,
+       title = &quot;Effect of sequencing depth on mean total molecule count&quot;)
+p_box</code></pre>
+<p><img src="figure/detect-genes.Rmd/subsample-effect-of-depth-molecule-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>p_box %+% genes_data[genes_data$type == &quot;read&quot; &amp;
+                  genes_data$num_cells %in% c(25, 75, 125) &amp;
+                  genes_data$depth %in% c(8e5, 1.6e6, 2.4e6, 3.2e6), ] +
+  labs(title = &quot;Effect of sequencing depth on mean total read count&quot;)</code></pre>
+<p><img src="figure/detect-genes.Rmd/subsample-effect-of-depth-read-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
 <div id="session-information" class="section level2">
 <h2>Session information</h2>

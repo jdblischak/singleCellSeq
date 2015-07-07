@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+<meta name="author" content="Po-Yuan Tung" />
+
+<meta name="date" content="2015-07-06" />
+
+<title>Cell-Cycle Analysis</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Cell-Cycle Analysis</h1>
+<h4 class="author"><em>Po-Yuan Tung</em></h4>
+<h4 class="date"><em>2015-07-06</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#input">Input</a></li>
+<li><a href="#create-phase-scores-for-each-cell">Create phase scores for each cell</a></li>
+<li><a href="#two-step-normalization-of-the-phase-specific-scores">Two step normalization of the phase-specific scores</a></li>
+<li><a href="#assign-phase-for-each-cell-based-on-phase-specific-score">assign phase for each cell based on phase-specific score</a></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2015-07-07</p>
+<p><strong>Code version:</strong> 8e5d336be95361fb60a5dbbed71bbfdaa8ed8ef7</p>
+<p>Carry out cell cycle analysis of single cell iPSCs using the method by <a href="http://www.sciencedirect.com/science/article/pii/S0092867415005498">Macosko2015</a></p>
+<p>Gene sets reflecting five phases of the HeLa cell cycle (G1/S, S, G2/M, M and M/G1) were taken from Whitfield et al. (Whitfield et al., 2002) (Table S2), and refined by examining the correlation between the expression pattern of each gene and the average expression pattern of all genes in the respective gene-set, and excluding genes with a low correlation (R&lt;0.3). This step removed genes that were identified as phase-specific in HeLa cells but did not correlate with that phase in our single-cell data. The remaining genes in each refined gene-set were highly correlated (not shown). We then averaged the normalized expression levels (log2(TPM+1)) of the genes in each gene-set to define the phase-specific scores of each cell. These scores were then subjected to two normalization steps. First, for each phase, the scores were centered and divided by their standard deviation. Second, the normalized scores of each cell were centered and normalized.</p>
+<div id="input" class="section level2">
+<h2>Input</h2>
+<pre class="r"><code>library(&quot;dplyr&quot;)
+library(&quot;ggplot2&quot;)
+theme_set(theme_bw(base_size = 16))
+library(&quot;edgeR&quot;)
+library(&quot;gplots&quot;)</code></pre>
+<p>Input annotation.</p>
+<pre class="r"><code>anno &lt;- read.table(&quot;../data/annotation.txt&quot;, header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno)</code></pre>
+<pre><code>  individual batch well     sample_id
+1      19098     1  A01 NA19098.1.A01
+2      19098     1  A02 NA19098.1.A02
+3      19098     1  A03 NA19098.1.A03
+4      19098     1  A04 NA19098.1.A04
+5      19098     1  A05 NA19098.1.A05
+6      19098     1  A06 NA19098.1.A06</code></pre>
+<p>Input read counts.</p>
+<pre class="r"><code>reads &lt;- read.table(&quot;../data/reads.txt&quot;, header = TRUE,
+                    stringsAsFactors = FALSE)</code></pre>
+<p>Input molecule counts.</p>
+<pre class="r"><code>molecules &lt;- read.table(&quot;../data/molecules.txt&quot;, header = TRUE,
+                    stringsAsFactors = FALSE)</code></pre>
+<p>Input list of quality single cells.</p>
+<pre class="r"><code>quality_single_cells &lt;- scan(&quot;../data/quality-single-cells.txt&quot;,
+                             what = &quot;character&quot;)</code></pre>
+<p>Keep only the single cells that passed the <a href="qc-cell-ipsc.html">QC filters</a> and the bulk samples.</p>
+<pre class="r"><code>molecules &lt;- molecules[, grepl(&quot;bulk&quot;, colnames(molecules)) |
+                         colnames(molecules) %in% quality_single_cells]
+anno &lt;- anno[anno$well == &quot;bulk&quot; | anno$sample_id %in% quality_single_cells, ]
+stopifnot(ncol(molecules) == nrow(anno),
+          colnames(molecules) == anno$sample_id)
+
+reads &lt;- reads[, grepl(&quot;bulk&quot;, colnames(reads)) |
+                         colnames(reads) %in% quality_single_cells]
+stopifnot(ncol(reads) == nrow(anno),
+          colnames(reads) == anno$sample_id)</code></pre>
+<p>Remove genes with zero read counts in the single cells or bulk samples.</p>
+<pre class="r"><code>expressed &lt;- rowSums(molecules[, anno$well == &quot;bulk&quot;]) &gt; 0 &amp;
+             rowSums(molecules[, anno$well != &quot;bulk&quot;]) &gt; 0
+molecules &lt;- molecules[expressed, ]
+dim(molecules)</code></pre>
+<pre><code>[1] 17153   587</code></pre>
+<pre class="r"><code>expressed &lt;- rowSums(reads[, anno$well == &quot;bulk&quot;]) &gt; 0 &amp;
+             rowSums(reads[, anno$well != &quot;bulk&quot;]) &gt; 0
+reads &lt;- reads[expressed, ]
+dim(reads)</code></pre>
+<pre><code>[1] 17162   587</code></pre>
+<p>Keep only single samples.</p>
+<pre class="r"><code>molecules_single &lt;- molecules[, anno$well != &quot;bulk&quot;]
+reads_single &lt;- reads[, anno$well != &quot;bulk&quot;]</code></pre>
+<p>Remove genes with max molecule numer larger than 1024</p>
+<pre class="r"><code>molecules_single &lt;- molecules_single[apply(molecules_single,1,max) &lt; 1024,]</code></pre>
+<p>Input cell cycle gene Gene sets reflecting 5 cell cycle phases were taken from Table S2 of <a href="http://www.sciencedirect.com/science/article/pii/S0092867415005498">Macosko2015</a> Gene ID conversion was done by using the DAVID <a href="http://david.abcc.ncifcrf.gov" class="uri">http://david.abcc.ncifcrf.gov</a></p>
+<pre class="r"><code>cell_cycle_genes &lt;- read.table(&quot;../data/cellcyclegenes.txt&quot;, header = TRUE, sep=&quot;\t&quot;)
+
+## create 5 lists of 5 phases (de-level and then remove &quot;&quot;)
+cell_cycle_genes_list &lt;- lapply(1:5,function(x){
+  temp &lt;- as.character(cell_cycle_genes[,x])
+  temp[temp!=&quot;&quot;]
+})</code></pre>
+</div>
+<div id="create-phase-scores-for-each-cell" class="section level2">
+<h2>Create phase scores for each cell</h2>
+<pre class="r"><code>ans &lt;-
+sapply(cell_cycle_genes_list,function(xx){
+  #### create table of each phase
+  reads_single_phase &lt;- reads_single[rownames(reads_single) %in% unlist(xx) ,]
+  #### add average expression of all genes in the phase
+  combined_matrix &lt;- rbind(reads_single_phase,average=apply(reads_single_phase,2,mean))
+  #### use transpose to compute cor matrix
+  cor_matrix &lt;- cor(t(combined_matrix))
+  #### take the numbers
+  cor_vector &lt;- cor_matrix[,dim(cor_matrix)[1]]
+  #### restrict to correlation &gt;= 0.3 
+  reads_single_phase_restricted &lt;- reads_single_phase[rownames(reads_single_phase) %in% names(cor_vector[cor_vector &gt;= 0.3]),]
+  #### apply normalization to reads
+  norm_factors_single &lt;- calcNormFactors(reads_single_phase_restricted, method = &quot;TMM&quot;)
+  reads_single_cpm &lt;- cpm(reads_single_phase_restricted, log = TRUE,
+                            lib.size = colSums(reads_single) * norm_factors_single)
+  #### output the phase specific scores (mean of normalized expression levels in the phase)
+  apply(reads_single_cpm,2,mean)
+
+})</code></pre>
+</div>
+<div id="two-step-normalization-of-the-phase-specific-scores" class="section level2">
+<h2>Two step normalization of the phase-specific scores</h2>
+<pre class="r"><code>#### normalization function
+flexible_normalization &lt;- function(data_in,by_row=TRUE){
+  if(by_row){
+    row_mean &lt;- apply(data_in,1,mean)
+    row_sd   &lt;- apply(data_in,1,sd)
+    output &lt;- data_in
+    for(i in 1:dim(data_in)[1]){
+      output[i,] &lt;- (data_in[i,] - row_mean[i])/row_sd[i]
+    }
+  }
+  #### if by column
+  if(!by_row){
+    col_mean &lt;- apply(data_in,2,mean)
+    col_sd   &lt;- apply(data_in,2,sd)
+    output &lt;- data_in
+    for(i in 1:dim(data_in)[2]){
+      output[,i] &lt;- (data_in[,i] - col_mean[i])/col_sd[i]
+    }
+  }
+  output
+}
+
+#### apply the normalization function
+## first normalized for each phase
+ans_normed &lt;- flexible_normalization(ans,by_row=FALSE)
+## then normalized of each cell
+ans_normed_normed &lt;- flexible_normalization(ans_normed,by_row=TRUE)
+
+heatmap.2(ans_normed_normed, trace=&quot;none&quot;, cexRow=1,cexCol=1,margins=c(8,8),xlab=&quot;cell-cycle phase&quot;, ylab= &quot;cells&quot;)</code></pre>
+<p><img src="figure/cell-cycle.Rmd/normalization-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="assign-phase-for-each-cell-based-on-phase-specific-score" class="section level2">
+<h2>assign phase for each cell based on phase-specific score</h2>
+<pre class="r"><code>cell_phase &lt;- apply(ans_normed_normed,1,function(x) colnames(cell_cycle_genes)[which.max(x)])
+reads_single &lt;- rbind(reads_single, cell_phase = cell_phase)
+
+test &lt;- data.frame(cell_phase)
+
+## plot
+ggplot(test, aes(x=cell_phase)) + geom_histogram()</code></pre>
+<p><img src="figure/cell-cycle.Rmd/assign-phase-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] gplots_2.17.0 edgeR_3.10.2  limma_3.24.9  ggplot2_1.0.1 dplyr_0.4.1  
+[6] knitr_1.10.5 
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.11.6        magrittr_1.5       MASS_7.3-40       
+ [4] munsell_0.4.2      colorspace_1.2-6   stringr_1.0.0     
+ [7] plyr_1.8.2         caTools_1.17.1     tools_3.2.0       
+[10] parallel_3.2.0     grid_3.2.0         gtable_0.1.2      
+[13] KernSmooth_2.23-14 DBI_0.3.1          gtools_3.5.0      
+[16] htmltools_0.2.6    yaml_2.1.13        assertthat_0.1    
+[19] digest_0.6.8       reshape2_1.4.1     formatR_1.2       
+[22] bitops_1.0-6       evaluate_0.7       rmarkdown_0.6.1   
+[25] labeling_0.3       gdata_2.16.1       stringi_0.4-1     
+[28] scales_0.2.4       proto_0.3-10      </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+
+</body>
+</html>
