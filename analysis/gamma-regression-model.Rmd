@@ -126,9 +126,17 @@ filename <- colnames(molecules_single_cpm)
 
 ## Gamma regression model
 
-```{r run-gammareg, cache=TRUE, results='hide'}
-results <- gammareg(ercc_response = ercc_response, ercc = ercc, gene = gene,
-                    filename = filename)
+This takes a long time to run.
+
+```{r run-gammareg, results='hide'}
+grm_rds <- "../data/grm.rds"
+if (file.exists(grm_rds)) {
+  results <- readRDS(grm_rds)
+} else {
+  results <- gammareg(ercc_response = ercc_response, ercc = ercc, gene = gene,
+                      filename = filename)
+  saveRDS(results, grm_rds)
+}
 ```
 
 ## PCA
@@ -139,18 +147,19 @@ invariant_genes <- apply(results$predictset, 1, var) == 0
 
 `r sum(invariant_genes)` genes are invariant.
 
-```{r pca-grm, cache=TRUE}
+```{r run-pca-grm, cache=TRUE}
 pca_grm <- run_pca(results$predictset[!invariant_genes, ])
-plot_pca(pca_grm$PCs, explained = pca_grm$explained,
-         metadata = anno_single, color = "individual",
-         shape = "batch", factors = c("individual", "batch"))
 ```
 
-```{r pca-grm-faceted, eval = FALSE}
-plot_pca(pca_grm$PCs, explained = pca_grm$explained,
-         metadata = anno_single, color = "individual",
-         shape = "batch", factors = c("individual", "batch")) +
-  facet_grid(batch~individual)
+```{r pca-grm}
+p <- plot_pca(pca_grm$PCs, explained = pca_grm$explained,
+              metadata = anno_single, color = "individual",
+              shape = "batch", factors = c("individual", "batch"))
+p
+```
+
+```{r pca-grm-faceted}
+p + facet_grid(batch~individual)
 ```
 
 ## Session information
