@@ -132,7 +132,7 @@ img {
 </div>
 
 <p><strong>Last updated:</strong> 2015-07-07</p>
-<p><strong>Code version:</strong> 8e5d336be95361fb60a5dbbed71bbfdaa8ed8ef7</p>
+<p><strong>Code version:</strong> dd7c5e7a33a14f1e73896fbe0b7bcea2e9219c42</p>
 <p><a href="http://bioinformatics.oxfordjournals.org/content/early/2015/03/22/bioinformatics.btv122.full">Ding et al. 2015</a> developed <a href="http://wanglab.ucsd.edu/star/GRM/">GRM</a> to perform ERCC-based normalization using a gamma regression model. I downloaded GRM-0.2.1.tgz on 2015-06-29.</p>
 <pre class="bash"><code>cd ~/src
 wget http://wanglab.ucsd.edu/star/GRM/files/GRM-0.2.1.tgz
@@ -226,22 +226,28 @@ filename &lt;- colnames(molecules_single_cpm)</code></pre>
 </div>
 <div id="gamma-regression-model" class="section level2">
 <h2>Gamma regression model</h2>
-<pre class="r"><code>results &lt;- gammareg(ercc_response = ercc_response, ercc = ercc, gene = gene,
-                    filename = filename)</code></pre>
+<p>This takes a long time to run.</p>
+<pre class="r"><code>grm_rds &lt;- &quot;../data/grm.rds&quot;
+if (file.exists(grm_rds)) {
+  results &lt;- readRDS(grm_rds)
+} else {
+  results &lt;- gammareg(ercc_response = ercc_response, ercc = ercc, gene = gene,
+                      filename = filename)
+  saveRDS(results, grm_rds)
+}</code></pre>
 </div>
 <div id="pca" class="section level2">
 <h2>PCA</h2>
 <pre class="r"><code>invariant_genes &lt;- apply(results$predictset, 1, var) == 0</code></pre>
 <p>0 genes are invariant.</p>
-<pre class="r"><code>pca_grm &lt;- run_pca(results$predictset[!invariant_genes, ])
-plot_pca(pca_grm$PCs, explained = pca_grm$explained,
-         metadata = anno_single, color = &quot;individual&quot;,
-         shape = &quot;batch&quot;, factors = c(&quot;individual&quot;, &quot;batch&quot;))</code></pre>
+<pre class="r"><code>pca_grm &lt;- run_pca(results$predictset[!invariant_genes, ])</code></pre>
+<pre class="r"><code>p &lt;- plot_pca(pca_grm$PCs, explained = pca_grm$explained,
+              metadata = anno_single, color = &quot;individual&quot;,
+              shape = &quot;batch&quot;, factors = c(&quot;individual&quot;, &quot;batch&quot;))
+p</code></pre>
 <p><img src="figure/gamma-regression-model.Rmd/pca-grm-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>plot_pca(pca_grm$PCs, explained = pca_grm$explained,
-         metadata = anno_single, color = &quot;individual&quot;,
-         shape = &quot;batch&quot;, factors = c(&quot;individual&quot;, &quot;batch&quot;)) +
-  facet_grid(batch~individual)</code></pre>
+<pre class="r"><code>p + facet_grid(batch~individual)</code></pre>
+<p><img src="figure/gamma-regression-model.Rmd/pca-grm-faceted-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
 <div id="session-information" class="section level2">
 <h2>Session information</h2>
@@ -261,12 +267,15 @@ attached base packages:
 [1] stats     graphics  grDevices utils     datasets  methods   base     
 
 other attached packages:
-[1] MASS_7.3-40  edgeR_3.10.2 limma_3.24.9 knitr_1.10.5
+[1] testit_0.4    ggplot2_1.0.1 MASS_7.3-40   edgeR_3.10.2  limma_3.24.9 
+[6] knitr_1.10.5 
 
 loaded via a namespace (and not attached):
- [1] magrittr_1.5    formatR_1.2     tools_3.2.0     htmltools_0.2.6
- [5] yaml_2.1.13     stringi_0.4-1   rmarkdown_0.6.1 stringr_1.0.0  
- [9] digest_0.6.8    evaluate_0.7   </code></pre>
+ [1] Rcpp_0.11.6      magrittr_1.5     munsell_0.4.2    colorspace_1.2-6
+ [5] stringr_1.0.0    plyr_1.8.2       tools_3.2.0      grid_3.2.0      
+ [9] gtable_0.1.2     htmltools_0.2.6  yaml_2.1.13      digest_0.6.8    
+[13] reshape2_1.4.1   formatR_1.2      evaluate_0.7     rmarkdown_0.6.1 
+[17] labeling_0.3     stringi_0.4-1    scales_0.2.4     proto_0.3-10    </code></pre>
 </div>
 
 
