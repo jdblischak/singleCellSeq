@@ -8,15 +8,15 @@ date: 2015-07-06
 
 **Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
 
-Carry out cell cycle analysis of single cell iPSCs using the method by [Macosko2015]
-[Macosko2015]:http://www.sciencedirect.com/science/article/pii/S0092867415005498
-Gene sets reflecting five phases of the HeLa cell cycle (G1/S, S, G2/M, M and M/G1) were taken from Whitfield et al. (Whitfield et al., 2002) (Table S2), and refined by examining the correlation between the expression pattern of each gene and the average expression pattern of all genes in the respective gene-set, and excluding genes with a low correlation (R<0.3). This step removed genes that were identified as phase-specific in HeLa cells but did not correlate with that phase in our single-cell data. The remaining genes in each refined gene-set were highly correlated (not shown). We then averaged the normalized expression levels (log2(TPM+1)) of the genes in each gene-set to define the phase-specific scores of each cell. These scores were then subjected to two normalization steps. First, for each phase, the scores were centered and divided by their standard deviation. Second, the normalized scores of each cell were centered and normalized.
-To order cells according to their progression along the cell cycle, we first compared the pattern of phase-specific scores of each cell to eight potential patterns along the cell cycle: only G1/S is on, both G1/S and S, only S, only G2/M, G2/M and M, only M, only M/G1, M/G1 and G1. We also added a ninth pattern for equal scores of all phases (either all active or all inactive). Each pattern was defined simply as a vector of ones for active programs and zeros for inactive programs. We then classified the cells by the defined patterns based on the maximal correlation of the phase-specific scores with these potential patterns. Importantly, none of the cells were classified to the ninth pattern of equal activity, while multiple cells were assigned to each of the other patterns. To further order the cells within each class, we sorted the cells based on their relative correlation with the preceding and succeeding patterns, thereby smoothing the transitions between classes (Figure 4A).
-
-
 ```{r chunk-options, include=FALSE}
 source("chunk-options.R")
 ```
+
+Carry out cell cycle analysis of single cell iPSCs using the method by [Macosko2015]
+
+[Macosko2015]:http://www.sciencedirect.com/science/article/pii/S0092867415005498
+
+Gene sets reflecting five phases of the HeLa cell cycle (G1/S, S, G2/M, M and M/G1) were taken from Whitfield et al. (Whitfield et al., 2002) (Table S2), and refined by examining the correlation between the expression pattern of each gene and the average expression pattern of all genes in the respective gene-set, and excluding genes with a low correlation (R<0.3). This step removed genes that were identified as phase-specific in HeLa cells but did not correlate with that phase in our single-cell data. The remaining genes in each refined gene-set were highly correlated (not shown). We then averaged the normalized expression levels (log2(TPM+1)) of the genes in each gene-set to define the phase-specific scores of each cell. These scores were then subjected to two normalization steps. First, for each phase, the scores were centered and divided by their standard deviation. Second, the normalized scores of each cell were centered and normalized.
 
 ## Input
 
@@ -102,27 +102,85 @@ Input cell cycle gene
 Gene sets reflecting 5 cell cycle phases were taken from Table S2 of [Macosko2015]
 Gene ID conversion was done by using the DAVID http://david.abcc.ncifcrf.gov
 ```{r input-cell-cycle-gene}
-cell_cycle_genes <- read.table("../data/cellcyclegenes.txt", header = TRUE, fill = TRUE)
+cell_cycle_genes <- read.table("../data/cellcyclegenes.txt", header = TRUE, sep="\t")
+
+## create 5 lists of 5 phases (de-level and then remove "")
+cell_cycle_genes_list <- lapply(1:5,function(x){
+  temp <- as.character(cell_cycle_genes[,x])
+  temp[temp!=""]
+})
 ```
 
-## Create a gene list specific for our data
-creat table of each cell cycle stage
-```{r table-cell-cycle}
-reads_single_G1.S <- reads_single[cell_cycle_genes[,"G1.S"],]
-reads_single_S    <- reads_single[cell_cycle_genes[,"S"],]
-reads_single_G2.M <- reads_single[cell_cycle_genes[,"G2.M"],]
-reads_single_M    <- reads_single[cell_cycle_genes[,"M"],]
-reads_single_M.G1 <- reads_single[cell_cycle_genes[,"M.G1"],]
+## Create phase scores for each cell
+```{r phase-score}
+ans <-
+sapply(cell_cycle_genes_list,function(xx){
+  #### create table of each phase
+  reads_single_phase <- reads_single[rownames(reads_single) %in% unlist(xx) ,]
+  #### add average expression of all genes in the phase
+  combined_matrix <- rbind(reads_single_phase,average=apply(reads_single_phase,2,mean))
+  #### use transpose to compute cor matrix
+  cor_matrix <- cor(t(combined_matrix))
+  #### take the numbers
+  cor_vector <- cor_matrix[,dim(cor_matrix)[1]]
+  #### restrict to correlation >= 0.3 
+  reads_single_phase_restricted <- reads_single_phase[rownames(reads_single_phase) %in% names(cor_vector[cor_vector >= 0.3]),]
+  #### apply normalization to reads
+  norm_factors_single <- calcNormFactors(reads_single_phase_restricted, method = "TMM")
+  reads_single_cpm <- cpm(reads_single_phase_restricted, log = TRUE,
+                            lib.size = colSums(reads_single) * norm_factors_single)
+  #### output the phase specific scores (mean of normalized expression levels in the phase)
+  apply(reads_single_cpm,2,mean)
+
+})
 ```
 
-Exclue genes with correlation < 0.3
-```{r table-cell-cycle}
-reads_single_G1.S <- reads_single_G1.S[]
-reads_single_S    <- reads_single[cell_cycle_genes[,"S"],]
-reads_single_G2.M <- reads_single[cell_cycle_genes[,"G2.M"],]
-reads_single_M    <- reads_single[cell_cycle_genes[,"M"],]
-reads_single_M.G1 <- reads_single[cell_cycle_genes[,"M.G1"],]
+## Two step normalization of the phase-specific scores
+```{r normalization}
+#### normalization function
+flexible_normalization <- function(data_in,by_row=TRUE){
+  if(by_row){
+    row_mean <- apply(data_in,1,mean)
+    row_sd   <- apply(data_in,1,sd)
+    output <- data_in
+    for(i in 1:dim(data_in)[1]){
+      output[i,] <- (data_in[i,] - row_mean[i])/row_sd[i]
+    }
+  }
+  #### if by column
+  if(!by_row){
+    col_mean <- apply(data_in,2,mean)
+    col_sd   <- apply(data_in,2,sd)
+    output <- data_in
+    for(i in 1:dim(data_in)[2]){
+      output[,i] <- (data_in[,i] - col_mean[i])/col_sd[i]
+    }
+  }
+  output
+}
+
+#### apply the normalization function
+## first normalized for each phase
+ans_normed <- flexible_normalization(ans,by_row=FALSE)
+## then normalized of each cell
+ans_normed_normed <- flexible_normalization(ans_normed,by_row=TRUE)
+
+heatmap.2(ans_normed_normed, trace="none", cexRow=1,cexCol=1,margins=c(8,8),xlab="cell-cycle phase", ylab= "cells")
 ```
+
+## assign phase for each cell based on phase-specific score
+```{r assign-phase}
+cell_phase <- apply(ans_normed_normed,1,function(x) colnames(cell_cycle_genes)[which.max(x)])
+reads_single <- rbind(reads_single, cell_phase = cell_phase)
+
+test <- data.frame(cell_phase)
+
+## plot
+ggplot(test, aes(x=cell_phase)) + geom_histogram()
+
+```
+
+
 
 ## Session information
 
