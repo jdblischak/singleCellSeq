@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+<meta name="author" content="PoYuan Tung" />
+
+<meta name="date" content="2015-07-07" />
+
+<title>ERCC counts</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">ERCC counts</h1>
+<h4 class="author"><em>PoYuan Tung</em></h4>
+<h4 class="date"><em>2015-07-07</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#input">Input</a></li>
+<li><a href="#prepare-single-cell-molecule-data">Prepare single cell molecule data</a></li>
+<li><a href="#calculate-the-molecule-counts-of-each-ercc-in-single-cell">Calculate the molecule counts of each ERCC in single cell</a></li>
+<li><a href="#look-at-the-correlation-using-the-function-that-john-created">Look at the correlation using the function that John created</a></li>
+<li><a href="#the-collision-and-the-standardization">The collision and the standardization</a></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2015-07-08</p>
+<p><strong>Code version:</strong> e78dbba2bdcc461056a93867890f364a1425b46b</p>
+<div id="input" class="section level2">
+<h2>Input</h2>
+<p>Input annotation.</p>
+<pre class="r"><code>anno &lt;- read.table(&quot;../data/annotation.txt&quot;, header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno)</code></pre>
+<pre><code>  individual batch well     sample_id
+1      19098     1  A01 NA19098.1.A01
+2      19098     1  A02 NA19098.1.A02
+3      19098     1  A03 NA19098.1.A03
+4      19098     1  A04 NA19098.1.A04
+5      19098     1  A05 NA19098.1.A05
+6      19098     1  A06 NA19098.1.A06</code></pre>
+<p>Input ERCC concentration information.</p>
+<pre class="r"><code>ercc &lt;- read.table(&quot;../data/ercc-info.txt&quot;, header = TRUE, sep = &quot;\t&quot;,
+                   stringsAsFactors = FALSE)
+colnames(ercc) &lt;- c(&quot;num&quot;, &quot;id&quot;, &quot;subgroup&quot;, &quot;conc_mix1&quot;, &quot;conc_mix2&quot;,
+                    &quot;expected_fc&quot;, &quot;log2_mix1_mix2&quot;)
+head(ercc)</code></pre>
+<pre><code>  num         id subgroup conc_mix1  conc_mix2 expected_fc log2_mix1_mix2
+1   1 ERCC-00130        A 30000.000 7500.00000           4              2
+2   2 ERCC-00004        A  7500.000 1875.00000           4              2
+3   3 ERCC-00136        A  1875.000  468.75000           4              2
+4   4 ERCC-00108        A   937.500  234.37500           4              2
+5   5 ERCC-00116        A   468.750  117.18750           4              2
+6   6 ERCC-00092        A   234.375   58.59375           4              2</code></pre>
+<pre class="r"><code>stopifnot(nrow(ercc) == 92)</code></pre>
+<p>Input molecule counts.</p>
+<pre class="r"><code>molecules &lt;- read.table(&quot;../data/molecules.txt&quot;, header = TRUE,
+                    stringsAsFactors = FALSE)</code></pre>
+<p>Input list of quality single cells.</p>
+<pre class="r"><code>quality_single_cells &lt;- scan(&quot;../data/quality-single-cells.txt&quot;,
+                             what = &quot;character&quot;)</code></pre>
+</div>
+<div id="prepare-single-cell-molecule-data" class="section level2">
+<h2>Prepare single cell molecule data</h2>
+<p>Keep only the single cells that passed the <a href="qc-cell-ipsc.html">QC filters</a>. This also removes the bulk samples.</p>
+<pre class="r"><code>molecules_single &lt;- molecules[, colnames(molecules) %in% quality_single_cells]
+anno_single &lt;- anno[anno$sample_id %in% quality_single_cells, ]
+stopifnot(ncol(molecules_single) == nrow(anno_single),
+          colnames(molecules_single) == anno_single$sample_id)</code></pre>
+<p>Also remove batch 2 of individual 19098.</p>
+<pre class="r"><code>molecules_single &lt;- molecules_single[, !(anno_single$individual == 19098 &amp; anno_single$batch == 2)]
+anno_single &lt;- anno_single[!(anno_single$individual == 19098 &amp; anno_single$batch == 2), ]
+stopifnot(ncol(molecules_single) == nrow(anno_single))</code></pre>
+<p>Remove genes with zero read counts in the single cells.</p>
+<pre class="r"><code>expressed_single &lt;- rowSums(molecules_single) &gt; 0
+molecules_single &lt;- molecules_single[expressed_single, ]
+dim(molecules_single)</code></pre>
+<pre><code>[1] 17478   563</code></pre>
+<p>How many genes have greater than or equal to 1,024 molecules in at least one of the cells?</p>
+<pre class="r"><code>overexpressed_genes &lt;- rownames(molecules_single)[apply(molecules_single, 1,
+                                                        function(x) any(x &gt;= 1024))]</code></pre>
+<p>15 have greater than or equal to 1,024 molecules. Remove them.</p>
+<pre class="r"><code>molecules_single &lt;- molecules_single[!(rownames(molecules_single) %in% overexpressed_genes), ]</code></pre>
+</div>
+<div id="calculate-the-molecule-counts-of-each-ercc-in-single-cell" class="section level2">
+<h2>Calculate the molecule counts of each ERCC in single cell</h2>
+<p>Accorindg to Pollen et al.<a href="http://www.ncbi.nlm.nih.gov/pmc/articles/PMC4191988/">Pollen2014</a>, there are total 28,000 ERCC molecule per cell when the ERCC stock is used in 1:20,000 dilution. In our study, I used 1:50,000 dilution. Therefore, we have total 28000/2.5= 11200 ERCC molecule per cell.</p>
+<pre class="r"><code>#### sort ercc file by gene ID
+ercc &lt;- ercc[order(ercc$id), ]
+
+#### calculate the number of each ERCC based on the genes detected
+ratio &lt;- 11200/ sum(ercc[,&quot;conc_mix1&quot;])
+ratio</code></pre>
+<pre><code>[1] 0.1081968</code></pre>
+<pre class="r"><code>ercc$counts &lt;- ercc[,&quot;conc_mix1&quot;] * ratio
+head(ercc)</code></pre>
+<pre><code>   num         id subgroup    conc_mix1    conc_mix2 expected_fc
+70  70 ERCC-00002        D 1.500000e+04 3.000000e+04        0.50
+72  72 ERCC-00003        D 9.375000e+02 1.875000e+03        0.50
+2    2 ERCC-00004        A 7.500000e+03 1.875000e+03        4.00
+26  26 ERCC-00009        B 9.375000e+02 9.375000e+02        1.00
+67  67 ERCC-00012        C 1.144409e-01 1.716614e-01        0.67
+86  86 ERCC-00013        D 9.155273e-01 1.831055e+00        0.50
+   log2_mix1_mix2       counts
+70          -1.00 1.622953e+03
+72          -1.00 1.014345e+02
+2            2.00 8.114764e+02
+26           0.00 1.014345e+02
+67          -0.58 1.238215e-02
+86          -1.00 9.905717e-02</code></pre>
+<pre class="r"><code>#### try 28000 to see if integers were generated 
+ratio_t &lt;- 28000/ sum(ercc[,&quot;conc_mix1&quot;])
+ercc$counts_t &lt;- ercc[,&quot;conc_mix1&quot;] * ratio_t
+head(ercc)</code></pre>
+<pre><code>   num         id subgroup    conc_mix1    conc_mix2 expected_fc
+70  70 ERCC-00002        D 1.500000e+04 3.000000e+04        0.50
+72  72 ERCC-00003        D 9.375000e+02 1.875000e+03        0.50
+2    2 ERCC-00004        A 7.500000e+03 1.875000e+03        4.00
+26  26 ERCC-00009        B 9.375000e+02 9.375000e+02        1.00
+67  67 ERCC-00012        C 1.144409e-01 1.716614e-01        0.67
+86  86 ERCC-00013        D 9.155273e-01 1.831055e+00        0.50
+   log2_mix1_mix2       counts     counts_t
+70          -1.00 1.622953e+03 4.057382e+03
+72          -1.00 1.014345e+02 2.535864e+02
+2            2.00 8.114764e+02 2.028691e+03
+26           0.00 1.014345e+02 2.535864e+02
+67          -0.58 1.238215e-02 3.095537e-02
+86          -1.00 9.905717e-02 2.476429e-01</code></pre>
+</div>
+<div id="look-at-the-correlation-using-the-function-that-john-created" class="section level2">
+<h2>Look at the correlation using the function that John created</h2>
+<pre class="r"><code>correlate_ercc &lt;- function(observed, expected, description = &quot;&quot;) {
+  # Plots the relationship between the observed ERCC data and the expected ERCC
+  # concentrations.
+
+  # Args:
+  #  observed: vector of summary statistic of observed ERCC counts
+  #  expected: vector of ERCC concentrations
+  #  description: optional string to add to title
+  plot(expected, observed)
+  ercc_fit &lt;- lm(observed ~ expected)
+  abline(ercc_fit, col = &quot;red&quot;)
+  title(sprintf(&quot;%s\nY ~ %.2fX + %.2f ; R-squared: %.2f&quot;, description,
+                ercc_fit$coefficients[2], ercc_fit$coefficients[1],
+                summary(ercc_fit)$r.squared))
+}
+
+#### number of ERCC detected in single cells
+ercc_rows_molecules_single &lt;- grep(&quot;ERCC&quot;, rownames(molecules_single))
+length(ercc_rows_molecules_single)</code></pre>
+<pre><code>[1] 81</code></pre>
+<pre class="r"><code>#### keep only the detected ERCC in the ercc list
+ercc_molecules_single &lt;- ercc[ercc$id %in% rownames(molecules_single), ]
+stopifnot(rownames(molecules_single[ercc_rows_molecules_single, ]) ==
+          ercc_molecules_single$id)
+
+#### what&#39;s the correlation of counts?
+correlate_ercc(rowMeans(molecules_single[ercc_rows_molecules_single, ]), ercc_molecules_single$counts,
+               description = &quot;single cell molecules&quot;)</code></pre>
+<p><img src="figure/ercc-counts.Rmd/correlation-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="the-collision-and-the-standardization" class="section level2">
+<h2>The collision and the standardization</h2>
+<div id="correct-for-the-collision-probability." class="section level3">
+<h3>Correct for the collision probability.</h3>
+<p>First correct and look for the correlation. See <a href="http://www.nature.com/nmeth/journal/v11/n6/full/nmeth.2930.html#methods">Grun et al. 2014</a> for details.</p>
+<pre class="r"><code>molecules_single_collision &lt;- -1024 * log(1 - molecules_single / 1024)
+
+correlate_ercc(rowMeans(molecules_single_collision[ercc_rows_molecules_single, ]), ercc_molecules_single$counts,
+               description = &quot;single cell molecules (after correction)&quot;)</code></pre>
+<p><img src="figure/ercc-counts.Rmd/collision-probability-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="standardize-molecule-numbers." class="section level3">
+<h3>Standardize molecule numbers.</h3>
+<pre class="r"><code>molecules_single_cpm &lt;- cpm(molecules_single_collision, log = TRUE)
+
+correlate_ercc(rowMeans(molecules_single_cpm[ercc_rows_molecules_single, ]), log2(ercc_molecules_single$counts),
+               description = &quot;single cell log2 molecules per million&quot;)</code></pre>
+<p><img src="figure/ercc-counts.Rmd/calc-cpm-single-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] edgeR_3.10.2 limma_3.24.9 knitr_1.10.5
+
+loaded via a namespace (and not attached):
+ [1] magrittr_1.5    formatR_1.2     tools_3.2.0     htmltools_0.2.6
+ [5] yaml_2.1.13     stringi_0.4-1   rmarkdown_0.6.1 stringr_1.0.0  
+ [9] digest_0.6.8    evaluate_0.7   </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+
+</body>
+</html>

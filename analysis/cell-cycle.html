@@ -129,13 +129,15 @@ img {
 <li><a href="#input">Input</a></li>
 <li><a href="#create-phase-scores-for-each-cell">Create phase scores for each cell</a></li>
 <li><a href="#two-step-normalization-of-the-phase-specific-scores">Two step normalization of the phase-specific scores</a></li>
-<li><a href="#assign-phase-for-each-cell-based-on-phase-specific-score">assign phase for each cell based on phase-specific score</a></li>
+<li><a href="#assign-phase-for-each-cell-based-on-phase-specific-score">Assign phase for each cell based on phase-specific score</a></li>
+<li><a href="#total-molecule-counts-and-reads-counts-of-each-cell">Total molecule counts and reads counts of each cell</a></li>
+<li><a href="#use-the-original-assigned-phases">Use the original assigned phases</a></li>
 <li><a href="#session-information">Session information</a></li>
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-07-07</p>
-<p><strong>Code version:</strong> 8e5d336be95361fb60a5dbbed71bbfdaa8ed8ef7</p>
+<p><strong>Last updated:</strong> 2015-07-08</p>
+<p><strong>Code version:</strong> e78dbba2bdcc461056a93867890f364a1425b46b</p>
 <p>Carry out cell cycle analysis of single cell iPSCs using the method by <a href="http://www.sciencedirect.com/science/article/pii/S0092867415005498">Macosko2015</a></p>
 <p>Gene sets reflecting five phases of the HeLa cell cycle (G1/S, S, G2/M, M and M/G1) were taken from Whitfield et al. (Whitfield et al., 2002) (Table S2), and refined by examining the correlation between the expression pattern of each gene and the average expression pattern of all genes in the respective gene-set, and excluding genes with a low correlation (R&lt;0.3). This step removed genes that were identified as phase-specific in HeLa cells but did not correlate with that phase in our single-cell data. The remaining genes in each refined gene-set were highly correlated (not shown). We then averaged the normalized expression levels (log2(TPM+1)) of the genes in each gene-set to define the phase-specific scores of each cell. These scores were then subjected to two normalization steps. First, for each phase, the scores were centered and divided by their standard deviation. Second, the normalized scores of each cell were centered and normalized.</p>
 <div id="input" class="section level2">
@@ -188,8 +190,8 @@ reads &lt;- reads[expressed, ]
 dim(reads)</code></pre>
 <pre><code>[1] 17162   587</code></pre>
 <p>Keep only single samples.</p>
-<pre class="r"><code>molecules_single &lt;- molecules[, anno$well != &quot;bulk&quot;]
-reads_single &lt;- reads[, anno$well != &quot;bulk&quot;]</code></pre>
+<pre class="r"><code>molecules_single &lt;- molecules %&gt;% select(-contains(&quot;bulk&quot;))
+reads_single &lt;- reads %&gt;% select(-contains(&quot;bulk&quot;))</code></pre>
 <p>Remove genes with max molecule numer larger than 1024</p>
 <pre class="r"><code>molecules_single &lt;- molecules_single[apply(molecules_single,1,max) &lt; 1024,]</code></pre>
 <p>Input cell cycle gene Gene sets reflecting 5 cell cycle phases were taken from Table S2 of <a href="http://www.sciencedirect.com/science/article/pii/S0092867415005498">Macosko2015</a> Gene ID conversion was done by using the DAVID <a href="http://david.abcc.ncifcrf.gov" class="uri">http://david.abcc.ncifcrf.gov</a></p>
@@ -222,7 +224,16 @@ sapply(cell_cycle_genes_list,function(xx){
   #### output the phase specific scores (mean of normalized expression levels in the phase)
   apply(reads_single_cpm,2,mean)
 
-})</code></pre>
+})
+
+head(ans)</code></pre>
+<pre><code>                  [,1]     [,2]     [,3]     [,4]     [,5]
+NA19098.1.A01 6.155267 5.792305 4.765536 5.263269 7.369384
+NA19098.1.A02 6.708742 5.997631 5.422097 5.699212 7.579759
+NA19098.1.A04 7.006426 5.932785 5.136684 5.351807 7.282850
+NA19098.1.A05 7.265333 6.942455 5.626943 5.667291 7.806992
+NA19098.1.A06 6.519006 7.043136 5.871447 6.564793 7.839005
+NA19098.1.A07 7.293232 6.441728 5.278740 5.859825 7.910691</code></pre>
 </div>
 <div id="two-step-normalization-of-the-phase-specific-scores" class="section level2">
 <h2>Two step normalization of the phase-specific scores</h2>
@@ -254,19 +265,78 @@ ans_normed &lt;- flexible_normalization(ans,by_row=FALSE)
 ## then normalized of each cell
 ans_normed_normed &lt;- flexible_normalization(ans_normed,by_row=TRUE)
 
-heatmap.2(ans_normed_normed, trace=&quot;none&quot;, cexRow=1,cexCol=1,margins=c(8,8),xlab=&quot;cell-cycle phase&quot;, ylab= &quot;cells&quot;)</code></pre>
+head(ans_normed_normed)</code></pre>
+<pre><code>                    [,1]       [,2]        [,3]       [,4]       [,5]
+NA19098.1.A01 -0.3262126 -1.4409558  0.03914774  0.4623441  1.2656766
+NA19098.1.A02  0.4918863 -1.7310702  0.29151567  0.1366215  0.8110468
+NA19098.1.A04  1.5958666 -1.1564594  0.03792022 -0.2236181 -0.2537094
+NA19098.1.A05  1.0606822  0.4971191 -0.67722194 -1.3840816  0.5035022
+NA19098.1.A06 -1.6641313  0.7088817 -0.20733444  0.6497222  0.5128619
+NA19098.1.A07  1.1268010 -0.8172340 -0.89233759 -0.4490102  1.0317808</code></pre>
+<pre class="r"><code>summary(ans_normed_normed)</code></pre>
+<pre><code>       V1                 V2                 V3          
+ Min.   :-1.77787   Min.   :-1.76589   Min.   :-1.74602  
+ 1st Qu.:-0.90666   1st Qu.:-0.71638   1st Qu.:-0.67815  
+ Median : 0.08765   Median :-0.01321   Median :-0.08626  
+ Mean   : 0.04186   Mean   :-0.00684   Mean   :-0.03876  
+ 3rd Qu.: 1.00655   3rd Qu.: 0.66862   3rd Qu.: 0.63972  
+ Max.   : 1.77266   Max.   : 1.75940   Max.   : 1.69325  
+       V4                   V5           
+ Min.   :-1.5758929   Min.   :-1.764853  
+ 1st Qu.:-0.6757738   1st Qu.:-0.706826  
+ Median : 0.0486712   Median : 0.010415  
+ Mean   :-0.0001804   Mean   : 0.003921  
+ 3rd Qu.: 0.6731066   3rd Qu.: 0.735029  
+ Max.   : 1.6948942   Max.   : 1.765184  </code></pre>
+<pre class="r"><code>heatmap.2(ans_normed_normed, trace=&quot;none&quot;, cexRow=1,cexCol=1,margins=c(8,8),xlab=&quot;cell-cycle phase&quot;, ylab= &quot;cells&quot;)</code></pre>
 <p><img src="figure/cell-cycle.Rmd/normalization-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
 <div id="assign-phase-for-each-cell-based-on-phase-specific-score" class="section level2">
-<h2>assign phase for each cell based on phase-specific score</h2>
+<h2>Assign phase for each cell based on phase-specific score</h2>
 <pre class="r"><code>cell_phase &lt;- apply(ans_normed_normed,1,function(x) colnames(cell_cycle_genes)[which.max(x)])
-reads_single &lt;- rbind(reads_single, cell_phase = cell_phase)
-
-test &lt;- data.frame(cell_phase)
+assign_cell_phase &lt;- data.frame(cell_phase)
 
 ## plot
-ggplot(test, aes(x=cell_phase)) + geom_histogram()</code></pre>
+phase_order &lt;- c(&quot;G1.S&quot;,&quot;S&quot;,&quot;G2.M&quot;,&quot;M&quot;,&quot;M.G1&quot;)
+cbPalette &lt;- c(&quot;#999999&quot;, &quot;#E69F00&quot;, &quot;#56B4E9&quot;, &quot;#009E73&quot;, &quot;#F0E442&quot;, &quot;#0072B2&quot;, &quot;#D55E00&quot;, &quot;#CC79A7&quot;)
+ggplot(assign_cell_phase, aes(x=cell_phase)) + geom_histogram(aes(fill=factor(cell_phase))) + scale_x_discrete(limits=phase_order, labels=c(&quot;G1/S&quot;,&quot;S&quot;,&quot;G2/M&quot;,&quot;M&quot;,&quot;M/G1&quot;)) + scale_fill_manual(values=cbPalette, breaks=phase_order)</code></pre>
 <p><img src="figure/cell-cycle.Rmd/assign-phase-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="total-molecule-counts-and-reads-counts-of-each-cell" class="section level2">
+<h2>Total molecule counts and reads counts of each cell</h2>
+<pre class="r"><code>anno_single &lt;- anno %&gt;% filter(well != &quot;bulk&quot;)
+anno_single$cell_phase &lt;- assign_cell_phase$cell_phase
+anno_single$total_reads &lt;- apply(reads_single, 2, sum)
+anno_single$total_molecules &lt;- apply(molecules_single, 2, sum)
+
+b &lt;- ggplot(anno_single, aes(x = as.factor(cell_phase), y = total_molecules)) + geom_boxplot(aes(fill=factor(cell_phase))) + scale_x_discrete(limits=phase_order, labels=c(&quot;G1/S&quot;,&quot;S&quot;,&quot;G2/M&quot;,&quot;M&quot;,&quot;M/G1&quot;)) + scale_fill_manual(values=cbPalette, breaks=phase_order) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + xlab(&quot;Cell cycle phase&quot;) + ylab(&quot;Total molecules&quot;)
+b</code></pre>
+<p><img src="figure/cell-cycle.Rmd/counts-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>b + facet_grid(individual ~ batch) </code></pre>
+<p><img src="figure/cell-cycle.Rmd/counts-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>p &lt;- ggplot(anno_single, aes(x = total_reads, y = total_molecules, col = cell_phase)) + geom_point(size = 3, alpha = 0.5, fontface=3) + scale_colour_manual(values=cbPalette, breaks=phase_order) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + xlab(&quot;Total reads&quot;) + ylab(&quot;Total molecules&quot;)
+p</code></pre>
+<p><img src="figure/cell-cycle.Rmd/counts-3.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>p + facet_grid(individual ~ batch) </code></pre>
+<p><img src="figure/cell-cycle.Rmd/counts-4.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="use-the-original-assigned-phases" class="section level2">
+<h2>Use the original assigned phases</h2>
+<p>In the original paper that assigned genes to each phase in <a href="http://www.molbiolcell.org/content/13/6/1977.long">Whitfield2002</a> , they use G1/S, S, G2, G2/M, M/G1 instead of G1/S, S, G2/M, M, M/G1 in <a href="http://www.sciencedirect.com/science/article/pii/S0092867415005498">Macosko2015</a></p>
+<pre class="r"><code>ggplot(assign_cell_phase, aes(x=cell_phase)) + geom_histogram(aes(fill=factor(cell_phase))) + scale_x_discrete(limits=phase_order, labels=c(&quot;G1/S&quot;,&quot;S&quot;,&quot;G2&quot;,&quot;G2/M&quot;,&quot;M/G1&quot;)) + scale_fill_manual(values=cbPalette, breaks=phase_order, labels=c(&quot;G1/S&quot;,&quot;S&quot;,&quot;G2&quot;,&quot;G2/M&quot;,&quot;M/G1&quot;))</code></pre>
+<p><img src="figure/cell-cycle.Rmd/original-phase-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>b &lt;- ggplot(anno_single, aes(x = as.factor(cell_phase), y = total_molecules)) + geom_boxplot(aes(fill=factor(cell_phase))) + scale_x_discrete(limits=phase_order, labels=c(&quot;G1/S&quot;,&quot;S&quot;,&quot;G2&quot;,&quot;G2/M&quot;,&quot;M/G1&quot;)) + scale_fill_manual(values=cbPalette, breaks=phase_order, labels=c(&quot;G1/S&quot;,&quot;S&quot;,&quot;G2&quot;,&quot;G2/M&quot;,&quot;M/G1&quot;)) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + xlab(&quot;Cell cycle phase&quot;) + ylab(&quot;Total molecules&quot;)
+b</code></pre>
+<p><img src="figure/cell-cycle.Rmd/original-phase-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>b + facet_grid(individual ~ batch) </code></pre>
+<p><img src="figure/cell-cycle.Rmd/original-phase-3.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>p &lt;- ggplot(anno_single, aes(x = total_reads, y = total_molecules, col = cell_phase)) + geom_point(size = 3, alpha = 0.5, fontface=3) + scale_colour_manual(values=cbPalette, breaks=phase_order, labels=c(&quot;G1/S&quot;,&quot;S&quot;,&quot;G2&quot;,&quot;G2/M&quot;,&quot;M/G1&quot;)) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + xlab(&quot;Total reads&quot;) + ylab(&quot;Total molecules&quot;)
+p</code></pre>
+<p><img src="figure/cell-cycle.Rmd/original-phase-4.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>p + facet_grid(individual ~ batch) </code></pre>
+<p><img src="figure/cell-cycle.Rmd/original-phase-5.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>p + facet_grid(individual ~ cell_phase)</code></pre>
+<p><img src="figure/cell-cycle.Rmd/original-phase-6.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
 <div id="session-information" class="section level2">
 <h2>Session information</h2>
@@ -295,11 +365,11 @@ loaded via a namespace (and not attached):
  [7] plyr_1.8.2         caTools_1.17.1     tools_3.2.0       
 [10] parallel_3.2.0     grid_3.2.0         gtable_0.1.2      
 [13] KernSmooth_2.23-14 DBI_0.3.1          gtools_3.5.0      
-[16] htmltools_0.2.6    yaml_2.1.13        assertthat_0.1    
-[19] digest_0.6.8       reshape2_1.4.1     formatR_1.2       
-[22] bitops_1.0-6       evaluate_0.7       rmarkdown_0.6.1   
-[25] labeling_0.3       gdata_2.16.1       stringi_0.4-1     
-[28] scales_0.2.4       proto_0.3-10      </code></pre>
+[16] htmltools_0.2.6    lazyeval_0.1.10    yaml_2.1.13       
+[19] assertthat_0.1     digest_0.6.8       reshape2_1.4.1    
+[22] formatR_1.2        bitops_1.0-6       evaluate_0.7      
+[25] rmarkdown_0.6.1    labeling_0.3       gdata_2.16.1      
+[28] stringi_0.4-1      scales_0.2.4       proto_0.3-10      </code></pre>
 </div>
 
 
