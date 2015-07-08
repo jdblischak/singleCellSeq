@@ -27,7 +27,7 @@ The analysis is performed by [correlate-single-to-bulk.R](https://github.com/jdb
 
 ```bash
 cd $ssd/subsampled
-mkdir -p correlation
+mkdir -p correlation correlation-quantiles
 mkdir -p ~/log/correlate-single-to-bulk.R
 for IND in 19098 19101 19239
 do
@@ -37,9 +37,15 @@ do
     do
       for SEED in {1..10}
       do
+        # Correlation across all genes
         CMD="correlate-single-to-bulk.R $CELLS $SEED molecule-counts-$NUM.txt $ssc/data/reads.txt --individual=$IND --good_cells=/mnt/lustre/home/jdblischak/singleCellSeq/data/quality-single-cells.txt"
         DEST="correlation/$IND-$CELLS-$SEED-$NUM.txt"
         echo "$CMD > $DEST" | qsub -l h_vmem=2g -cwd -V -N cor-$IND-$CELLS-$SEED-$NUM -j y -o ~/log/correlate-single-to-bulk.R -l 'hostname=!bigmem01'
+        sleep .01s
+        # Correlation for genes separated by the specified quantiles
+        CMD="correlate-single-to-bulk.R $CELLS $SEED molecule-counts-$NUM.txt $ssc/data/reads.txt --individual=$IND --good_cells=/mnt/lustre/home/jdblischak/singleCellSeq/data/quality-single-cells.txt -q .25 -q .5 -q .75"
+        DEST="correlation-quantiles/$IND-$CELLS-$SEED-$NUM.txt"
+        echo "$CMD > $DEST" | qsub -l h_vmem=2g -cwd -V -N cor-$IND-$CELLS-$SEED-$NUM-quantiles -j y -o ~/log/correlate-single-to-bulk.R -l 'hostname=!bigmem01'
         sleep .01s
       done
     done
@@ -53,18 +59,25 @@ Run from `$ssd/subsampled`.
 ```python
 import os
 import glob
-files = glob.glob("correlation/*txt")
-out = open("correlation.txt", "w")
-out.write("ind\tdepth\tnum_cells\tseed\tr\n")
-for fname in files:
-    fname_parts = os.path.basename(fname).rstrip(".txt").split("-")
-    ind = fname_parts[0]
-    depth = fname_parts[3]
-    f = open(fname, "r")
-    out.write(ind + "\t" + depth + "\t" + f.read())
-    f.close()
 
-out.close()
+def gather(files, outfile):
+    out = open(outfile, "w")
+    out.write("ind\tdepth\tnum_cells\tseed\tquantiles\tr\tnum_genes\n")
+    for fname in files:
+        fname_parts = os.path.basename(fname).rstrip(".txt").split("-")
+        ind = fname_parts[0]
+        depth = fname_parts[3]
+        f = open(fname, "r")
+        for line in f:
+            out.write(ind + "\t" + depth + "\t" + line)
+        f.close()
+    out.close()
+
+files = glob.glob("correlation/*txt")
+gather(files, "correlation.txt")
+
+files = glob.glob("correlation-quantiles/*txt")
+gather(files, "correlation-quantiles.txt")
 ```
 
 ## Results
@@ -111,6 +124,55 @@ The data comes from 46 K562 cells.
 ![Pollen et al. 2014 - Figure 2ab](figure/correlate-single-to-bulk.Rmd/pollen-2014-figure-2ab.png)
 
 [Pollen2014]: http://www.ncbi.nlm.nih.gov/pmc/articles/PMC4191988/
+
+## Results by expression quantiles
+
+In the analysis above, all genes were used.
+By default, the expression level in the bulk cells is used to remove the bottom 25% of genes from the analysis.
+This basically removes genes that are clearly unexpressed.
+Starting from this list of "expressed" genes, I split them into their expression quartiles.
+Thus we can see how the correlation is affected by the expression level.
+
+```{r input-quantiles}
+r_q_data <- read.table("/mnt/gluster/data/internal_supp/singleCellSeq/subsampled/correlation-quantiles.txt",
+                     header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+```
+
+Calculate the mean and standard error of the mean (sem) for each of the 10 iterations.
+
+```{r calculate-mean-and-sem-quantiles}
+r_q_data_plot <- r_q_data %>%
+  group_by(ind, depth, num_cells, quantiles) %>%
+  summarize(mean = mean(r), sem = sd(r) / length(r), num_genes = num_genes[1])
+```
+
+Some single cells did not have enough reads for the higher subsamples.
+
+```{r remove-na-quantiles}
+r_q_data_plot <- na.omit(r_q_data_plot)
+```
+
+The full results.
+
+```{r subsample-correlate-single-cell-to-bulk-quantiles, fig.width=10, fig.height=10}
+p <- ggplot(r_q_data_plot, aes(x = num_cells, y = mean, color = as.factor(depth))) +
+  geom_line() +
+  geom_errorbar(aes(ymin = mean - sem, ymax = mean + sem), width = 1) +
+  facet_grid(quantiles~ind) +
+  labs(x = "Number of subsampled cells",
+       y = "Pearson's r (mean +/- sem)",
+       color = "Depth",
+       title = "Subsample: Correlation of single and bulk cells")
+p
+```
+
+Focus on one cell line, two sequencing depths, and the lower end of the number cells.
+
+```{r subsample-correlate-single-cell-to-bulk-xlim-quantiles, fig.width=10, fig.height=10, warning=FALSE}
+p %+% r_q_data_plot[r_q_data_plot$ind == 19098 &
+                    r_q_data_plot$depth %in% c(2e5, 4e6), ] +
+  xlim(0, 75)
+```
 
 ## Session information
 
