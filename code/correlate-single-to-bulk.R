@@ -7,12 +7,14 @@ suppressMessages(library("docopt"))
 "Correlate the expression in single cells to the bulk sample.
 
 Usage:
-correlate-single-cell-to-bulk.R [options] <num_cells> <seed> <single> <bulk>
+correlate-single-cell-to-bulk.R [options] [--quantiles=<q>...] <num_cells> <seed> <single> <bulk>
 
 Options:
   -h --help              Show this screen.
   --individual=<ind>     Only use data from ind, e.g. 19098
   --good_cells=<file>    A 1-column file with the names of good quality cells to maintain
+  -q --quantiles=<q>     Calculate the correlation for the genes separated by the provided
+                         quantiles, e.g. -q .25 -q .75
 
 Arguments:
   num_cells     number of single cells to subsample
@@ -21,7 +23,7 @@ Arguments:
   bulk          gene-by-sample matrix of bulk cell data" -> doc
 
 main <- function(num_cells, seed, single_fname, bulk_fname, individual = NULL,
-                 good_cells = NULL) {
+                 good_cells = NULL, quantiles = NULL) {
   suppressPackageStartupMessages(library("edgeR"))
   library("testit")
   id <- "single-to-bulk-correlation"
@@ -59,7 +61,7 @@ main <- function(num_cells, seed, single_fname, bulk_fname, individual = NULL,
 
   # Subsample number of single cells
   if (ncol(single_cells) < num_cells) {
-    cat(sprintf("%d\t%d\tNA\n", num_cells, seed))
+    cat(sprintf("%d\t%d\tNA\tNA\tNA\n", num_cells, seed))
     quit()
   }
   set.seed(seed)
@@ -96,14 +98,30 @@ main <- function(num_cells, seed, single_fname, bulk_fname, individual = NULL,
 
   assert("Same number of genes in bulk and single cells.",
          nrow(bulk_cells) == nrow(single_cells))
+  assert("Same order of genes in bulk and single cells.",
+         rownames(bulk_cells) == rownames(single_cells))
 
-  # Correlate
-  r <- cor(log2(rowMeans(single_cells) + 1), log2(rowMeans(bulk_cells) + 1))
+  mean_single_expression <- log2(rowMeans(single_cells) + 1)
+  mean_bulk_expression <- log2(rowMeans(bulk_cells) + 1)
 
-  # Output
-  cat(sprintf("%d\t%d\t%f\n", num_cells, seed, r))
+  quantiles <- c(quantiles, 1)
+  quantiles <- sort(quantiles)
+  q_cutoffs <- quantile(mean_bulk_expression, probs = quantiles)
+  q_r <- numeric(length = length(quantiles))
+  q_n <- numeric(length = length(quantiles))
+  for (i in 1:length(quantiles)) {
+    # Correlate
+    gene_in_quantile <- mean_bulk_expression <= q_cutoffs[i]
+    q_n[i] <- sum(gene_in_quantile)
+    q_r[i] <- cor(mean_single_expression[gene_in_quantile],
+                  mean_bulk_expression[gene_in_quantile])
+    # Output
+    cat(sprintf("%d\t%d\t%f\t%f\t%d\n", num_cells, seed, quantiles[i], q_r[i], q_n[i]))
+    # Remove genes already analyzed
+    mean_single_expression <- mean_single_expression[!gene_in_quantile]
+    mean_bulk_expression <- mean_bulk_expression[!gene_in_quantile]
+  }
 }
-
 
 if (!interactive() & getOption('run.main', default = TRUE)) {
   opts <- docopt(doc)
@@ -112,7 +130,8 @@ if (!interactive() & getOption('run.main', default = TRUE)) {
        single_fname = opts$single,
        bulk_fname = opts$bulk,
        individual = opts$individual,
-       good_cells = opts$good_cells)
+       good_cells = opts$good_cells,
+       quantiles = as.numeric(opts$quantiles))
 } else if (interactive() & getOption('run.main', default = TRUE)) {
   # what to do if interactively testing
   main(num_cells = 20,
@@ -120,5 +139,6 @@ if (!interactive() & getOption('run.main', default = TRUE)) {
        single_fname = "/mnt/gluster/data/internal_supp/singleCellSeq/subsampled/molecule-counts-200000.txt",
        bulk_fname = "~/singleCellSeq/data/reads.txt",
        individual = "19098",
-       good_cells = "../data/quality-single-cells.txt")
+       good_cells = "../data/quality-single-cells.txt",
+       quantiles = c(.25, .5, .75))
 }
