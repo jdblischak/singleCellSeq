@@ -1,0 +1,228 @@
+---
+title: "Process sequence data - LCLs"
+author: "John Blischak"
+date: 2015-04-11
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+PoYuan performed the original troubleshooting of the UMI protocol with LCLs from individual 19239.
+One flow cell worked well and contains data that we can use.
+
+Lanes 1-4 each contain 24 single cells from a 96-well C1 chip.
+We can use these as a comparison to the results in the iPSCs.
+For example, how much overlap is there in the noisy genes identified in iPSCs and LCLs?
+
+Lanes 5-8 each contain one single cell from a different C1 chip.
+Thus they have been extremely over sequenced.
+We can use these to address the number of sequenced reads required to completely exhaust the observation of any new molecules.
+
+In order to make these comparisons, we need to process them through the same pipeline as the iPSC data.
+
+## Setting up
+
+The plan is to keep all the LCL data in a subdirectory of the main data directory.
+
+```bash
+cd /mnt/gluster/data/internal_supp/singleCellSeq # referred to hereafter as $ssd
+mkdir lcl
+```
+
+In order to keep the scripts simple, the paths to the genome file and the exons file are hard-coded as relative paths.
+Thus I created a symlink in the subdirectory that points to the directory `genome` which contains these files.
+
+```bash
+cd lcl
+ln -s ../genome/ genome
+```
+
+## Transfer fastq files
+
+The fastq files are found here:
+
+/rawdata/Illumina_Runs/150116_SN_0795_0416_AC5V7FACXX/Demultiplexed/Unaligned/Project_N/
+
+Conveniently, the new version of Casava sorts the fastq files by sample so there is no need to consult the sample sheet.
+Thus each subdirectory is named `Sample_19239_LCL_well`, e.g. `Sample_19239_LCL_A01`.
+
+The new version of Casava also splits the data into separate files such that each file contains at most 4 million reads.
+This has its pros and cons.
+The con is that we will have to later manually combine these samples for the purpose of quantifying molecules with UMIs.
+The pro is that it will be easier to parallelize the processing of many small chunks.
+This is especially relevant for lanes 5-8, where the entire lane corresponds to one sample.
+
+```bash
+zcat /rawdata/Illumina_Runs/150116_SN_0795_0416_AC5V7FACXX/Demultiplexed/Unaligned/Project_N/Sample_19239_LCL_A01/19239_LCL_A01_GAGCTCCA_L001_R1_001.fastq.gz | grep "@D7L" | wc -l
+4000000
+```
+
+Creating symlinks in the new fastq directory.
+
+```bash
+# from $ssd/lcl
+mkdir fastq
+find /rawdata/Illumina_Runs/150116_SN_0795_0416_AC5V7FACXX/Demultiplexed/Unaligned/Project_N/ -name "*fastq.gz" -exec ln -s {} fastq/ \;
+```
+
+There are a total of 398 fastq files.
+
+```bash
+ls fastq | wc -l
+398
+```
+
+All processing scripts described below were run from `$ssd/lcl/`.
+
+## Trim UMI
+
+```bash
+submit-array.sh trim.sh 2g fastq/*fastq.gz
+```
+
+To confirm that the jobs ran successfully:
+
+```bash
+ls trim/*fastq.gz | wc -l
+grep -w success ~/log/trim.sh/* | wc -l
+grep -w failure ~/log/trim.sh/* | wc -l
+```
+
+To re-run failed jobs, I re-ran the original command.
+If the output file already exists, the code is not run and "success" is not echo'd to the log file.
+
+## Quality trim 3' end of reads
+
+```bash
+submit-array.sh sickle.sh 2g trim/*fastq.gz
+```
+
+To confirm that the jobs ran successfully:
+
+```bash
+ls sickle/*fastq.gz | wc -l
+grep -w success ~/log/sickle.sh/* | wc -l
+grep -w failure ~/log/sickle.sh/* | wc -l
+```
+
+## Map to genome
+
+```bash
+submit-array.sh map-subread.sh 8g sickle/*fastq.gz
+```
+
+```bash
+ls bam/*bam | wc -l
+grep -w success ~/log/map-subread.sh/* | wc -l
+grep -w failure ~/log/map-subread.sh/* | wc -l
+```
+
+## Process bam files
+
+*  Sort bam
+*  Index bam
+
+```bash
+submit-array.sh process-bam.sh 8g bam/*bam
+```
+
+```bash
+ls bam-processed/*bam | wc -l
+grep -w success ~/log/process-bam.sh/* | wc -l
+grep -w failure ~/log/process-bam.sh/* | wc -l
+```
+
+Check for the presence of intermediate files output during sorting.
+
+```bash
+ls bam-processed/*sorted*0*bam
+```
+
+## Combine bam files per sample
+
+Merge and index each single cell.
+Also update the names so that they match the iPSC naming scheme so that they can be processed by [gather-gene-counts.py](https://github.com/jdblischak/singleCellSeq/blob/master/code/gather-gene-counts.py).
+
+
+```bash
+# From head node
+cd $ssd/lcl
+mkdir -p bam-combined
+mkdir -p ~/log/combine.sh
+for ROW in {A..H}
+do
+  for COL in {1..12}
+  do
+    WELL=`printf "%s%02d\n" $ROW $COL`
+    TARGET_FILE=bam-combined/19239.1.$WELL.trim.sickle.sorted.combined.bam
+    echo $TARGET_FILE
+    NUM_FILES_TO_MERGE=`ls bam-processed/19239_LCL_$WELL*trim.sickle.sorted.bam | wc -l`
+    if [ $NUM_FILES_TO_MERGE -eq 1 ]
+    then
+      FILE=`ls bam-processed/19239_LCL_$WELL*trim.sickle.sorted.bam`
+      echo "mv $FILE $TARGET_FILE; samtools index $TARGET_FILE" | qsub -l h_vmem=4g -N $WELL.lcl.combine -cwd -o ~/log/combine.sh -j y -V
+    else if [ $NUM_FILES_TO_MERGE -gt 1 ]
+    then
+      echo "samtools merge $TARGET_FILE bam-processed/19239_LCL_$WELL*trim.sickle.sorted.bam; samtools index $TARGET_FILE" | qsub -l h_vmem=4g -N $WELL.lcl.combine -cwd -o ~/log/combine.sh -j y -V
+    fi
+    fi
+  done
+done
+```
+
+Need to submit the 4 full lane samples separately because they have different naming schemes.
+Also need to increase memory.
+
+```bash
+for WELL in A9E1 B2E2 B4H1 D2H2
+do
+  TARGET_FILE=bam-combined/19239.1.$WELL.trim.sickle.sorted.combined.bam
+  echo $TARGET_FILE
+  echo "samtools merge $TARGET_FILE bam-processed/19239_LCL_$WELL*trim.sickle.sorted.bam; samtools index $TARGET_FILE" | qsub -l h_vmem=32g -N $WELL.lcl.combine -cwd -o ~/log/combine.sh -j y -V
+done
+```
+
+```bash
+ls bam-combined/*bam | wc -l
+```
+
+## Remove duplicate UMIs
+
+```bash
+submit-array.sh rmdup-umi.sh 2g bam-combined/*bam
+```
+
+```bash
+ls bam-rmdup-umi/*bam | wc -l
+grep -w success ~/log/rmdup-umi.sh/* | wc -l
+grep -w failure ~/log/rmdup-umi.sh/* | wc -l
+```
+
+## Count reads per gene
+
+```bash
+submit-array.sh count-reads-per-gene.sh 2g bam-combined/*bam bam-rmdup-umi/*bam
+```
+
+```bash
+ls counts/*genecounts.txt | wc -l
+grep -w success ~/log/count-reads-per-gene.sh/* | wc -l
+grep -w failure ~/log/count-reads-per-gene.sh/* | wc -l
+```
+
+## Gather summary counts
+
+The classification of reads by featureCounts.
+
+```bash
+gather-summary-counts.py > summary-counts-lcl.txt
+```
+
+## Gather gene counts
+
+The counts for each gene for each sequencing lane.
+
+```bash
+gather-gene-counts.py > gene-counts-lcl.txt
+```
