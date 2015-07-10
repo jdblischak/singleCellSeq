@@ -1,0 +1,153 @@
+---
+title: "Quality control for LCLs"
+output: html_document
+date: 2015-07-10
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+opts_chunk$set(fig.width = 8, fig.height = 8)
+```
+
+## Input
+
+```{r packages, message=FALSE}
+library("dplyr")
+library("ggplot2")
+theme_set(theme_bw(base_size = 16))
+library("edgeR")
+```
+
+```{r counts}
+counts <- read.table("/mnt/gluster/data/internal_supp/singleCellSeq/lcl/gene-counts-lcl.txt",
+                     header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+```
+
+```{r annotation}
+anno <- counts %>%
+  filter(rmdup == "molecules") %>%
+  select(individual:well) %>%
+  arrange(well)
+anno <- mutate(anno, sample_id = paste(paste0("NA", individual),
+                                       batch, well, sep = "."))
+anno <- mutate(anno, full_lane = well %in% c("A9E1", "B2E2", "B4H1", "D2H2"))
+stopifnot(sum(anno$full_lane) == 4)
+write.table(anno, "../data/annotation-lcl.txt", quote = FALSE, sep = "\t",
+            row.names = FALSE)
+head(anno)
+```
+
+```{r transpose-molecules}
+molecules <- counts %>%
+  filter(rmdup == "molecules") %>%
+  select(-(individual:rmdup)) %>%
+  t
+dim(molecules)
+colnames(molecules) <- anno$sample_id
+write.table(molecules, "../data/molecules-lcl.txt", quote = FALSE, sep = "\t",
+            col.names = NA)
+molecules[1:10, 1:5]
+```
+
+```{r transpose-reads}
+reads <- counts %>%
+  filter(rmdup == "reads") %>%
+  select(-(individual:rmdup)) %>%
+  t
+dim(reads)
+colnames(reads) <- anno$sample_id
+write.table(reads, "../data/reads-lcl.txt", quote = FALSE, sep = "\t",
+            col.names = NA)
+reads[1:10, 1:5]
+```
+
+Summary counts from featureCounts.
+Created with [gather-summary-counts.py](https://github.com/jdblischak/singleCellSeq/blob/master/code/gather-summary-counts.py).
+These data were collected from the summary files of the full combined samples.
+
+```{r input-summary-counts}
+summary_counts <- read.table("../data/summary-counts-lcl.txt", header = TRUE,
+                             stringsAsFactors = FALSE)
+```
+
+Currently this file only contains data from sickle-trimmed reads, so the code below simply ensures this and then removes the column.
+
+```{r clean-summary-counts}
+summary_per_sample <- summary_counts %>%
+  filter(sickle == "quality-trimmed") %>%
+  select(-sickle) %>%
+  arrange(individual, batch, well, rmdup)
+stopifnot(summary_per_sample$well[c(TRUE, FALSE)] == anno$well)
+```
+
+Input single cell observational quality control data.
+
+```{r input-qc, eval=FALSE}
+# File needs to be created
+qc <- read.table("../data/qc-lcl.txt", header = TRUE,
+                 stringsAsFactors = FALSE)
+head(qc)
+```
+
+## Total mapped reads, unmapped ratios, and ERCC ratios
+
+Looking at the unmapped ratio and ERCC ratio of each cell based on number of reads.
+
+1. low number of mapped reads might be caused by cell apoptosis, RNA degradation, insufficient cell lysis, bad Tn5 transposase quality, or contamination
+2. high proportion of ERCC spike-in indicates low RNA quantity from iPSCs which might cell death
+
+```{r reads}
+# reads per sample
+summary_per_sample_reads <- summary_per_sample %>% filter(rmdup == "reads")
+
+# create unmapped ratios
+summary_per_sample_reads$unmapped.ratios <- summary_per_sample_reads[,9]/apply(summary_per_sample_reads[,5:13],1,sum)
+
+# create total mapped reads
+summary_per_sample_reads$total.mapped <- apply(summary_per_sample_reads[,5:8],1,sum)
+
+# plot
+ggplot(summary_per_sample_reads, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5)
+
+# plot the sum of reads and 'Assigned'
+plot(apply(reads,2,sum),summary_per_sample_reads[,5])
+
+# total ERCC reads 
+summary_per_sample_reads$total.ERCC <- apply(reads[grep("ERCC", rownames(reads)), ],2,sum)
+
+plot(summary_per_sample_reads$total.ERCC)
+
+# creat ERCC ratios
+summary_per_sample_reads$ERCC.ratios <- apply(reads[grep("ERCC", rownames(reads)), ],2,sum)/apply(summary_per_sample_reads[,5:8],1,sum)
+
+# plot
+ggplot(summary_per_sample_reads, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5)
+```
+
+Looking at only the multiplexed single cell libraries (96 samples total, 24 each in lanes 1-4):
+
+```{r reads-single}
+# remove bulk keep single cell
+summary_per_sample_reads_single <- summary_per_sample_reads[!anno$full_lane, ]
+
+# many plots
+ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + xlab("Number of mapped reads") + ylab("Umapped reads ratio")
+
+ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + xlab("Number of mapped reads") + ylab("Spike-in reads ratio")
+
+ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))
+
+ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))
+
+ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = total.ERCC, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))
+```
+
+## Session information
+
+```{r info}
+sessionInfo()
+```
