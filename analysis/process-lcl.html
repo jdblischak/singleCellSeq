@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+<meta name="author" content="John Blischak" />
+
+<meta name="date" content="2015-04-11" />
+
+<title>Process sequence data - LCLs</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Process sequence data - LCLs</h1>
+<h4 class="author"><em>John Blischak</em></h4>
+<h4 class="date"><em>2015-04-11</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#setting-up">Setting up</a></li>
+<li><a href="#transfer-fastq-files">Transfer fastq files</a></li>
+<li><a href="#trim-umi">Trim UMI</a></li>
+<li><a href="#quality-trim-3-end-of-reads">Quality trim 3’ end of reads</a></li>
+<li><a href="#map-to-genome">Map to genome</a></li>
+<li><a href="#process-bam-files">Process bam files</a></li>
+<li><a href="#combine-bam-files-per-sample">Combine bam files per sample</a></li>
+<li><a href="#remove-duplicate-umis">Remove duplicate UMIs</a></li>
+<li><a href="#count-reads-per-gene">Count reads per gene</a></li>
+<li><a href="#gather-summary-counts">Gather summary counts</a></li>
+<li><a href="#gather-gene-counts">Gather gene counts</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2015-07-10</p>
+<p><strong>Code version:</strong> 68598743d3b85062d886537a63464fdddc374b72</p>
+<p>PoYuan performed the original troubleshooting of the UMI protocol with LCLs from individual 19239. One flow cell worked well and contains data that we can use.</p>
+<p>Lanes 1-4 each contain 24 single cells from a 96-well C1 chip. We can use these as a comparison to the results in the iPSCs. For example, how much overlap is there in the noisy genes identified in iPSCs and LCLs?</p>
+<p>Lanes 5-8 each contain one single cell from a different C1 chip. Thus they have been extremely over sequenced. We can use these to address the number of sequenced reads required to completely exhaust the observation of any new molecules.</p>
+<p>In order to make these comparisons, we need to process them through the same pipeline as the iPSC data.</p>
+<div id="setting-up" class="section level2">
+<h2>Setting up</h2>
+<p>The plan is to keep all the LCL data in a subdirectory of the main data directory.</p>
+<pre class="bash"><code>cd /mnt/gluster/data/internal_supp/singleCellSeq # referred to hereafter as $ssd
+mkdir lcl</code></pre>
+<p>In order to keep the scripts simple, the paths to the genome file and the exons file are hard-coded as relative paths. Thus I created a symlink in the subdirectory that points to the directory <code>genome</code> which contains these files.</p>
+<pre class="bash"><code>cd lcl
+ln -s ../genome/ genome</code></pre>
+</div>
+<div id="transfer-fastq-files" class="section level2">
+<h2>Transfer fastq files</h2>
+<p>The fastq files are found here:</p>
+<p>/rawdata/Illumina_Runs/150116_SN_0795_0416_AC5V7FACXX/Demultiplexed/Unaligned/Project_N/</p>
+<p>Conveniently, the new version of Casava sorts the fastq files by sample so there is no need to consult the sample sheet. Thus each subdirectory is named <code>Sample_19239_LCL_well</code>, e.g. <code>Sample_19239_LCL_A01</code>.</p>
+<p>The new version of Casava also splits the data into separate files such that each file contains at most 4 million reads. This has its pros and cons. The con is that we will have to later manually combine these samples for the purpose of quantifying molecules with UMIs. The pro is that it will be easier to parallelize the processing of many small chunks. This is especially relevant for lanes 5-8, where the entire lane corresponds to one sample.</p>
+<pre class="bash"><code>zcat /rawdata/Illumina_Runs/150116_SN_0795_0416_AC5V7FACXX/Demultiplexed/Unaligned/Project_N/Sample_19239_LCL_A01/19239_LCL_A01_GAGCTCCA_L001_R1_001.fastq.gz | grep &quot;@D7L&quot; | wc -l
+4000000</code></pre>
+<p>Creating symlinks in the new fastq directory.</p>
+<pre class="bash"><code># from $ssd/lcl
+mkdir fastq
+find /rawdata/Illumina_Runs/150116_SN_0795_0416_AC5V7FACXX/Demultiplexed/Unaligned/Project_N/ -name &quot;*fastq.gz&quot; -exec ln -s {} fastq/ \;</code></pre>
+<p>There are a total of 398 fastq files.</p>
+<pre class="bash"><code>ls fastq | wc -l
+398</code></pre>
+<p>All processing scripts described below were run from <code>$ssd/lcl/</code>.</p>
+</div>
+<div id="trim-umi" class="section level2">
+<h2>Trim UMI</h2>
+<pre class="bash"><code>submit-array.sh trim.sh 2g fastq/*fastq.gz</code></pre>
+<p>To confirm that the jobs ran successfully:</p>
+<pre class="bash"><code>ls trim/*fastq.gz | wc -l
+grep -w success ~/log/trim.sh/* | wc -l
+grep -w failure ~/log/trim.sh/* | wc -l</code></pre>
+<p>To re-run failed jobs, I re-ran the original command. If the output file already exists, the code is not run and “success” is not echo’d to the log file.</p>
+</div>
+<div id="quality-trim-3-end-of-reads" class="section level2">
+<h2>Quality trim 3’ end of reads</h2>
+<pre class="bash"><code>submit-array.sh sickle.sh 2g trim/*fastq.gz</code></pre>
+<p>To confirm that the jobs ran successfully:</p>
+<pre class="bash"><code>ls sickle/*fastq.gz | wc -l
+grep -w success ~/log/sickle.sh/* | wc -l
+grep -w failure ~/log/sickle.sh/* | wc -l</code></pre>
+</div>
+<div id="map-to-genome" class="section level2">
+<h2>Map to genome</h2>
+<pre class="bash"><code>submit-array.sh map-subread.sh 8g sickle/*fastq.gz</code></pre>
+<pre class="bash"><code>ls bam/*bam | wc -l
+grep -w success ~/log/map-subread.sh/* | wc -l
+grep -w failure ~/log/map-subread.sh/* | wc -l</code></pre>
+</div>
+<div id="process-bam-files" class="section level2">
+<h2>Process bam files</h2>
+<ul>
+<li>Sort bam</li>
+<li>Index bam</li>
+</ul>
+<pre class="bash"><code>submit-array.sh process-bam.sh 8g bam/*bam</code></pre>
+<pre class="bash"><code>ls bam-processed/*bam | wc -l
+grep -w success ~/log/process-bam.sh/* | wc -l
+grep -w failure ~/log/process-bam.sh/* | wc -l</code></pre>
+<p>Check for the presence of intermediate files output during sorting.</p>
+<pre class="bash"><code>ls bam-processed/*sorted*0*bam</code></pre>
+</div>
+<div id="combine-bam-files-per-sample" class="section level2">
+<h2>Combine bam files per sample</h2>
+<p>Merge and index each single cell. Also update the names so that they match the iPSC naming scheme so that they can be processed by <a href="https://github.com/jdblischak/singleCellSeq/blob/master/code/gather-gene-counts.py">gather-gene-counts.py</a>.</p>
+<pre class="bash"><code># From head node
+cd $ssd/lcl
+mkdir -p bam-combined
+mkdir -p ~/log/combine.sh
+for ROW in {A..H}
+do
+  for COL in {1..12}
+  do
+    WELL=`printf &quot;%s%02d\n&quot; $ROW $COL`
+    TARGET_FILE=bam-combined/19239.1.$WELL.trim.sickle.sorted.combined.bam
+    echo $TARGET_FILE
+    NUM_FILES_TO_MERGE=`ls bam-processed/19239_LCL_$WELL*trim.sickle.sorted.bam | wc -l`
+    if [ $NUM_FILES_TO_MERGE -eq 1 ]
+    then
+      FILE=`ls bam-processed/19239_LCL_$WELL*trim.sickle.sorted.bam`
+      echo &quot;mv $FILE $TARGET_FILE; samtools index $TARGET_FILE&quot; | qsub -l h_vmem=4g -N $WELL.lcl.combine -cwd -o ~/log/combine.sh -j y -V
+    else if [ $NUM_FILES_TO_MERGE -gt 1 ]
+    then
+      echo &quot;samtools merge $TARGET_FILE bam-processed/19239_LCL_$WELL*trim.sickle.sorted.bam; samtools index $TARGET_FILE&quot; | qsub -l h_vmem=4g -N $WELL.lcl.combine -cwd -o ~/log/combine.sh -j y -V
+    fi
+    fi
+  done
+done</code></pre>
+<p>Need to submit the 4 full lane samples separately because they have different naming schemes. Also need to increase memory.</p>
+<pre class="bash"><code>for WELL in A9E1 B2E2 B4H1 D2H2
+do
+  TARGET_FILE=bam-combined/19239.1.$WELL.trim.sickle.sorted.combined.bam
+  echo $TARGET_FILE
+  echo &quot;samtools merge $TARGET_FILE bam-processed/19239_LCL_$WELL*trim.sickle.sorted.bam; samtools index $TARGET_FILE&quot; | qsub -l h_vmem=32g -N $WELL.lcl.combine -cwd -o ~/log/combine.sh -j y -V
+done</code></pre>
+<pre class="bash"><code>ls bam-combined/*bam | wc -l</code></pre>
+</div>
+<div id="remove-duplicate-umis" class="section level2">
+<h2>Remove duplicate UMIs</h2>
+<pre class="bash"><code>submit-array.sh rmdup-umi.sh 2g bam-combined/*bam</code></pre>
+<pre class="bash"><code>ls bam-rmdup-umi/*bam | wc -l
+grep -w success ~/log/rmdup-umi.sh/* | wc -l
+grep -w failure ~/log/rmdup-umi.sh/* | wc -l</code></pre>
+</div>
+<div id="count-reads-per-gene" class="section level2">
+<h2>Count reads per gene</h2>
+<pre class="bash"><code>submit-array.sh count-reads-per-gene.sh 2g bam-combined/*bam bam-rmdup-umi/*bam</code></pre>
+<pre class="bash"><code>ls counts/*genecounts.txt | wc -l
+grep -w success ~/log/count-reads-per-gene.sh/* | wc -l
+grep -w failure ~/log/count-reads-per-gene.sh/* | wc -l</code></pre>
+</div>
+<div id="gather-summary-counts" class="section level2">
+<h2>Gather summary counts</h2>
+<p>The classification of reads by featureCounts.</p>
+<pre class="bash"><code>gather-summary-counts.py &gt; summary-counts-lcl.txt</code></pre>
+</div>
+<div id="gather-gene-counts" class="section level2">
+<h2>Gather gene counts</h2>
+<p>The counts for each gene for each sequencing lane.</p>
+<pre class="bash"><code>gather-gene-counts.py &gt; gene-counts-lcl.txt</code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+
+</body>
+</html>

@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+
+<meta name="date" content="2015-06-30" />
+
+<title>Subsample - LCLs</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Subsample - LCLs</h1>
+<h4 class="date"><em>2015-06-30</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#full-lane-samples">Full lane samples</a></li>
+<li><a href="#mutliplexed-samples">Mutliplexed samples</a></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2015-07-10</p>
+<p><strong>Code version:</strong> 68598743d3b85062d886537a63464fdddc374b72</p>
+<p>Subsample reads post-mapping. Includes both mapped and unmapped reads.</p>
+<div id="full-lane-samples" class="section level2">
+<h2>Full lane samples</h2>
+<p>Lanes 5-8 each contained just one single cell. These are highly oversequenced and will be used to assess saturation.</p>
+<pre class="bash"><code>cd $ssd/lcl
+mkdir -p full-lane/bam-combined
+mkdir -p ~/log/subsample-bam.py
+for WELL in A9E1 B2E2 B4H1 D2H2
+do
+  FILE=bam-combined/19239.1.$WELL.trim.sickle.sorted.combined.bam
+  for NUM in 200000 1000000 10000000 20000000 30000000 40000000 50000000
+  do
+    echo &quot;subsample-bam.py 12345 $NUM full-lane/bam-combined $FILE&quot; | qsub -l h_vmem=8g -V -cwd -N sub.$WELL.$NUM -j y -o ~/log/subsample-bam.py
+  done
+done</code></pre>
+<pre class="bash"><code>ls full-lane/bam-combined
+cat ~/log/subsample-bam.py/* | grep success | wc -l
+cat ~/log/subsample-bam.py/* | grep failure | wc -l</code></pre>
+<p>Switch to directory <code>full-lane</code>. Symlink <code>exons.saf</code>.</p>
+<pre class="bash"><code>cd full-lane
+mkdir genome
+ln -s /mnt/lustre/home/jdblischak/singleCellSeq/data/exons.saf genome/exons.saf</code></pre>
+<p>Remove duplicate UMIs.</p>
+<pre class="bash"><code>submit-array.sh rmdup-umi.sh 2g bam-combined/*bam</code></pre>
+<pre class="bash"><code>ls bam-rmdup-umi/*bam | wc -l
+grep -w success ~/log/rmdup-umi.sh/* | wc -l
+grep -w failure ~/log/rmdup-umi.sh/* | wc -l</code></pre>
+<p>Count reads per gene.</p>
+<pre class="bash"><code>submit-array.sh count-reads-per-gene.sh 2g bam-combined/*bam bam-rmdup-umi/*bam</code></pre>
+<pre class="bash"><code>ls counts/*genecounts.txt | wc -l
+grep -w success ~/log/count-reads-per-gene.sh/* | wc -l
+grep -w failure ~/log/count-reads-per-gene.sh/* | wc -l</code></pre>
+<p>Gather the gene counts.</p>
+<pre class="bash"><code>mkdir -p ~/log/gather-gene-counts.py
+for NUM in 200000 1000000 10000000 20000000 30000000 40000000 50000000
+do
+  echo &quot;gather-gene-counts.py counts/*.$NUM.genecounts.txt &gt; read-counts-$NUM.txt&quot; | qsub -l h_vmem=8g -cwd -V -j y -o ~/log/gather-gene-counts.py -N read-counts-$NUM
+  echo &quot;gather-gene-counts.py counts/*.$NUM.rmdup.genecounts.txt &gt; molecule-counts-$NUM.txt&quot; | qsub -l h_vmem=8g -cwd -V -j y -o ~/log/gather-gene-counts.py -N molecule-counts-$NUM
+done</code></pre>
+</div>
+<div id="mutliplexed-samples" class="section level2">
+<h2>Mutliplexed samples</h2>
+<p>Lanes 1-4 each contained 24 single cells. These multiplexed cells will be used to compare to the iPSC results.</p>
+<pre class="bash"><code>cd $ssd/lcl
+mkdir -p multiplexed/bam-combined
+mkdir -p ~/log/subsample-bam.py
+for ROW in {A..H}
+do
+  for COL in {1..12}
+  do
+    WELL=`printf &quot;%s%02d\n&quot; $ROW $COL`
+    FILE=bam-combined/19239.1.$WELL.trim.sickle.sorted.combined.bam
+    for NUM in 250000 500000 1000000 2000000 3000000 4000000
+    do
+      echo &quot;subsample-bam.py 12345 $NUM multiplexed/bam-combined $FILE&quot; | qsub -l h_vmem=2g -V -cwd -N sub.$WELL.$NUM -j y -o ~/log/subsample-bam.py
+    done
+  done
+done</code></pre>
+<pre class="bash"><code>ls multiplexed/bam-combined
+cat ~/log/subsample-bam.py/* | grep success | wc -l
+cat ~/log/subsample-bam.py/* | grep failure | wc -l
+# Many fail because they do not have sufficient reads for the subsampling
+cat ~/log/subsample-bam.py/* | grep failure | grep -v less | wc -l</code></pre>
+<p>Switch to directory <code>multiplexed</code>. Symlink <code>exons.saf</code>.</p>
+<pre class="bash"><code>cd multiplexed
+mkdir genome
+ln -s /mnt/lustre/home/jdblischak/singleCellSeq/data/exons.saf genome/exons.saf</code></pre>
+<p>Remove duplicate UMIs.</p>
+<pre class="bash"><code>submit-array.sh rmdup-umi.sh 2g bam-combined/*bam</code></pre>
+<pre class="bash"><code>ls bam-rmdup-umi/*bam | wc -l
+grep -w success ~/log/rmdup-umi.sh/* | wc -l
+grep -w failure ~/log/rmdup-umi.sh/* | wc -l</code></pre>
+<p>Count reads per gene.</p>
+<pre class="bash"><code>submit-array.sh count-reads-per-gene.sh 2g bam-combined/*bam bam-rmdup-umi/*bam</code></pre>
+<pre class="bash"><code>ls counts/*genecounts.txt | wc -l
+grep -w success ~/log/count-reads-per-gene.sh/* | wc -l
+grep -w failure ~/log/count-reads-per-gene.sh/* | wc -l</code></pre>
+<p>Gather the gene counts.</p>
+<pre class="bash"><code>mkdir -p ~/log/gather-gene-counts.py
+for NUM in 250000 500000 1000000 2000000 3000000 4000000
+do
+  echo &quot;gather-gene-counts.py counts/*.$NUM.genecounts.txt &gt; read-counts-$NUM.txt&quot; | qsub -l h_vmem=8g -cwd -V -j y -o ~/log/gather-gene-counts.py -N read-counts-$NUM
+  echo &quot;gather-gene-counts.py counts/*.$NUM.rmdup.genecounts.txt &gt; molecule-counts-$NUM.txt&quot; | qsub -l h_vmem=8g -cwd -V -j y -o ~/log/gather-gene-counts.py -N molecule-counts-$NUM
+done</code></pre>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] knitr_1.10.5
+
+loaded via a namespace (and not attached):
+ [1] magrittr_1.5    formatR_1.2     tools_3.2.0     htmltools_0.2.6
+ [5] yaml_2.1.13     stringi_0.4-1   rmarkdown_0.6.1 stringr_1.0.0  
+ [9] digest_0.6.8    evaluate_0.7   </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+
+</body>
+</html>
