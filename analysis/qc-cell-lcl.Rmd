@@ -13,6 +13,8 @@ source("chunk-options.R")
 opts_chunk$set(fig.width = 8, fig.height = 8)
 ```
 
+This is the quality control at single cell level of 19239 LCLs. 96 cells were collected on a C1 prep. I only purchased enough Tn5 from Epicentre for the generation of transposomes with 24 different barcodes. As a results, the 96 cells were divided into four groups, each have 24 cells, for library preps (4 batches) and for sequencing (4 lanes). Additionally, 4 individual cells collected from a different C1 prep were sujected to library preps using either the Epicentre Tn5 (A9E1 and B2E2) or the home-made Tn5 (B4H1 and D2H2).   
+
 ## Input
 
 ```{r packages, message=FALSE}
@@ -105,9 +107,6 @@ head(qc)
 
 Looking at the unmapped ratio and ERCC ratio of each cell based on number of reads.
 
-1. low number of mapped reads might be caused by cell apoptosis, RNA degradation, insufficient cell lysis, bad Tn5 transposase quality, or contamination
-2. high proportion of ERCC spike-in indicates low RNA quantity from iPSCs which might cell death
-
 ```{r reads}
 # reads per sample
 summary_per_sample_reads <- summary_per_sample %>% filter(rmdup == "reads")
@@ -171,6 +170,7 @@ ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = ERCC.ratios
 ```
 
 ## Number of genes detected
+Number of genes deteced in LCLS are smaller than iPSCs!!!
 ```{r gene-number}
 ## remove genes with no read
 expressed <- rowSums(reads) > 0
@@ -185,6 +185,14 @@ summary_per_sample_reads_single_qc$reads_single_gene_number <- reads_single_gene
 ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = reads_single_gene_number, col = qc_filter, label = as.character(cell_number))) + geom_text(fontface=3) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + xlab("Number of mapped reads") + ylab("Number of genes")
 
 ggplot(summary_per_sample_reads_single_qc, aes(x = reads_single_gene_number, y = ERCC.ratios, col = qc_filter, label = as.character(cell_number))) + geom_text(fontface=3) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + xlab("Number of genes") + ylab("Spike-in reads ratio")
+```
+
+What are the numbers of detected genes of the 4 heavily-sequenced individual cells?
+```{r gene-number-4}
+## the 4 individual cells
+reads_4 <- reads[, anno$full_lane == "TRUE"]
+reads_4_gene_number <- colSums(reads_4 > 1)
+reads_4_gene_number
 ```
 
 ## Reads mapped to mitochondrial genes
