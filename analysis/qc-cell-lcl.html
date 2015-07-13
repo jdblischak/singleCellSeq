@@ -126,12 +126,18 @@ img {
 <ul>
 <li><a href="#input">Input</a></li>
 <li><a href="#total-mapped-reads-unmapped-ratios-and-ercc-ratios">Total mapped reads, unmapped ratios, and ERCC ratios</a></li>
+<li><a href="#cell-number">Cell number</a></li>
+<li><a href="#number-of-genes-detected">Number of genes detected</a></li>
+<li><a href="#reads-mapped-to-mitochondrial-genes">Reads mapped to mitochondrial genes</a></li>
+<li><a href="#pca">PCA</a></li>
+<li><a href="#cutoffs">Cutoffs</a></li>
 <li><a href="#session-information">Session information</a></li>
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-07-10</p>
-<p><strong>Code version:</strong> 68598743d3b85062d886537a63464fdddc374b72</p>
+<p><strong>Last updated:</strong> 2015-07-13</p>
+<p><strong>Code version:</strong> a4d865fb33bba771e8c3bdcd182882556aedab55</p>
+<p>This is the quality control at single cell level of 19239 LCLs. 96 cells were collected on a C1 prep. I only purchased enough Tn5 from Epicentre for the generation of transposomes with 24 different barcodes. As a results, the 96 cells were divided into four groups, each have 24 cells, for library preps (4 batches) and for sequencing (4 lanes). Additionally, 4 individual cells collected from a different C1 prep were sujected to library preps using either the Epicentre Tn5 (A9E1 and B2E2) or the home-made Tn5 (B4H1 and D2H2).</p>
 <div id="input" class="section level2">
 <h2>Input</h2>
 <pre class="r"><code>library(&quot;dplyr&quot;)
@@ -241,17 +247,20 @@ ENSG00000187961             0</code></pre>
 stopifnot(summary_per_sample$well[c(TRUE, FALSE)] == anno$well)</code></pre>
 <p>Input single cell observational quality control data.</p>
 <pre class="r"><code># File needs to be created
-qc &lt;- read.table(&quot;../data/qc-lcl.txt&quot;, header = TRUE,
+qc &lt;- read.csv(&quot;../data/qc-lcl.csv&quot;, header = TRUE,
                  stringsAsFactors = FALSE)
 head(qc)</code></pre>
+<pre><code>  X ll_name cell.number.location cell.num
+1 1     A01                1_C03        1
+2 2     A02                1_C02        1
+3 3     A03                0_C01        0
+4 4     A04                1_C49        1
+5 5     A05                1_C50        1
+6 6     A06                1_C51        1</code></pre>
 </div>
 <div id="total-mapped-reads-unmapped-ratios-and-ercc-ratios" class="section level2">
 <h2>Total mapped reads, unmapped ratios, and ERCC ratios</h2>
 <p>Looking at the unmapped ratio and ERCC ratio of each cell based on number of reads.</p>
-<ol style="list-style-type: decimal">
-<li>low number of mapped reads might be caused by cell apoptosis, RNA degradation, insufficient cell lysis, bad Tn5 transposase quality, or contamination</li>
-<li>high proportion of ERCC spike-in indicates low RNA quantity from iPSCs which might cell death</li>
-</ol>
 <pre class="r"><code># reads per sample
 summary_per_sample_reads &lt;- summary_per_sample %&gt;% filter(rmdup == &quot;reads&quot;)
 
@@ -279,20 +288,189 @@ summary_per_sample_reads$ERCC.ratios &lt;- apply(reads[grep(&quot;ERCC&quot;, ro
 ggplot(summary_per_sample_reads, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5)</code></pre>
 <p><img src="figure/qc-cell-lcl.Rmd/reads-4.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <p>Looking at only the multiplexed single cell libraries (96 samples total, 24 each in lanes 1-4):</p>
-<pre class="r"><code># remove bulk keep single cell
+<pre class="r"><code># remove the 4 individual cells
 summary_per_sample_reads_single &lt;- summary_per_sample_reads[!anno$full_lane, ]
 
 # many plots
-ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + xlab(&quot;Number of mapped reads&quot;) + ylab(&quot;Umapped reads ratio&quot;)</code></pre>
+ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + xlab(&quot;Number of mapped reads&quot;) + ylab(&quot;Umapped reads ratio&quot;) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))</code></pre>
 <p><img src="figure/qc-cell-lcl.Rmd/reads-single-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + xlab(&quot;Number of mapped reads&quot;) + ylab(&quot;Spike-in reads ratio&quot;)</code></pre>
+<pre class="r"><code>ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + xlab(&quot;Number of mapped reads&quot;) + ylab(&quot;Spike-in reads ratio&quot;) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))</code></pre>
 <p><img src="figure/qc-cell-lcl.Rmd/reads-single-2.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))</code></pre>
-<p><img src="figure/qc-cell-lcl.Rmd/reads-single-3.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))</code></pre>
-<p><img src="figure/qc-cell-lcl.Rmd/reads-single-4.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = total.ERCC, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))</code></pre>
-<p><img src="figure/qc-cell-lcl.Rmd/reads-single-5.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
+<div id="cell-number" class="section level2">
+<h2>Cell number</h2>
+<p>The cell number of each capture site is recorded after the cell corting step and before the cells got lysed.</p>
+<pre class="r"><code>#add cell number per well by merging qc file
+summary_per_sample_reads_single_qc &lt;- summary_per_sample_reads_single
+summary_per_sample_reads_single_qc$cell_number &lt;- qc$cell.num
+
+ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)</code></pre>
+<p><img src="figure/qc-cell-lcl.Rmd/cell-number-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)</code></pre>
+<p><img src="figure/qc-cell-lcl.Rmd/cell-number-2.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p>Based on the observation that these is a dinstint cell population with more than 2 million reads, we used it as a cutoff.</p>
+<pre class="r"><code>#qc filter only keep cells with more than 2 million reads
+summary_per_sample_reads_single_qc$qc_filter &lt;- summary_per_sample_reads_single_qc$cell_number == 1 &amp; summary_per_sample_reads_single_qc$total.mapped &gt; 2 * 10^6
+
+ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = unmapped.ratios, col = qc_filter, label = as.character(cell_number))) + geom_text(fontface=3) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + xlab(&quot;Number of mapped reads&quot;) + ylab(&quot;Umapped reads ratio&quot;)</code></pre>
+<p><img src="figure/qc-cell-lcl.Rmd/retained-cell-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = ERCC.ratios, col = qc_filter, label = as.character(cell_number))) + geom_text(fontface=3) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + xlab(&quot;Number of mapped reads&quot;) + ylab(&quot;Spike-in reads ratio&quot;)</code></pre>
+<p><img src="figure/qc-cell-lcl.Rmd/retained-cell-2.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
+<div id="number-of-genes-detected" class="section level2">
+<h2>Number of genes detected</h2>
+<p>Number of genes deteced in LCLS are smaller than iPSCs!!!</p>
+<pre class="r"><code>## remove genes with no read
+expressed &lt;- rowSums(reads) &gt; 0
+reads &lt;- reads[expressed, ]
+dim(reads)</code></pre>
+<pre><code>[1] 13721   100</code></pre>
+<pre class="r"><code>## number of expressed gene in each cell
+reads_single &lt;- reads[, anno$full_lane == &quot;FALSE&quot;]
+reads_single_gene_number &lt;- colSums(reads_single &gt; 1)
+summary_per_sample_reads_single_qc$reads_single_gene_number &lt;- reads_single_gene_number
+
+ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = reads_single_gene_number, col = qc_filter, label = as.character(cell_number))) + geom_text(fontface=3) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + xlab(&quot;Number of mapped reads&quot;) + ylab(&quot;Number of genes&quot;)</code></pre>
+<p><img src="figure/qc-cell-lcl.Rmd/gene-number-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(summary_per_sample_reads_single_qc, aes(x = reads_single_gene_number, y = ERCC.ratios, col = qc_filter, label = as.character(cell_number))) + geom_text(fontface=3) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + xlab(&quot;Number of genes&quot;) + ylab(&quot;Spike-in reads ratio&quot;)</code></pre>
+<p><img src="figure/qc-cell-lcl.Rmd/gene-number-2.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p>What are the numbers of detected genes of the 4 heavily-sequenced individual cells?</p>
+<pre class="r"><code>## the 4 individual cells
+reads_4 &lt;- reads[, anno$full_lane == &quot;TRUE&quot;]
+reads_4_gene_number &lt;- colSums(reads_4 &gt; 1)
+reads_4_gene_number</code></pre>
+<pre><code>NA19239.1.A9E1 NA19239.1.B2E2 NA19239.1.B4H1 NA19239.1.D2H2 
+          5896           6911           6025           5783 </code></pre>
+</div>
+<div id="reads-mapped-to-mitochondrial-genes" class="section level2">
+<h2>Reads mapped to mitochondrial genes</h2>
+<pre class="r"><code>## create a list of mitochondrial genes (13 protein-coding genes)
+## MT-ATP6, MT-CYB, MT-ND1, MT-ND4, MT-ND4L, MT-ND5, MT-ND6, MT-CO2, MT-CO1, MT-ND2, MT-ATP8, MT-CO3, MT-ND3
+mtgene &lt;- c(&quot;ENSG00000198899&quot;, &quot;ENSG00000198727&quot;, &quot;ENSG00000198888&quot;, &quot;ENSG00000198886&quot;, &quot;ENSG00000212907&quot;, &quot;ENSG00000198786&quot;, &quot;ENSG00000198695&quot;, &quot;ENSG00000198712&quot;, &quot;ENSG00000198804&quot;, &quot;ENSG00000198763&quot;,&quot;ENSG00000228253&quot;, &quot;ENSG00000198938&quot;, &quot;ENSG00000198840&quot;)
+
+## reads of mt genes in single cells
+mt_reads &lt;- reads_single[mtgene,]
+dim(mt_reads)</code></pre>
+<pre><code>[1] 13 96</code></pre>
+<pre class="r"><code>## mt ratio of single cell
+mt_reads_total &lt;- apply(mt_reads, 2, sum)
+summary_per_sample_reads_single_qc$mt_reads_total &lt;- mt_reads_total
+summary_per_sample_reads_single_qc$mt_reads_ratio &lt;- summary_per_sample_reads_single_qc$mt_reads_total/summary_per_sample_reads_single_qc$total.mapped
+
+ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = mt_reads_ratio, col = qc_filter, label = as.character(cell_number))) + geom_text(fontface=3) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + xlab(&quot;Number of mapped reads&quot;) + ylab(&quot;Mitochondrial ratio&quot;)</code></pre>
+<p><img src="figure/qc-cell-lcl.Rmd/mitochondrial-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(summary_per_sample_reads_single_qc, aes(x = mt_reads_ratio, y = ERCC.ratios, col = qc_filter, label = as.character(cell_number))) + geom_text(fontface=3) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + xlab(&quot;Mitochondrial ratio&quot;) + ylab(&quot;Spike-in reads ratio&quot;)</code></pre>
+<p><img src="figure/qc-cell-lcl.Rmd/mitochondrial-2.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(summary_per_sample_reads_single_qc, aes(x = reads_single_gene_number, y = mt_reads_ratio, col = qc_filter, label = as.character(cell_number))) + geom_text(fontface=3) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + xlab(&quot;Number of genes&quot;) + ylab(&quot;Mitochondrial ratio&quot;)</code></pre>
+<p><img src="figure/qc-cell-lcl.Rmd/mitochondrial-3.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
+<div id="pca" class="section level2">
+<h2>PCA</h2>
+<p>Calculate the counts per million for the singe cells.</p>
+<pre class="r"><code>reads_cells &lt;- reads_single
+reads_cells_cpm &lt;- cpm(reads_cells)</code></pre>
+<p>Select the most variable genes.</p>
+<pre class="r"><code>reads_cells_cpm_log_var &lt;- log(apply(reads_cells_cpm, 1, var))
+hist(reads_cells_cpm_log_var)</code></pre>
+<p><img src="figure/qc-cell-lcl.Rmd/variable-genes-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>sum(reads_cells_cpm_log_var &gt; 8)</code></pre>
+<pre><code>[1] 6473</code></pre>
+<p>Using the 6473 most variable genes, perform PCA.</p>
+<pre class="r"><code>reads_cells_cpm &lt;- reads_cells_cpm[reads_cells_cpm_log_var &gt; 8, ]
+pca_reads_cells &lt;- prcomp(t(reads_cells_cpm), retx = TRUE, scale. = TRUE,
+                          center = TRUE)</code></pre>
+<pre class="r"><code>plot(pca_reads_cells)</code></pre>
+<p><img src="figure/qc-cell-lcl.Rmd/perc-explained-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>pca_reads_cells$perc_explained &lt;- pca_reads_cells$sdev^2 / sum(pca_reads_cells$sdev^2) * 100
+plot(pca_reads_cells$perc_explained)</code></pre>
+<p><img src="figure/qc-cell-lcl.Rmd/perc-explained-2.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p>The first PC accounts for 5% of the variance and the second PC 3%.</p>
+<pre class="r"><code>stopifnot(colnames(reads_cells) == 
+            paste(paste0(&quot;NA&quot;, summary_per_sample_reads_single_qc$individual),
+                   summary_per_sample_reads_single_qc$batch,
+                   summary_per_sample_reads_single_qc$well, sep = &quot;.&quot;))
+pca_reads_cells_anno &lt;- cbind(summary_per_sample_reads_single_qc, pca_reads_cells$x)</code></pre>
+<pre class="r"><code>ggplot(pca_reads_cells_anno, aes(x = PC1, y = PC2, col = as.factor(individual),
+                                 shape = as.factor(batch))) +
+  geom_point()</code></pre>
+<p><img src="figure/qc-cell-lcl.Rmd/pca-plot-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
+<div id="cutoffs" class="section level2">
+<h2>Cutoffs</h2>
+<p>Using various simple filtering cutoffs.</p>
+<pre class="r"><code>pca_reads_cells_anno$cell_filter &lt;- pca_reads_cells_anno$cell_number == 1
+ggplot(pca_reads_cells_anno, aes(x = PC1, y = PC2, col = cell_filter)) +
+  geom_point()</code></pre>
+<p><img src="figure/qc-cell-lcl.Rmd/filter-cell-num-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>pca_reads_cells_anno$total_cutoff &lt;- pca_reads_cells_anno$total.mapped &gt; 1.5 * 10^6
+ggplot(pca_reads_cells_anno, aes(x = PC1, y = PC2, col = total_cutoff)) +
+  geom_point()</code></pre>
+<p><img src="figure/qc-cell-lcl.Rmd/filter-total-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>pca_reads_cells_anno$unmapped_cutoff &lt;- pca_reads_cells_anno$unmapped.ratios &lt; 0.4
+ggplot(pca_reads_cells_anno, aes(x = PC1, y = PC2, col = unmapped_cutoff)) +
+  geom_point()</code></pre>
+<p><img src="figure/qc-cell-lcl.Rmd/filter-unmapped-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>pca_reads_cells_anno$ERCC_cutoff &lt;- pca_reads_cells_anno$ERCC.ratios &lt; 0.05
+ggplot(pca_reads_cells_anno, aes(x = PC1, y = PC2, col = ERCC_cutoff)) +
+  geom_point()</code></pre>
+<p><img src="figure/qc-cell-lcl.Rmd/filter-ERCC-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>pca_reads_cells_anno$gene_filter &lt;- pca_reads_cells_anno$reads_single_gene_number  &gt; 3000
+ggplot(pca_reads_cells_anno, aes(x = PC1, y = PC2, col = gene_filter)) +
+  geom_point()</code></pre>
+<p><img src="figure/qc-cell-lcl.Rmd/filter-gene-num-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>pca_reads_cells_anno$mt_filter &lt;- pca_reads_cells_anno$mt_reads_ratio &lt; 0.15
+ggplot(pca_reads_cells_anno, aes(x = PC1, y = PC2, col = mt_filter)) +
+  geom_point()</code></pre>
+<p><img src="figure/qc-cell-lcl.Rmd/filter-mt-genes-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p>The two cutoffs, total reads and cell number, largely overlap.</p>
+<pre class="r"><code>table(pca_reads_cells_anno$cell_filter, pca_reads_cells_anno$total_cutoff,
+      dnn = c(&quot;Num cells == 1&quot;, &quot;Total reads &gt; 1.5e6&quot;))</code></pre>
+<pre><code>              Total reads &gt; 1.5e6
+Num cells == 1 FALSE TRUE
+         FALSE     8    4
+         TRUE      5   79</code></pre>
+<p>Add the third cutoff, 3000 genes</p>
+<pre class="r"><code>pca_reads_cells_anno$qc_filter &lt;- pca_reads_cells_anno$total_cutoff &amp;
+                                  pca_reads_cells_anno$gene_filter &amp;
+                                  pca_reads_cells_anno$cell_filter
+  
+ggplot(pca_reads_cells_anno, aes(x = PC1, y = PC2, col = qc_filter,
+                                 label = as.character(cell_number))) +
+  geom_text(fontface=3)</code></pre>
+<p><img src="figure/qc-cell-lcl.Rmd/filter-total-cell-num-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p>Apply all the cutoffs</p>
+<pre class="r"><code>pca_reads_cells_anno$qc_filter_all &lt;- pca_reads_cells_anno$cell_filter &amp;
+                                      pca_reads_cells_anno$total_cutoff &amp;
+                                      pca_reads_cells_anno$unmapped_cutoff &amp;
+                                      pca_reads_cells_anno$ERCC_cutoff &amp;
+                                      pca_reads_cells_anno$gene_filter &amp;
+                                      pca_reads_cells_anno$mt_filter
+  
+ggplot(pca_reads_cells_anno, aes(x = PC1, y = PC2, col = qc_filter_all,
+                                 label = as.character(cell_number))) +
+  geom_text(fontface=3)</code></pre>
+<p><img src="figure/qc-cell-lcl.Rmd/filter-all-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p>How many cells do we keep from each individual and batch using this filter?</p>
+<pre class="r"><code>table(pca_reads_cells_anno[pca_reads_cells_anno$qc_filter,
+                           c(&quot;individual&quot;, &quot;batch&quot;)])</code></pre>
+<pre><code>          batch
+individual  1
+     19239 76</code></pre>
+<pre class="r"><code>table(pca_reads_cells_anno[pca_reads_cells_anno$qc_filter_all,
+                           c(&quot;individual&quot;, &quot;batch&quot;)])</code></pre>
+<pre><code>          batch
+individual  1
+     19239 75</code></pre>
+<p>Output list of single cells to keep.</p>
+<pre class="r"><code>stopifnot(nrow(pca_reads_cells_anno) == nrow(anno[anno$full_lane == &quot;FALSE&quot;, ]))
+quality_single_cells &lt;- anno %&gt;%
+  filter(full_lane == &quot;FALSE&quot;) %&gt;%
+  filter(pca_reads_cells_anno$qc_filter_all) %&gt;%
+  select(sample_id)
+stopifnot(!grepl(&quot;TRUE&quot;, quality_single_cells$sample_id))
+write.table(quality_single_cells,
+            file = &quot;../data/quality-single-cells-lcl.txt&quot;, quote = FALSE,
+            sep = &quot;\t&quot;, row.names = FALSE, col.names = FALSE)</code></pre>
 </div>
 <div id="session-information" class="section level2">
 <h2>Session information</h2>

@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+
+<meta name="date" content="2015-07-13" />
+
+<title>Subsample high coverage single cells</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Subsample high coverage single cells</h1>
+<h4 class="date"><em>2015-07-13</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#batch-process-each-subsampled-data-set">Batch process each subsampled data set</a></li>
+<li><a href="#number-of-genes-detected">Number of genes detected</a></li>
+<li><a href="#number-of-total-counts">Number of total counts</a></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2015-07-13</p>
+<p><strong>Code version:</strong> a4d865fb33bba771e8c3bdcd182882556aedab55</p>
+<pre class="r"><code>library(&quot;dplyr&quot;)
+library(&quot;ggplot2&quot;)
+theme_set(theme_bw(base_size = 14))</code></pre>
+<div id="batch-process-each-subsampled-data-set" class="section level2">
+<h2>Batch process each subsampled data set</h2>
+<p>Run for each single cell for each sequencing depth. The analysis is performed by <a href="https://github.com/jdblischak/singleCellSeq/blob/master/code/detect-genes.R">detect-genes.R</a>.</p>
+<pre class="bash"><code>cd $ssd/lcl/full-lane
+mkdir -p genes-detected
+mkdir -p ~/log/detect-genes.R
+CELLS=1
+SEED=1
+for WELL in A9E1 B2E2 B4H1 D2H2
+do
+  for NUM in 200000 1000000 10000000 20000000 30000000 40000000 50000000
+  do
+    # Molecules
+    CMD=&quot;detect-genes.R $CELLS $SEED molecule-counts-$NUM.txt --min_count=1 --min_cells=1 --wells=$WELL&quot;
+    DEST=&quot;genes-detected/molecule-$WELL-$CELLS-$SEED-$NUM.txt&quot;
+    echo &quot;$CMD &gt; $DEST&quot; | qsub -l h_vmem=2g -cwd -V -N detect-molecule-$WELL-$CELLS-$SEED-$NUM -j y -o ~/log/detect-genes.R -l &#39;hostname=!bigmem01&#39;
+    sleep .01s
+    # Reads
+    CMD=&quot;detect-genes.R $CELLS $SEED read-counts-$NUM.txt --min_count=10 --min_cells=1 --wells=$WELL&quot;
+    DEST=&quot;genes-detected/read-$WELL-$CELLS-$SEED-$NUM.txt&quot;
+    echo &quot;$CMD &gt; $DEST&quot; | qsub -l h_vmem=2g -cwd -V -N detect-read-$WELL-$CELLS-$SEED-$NUM -j y -o ~/log/detect-genes.R -l &#39;hostname=!bigmem01&#39;
+    sleep .01s
+  done
+done</code></pre>
+<p>Convert to one file using Python. Run from <code>$ssd/lcl/full-lane</code>.</p>
+<pre class="python"><code>import os
+import glob
+files = glob.glob(&quot;genes-detected/*txt&quot;)
+out = open(&quot;genes-detected.txt&quot;, &quot;w&quot;)
+out.write(&quot;type\twell\tdepth\tnum_cells\tseed\tgenes\tmean_counts\n&quot;)
+for fname in files:
+    fname_parts = os.path.basename(fname).rstrip(&quot;.txt&quot;).split(&quot;-&quot;)
+    type = fname_parts[0]
+    well = fname_parts[1]
+    depth = fname_parts[4]
+    f = open(fname, &quot;r&quot;)
+    out.write(type + &quot;\t&quot; + well + &quot;\t&quot; + depth + &quot;\t&quot; + f.read())
+    f.close()
+
+out.close()</code></pre>
+</div>
+<div id="number-of-genes-detected" class="section level2">
+<h2>Number of genes detected</h2>
+<pre class="r"><code>genes_data &lt;- read.table(&quot;/mnt/gluster/data/internal_supp/singleCellSeq/lcl/full-lane/genes-detected.txt&quot;,
+                         header = TRUE, sep = &quot;\t&quot;, stringsAsFactors = FALSE)
+genes_data$depth &lt;- as.factor(genes_data$depth)
+levels(genes_data$depth) &lt;- c(&quot;0.2&quot;, &quot;1&quot;, &quot;10&quot;, &quot;20&quot;, &quot;30&quot;, &quot;40&quot;, &quot;50&quot;)</code></pre>
+<p>For the analysis of read counts, a gene was detected if it had greater than 10 reads. For the analysis of molecule counts, a gene was detected if it had greater than 1 molecule.</p>
+<pre class="r"><code>p &lt;- ggplot(genes_data, aes(x = as.factor(depth), y = genes)) +
+  geom_boxplot() +
+  geom_jitter(aes(color = as.factor(depth), shape = well)) +
+  facet_wrap(~type) +
+  labs(x = &quot;Sequencing depth (millions)&quot;,
+       y = &quot;Number of genes detected&quot;,
+       color = &quot;Depth&quot;,
+       title = &quot;Subsample: Number of genes detected&quot;)
+p</code></pre>
+<p><img src="figure/subsample-high-coverage-lcl.Rmd/subsample-genes-detected-1.png" title="" alt="" width="960" style="display: block; margin: auto;" /></p>
+</div>
+<div id="number-of-total-counts" class="section level2">
+<h2>Number of total counts</h2>
+<p>Explore the effect of subsampling sequencing depth on the total count. Only includes counts of genes which had the minumum count (10 reads; 1 molecule).</p>
+<pre class="r"><code>p &lt;- ggplot(genes_data, aes(x = as.factor(depth), y = mean_counts)) +
+  geom_boxplot() +
+  geom_jitter(aes(color = as.factor(depth), shape = well)) +
+  facet_wrap(~type) +
+  labs(x = &quot;Sequencing depth (millions)&quot;,
+       y = &quot;Total count&quot;,
+       color = &quot;Depth&quot;,
+       title = &quot;Subsample: Total count&quot;)
+p</code></pre>
+<p><img src="figure/subsample-high-coverage-lcl.Rmd/subsample-total-counts-1.png" title="" alt="" width="960" style="display: block; margin: auto;" /></p>
+<p>It’s difficult to see the differences in the molecule counts because of the range of the y-axis. Here is the molecule counts alone.</p>
+<pre class="r"><code>p %+% genes_data[genes_data$type == &quot;molecule&quot;, ] +
+  labs(y = &quot;Total count&quot;,
+       title = &quot;Subsample: Total count, molecules only&quot;)</code></pre>
+<p><img src="figure/subsample-high-coverage-lcl.Rmd/subsample-total-counts-molecules-only-1.png" title="" alt="" width="960" style="display: block; margin: auto;" /></p>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] ggplot2_1.0.1 dplyr_0.4.1   knitr_1.10.5 
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.11.6      digest_0.6.8     assertthat_0.1   MASS_7.3-40     
+ [5] plyr_1.8.2       grid_3.2.0       gtable_0.1.2     DBI_0.3.1       
+ [9] formatR_1.2      magrittr_1.5     scales_0.2.4     evaluate_0.7    
+[13] stringi_0.4-1    reshape2_1.4.1   rmarkdown_0.6.1  labeling_0.3    
+[17] proto_0.3-10     tools_3.2.0      stringr_1.0.0    munsell_0.4.2   
+[21] yaml_2.1.13      parallel_3.2.0   colorspace_1.2-6 htmltools_0.2.6 </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+
+</body>
+</html>

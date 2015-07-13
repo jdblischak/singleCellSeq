@@ -130,8 +130,8 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-07-10</p>
-<p><strong>Code version:</strong> 68598743d3b85062d886537a63464fdddc374b72</p>
+<p><strong>Last updated:</strong> 2015-07-13</p>
+<p><strong>Code version:</strong> a4d865fb33bba771e8c3bdcd182882556aedab55</p>
 <p>Subsample reads post-mapping. Includes both mapped and unmapped reads.</p>
 <div id="full-lane-samples" class="section level2">
 <h2>Full lane samples</h2>
@@ -147,7 +147,7 @@ do
     echo &quot;subsample-bam.py 12345 $NUM full-lane/bam-combined $FILE&quot; | qsub -l h_vmem=8g -V -cwd -N sub.$WELL.$NUM -j y -o ~/log/subsample-bam.py
   done
 done</code></pre>
-<pre class="bash"><code>ls full-lane/bam-combined
+<pre class="bash"><code>ls full-lane/bam-combined/*bam | wc -l
 cat ~/log/subsample-bam.py/* | grep success | wc -l
 cat ~/log/subsample-bam.py/* | grep failure | wc -l</code></pre>
 <p>Switch to directory <code>full-lane</code>. Symlink <code>exons.saf</code>.</p>
@@ -171,6 +171,8 @@ do
   echo &quot;gather-gene-counts.py counts/*.$NUM.genecounts.txt &gt; read-counts-$NUM.txt&quot; | qsub -l h_vmem=8g -cwd -V -j y -o ~/log/gather-gene-counts.py -N read-counts-$NUM
   echo &quot;gather-gene-counts.py counts/*.$NUM.rmdup.genecounts.txt &gt; molecule-counts-$NUM.txt&quot; | qsub -l h_vmem=8g -cwd -V -j y -o ~/log/gather-gene-counts.py -N molecule-counts-$NUM
 done</code></pre>
+<pre class="bash"><code># There should be no output
+cat ~/log/gather-gene-counts.py/*</code></pre>
 </div>
 <div id="mutliplexed-samples" class="section level2">
 <h2>Mutliplexed samples</h2>
@@ -190,11 +192,30 @@ do
     done
   done
 done</code></pre>
-<pre class="bash"><code>ls multiplexed/bam-combined
+<pre class="bash"><code>ls multiplexed/bam-combined/*bam | wc -l
 cat ~/log/subsample-bam.py/* | grep success | wc -l
 cat ~/log/subsample-bam.py/* | grep failure | wc -l
 # Many fail because they do not have sufficient reads for the subsampling
-cat ~/log/subsample-bam.py/* | grep failure | grep -v less | wc -l</code></pre>
+cat ~/log/subsample-bam.py/* | grep failure | grep -v less | wc -l
+# Some failed for IO reasons (couldn&#39;t find target directory)
+grep -LE &quot;success|failure&quot; ~/log/subsample-bam.py/* | xargs cat</code></pre>
+<p>Re-run the failed jobs.</p>
+<pre class="bash"><code>mkdir -p ~/log/subsample-bam.py-2
+for LOG in `grep -LE &quot;success|failure&quot; ~/log/subsample-bam.py/*`
+do
+  BASE=`basename $LOG`
+  echo $BASE
+  WELL=`echo $BASE | cut -d&quot;.&quot; -f2`
+  NUM=`echo $BASE | cut -d&quot;.&quot; -f3`
+  FILE=bam-combined/19239.1.$WELL.trim.sickle.sorted.combined.bam
+  echo $FILE
+  echo &quot;subsample-bam.py 12345 $NUM multiplexed/bam-combined $FILE&quot; | qsub -l h_vmem=2g -V -cwd -N sub.$WELL.$NUM -j y -o ~/log/subsample-bam.py-2
+done</code></pre>
+<pre class="bash"><code>ls multiplexed/bam-combined/*bam | wc -l
+cat ~/log/subsample-bam.py-2/* | grep success | wc -l
+cat ~/log/subsample-bam.py-2/* | grep failure | wc -l
+# Many fail because they do not have sufficient reads for the subsampling
+cat ~/log/subsample-bam.py-2/* | grep failure | grep -v less | wc -l</code></pre>
 <p>Switch to directory <code>multiplexed</code>. Symlink <code>exons.saf</code>.</p>
 <pre class="bash"><code>cd multiplexed
 mkdir genome
@@ -216,6 +237,8 @@ do
   echo &quot;gather-gene-counts.py counts/*.$NUM.genecounts.txt &gt; read-counts-$NUM.txt&quot; | qsub -l h_vmem=8g -cwd -V -j y -o ~/log/gather-gene-counts.py -N read-counts-$NUM
   echo &quot;gather-gene-counts.py counts/*.$NUM.rmdup.genecounts.txt &gt; molecule-counts-$NUM.txt&quot; | qsub -l h_vmem=8g -cwd -V -j y -o ~/log/gather-gene-counts.py -N molecule-counts-$NUM
 done</code></pre>
+<pre class="bash"><code># There should be no output
+cat ~/log/gather-gene-counts.py/*</code></pre>
 </div>
 <div id="session-information" class="section level2">
 <h2>Session information</h2>
