@@ -1,0 +1,124 @@
+---
+title: "Subsample high coverage single cells"
+date: 2015-07-13
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+```
+
+```{r message=FALSE}
+library("dplyr")
+library("ggplot2")
+theme_set(theme_bw(base_size = 14))
+```
+
+## Batch process each subsampled data set
+
+Run for each single cell for each sequencing depth.
+The analysis is performed by [detect-genes.R](https://github.com/jdblischak/singleCellSeq/blob/master/code/detect-genes.R).
+
+```bash
+cd $ssd/lcl/full-lane
+mkdir -p genes-detected
+mkdir -p ~/log/detect-genes.R
+CELLS=1
+SEED=1
+for WELL in A9E1 B2E2 B4H1 D2H2
+do
+  for NUM in 200000 1000000 10000000 20000000 30000000 40000000 50000000
+  do
+    # Molecules
+    CMD="detect-genes.R $CELLS $SEED molecule-counts-$NUM.txt --min_count=1 --min_cells=1 --wells=$WELL"
+    DEST="genes-detected/molecule-$WELL-$CELLS-$SEED-$NUM.txt"
+    echo "$CMD > $DEST" | qsub -l h_vmem=2g -cwd -V -N detect-molecule-$WELL-$CELLS-$SEED-$NUM -j y -o ~/log/detect-genes.R -l 'hostname=!bigmem01'
+    sleep .01s
+    # Reads
+    CMD="detect-genes.R $CELLS $SEED read-counts-$NUM.txt --min_count=10 --min_cells=1 --wells=$WELL"
+    DEST="genes-detected/read-$WELL-$CELLS-$SEED-$NUM.txt"
+    echo "$CMD > $DEST" | qsub -l h_vmem=2g -cwd -V -N detect-read-$WELL-$CELLS-$SEED-$NUM -j y -o ~/log/detect-genes.R -l 'hostname=!bigmem01'
+    sleep .01s
+  done
+done
+```
+
+Convert to one file using Python.
+Run from `$ssd/lcl/full-lane`.
+
+```python
+import os
+import glob
+files = glob.glob("genes-detected/*txt")
+out = open("genes-detected.txt", "w")
+out.write("type\twell\tdepth\tnum_cells\tseed\tgenes\tmean_counts\n")
+for fname in files:
+    fname_parts = os.path.basename(fname).rstrip(".txt").split("-")
+    type = fname_parts[0]
+    well = fname_parts[1]
+    depth = fname_parts[4]
+    f = open(fname, "r")
+    out.write(type + "\t" + well + "\t" + depth + "\t" + f.read())
+    f.close()
+
+out.close()
+```
+
+## Number of genes detected
+
+```{r input}
+genes_data <- read.table("/mnt/gluster/data/internal_supp/singleCellSeq/lcl/full-lane/genes-detected.txt",
+                         header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+genes_data$depth <- as.factor(genes_data$depth)
+levels(genes_data$depth) <- c("0.2", "1", "10", "20", "30", "40", "50")
+```
+
+For the analysis of read counts, a gene was detected if it had greater than 10 reads.
+For the analysis of molecule counts, a gene was detected if it had greater than 1 molecule.
+
+```{r subsample-genes-detected, fig.width=10, fig.height=10}
+p <- ggplot(genes_data, aes(x = as.factor(depth), y = genes)) +
+  geom_boxplot() +
+  geom_jitter(aes(color = as.factor(depth), shape = well)) +
+  facet_wrap(~type) +
+  labs(x = "Sequencing depth (millions)",
+       y = "Number of genes detected",
+       color = "Depth",
+       title = "Subsample: Number of genes detected")
+p
+```
+
+## Number of total counts
+
+Explore the effect of subsampling sequencing depth on the total count.
+Only includes counts of genes which had the minumum count (10 reads; 1 molecule).
+
+```{r subsample-total-counts, fig.width=10, fig.height=10}
+p <- ggplot(genes_data, aes(x = as.factor(depth), y = mean_counts)) +
+  geom_boxplot() +
+  geom_jitter(aes(color = as.factor(depth), shape = well)) +
+  facet_wrap(~type) +
+  labs(x = "Sequencing depth (millions)",
+       y = "Total count",
+       color = "Depth",
+       title = "Subsample: Total count")
+p
+```
+
+It's difficult to see the differences in the molecule counts because of the range of the y-axis.
+Here is the molecule counts alone.
+
+```{r subsample-total-counts-molecules-only, fig.width=10, fig.height=10}
+p %+% genes_data[genes_data$type == "molecule", ] +
+  labs(y = "Total count",
+       title = "Subsample: Total count, molecules only")
+```
+
+## Session information
+
+```{r info}
+sessionInfo()
+```

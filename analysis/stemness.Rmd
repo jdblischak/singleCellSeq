@@ -1,0 +1,150 @@
+---
+title: "stemness pluripotency"
+author: "Po-Yuan Tung"
+date: 2015-07-10
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+```
+
+Current model of reprogramming suggests that pluripotency occurs in two-phases: a prolonged stochastic phase followed by a rapid deterministic phase. [Chung2014] 
+Our iPSCs were reprogrammed and cultured in mane different batches. In addition, some lines have been through different culture mediums. In order to make sure that the variance we observed at the single cell level is not cause by different levels of plupotency, we need to more rigorously estimate the cells status than just carrying out pluritest from the bulk.
+
+[Chung2014]:http://journals.plos.org/plosone/article?id=10.1371/journal.pone.0095304
+
+## Input
+
+```{r packages, message=FALSE}
+library("dplyr")
+library("ggplot2")
+theme_set(theme_bw(base_size = 16))
+library("edgeR")
+library("gplots")
+```
+
+Input annotation.
+
+```{r input-annotation}
+anno <- read.table("../data/annotation.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno)
+```
+
+Input molecule counts.
+
+```{r input-molecule-counts}
+molecules <- read.table("../data/molecules.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+```
+
+Input read counts.
+
+```{r input-read-counts}
+reads <- read.table("../data/reads.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+```
+
+Input list of quality single cells.
+
+```{r input-quality-single-cells}
+quality_single_cells <- scan("../data/quality-single-cells.txt",
+                             what = "character")
+```
+
+Keep only the single cells that passed the [QC filters](qc-cell-ipsc.html) and the bulk samples.
+
+```{r qc-filter}
+molecules <- molecules[, grepl("bulk", colnames(molecules)) |
+                         colnames(molecules) %in% quality_single_cells]
+anno <- anno[anno$well == "bulk" | anno$sample_id %in% quality_single_cells, ]
+stopifnot(ncol(molecules) == nrow(anno),
+          colnames(molecules) == anno$sample_id)
+
+reads <- reads[, grepl("bulk", colnames(reads)) |
+                         colnames(reads) %in% quality_single_cells]
+stopifnot(ncol(reads) == nrow(anno),
+          colnames(reads) == anno$sample_id)
+```
+
+Remove genes with zero read counts in the single cells or bulk samples.
+
+```{r remove-non-expressed-genes}
+expressed <- rowSums(molecules[, anno$well == "bulk"]) > 0 &
+             rowSums(molecules[, anno$well != "bulk"]) > 0
+molecules <- molecules[expressed, ]
+dim(molecules)
+
+expressed <- rowSums(reads[, anno$well == "bulk"]) > 0 &
+             rowSums(reads[, anno$well != "bulk"]) > 0
+reads <- reads[expressed, ]
+dim(reads)
+```
+
+Split the bulk and single samples.
+
+```{r split-bulk-single}
+molecules_bulk <- molecules[, anno$well == "bulk"]
+molecules_single <- molecules[, anno$well != "bulk"]
+reads_bulk <- reads[, anno$well == "bulk"]
+reads_single <- reads[, anno$well != "bulk"]
+```
+
+Remove genes with max molecule numer larger than 1024
+```{r remove-1024}
+molecules_single <- molecules_single[apply(molecules_single,1,max) < 1024,]
+```
+
+Correct for collision probability. See [Grun et al. 2014][Grun2014] for details.
+
+[Grun2014]: http://www.nature.com/nmeth/journal/v11/n6/full/nmeth.2930.html#methods
+
+```{r collision-probability}
+molecules_single_collision <- -1024 * log(1 - molecules_single / 1024)
+```
+
+Standardization
+```{r calc-cpm-single}
+molecules_single_cpm <- cpm(molecules_single_collision, log = TRUE)
+```
+
+Calculate TMM-normalized read counts per million.
+
+```{r calc-cpm-bulk-reads}
+norm_factors_bulk <- calcNormFactors(reads_bulk, method = "TMM")
+reads_bulk_cpm <- cpm(reads_bulk, log = TRUE,
+                          lib.size = colSums(reads_bulk) * norm_factors_bulk)
+```
+
+## Expressions of pluripotency genes
+
+Input pluripotency genes.
+A list of 27 pluripotency genes used to demonstrate iPSC heterogeneity in [Narshinh2011]
+Gene ID conversion was done by using the DAVID http://david.abcc.ncifcrf.gov
+
+[Narshinh2011]: http://www.jci.org/articles/view/44635
+
+```{r input-pluripotency-gene}
+pluripotency_genes <- read.table("../data/pluripotency-genes.txt", header = TRUE, sep="\t")
+```
+
+Expression of plurypotency genes in iPSCs
+```{r expressed-pluripotency-gene}
+molecules_single_pluripotency <- molecules_single_cpm[pluripotency_genes[,2],]
+reads_bulk_pluripotency <- reads_bulk_cpm[pluripotency_genes[,2],]
+
+heatmap.2(molecules_single_pluripotency, trace="none", cexRow=1,cexCol=1,margins=c(8,8),xlab="single cells", ylab= "pluripotency gene")
+
+heatmap.2(reads_bulk_pluripotency, trace="none", cexRow=1,cexCol=1,margins=c(8,8),xlab="bulk", ylab= "pluripotency gene")
+```
+
+
+## Session information
+
+```{r info}
+sessionInfo()
+```

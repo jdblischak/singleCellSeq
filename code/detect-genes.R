@@ -3,7 +3,7 @@
 "Detect the number of expressed genes and the number of counts.
 
 Usage:
-detect-genes.R [options] <num_cells> <seed> <exp>
+detect-genes.R [options] [--wells=<w>...] <num_cells> <seed> <exp>
 
 Options:
   -h --help              Show this screen.
@@ -11,6 +11,7 @@ Options:
   --min_count=<x>        The minimum count required for detection [default: 1]
   --min_cells=<x>        The minimum number of cells required for detection [default: 1]
   --good_cells=<file>    A 1-column file with the names of good quality cells to maintain
+  -w --wells=<w>         Only use data from the specified well(s), e.g. A01
 
 Arguments:
   num_cells     number of single cells to subsample
@@ -21,13 +22,17 @@ suppressMessages(library("docopt"))
 library("testit")
 
 main <- function(num_cells, seed, exp_fname, individual = NULL, min_count = 1,
-                 min_cells = 1, good_cells = NULL) {
+                 min_cells = 1, good_cells = NULL, wells = NULL) {
   # Load expression data
   exp_dat <- read.table(exp_fname, header = TRUE, sep = "\t",
                         stringsAsFactors = FALSE)
   # Filter by individual
   if (!is.null(individual)) {
     exp_dat <- exp_dat[exp_dat$individual == individual, ]
+  }
+  # Filter by wells
+  if (!is.null(wells)) {
+    exp_dat <- exp_dat[exp_dat$well %in% wells, ]
   }
   # Remove bulk samples
   exp_dat <- exp_dat[exp_dat$well != "bulk", ]
@@ -36,7 +41,7 @@ main <- function(num_cells, seed, exp_fname, individual = NULL, min_count = 1,
                                   exp_dat$well, sep = ".")
   # Remove meta-info cols
   exp_dat <- exp_dat[, grepl("ENSG", colnames(exp_dat)) |
-                                 grepl("ERCC", colnames(exp_dat))]
+                                 grepl("ERCC", colnames(exp_dat)), drop = FALSE]
   # Transpose
   exp_dat <- t(exp_dat)
   # Fix ERCC names
@@ -48,7 +53,7 @@ main <- function(num_cells, seed, exp_fname, individual = NULL, min_count = 1,
            file.exists(good_cells))
     good_cells_list <- scan(good_cells, what = "character", quiet = TRUE)
     good_cells_list <- substr(good_cells_list, start = 3, stop = 13)
-    exp_dat <- exp_dat[, colnames(exp_dat) %in% good_cells_list]
+    exp_dat <- exp_dat[, colnames(exp_dat) %in% good_cells_list, drop = FALSE]
     assert("There are quality cells to perform the analysis.",
            ncol(exp_dat) > 0)
   }
@@ -59,7 +64,7 @@ main <- function(num_cells, seed, exp_fname, individual = NULL, min_count = 1,
     quit()
   }
   set.seed(seed)
-  exp_dat <- exp_dat[, sample(1:ncol(exp_dat), size = num_cells)]
+  exp_dat <- exp_dat[, sample(1:ncol(exp_dat), size = num_cells), drop = FALSE]
 #   exp_dat[1:10, 1:10]
 #   dim(exp_dat)
 
@@ -69,7 +74,7 @@ main <- function(num_cells, seed, exp_fname, individual = NULL, min_count = 1,
 
   # Caculate mean number of total counts, using only genes which meet the
   # criteria for detection.
-  exp_dat_detected <- exp_dat[detected, ]
+  exp_dat_detected <- exp_dat[detected, , drop = FALSE]
   mean_counts <- mean(colSums(exp_dat_detected))
 
   # Output
@@ -102,7 +107,8 @@ if (!interactive() & getOption('run.main', default = TRUE)) {
        min_count = as.numeric(opts$min_count),
        min_cells = as.numeric(opts$min_cells),
        individual = opts$individual,
-       good_cells = opts$good_cells)
+       good_cells = opts$good_cells,
+       wells = opts$wells)
 } else if (interactive() & getOption('run.main', default = TRUE)) {
   # what to do if interactively testing
   main(num_cells = 20,
@@ -112,4 +118,10 @@ if (!interactive() & getOption('run.main', default = TRUE)) {
        min_count = 10,
        min_cells = 5,
        good_cells = "../data/quality-single-cells.txt")
+#   main(num_cells = 1,
+#        seed = 1,
+#        exp_fname = "/mnt/gluster/data/internal_supp/singleCellSeq/lcl/full-lane/molecule-counts-200000.txt",
+#        min_count = 1,
+#        min_cells = 1,
+#        wells = "A9E1")
 }
