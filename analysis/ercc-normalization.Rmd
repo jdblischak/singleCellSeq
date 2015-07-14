@@ -18,13 +18,10 @@ The only exception to this is with RUVg because it expects count data.
 
 For the single cell samples, the data is the log2 molecules per million after correcting for the collision probability.
 The only exception to this is with RUVg because it expects count data.
-Also, batch 2 of individual 19098 is removed because its ERCC data 
+Also, batch 2 of individual 19098 is removed because its ERCC data is an outlier.
 
-Linear shift normalization
-RUVseq normalization
-Empirical quantile normalization
-Loess normalization
-
+PCA is used to compare the results of the different normalizations.
+These calculations exclude the ERCC controls.
 
 ## Setup
 
@@ -189,6 +186,26 @@ ercc_bulk <- ercc[ercc$id %in% rownames(reads_bulk), ]
 stopifnot(rownames(reads_bulk[ercc_rows_bulk, ]) == ercc_bulk$id)
 ```
 
+## Raw non-normalized data
+
+### bulk log2 reads per million
+
+```{r pca-bulk-raw}
+pca_bulk_raw <- run_pca(reads_bulk_cpm[gene_rows_bulk, ])
+plot_pca(pca_bulk_raw$PCs, explained = pca_bulk_raw$explained,
+         metadata = anno_bulk, color = "individual",
+         shape = "batch", factors = c("individual", "batch"))
+```
+
+### single log2 molecules per million
+
+```{r pca-single-raw}
+pca_single_raw <- run_pca(molecules_single_cpm[gene_rows_single, ])
+plot_pca(pca_single_raw$PCs, explained = pca_single_raw$explained,
+         metadata = anno_single, color = "individual",
+         shape = "batch", factors = c("individual", "batch"))
+```
+
 ## Linear shift normalization
 
 Perform the normalization separately for bulk and single cells.
@@ -220,7 +237,25 @@ for (i in 1:ncol(single_norm)) {
 stopifnot(!is.na(single_norm))
 ```
 
-## RUVseq normalization
+### bulk log2 reads per million
+
+```{r pca-bulk-norm}
+pca_bulk_norm <- run_pca(bulk_norm[gene_rows_bulk, ])
+plot_pca(pca_bulk_norm$PCs, explained = pca_bulk_norm$explained,
+         metadata = anno_bulk, color = "individual",
+         shape = "batch", factors = c("individual", "batch"))
+```
+
+### single log2 molecules per million
+
+```{r pca-single-norm}
+pca_single_norm <- run_pca(single_norm[gene_rows_single, ])
+plot_pca(pca_single_norm$PCs, explained = pca_single_norm$explained,
+         metadata = anno_single, color = "individual",
+         shape = "batch", factors = c("individual", "batch"))
+```
+
+## RUVg normalization - k = 1
 
 Use RUVg from [Risso et al., 2014][Risso2014].
 It uses the ERCC spike-ins as negative control genes to correct for unwanted variation.
@@ -246,7 +281,181 @@ single_ruv_cpm_k1 <- cpm(single_ruv_k1, log = TRUE,
                       lib.size = calcNormFactors(single_ruv_k1) * colSums(single_ruv_k1))
 ```
 
+### bulk log2 reads per million
+
+```{r pca-bulk-ruv-k1}
+pca_bulk_ruv_k1 <- run_pca(bulk_ruv_cpm_k1[gene_rows_bulk, ])
+plot_pca(pca_bulk_ruv_k1$PCs, explained = pca_bulk_ruv_k1$explained,
+         metadata = anno_bulk, color = "individual",
+         shape = "batch", factors = c("individual", "batch"))
+```
+
+### single log2 molecules per million
+
+```{r pca-single-ruv-k1}
+pca_single_ruv_k1 <- run_pca(single_ruv_cpm_k1[gene_rows_single, ])
+plot_pca(pca_single_ruv_k1$PCs, explained = pca_single_ruv_k1$explained,
+         metadata = anno_single, color = "individual",
+         shape = "batch", factors = c("individual", "batch"))
+```
+
+## RUVg with ERCC + invariant genes
+
+As an attempt to improve performance of RUVg, also include invariant genes.
+The genes were chosen using the following procedure:
+
+1.  Require the genes are observed in at least half the cells.
+2.  Exclude ERCC genes.
+3.  Choose the 10% with the lowest variance (using the counts standardized by total depth).
+
+First for the bulk cells:
+
+```{r bulk-identify-invariant-genes}
+bulk_variance <- apply(reads_bulk_cpm, 1, var)
+summary(bulk_variance)
+sum(bulk_variance == 0)
+names(bulk_variance) <- rownames(reads_bulk_cpm)
+# Require that the genes are observed in at least half the cells
+bulk_variance <- bulk_variance[apply(reads_bulk, 1,
+                                     function(x) {sum(x > 0) >= length(x) * 0.5})]
+# Remove ERCC genes
+bulk_variance <- bulk_variance[grep("ERCC", names(bulk_variance),
+                                    invert = TRUE)]
+# Choose the bottom 10%
+bulk_least_variant <- names(bulk_variance)[order(bulk_variance)][1:floor(length(bulk_variance) * .1)]
+# Identify the rows
+bulk_least_variant_rows <- which(rownames(reads_bulk_cpm) %in% bulk_least_variant)
+```
+
+This procedure identified `r length(bulk_least_variant)` genes that have low variance and are observed in at least half of the bulk cells.
+
+For k = 1:
+
+```{r bulk-ruv-invar-k1}
+bulk_ruv_object_invar_k1 <- RUVg(x = as.matrix(reads_bulk),
+                                cIdx = c(ercc_rows_bulk, bulk_least_variant_rows),
+                                k = 1)
+bulk_ruv_invar_k1 <- bulk_ruv_object_invar_k1$normalizedCounts
+bulk_ruv_cpm_invar_k1 <- cpm(bulk_ruv_invar_k1, log = TRUE,
+                            lib.size = calcNormFactors(bulk_ruv_invar_k1) * 
+                                       colSums(bulk_ruv_invar_k1))
+```
+
 For k = 5:
+
+```{r bulk-ruv-invar-k5}
+bulk_ruv_object_invar_k5 <- RUVg(x = as.matrix(reads_bulk),
+                                cIdx = c(ercc_rows_bulk, bulk_least_variant_rows),
+                                k = 5)
+bulk_ruv_invar_k5 <- bulk_ruv_object_invar_k5$normalizedCounts
+bulk_ruv_cpm_invar_k5 <- cpm(bulk_ruv_invar_k5, log = TRUE,
+                            lib.size = calcNormFactors(bulk_ruv_invar_k5) * 
+                                       colSums(bulk_ruv_invar_k5))
+```
+
+Second for the single cells:
+
+```{r single-identify-invariant-genes}
+single_variance <- apply(molecules_single_cpm, 1, var)
+summary(single_variance)
+sum(single_variance == 0)
+names(single_variance) <- rownames(molecules_single_cpm)
+# Require that the genes are observed in at least half the cells
+single_variance <- single_variance[apply(molecules_single, 1,
+                                         function(x) {sum(x > 0) >= length(x) * 0.5})]
+# Remove ERCC genes
+single_variance <- single_variance[grep("ERCC", names(single_variance),
+                                        invert = TRUE)]
+# Choose the bottom 10%
+single_least_variant <- names(single_variance)[order(single_variance)][1:floor(length(single_variance) * .1)]
+# Identify the rows
+single_least_variant_rows <- which(rownames(molecules_single_cpm) %in% single_least_variant)
+```
+
+This procedure identified `r length(single_least_variant)` genes that have low variance and are observed in at least half of the single cells.
+
+For k = 1:
+
+```{r single-ruv-invar-k1}
+single_ruv_object_invar_k1 <- RUVg(x = as.matrix(molecules_single),
+                                cIdx = c(ercc_rows_single, single_least_variant_rows),
+                                k = 1)
+single_ruv_invar_k1 <- single_ruv_object_invar_k1$normalizedCounts
+single_ruv_cpm_invar_k1 <- cpm(single_ruv_invar_k1, log = TRUE,
+                            lib.size = calcNormFactors(single_ruv_invar_k1) * 
+                                       colSums(single_ruv_invar_k1))
+```
+
+For k = 5:
+
+```{r single-ruv-invar-k5}
+single_ruv_object_invar_k5 <- RUVg(x = as.matrix(molecules_single),
+                                cIdx = c(ercc_rows_single, single_least_variant_rows),
+                                k = 5)
+single_ruv_invar_k5 <- single_ruv_object_invar_k5$normalizedCounts
+single_ruv_cpm_invar_k5 <- cpm(single_ruv_invar_k5, log = TRUE,
+                            lib.size = calcNormFactors(single_ruv_invar_k5) * 
+                                       colSums(single_ruv_invar_k5))
+```
+
+For k = 30:
+
+```{r single-ruv-invar-k30}
+single_ruv_object_invar_k30 <- RUVg(x = as.matrix(molecules_single),
+                                cIdx = c(ercc_rows_single, single_least_variant_rows),
+                                k = 30)
+single_ruv_invar_k30 <- single_ruv_object_invar_k30$normalizedCounts
+single_ruv_cpm_invar_k30 <- cpm(single_ruv_invar_k30, log = TRUE,
+                            lib.size = calcNormFactors(single_ruv_invar_k30) * 
+                                       colSums(single_ruv_invar_k30))
+```
+
+### bulk log2 reads per million - k = 1
+
+```{r pca-bulk-ruv-invar-k1}
+pca_bulk_ruv_invar_k1 <- run_pca(bulk_ruv_cpm_invar_k1[gene_rows_bulk, ])
+plot_pca(pca_bulk_ruv_invar_k1$PCs, explained = pca_bulk_ruv_invar_k1$explained,
+         metadata = anno_bulk, color = "individual",
+         shape = "batch", factors = c("individual", "batch"))
+```
+
+### bulk log2 reads per million - k = 5
+
+```{r pca-bulk-ruv-invar-k5}
+pca_bulk_ruv_invar_k5 <- run_pca(bulk_ruv_cpm_invar_k5[gene_rows_bulk, ])
+plot_pca(pca_bulk_ruv_invar_k5$PCs, explained = pca_bulk_ruv_invar_k5$explained,
+         metadata = anno_bulk, color = "individual",
+         shape = "batch", factors = c("individual", "batch"))
+```
+
+### single log2 molecules per million - k = 1
+
+```{r pca-single-ruv-invar-k1}
+pca_single_ruv_invar_k1 <- run_pca(single_ruv_cpm_invar_k1[gene_rows_single, ])
+plot_pca(pca_single_ruv_invar_k1$PCs, explained = pca_single_ruv_invar_k1$explained,
+         metadata = anno_single, color = "individual",
+         shape = "batch", factors = c("individual", "batch"))
+```
+
+### single log2 molecules per million - k = 5
+
+```{r pca-single-ruv-invar-k5}
+pca_single_ruv_invar_k5 <- run_pca(single_ruv_cpm_invar_k5[gene_rows_single, ])
+plot_pca(pca_single_ruv_invar_k5$PCs, explained = pca_single_ruv_invar_k5$explained,
+         metadata = anno_single, color = "individual",
+         shape = "batch", factors = c("individual", "batch"))
+```
+
+### single log2 molecules per million - k = 30
+
+```{r pca-single-ruv-invar-k30}
+pca_single_ruv_invar_k30 <- run_pca(single_ruv_cpm_invar_k30[gene_rows_single, ])
+plot_pca(pca_single_ruv_invar_k30$PCs, explained = pca_single_ruv_invar_k30$explained,
+         metadata = anno_single, color = "individual",
+         shape = "batch", factors = c("individual", "batch"))
+```
+
+## RUVg normalization - k = 5
 
 ```{r bulk-ruv-k5}
 bulk_ruv_object_k5 <- RUVg(x = as.matrix(reads_bulk), cIdx = ercc_rows_bulk, k = 5)
@@ -262,7 +471,29 @@ single_ruv_cpm_k5 <- cpm(single_ruv_k5, log = TRUE,
                       lib.size = calcNormFactors(single_ruv_k5) * colSums(single_ruv_k5))
 ```
 
-For k = 10:
+### bulk log2 reads per million
+
+RUVg-normalized bulk data with k = 5:
+
+```{r pca-bulk-ruv-k5}
+pca_bulk_ruv_k5 <- run_pca(bulk_ruv_cpm_k5[gene_rows_bulk, ])
+plot_pca(pca_bulk_ruv_k5$PCs, explained = pca_bulk_ruv_k5$explained,
+         metadata = anno_bulk, color = "individual",
+         shape = "batch", factors = c("individual", "batch"))
+```
+
+### single log2 molecules per million
+
+RUVg-normalized single cell data with k = 5:
+
+```{r pca-single-ruv-k5}
+pca_single_ruv_k5 <- run_pca(single_ruv_cpm_k5[gene_rows_single, ])
+plot_pca(pca_single_ruv_k5$PCs, explained = pca_single_ruv_k5$explained,
+         metadata = anno_single, color = "individual",
+         shape = "batch", factors = c("individual", "batch"))
+```
+
+## RUVg normalization - k = 10
 
 ```{r bulk-ruv-k10}
 bulk_ruv_object_k10 <- RUVg(x = as.matrix(reads_bulk), cIdx = ercc_rows_bulk, k = 10)
@@ -278,12 +509,27 @@ single_ruv_cpm_k10 <- cpm(single_ruv_k10, log = TRUE,
                       lib.size = calcNormFactors(single_ruv_k10) * colSums(single_ruv_k10))
 ```
 
+### bulk log2 reads per million
+
 k = 10 removes all gene expression variation from the bulk data:
 
 ```{r}
 sum(apply(bulk_ruv_cpm_k10[gene_rows_bulk, ], 1, var) == 0)
 nrow(bulk_ruv_cpm_k10[gene_rows_bulk, ])
 ```
+
+### single log2 molecules per million
+
+RUVg-normalized single cell data with k = 10:
+
+```{r pca-single-ruv-k10}
+pca_single_ruv_k10 <- run_pca(single_ruv_cpm_k10[gene_rows_single, ])
+plot_pca(pca_single_ruv_k10$PCs, explained = pca_single_ruv_k10$explained,
+         metadata = anno_single, color = "individual",
+         shape = "batch", factors = c("individual", "batch"))
+```
+
+### RUVg normalization - k = 30
 
 For k = 30 for single cells only:
 
@@ -292,6 +538,15 @@ single_ruv_object_k30 <- RUVg(x = as.matrix(molecules_single), cIdx = ercc_rows_
 single_ruv_k30 <- single_ruv_object_k30$normalizedCounts
 single_ruv_cpm_k30 <- cpm(single_ruv_k30, log = TRUE,
                       lib.size = calcNormFactors(single_ruv_k30) * colSums(single_ruv_k30))
+```
+
+### single log2 molecules per million
+
+```{r pca-single-ruv-k30}
+pca_single_ruv_k30 <- run_pca(single_ruv_cpm_k30[gene_rows_single, ])
+plot_pca(pca_single_ruv_k30$PCs, explained = pca_single_ruv_k30$explained,
+         metadata = anno_single, color = "individual",
+         shape = "batch", factors = c("individual", "batch"))
 ```
 
 ## Empirical quantile normalization
@@ -305,6 +560,26 @@ bulk_quant <- normalize.quantiles(as.matrix(reads_bulk_cpm))
 
 ```{r single-quant}
 single_quant <- normalize.quantiles(as.matrix(molecules_single_cpm))
+```
+
+### bulk log2 reads per million
+
+```{r pca-bulk-quant}
+pca_bulk_quant <- run_pca(bulk_quant[gene_rows_bulk, ])
+plot_pca(pca_bulk_quant$PCs, explained = pca_bulk_quant$explained,
+         metadata = anno_bulk, color = "individual",
+         shape = "batch", factors = c("individual", "batch"))
+```
+
+### single log2 molecules per million
+
+Quantile-normalized single cell data:
+
+```{r pca-single-quant}
+pca_single_quant <- run_pca(single_quant[gene_rows_single, ])
+plot_pca(pca_single_quant$PCs, explained = pca_single_quant$explained,
+         metadata = anno_single, color = "individual",
+         shape = "batch", factors = c("individual", "batch"))
 ```
 
 ## Loess normalization
@@ -336,56 +611,7 @@ single_loess <- normalize.loess(mat = as.matrix(molecules_single_cpm),
                                 subset = ercc_rows_single, log.it = FALSE)
 ```
 
-## PCA comparison
-
-These analyses exclude the ERCC controls.
-
 ### bulk log2 reads per million
-
-Raw bulk data:
-
-```{r pca-bulk-raw}
-pca_bulk_raw <- run_pca(reads_bulk_cpm[gene_rows_bulk, ])
-plot_pca(pca_bulk_raw$PCs, explained = pca_bulk_raw$explained,
-         metadata = anno_bulk, color = "individual",
-         shape = "batch", factors = c("individual", "batch"))
-```
-
-Normalized with a linear shift bulk data:
-
-```{r pca-bulk-norm}
-pca_bulk_norm <- run_pca(bulk_norm[gene_rows_bulk, ])
-plot_pca(pca_bulk_norm$PCs, explained = pca_bulk_norm$explained,
-         metadata = anno_bulk, color = "individual",
-         shape = "batch", factors = c("individual", "batch"))
-```
-
-RUVg-normalized bulk data with k = 1:
-
-```{r pca-bulk-ruv-k1}
-pca_bulk_ruv_k1 <- run_pca(bulk_ruv_cpm_k1[gene_rows_bulk, ])
-plot_pca(pca_bulk_ruv_k1$PCs, explained = pca_bulk_ruv_k1$explained,
-         metadata = anno_bulk, color = "individual",
-         shape = "batch", factors = c("individual", "batch"))
-```
-
-RUVg-normalized bulk data with k = 5:
-
-```{r pca-bulk-ruv-k5}
-pca_bulk_ruv_k5 <- run_pca(bulk_ruv_cpm_k5[gene_rows_bulk, ])
-plot_pca(pca_bulk_ruv_k5$PCs, explained = pca_bulk_ruv_k5$explained,
-         metadata = anno_bulk, color = "individual",
-         shape = "batch", factors = c("individual", "batch"))
-```
-
-Quantile-normalized bulk data:
-
-```{r pca-bulk-quant}
-pca_bulk_quant <- run_pca(bulk_quant[gene_rows_bulk, ])
-plot_pca(pca_bulk_quant$PCs, explained = pca_bulk_quant$explained,
-         metadata = anno_bulk, color = "individual",
-         shape = "batch", factors = c("individual", "batch"))
-```
 
 Loess-normalized bulk data:
 
@@ -393,71 +619,6 @@ Loess-normalized bulk data:
 pca_bulk_loess <- run_pca(bulk_loess[gene_rows_bulk, ])
 plot_pca(pca_bulk_loess$PCs, explained = pca_bulk_loess$explained,
          metadata = anno_bulk, color = "individual",
-         shape = "batch", factors = c("individual", "batch"))
-```
-
-### single log2 molecules per million
-
-Raw single cell data:
-
-```{r pca-single-raw}
-pca_single_raw <- run_pca(molecules_single_cpm[gene_rows_single, ])
-plot_pca(pca_single_raw$PCs, explained = pca_single_raw$explained,
-         metadata = anno_single, color = "individual",
-         shape = "batch", factors = c("individual", "batch"))
-```
-
-Normalized with a linear shift single cell data:
-
-```{r pca-single-norm}
-pca_single_norm <- run_pca(single_norm[gene_rows_single, ])
-plot_pca(pca_single_norm$PCs, explained = pca_single_norm$explained,
-         metadata = anno_single, color = "individual",
-         shape = "batch", factors = c("individual", "batch"))
-```
-
-RUVg-normalized single cell data with k = 1:
-
-```{r pca-single-ruv-k1}
-pca_single_ruv_k1 <- run_pca(single_ruv_cpm_k1[gene_rows_single, ])
-plot_pca(pca_single_ruv_k1$PCs, explained = pca_single_ruv_k1$explained,
-         metadata = anno_single, color = "individual",
-         shape = "batch", factors = c("individual", "batch"))
-```
-
-RUVg-normalized single cell data with k = 5:
-
-```{r pca-single-ruv-k5}
-pca_single_ruv_k5 <- run_pca(single_ruv_cpm_k5[gene_rows_single, ])
-plot_pca(pca_single_ruv_k5$PCs, explained = pca_single_ruv_k5$explained,
-         metadata = anno_single, color = "individual",
-         shape = "batch", factors = c("individual", "batch"))
-```
-
-RUVg-normalized single cell data with k = 10:
-
-```{r pca-single-ruv-k10}
-pca_single_ruv_k10 <- run_pca(single_ruv_cpm_k10[gene_rows_single, ])
-plot_pca(pca_single_ruv_k10$PCs, explained = pca_single_ruv_k10$explained,
-         metadata = anno_single, color = "individual",
-         shape = "batch", factors = c("individual", "batch"))
-```
-
-RUVg-normalized single cell data with k = 30:
-
-```{r pca-single-ruv-k30}
-pca_single_ruv_k30 <- run_pca(single_ruv_cpm_k30[gene_rows_single, ])
-plot_pca(pca_single_ruv_k30$PCs, explained = pca_single_ruv_k30$explained,
-         metadata = anno_single, color = "individual",
-         shape = "batch", factors = c("individual", "batch"))
-```
-
-Quantile-normalized single cell data:
-
-```{r pca-single-quant}
-pca_single_quant <- run_pca(single_quant[gene_rows_single, ])
-plot_pca(pca_single_quant$PCs, explained = pca_single_quant$explained,
-         metadata = anno_single, color = "individual",
          shape = "batch", factors = c("individual", "batch"))
 ```
 
