@@ -125,15 +125,20 @@ img {
 <div id="TOC">
 <ul>
 <li><a href="#batch-process-each-subsampled-data-set">Batch process each subsampled data set</a></li>
-<li><a href="#number-of-genes-detected">Number of genes detected</a></li>
+<li><a href="#number-of-genes-detected">Number of genes detected</a><ul>
+<li><a href="#minimum-cells-of-1">Minimum cells of 1</a></li>
+<li><a href="#minimum-cells-of-5">Minimum cells of 5</a></li>
+<li><a href="#minimum-cells-of-10">Minimum cells of 10</a></li>
+<li><a href="#minimum-cells-of-15">Minimum cells of 15</a></li>
+</ul></li>
 <li><a href="#wu-et-al.-2014">Wu et al. 2014</a></li>
 <li><a href="#mean-number-of-total-counts">Mean number of total counts</a></li>
 <li><a href="#session-information">Session information</a></li>
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-07-13</p>
-<p><strong>Code version:</strong> a4d865fb33bba771e8c3bdcd182882556aedab55</p>
+<p><strong>Last updated:</strong> 2015-07-14</p>
+<p><strong>Code version:</strong> c15d3f51fff8752a21b1cbfd0f936fe0a2c5fac9</p>
 <p>The number of genes is detected in a subsampled set of single cells (both sequencing depth and number of cells is varied).</p>
 <pre class="r"><code>library(&quot;dplyr&quot;)
 library(&quot;ggplot2&quot;)
@@ -146,22 +151,28 @@ mkdir -p genes-detected
 mkdir -p ~/log/detect-genes.R
 for IND in 19098 19101 19239
 do
-  for NUM in 200000 400000 600000 800000 1000000 1200000 1400000 1600000 1800000 2000000 2400000 2800000 3200000 3600000 4000000
+  for NUM in 200000 400000 1000000 2000000 3000000 4000000
   do
     for CELLS in 5 10 15 20 25 50 75 100 125 150
     do
       for SEED in {1..10}
       do
-        # Molecules
-        CMD=&quot;detect-genes.R $CELLS $SEED molecule-counts-$NUM.txt --individual=$IND --min_count=1 --min_cells=5 --good_cells=/mnt/lustre/home/jdblischak/singleCellSeq/data/quality-single-cells.txt&quot;
-        DEST=&quot;genes-detected/molecule-$IND-$CELLS-$SEED-$NUM.txt&quot;
-        echo &quot;$CMD &gt; $DEST&quot; | qsub -l h_vmem=2g -cwd -V -N detect-molecule-$IND-$CELLS-$SEED-$NUM -j y -o ~/log/detect-genes.R -l &#39;hostname=!bigmem01&#39;
-        sleep .01s
-        # Reads
-        CMD=&quot;detect-genes.R $CELLS $SEED read-counts-$NUM.txt --individual=$IND --min_count=10 --min_cells=5 --good_cells=/mnt/lustre/home/jdblischak/singleCellSeq/data/quality-single-cells.txt&quot;
-        DEST=&quot;genes-detected/read-$IND-$CELLS-$SEED-$NUM.txt&quot;
-        echo &quot;$CMD &gt; $DEST&quot; | qsub -l h_vmem=2g -cwd -V -N detect-read-$IND-$CELLS-$SEED-$NUM -j y -o ~/log/detect-genes.R -l &#39;hostname=!bigmem01&#39;
-        sleep .01s
+        for MIN_CELLS in 1 5 10 15
+        do
+          if [[ $CELLS -gt $MIN_CELLS || $CELLS -eq $MIN_CELLS ]]
+          then
+              # Molecules
+              CMD=&quot;detect-genes.R $CELLS $SEED molecule-counts-$NUM.txt --individual=$IND --min_count=1 --min_cells=$MIN_CELLS --good_cells=/mnt/lustre/home/jdblischak/singleCellSeq/data/quality-single-cells.txt&quot;
+              DEST=&quot;genes-detected/molecule-$IND-$CELLS-$SEED-$NUM-$MIN_CELLS.txt&quot;
+              echo &quot;$CMD &gt; $DEST&quot; | qsub -l h_vmem=2g -cwd -V -N detect-molecule-$IND-$CELLS-$SEED-$NUM-$MIN_CELLS -j y -o ~/log/detect-genes.R -l &#39;hostname=!bigmem01&#39;
+              sleep .01s
+              # Reads
+              CMD=&quot;detect-genes.R $CELLS $SEED read-counts-$NUM.txt --individual=$IND --min_count=10 --min_cells=$MIN_CELLS --good_cells=/mnt/lustre/home/jdblischak/singleCellSeq/data/quality-single-cells.txt&quot;
+              DEST=&quot;genes-detected/read-$IND-$CELLS-$SEED-$NUM-$MIN_CELLS.txt&quot;
+              echo &quot;$CMD &gt; $DEST&quot; | qsub -l h_vmem=2g -cwd -V -N detect-read-$IND-$CELLS-$SEED-$NUM-$MIN_CELLS -j y -o ~/log/detect-genes.R -l &#39;hostname=!bigmem01&#39;
+              sleep .01s
+          fi
+        done
       done
     done
   done
@@ -171,14 +182,15 @@ done</code></pre>
 import glob
 files = glob.glob(&quot;genes-detected/*txt&quot;)
 out = open(&quot;genes-detected.txt&quot;, &quot;w&quot;)
-out.write(&quot;type\tind\tdepth\tnum_cells\tseed\tgenes\tmean_counts\n&quot;)
+out.write(&quot;type\tind\tdepth\tmin_cells\tnum_cells\tseed\tgenes\tmean_counts\n&quot;)
 for fname in files:
     fname_parts = os.path.basename(fname).rstrip(&quot;.txt&quot;).split(&quot;-&quot;)
     type = fname_parts[0]
     ind = fname_parts[1]
     depth = fname_parts[4]
+    min_cells = fname_parts[5]
     f = open(fname, &quot;r&quot;)
-    out.write(type + &quot;\t&quot; + ind + &quot;\t&quot; + depth + &quot;\t&quot; + f.read())
+    out.write(type + &quot;\t&quot; + ind + &quot;\t&quot; + depth + &quot;\t&quot; + min_cells + &quot;\t&quot; + f.read())
     f.close()
 
 out.close()</code></pre>
@@ -189,19 +201,40 @@ out.close()</code></pre>
                          header = TRUE, sep = &quot;\t&quot;, stringsAsFactors = FALSE)</code></pre>
 <p>Calculate the mean and standard error of the mean (sem) for each of the 10 iterations.</p>
 <pre class="r"><code>genes_data_plot &lt;- genes_data %&gt;%
-  group_by(type, ind, depth, num_cells) %&gt;%
+  group_by(type, ind, min_cells, depth, num_cells) %&gt;%
   summarize(mean = mean(genes), sem = sd(genes) / sqrt(length(genes)))</code></pre>
-<p>For the analysis of read counts, a gene was detected if it had greater than 10 reads in at least 5 cells. For the analysis of molecule counts, a gene was detected if it had greater than 1 molecule in at least 5 cells.</p>
-<pre class="r"><code>p &lt;- ggplot(genes_data_plot, aes(x = num_cells, y = mean, color = as.factor(depth))) +
+<p>For the analysis of read counts, a gene was detected if it had greater than 10 reads in at least the minumum number of cells. For the analysis of molecule counts, a gene was detected if it had greater than 1 molecule in at least the minimum number of cells.</p>
+<div id="minimum-cells-of-1" class="section level3">
+<h3>Minimum cells of 1</h3>
+<pre class="r"><code>p &lt;- ggplot(genes_data_plot[genes_data_plot$min_cells == 1, ], aes(x = num_cells, y = mean, color = as.factor(depth))) +
   geom_line() +
   geom_errorbar(aes(ymin = mean - sem, ymax = mean + sem), width = 1) +
   facet_grid(type~ind) +
   labs(x = &quot;Number of subsampled cells&quot;,
        y = &quot;Number of genes detected&quot;,
        color = &quot;Depth&quot;,
-       title = &quot;Subsample: Number of genes detected&quot;)
+       title = &quot;Subsample: Number of genes detected in at least 1 cell&quot;)
 p</code></pre>
-<p><img src="figure/detect-genes.Rmd/subsample-genes-detected-1.png" title="" alt="" width="960" style="display: block; margin: auto;" /></p>
+<p><img src="figure/detect-genes.Rmd/subsample-genes-detected-min-cell-1-1.png" title="" alt="" width="960" style="display: block; margin: auto;" /></p>
+</div>
+<div id="minimum-cells-of-5" class="section level3">
+<h3>Minimum cells of 5</h3>
+<pre class="r"><code>p %+% genes_data_plot[genes_data_plot$min_cells == 5, ] +
+  labs(title = &quot;Subsample: Number of genes detected in at least of 5 cells&quot;)</code></pre>
+<p><img src="figure/detect-genes.Rmd/subsample-genes-detected-min-cell-5-1.png" title="" alt="" width="960" style="display: block; margin: auto;" /></p>
+</div>
+<div id="minimum-cells-of-10" class="section level3">
+<h3>Minimum cells of 10</h3>
+<pre class="r"><code>p %+% genes_data_plot[genes_data_plot$min_cells == 10, ] +
+  labs(title = &quot;Subsample: Number of genes detected in at least of 10 cells&quot;)</code></pre>
+<p><img src="figure/detect-genes.Rmd/subsample-genes-detected-min-cell-10-1.png" title="" alt="" width="960" style="display: block; margin: auto;" /></p>
+</div>
+<div id="minimum-cells-of-15" class="section level3">
+<h3>Minimum cells of 15</h3>
+<pre class="r"><code>p %+% genes_data_plot[genes_data_plot$min_cells == 15, ] +
+  labs(title = &quot;Subsample: Number of genes detected in at least of 15 cells&quot;)</code></pre>
+<p><img src="figure/detect-genes.Rmd/subsample-genes-detected-min-cell-15-1.png" title="" alt="" width="960" style="display: block; margin: auto;" /></p>
+</div>
 </div>
 <div id="wu-et-al.-2014" class="section level2">
 <h2>Wu et al. 2014</h2>
@@ -213,22 +246,23 @@ p</code></pre>
 <p>Explore the effect of subsampling sequencing depth and number of cells on the mean total count. Only includes counts of genes which had the minumum count (10 reads; 1 molecule) in the minimum number of cells (5).</p>
 <p>Calculate the mean and standard error of the mean (sem) for each of the 10 iterations.</p>
 <pre class="r"><code>mean_counts_data_plot &lt;- genes_data %&gt;%
-  group_by(type, ind, depth, num_cells) %&gt;%
+  group_by(type, ind, min_cells, depth, num_cells) %&gt;%
   summarize(mean = mean(mean_counts), sem = sd(mean_counts) / sqrt(length(mean_counts)))</code></pre>
-<p>Results for a minimum count of 10 reads or 1 molecule and a minumum number of cells of 5.</p>
-<pre class="r"><code>p %+% mean_counts_data_plot +
+<pre class="r"><code>p %+% mean_counts_data_plot[mean_counts_data_plot$type == &quot;read&quot; &amp;
+                            mean_counts_data_plot$min_cells == 5, ] +
   labs(y = &quot;Mean total count&quot;,
-       title = &quot;Subsample: Mean total count&quot;)</code></pre>
-<p><img src="figure/detect-genes.Rmd/subsample-mean-counts-1.png" title="" alt="" width="960" style="display: block; margin: auto;" /></p>
+       title = &quot;Subsample: Mean total count, reads only&quot;)</code></pre>
+<p><img src="figure/detect-genes.Rmd/subsample-mean-counts-reads-only-1.png" title="" alt="" width="960" style="display: block; margin: auto;" /></p>
 <p>It’s difficult to see the differences in the molecule counts because of the range of the y-axis. Here is the molecule counts alone.</p>
-<pre class="r"><code>p %+% mean_counts_data_plot[mean_counts_data_plot$type == &quot;molecule&quot;, ] +
+<pre class="r"><code>p %+% mean_counts_data_plot[mean_counts_data_plot$type == &quot;molecule&quot; &amp;
+                            mean_counts_data_plot$min_cells == 5, ] +
   labs(y = &quot;Mean total count&quot;,
        title = &quot;Subsample: Mean total count, molecules only&quot;)</code></pre>
 <p><img src="figure/detect-genes.Rmd/subsample-mean-counts-molecules-only-1.png" title="" alt="" width="960" style="display: block; margin: auto;" /></p>
 <p>Keeping the number of subsampled cells constant to focus specifically on changes in sequencing depth.</p>
 <pre class="r"><code>p_box &lt;- ggplot(genes_data[genes_data$type == &quot;molecule&quot; &amp;
-                           genes_data$num_cells %in% c(25, 75, 125) &amp;
-                           genes_data$depth %in% c(8e5, 1.6e6, 2.4e6, 3.2e6), ],
+                           genes_data$min_cells == 5 &amp;
+                           genes_data$num_cells %in% c(25, 75, 125), ],
                 aes(x = as.factor(depth), y = mean_counts)) +
   geom_boxplot() +
   facet_grid(num_cells~type) +
@@ -237,8 +271,8 @@ p</code></pre>
 p_box</code></pre>
 <p><img src="figure/detect-genes.Rmd/subsample-effect-of-depth-molecule-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>p_box %+% genes_data[genes_data$type == &quot;read&quot; &amp;
-                  genes_data$num_cells %in% c(25, 75, 125) &amp;
-                  genes_data$depth %in% c(8e5, 1.6e6, 2.4e6, 3.2e6), ] +
+                     genes_data$min_cells == 5 &amp;
+                     genes_data$num_cells %in% c(25, 75, 125), ] +
   labs(title = &quot;Effect of sequencing depth on mean total read count&quot;)</code></pre>
 <p><img src="figure/detect-genes.Rmd/subsample-effect-of-depth-read-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
