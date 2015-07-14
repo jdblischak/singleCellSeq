@@ -9,6 +9,7 @@ date: 2015-07-03
 
 ```{r chunk-options, include=FALSE}
 source("chunk-options.R")
+opts_chunk$set(warning = FALSE)
 ```
 
 The number of genes is detected in a subsampled set of single cells (both sequencing depth and number of cells is varied).
@@ -30,22 +31,28 @@ mkdir -p genes-detected
 mkdir -p ~/log/detect-genes.R
 for IND in 19098 19101 19239
 do
-  for NUM in 200000 400000 600000 800000 1000000 1200000 1400000 1600000 1800000 2000000 2400000 2800000 3200000 3600000 4000000
+  for NUM in 200000 400000 1000000 2000000 3000000 4000000
   do
     for CELLS in 5 10 15 20 25 50 75 100 125 150
     do
       for SEED in {1..10}
       do
-        # Molecules
-        CMD="detect-genes.R $CELLS $SEED molecule-counts-$NUM.txt --individual=$IND --min_count=1 --min_cells=5 --good_cells=/mnt/lustre/home/jdblischak/singleCellSeq/data/quality-single-cells.txt"
-        DEST="genes-detected/molecule-$IND-$CELLS-$SEED-$NUM.txt"
-        echo "$CMD > $DEST" | qsub -l h_vmem=2g -cwd -V -N detect-molecule-$IND-$CELLS-$SEED-$NUM -j y -o ~/log/detect-genes.R -l 'hostname=!bigmem01'
-        sleep .01s
-        # Reads
-        CMD="detect-genes.R $CELLS $SEED read-counts-$NUM.txt --individual=$IND --min_count=10 --min_cells=5 --good_cells=/mnt/lustre/home/jdblischak/singleCellSeq/data/quality-single-cells.txt"
-        DEST="genes-detected/read-$IND-$CELLS-$SEED-$NUM.txt"
-        echo "$CMD > $DEST" | qsub -l h_vmem=2g -cwd -V -N detect-read-$IND-$CELLS-$SEED-$NUM -j y -o ~/log/detect-genes.R -l 'hostname=!bigmem01'
-        sleep .01s
+        for MIN_CELLS in 1 5 10 15
+        do
+          if [[ $CELLS -gt $MIN_CELLS || $CELLS -eq $MIN_CELLS ]]
+          then
+              # Molecules
+              CMD="detect-genes.R $CELLS $SEED molecule-counts-$NUM.txt --individual=$IND --min_count=1 --min_cells=$MIN_CELLS --good_cells=/mnt/lustre/home/jdblischak/singleCellSeq/data/quality-single-cells.txt"
+              DEST="genes-detected/molecule-$IND-$CELLS-$SEED-$NUM-$MIN_CELLS.txt"
+              echo "$CMD > $DEST" | qsub -l h_vmem=2g -cwd -V -N detect-molecule-$IND-$CELLS-$SEED-$NUM-$MIN_CELLS -j y -o ~/log/detect-genes.R -l 'hostname=!bigmem01'
+              sleep .01s
+              # Reads
+              CMD="detect-genes.R $CELLS $SEED read-counts-$NUM.txt --individual=$IND --min_count=10 --min_cells=$MIN_CELLS --good_cells=/mnt/lustre/home/jdblischak/singleCellSeq/data/quality-single-cells.txt"
+              DEST="genes-detected/read-$IND-$CELLS-$SEED-$NUM-$MIN_CELLS.txt"
+              echo "$CMD > $DEST" | qsub -l h_vmem=2g -cwd -V -N detect-read-$IND-$CELLS-$SEED-$NUM-$MIN_CELLS -j y -o ~/log/detect-genes.R -l 'hostname=!bigmem01'
+              sleep .01s
+          fi
+        done
       done
     done
   done
@@ -60,14 +67,15 @@ import os
 import glob
 files = glob.glob("genes-detected/*txt")
 out = open("genes-detected.txt", "w")
-out.write("type\tind\tdepth\tnum_cells\tseed\tgenes\tmean_counts\n")
+out.write("type\tind\tdepth\tmin_cells\tnum_cells\tseed\tgenes\tmean_counts\n")
 for fname in files:
     fname_parts = os.path.basename(fname).rstrip(".txt").split("-")
     type = fname_parts[0]
     ind = fname_parts[1]
     depth = fname_parts[4]
+    min_cells = fname_parts[5]
     f = open(fname, "r")
-    out.write(type + "\t" + ind + "\t" + depth + "\t" + f.read())
+    out.write(type + "\t" + ind + "\t" + depth + "\t" + min_cells + "\t" + f.read())
     f.close()
 
 out.close()
@@ -84,23 +92,46 @@ Calculate the mean and standard error of the mean (sem) for each of the 10 itera
 
 ```{r calculate-mean-and-sem}
 genes_data_plot <- genes_data %>%
-  group_by(type, ind, depth, num_cells) %>%
+  group_by(type, ind, min_cells, depth, num_cells) %>%
   summarize(mean = mean(genes), sem = sd(genes) / sqrt(length(genes)))
 ```
 
-For the analysis of read counts, a gene was detected if it had greater than 10 reads in at least 5 cells.
-For the analysis of molecule counts, a gene was detected if it had greater than 1 molecule in at least 5 cells.
+For the analysis of read counts, a gene was detected if it had greater than 10 reads in at least the minumum number of cells.
+For the analysis of molecule counts, a gene was detected if it had greater than 1 molecule in at least the minimum number of cells.
 
-```{r subsample-genes-detected, fig.width=10, fig.height=10}
-p <- ggplot(genes_data_plot, aes(x = num_cells, y = mean, color = as.factor(depth))) +
+### Minimum cells of 1
+
+```{r subsample-genes-detected-min-cell-1, fig.width=10, fig.height=10}
+p <- ggplot(genes_data_plot[genes_data_plot$min_cells == 1, ], aes(x = num_cells, y = mean, color = as.factor(depth))) +
   geom_line() +
   geom_errorbar(aes(ymin = mean - sem, ymax = mean + sem), width = 1) +
   facet_grid(type~ind) +
   labs(x = "Number of subsampled cells",
        y = "Number of genes detected",
        color = "Depth",
-       title = "Subsample: Number of genes detected")
+       title = "Subsample: Number of genes detected in at least 1 cell")
 p
+```
+
+### Minimum cells of 5
+
+```{r subsample-genes-detected-min-cell-5, fig.width=10, fig.height=10}
+p %+% genes_data_plot[genes_data_plot$min_cells == 5, ] +
+  labs(title = "Subsample: Number of genes detected in at least of 5 cells")
+```
+
+### Minimum cells of 10
+
+```{r subsample-genes-detected-min-cell-10, fig.width=10, fig.height=10}
+p %+% genes_data_plot[genes_data_plot$min_cells == 10, ] +
+  labs(title = "Subsample: Number of genes detected in at least of 10 cells")
+```
+
+### Minimum cells of 15
+
+```{r subsample-genes-detected-min-cell-15, fig.width=10, fig.height=10}
+p %+% genes_data_plot[genes_data_plot$min_cells == 15, ] +
+  labs(title = "Subsample: Number of genes detected in at least of 15 cells")
 ```
 
 ## Wu et al. 2014
@@ -122,23 +153,23 @@ Calculate the mean and standard error of the mean (sem) for each of the 10 itera
 
 ```{r calculate-mean-and-sem-counts}
 mean_counts_data_plot <- genes_data %>%
-  group_by(type, ind, depth, num_cells) %>%
+  group_by(type, ind, min_cells, depth, num_cells) %>%
   summarize(mean = mean(mean_counts), sem = sd(mean_counts) / sqrt(length(mean_counts)))
 ```
 
-Results for a minimum count of 10 reads or 1 molecule and a minumum number of cells of 5.
-
-```{r subsample-mean-counts, fig.width=10, fig.height=10}
-p %+% mean_counts_data_plot +
+```{r subsample-mean-counts-reads-only, fig.width=10, fig.height=10}
+p %+% mean_counts_data_plot[mean_counts_data_plot$type == "read" &
+                            mean_counts_data_plot$min_cells == 5, ] +
   labs(y = "Mean total count",
-       title = "Subsample: Mean total count")
+       title = "Subsample: Mean total count, reads only")
 ```
 
 It's difficult to see the differences in the molecule counts because of the range of the y-axis.
 Here is the molecule counts alone.
 
 ```{r subsample-mean-counts-molecules-only, fig.width=10, fig.height=10}
-p %+% mean_counts_data_plot[mean_counts_data_plot$type == "molecule", ] +
+p %+% mean_counts_data_plot[mean_counts_data_plot$type == "molecule" &
+                            mean_counts_data_plot$min_cells == 5, ] +
   labs(y = "Mean total count",
        title = "Subsample: Mean total count, molecules only")
 ```
@@ -147,8 +178,8 @@ Keeping the number of subsampled cells constant to focus specifically on changes
 
 ```{r subsample-effect-of-depth-molecule}
 p_box <- ggplot(genes_data[genes_data$type == "molecule" &
-                           genes_data$num_cells %in% c(25, 75, 125) &
-                           genes_data$depth %in% c(8e5, 1.6e6, 2.4e6, 3.2e6), ],
+                           genes_data$min_cells == 5 &
+                           genes_data$num_cells %in% c(25, 75, 125), ],
                 aes(x = as.factor(depth), y = mean_counts)) +
   geom_boxplot() +
   facet_grid(num_cells~type) +
@@ -159,8 +190,8 @@ p_box
 
 ```{r subsample-effect-of-depth-read}
 p_box %+% genes_data[genes_data$type == "read" &
-                  genes_data$num_cells %in% c(25, 75, 125) &
-                  genes_data$depth %in% c(8e5, 1.6e6, 2.4e6, 3.2e6), ] +
+                     genes_data$min_cells == 5 &
+                     genes_data$num_cells %in% c(25, 75, 125), ] +
   labs(title = "Effect of sequencing depth on mean total read count")
 ```
 
