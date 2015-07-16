@@ -61,7 +61,7 @@ main <- function(num_cells, seed, exp_fname, individual = NULL, min_count = 1,
   # Subsample number of single cells
   if (ncol(exp_dat) < num_cells) {
     cat(sprintf("%d\t%d\tNA\tNA\n", num_cells, seed))
-    quit()
+    return(invisible())
   }
   set.seed(seed)
   exp_dat <- exp_dat[, sample(1:ncol(exp_dat), size = num_cells), drop = FALSE]

@@ -62,7 +62,7 @@ main <- function(num_cells, seed, single_fname, bulk_fname, individual = NULL,
   # Subsample number of single cells
   if (ncol(single_cells) < num_cells) {
     cat(sprintf("%d\t%d\tNA\tNA\tNA\n", num_cells, seed))
-    quit()
+    return(invisible())
   }
   set.seed(seed)
   single_cells <- single_cells[, sample(1:ncol(single_cells), size = num_cells)]
