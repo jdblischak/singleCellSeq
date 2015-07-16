@@ -1,0 +1,145 @@
+---
+title: "Subsample: Cell to cell variance in expression"
+date: 2015-07-16
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+opts_chunk$set(warning = FALSE)
+```
+
+How does cell to cell variance in gene expression varies with subsampling both sequencing depth and number of cells?
+To do this I calculated the variance for each gene using all the single cells available for a given individual at a given sequencing depth and then compared these to the estimates from a random subsample of cells.
+I log-tranformed the values (plus a pseudocount of 0.25 to avoid dividing by zero) and then calculated the Pearson's r and the [root-mean-square error](https://en.wikipedia.org/wiki/Root-mean-square_deviation) (RMSE).
+
+```{r message=FALSE}
+library("dplyr")
+library("ggplot2")
+theme_set(theme_bw(base_size = 14))
+```
+
+## Batch process each subsampled data set
+
+Run 10 iterations for each individual for each sequencing depth for each subsample of cells.
+The analysis is performed by [subsample-variance.R](https://github.com/jdblischak/singleCellSeq/blob/master/code/subsample-variance.R).
+
+```bash
+cd $ssd/subsampled
+mkdir -p variance
+mkdir -p ~/log/subsample-variance.R
+for IND in 19098 19101 19239
+do
+  for NUM in 200000 400000 1000000 2000000 3000000 4000000
+  do
+    for CELLS in 5 10 15 20 25 50 75 100 125 150
+    do
+      for SEED in {1..10}
+      do
+        # Molecules
+        CMD="subsample-variance.R $CELLS $SEED molecule-counts-$NUM.txt --individual=$IND --min_count=1 --min_cells=5 --good_cells=/mnt/lustre/home/jdblischak/singleCellSeq/data/quality-single-cells.txt"
+        DEST="variance/molecule-$IND-$CELLS-$SEED-$NUM.txt"
+        echo "$CMD > $DEST" | qsub -l h_vmem=2g -cwd -V -N variance-molecule-$IND-$CELLS-$SEED-$NUM -j y -o ~/log/subsample-variance.R -l 'hostname=!bigmem01'
+        sleep .01s
+        # Reads
+        CMD="subsample-variance.R $CELLS $SEED read-counts-$NUM.txt --individual=$IND --min_count=10 --min_cells=5 --good_cells=/mnt/lustre/home/jdblischak/singleCellSeq/data/quality-single-cells.txt"
+        DEST="variance/read-$IND-$CELLS-$SEED-$NUM.txt"
+        echo "$CMD > $DEST" | qsub -l h_vmem=2g -cwd -V -N variance-read-$IND-$CELLS-$SEED-$NUM -j y -o ~/log/subsample-variance.R -l 'hostname=!bigmem01'
+        sleep .01s
+      done
+    done
+  done
+done
+```
+
+Convert to one file using Python.
+Run from `$ssd/subsampled`.
+
+```python
+import os
+import glob
+files = glob.glob("variance/*txt")
+out = open("variance.txt", "w")
+out.write("type\tind\tdepth\tnum_cells\tseed\ttotal_cells\tr\trmse\n")
+for fname in files:
+    fname_parts = os.path.basename(fname).rstrip(".txt").split("-")
+    type = fname_parts[0]
+    ind = fname_parts[1]
+    depth = fname_parts[4]
+    f = open(fname, "r")
+    out.write(type + "\t" + ind + "\t" + depth + "\t" + f.read())
+    f.close()
+
+out.close()
+```
+
+## Input data
+
+```{r input}
+var_data <- read.table("/mnt/gluster/data/internal_supp/singleCellSeq/subsampled/variance.txt",
+                         header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+```
+
+Calculate the mean and standard error of the mean (sem) for each of the 10 iterations.
+
+```{r calculate-mean-and-sem}
+var_data_plot <- var_data %>%
+  group_by(type, ind, depth, num_cells, total_cells) %>%
+  summarize(r_mean = mean(r), r_sem = sd(r) / sqrt(length(r)),
+            rmse_mean = mean(rmse), rmse_sem = sd(rmse) / sqrt(length(rmse)))
+```
+
+For the analysis of read counts, a gene was included if it had greater than 10 reads in at least 5 cells.
+For the analysis of molecule counts, a gene was included if it had greater than 1 molecule in at least 5 cells.
+
+## Pearson's r
+
+```{r subsample-variance-r, fig.width=10, fig.height=10}
+p_r <- ggplot(var_data_plot, aes(x = num_cells, y = r_mean, color = as.factor(depth))) +
+  geom_line() +
+  geom_errorbar(aes(ymin = r_mean - r_sem, ymax = r_mean + r_sem), width = 1) +
+  facet_grid(type~ind) +
+  labs(x = "Number of subsampled cells",
+       y = "Pearson's r",
+       color = "Depth",
+       title = "Subsample: Correlation of variance estimates")
+p_r
+```
+
+## Root-mean-square error
+
+```{r subsample-variance-rmse, fig.width=10, fig.height=10}
+p_rmse <- ggplot(var_data_plot, aes(x = num_cells, y = rmse_mean, color = as.factor(depth))) +
+  geom_line() +
+  geom_errorbar(aes(ymin = rmse_mean - rmse_sem, ymax = rmse_mean + rmse_sem), width = 1) +
+  facet_grid(type~ind) +
+  labs(x = "Number of subsampled cells",
+       y = "Root-mean-square error",
+       color = "Depth",
+       title = "Subsample: RMSE of variance estimates")
+p_rmse
+```
+
+## Effect of read depth on total number of cells
+
+One thing to keep in mind is that the total number of cells used to calculate the "true" variance varies by sequencing depth.
+
+```{r total-cells-by-depth}
+ggplot(var_data_plot, aes(x = depth, y = total_cells)) +
+  geom_point() +
+  facet_grid(~ind) +
+  labs(x = "Sequencing depth",
+       y = "Total number of cells",
+       title = "Effect of read depth on total number of cells")
+```
+
+Also need to keep in mind that the [number of genes included changes due to sequencing depth and number of cells subsampled](detect-genes.html).
+
+## Session information
+
+```{r info}
+sessionInfo()
+```
