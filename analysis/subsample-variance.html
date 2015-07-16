@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+
+<meta name="date" content="2015-07-16" />
+
+<title>Subsample: Cell to cell variance in expression</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Subsample: Cell to cell variance in expression</h1>
+<h4 class="date"><em>2015-07-16</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#batch-process-each-subsampled-data-set">Batch process each subsampled data set</a></li>
+<li><a href="#input-data">Input data</a></li>
+<li><a href="#pearsons-r">Pearson’s r</a></li>
+<li><a href="#root-mean-square-error">Root-mean-square error</a></li>
+<li><a href="#effect-of-read-depth-on-total-number-of-cells">Effect of read depth on total number of cells</a></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2015-07-16</p>
+<p><strong>Code version:</strong> 144f1aeedbf7301cd740fb4d1d58b5159218858c</p>
+<p>How does cell to cell variance in gene expression varies with subsampling both sequencing depth and number of cells? To do this I calculated the variance for each gene using all the single cells available for a given individual at a given sequencing depth and then compared these to the estimates from a random subsample of cells. I log-tranformed the values (plus a pseudocount of 0.25 to avoid dividing by zero) and then calculated the Pearson’s r and the <a href="https://en.wikipedia.org/wiki/Root-mean-square_deviation">root-mean-square error</a> (RMSE).</p>
+<pre class="r"><code>library(&quot;dplyr&quot;)
+library(&quot;ggplot2&quot;)
+theme_set(theme_bw(base_size = 14))</code></pre>
+<div id="batch-process-each-subsampled-data-set" class="section level2">
+<h2>Batch process each subsampled data set</h2>
+<p>Run 10 iterations for each individual for each sequencing depth for each subsample of cells. The analysis is performed by <a href="https://github.com/jdblischak/singleCellSeq/blob/master/code/subsample-variance.R">subsample-variance.R</a>.</p>
+<pre class="bash"><code>cd $ssd/subsampled
+mkdir -p variance
+mkdir -p ~/log/subsample-variance.R
+for IND in 19098 19101 19239
+do
+  for NUM in 200000 400000 1000000 2000000 3000000 4000000
+  do
+    for CELLS in 5 10 15 20 25 50 75 100 125 150
+    do
+      for SEED in {1..10}
+      do
+        # Molecules
+        CMD=&quot;subsample-variance.R $CELLS $SEED molecule-counts-$NUM.txt --individual=$IND --min_count=1 --min_cells=5 --good_cells=/mnt/lustre/home/jdblischak/singleCellSeq/data/quality-single-cells.txt&quot;
+        DEST=&quot;variance/molecule-$IND-$CELLS-$SEED-$NUM.txt&quot;
+        echo &quot;$CMD &gt; $DEST&quot; | qsub -l h_vmem=2g -cwd -V -N variance-molecule-$IND-$CELLS-$SEED-$NUM -j y -o ~/log/subsample-variance.R -l &#39;hostname=!bigmem01&#39;
+        sleep .01s
+        # Reads
+        CMD=&quot;subsample-variance.R $CELLS $SEED read-counts-$NUM.txt --individual=$IND --min_count=10 --min_cells=5 --good_cells=/mnt/lustre/home/jdblischak/singleCellSeq/data/quality-single-cells.txt&quot;
+        DEST=&quot;variance/read-$IND-$CELLS-$SEED-$NUM.txt&quot;
+        echo &quot;$CMD &gt; $DEST&quot; | qsub -l h_vmem=2g -cwd -V -N variance-read-$IND-$CELLS-$SEED-$NUM -j y -o ~/log/subsample-variance.R -l &#39;hostname=!bigmem01&#39;
+        sleep .01s
+      done
+    done
+  done
+done</code></pre>
+<p>Convert to one file using Python. Run from <code>$ssd/subsampled</code>.</p>
+<pre class="python"><code>import os
+import glob
+files = glob.glob(&quot;variance/*txt&quot;)
+out = open(&quot;variance.txt&quot;, &quot;w&quot;)
+out.write(&quot;type\tind\tdepth\tnum_cells\tseed\ttotal_cells\tr\trmse\n&quot;)
+for fname in files:
+    fname_parts = os.path.basename(fname).rstrip(&quot;.txt&quot;).split(&quot;-&quot;)
+    type = fname_parts[0]
+    ind = fname_parts[1]
+    depth = fname_parts[4]
+    f = open(fname, &quot;r&quot;)
+    out.write(type + &quot;\t&quot; + ind + &quot;\t&quot; + depth + &quot;\t&quot; + f.read())
+    f.close()
+
+out.close()</code></pre>
+</div>
+<div id="input-data" class="section level2">
+<h2>Input data</h2>
+<pre class="r"><code>var_data &lt;- read.table(&quot;/mnt/gluster/data/internal_supp/singleCellSeq/subsampled/variance.txt&quot;,
+                         header = TRUE, sep = &quot;\t&quot;, stringsAsFactors = FALSE)</code></pre>
+<p>Calculate the mean and standard error of the mean (sem) for each of the 10 iterations.</p>
+<pre class="r"><code>var_data_plot &lt;- var_data %&gt;%
+  group_by(type, ind, depth, num_cells, total_cells) %&gt;%
+  summarize(r_mean = mean(r), r_sem = sd(r) / sqrt(length(r)),
+            rmse_mean = mean(rmse), rmse_sem = sd(rmse) / sqrt(length(rmse)))</code></pre>
+<p>For the analysis of read counts, a gene was included if it had greater than 10 reads in at least 5 cells. For the analysis of molecule counts, a gene was included if it had greater than 1 molecule in at least 5 cells.</p>
+</div>
+<div id="pearsons-r" class="section level2">
+<h2>Pearson’s r</h2>
+<pre class="r"><code>p_r &lt;- ggplot(var_data_plot, aes(x = num_cells, y = r_mean, color = as.factor(depth))) +
+  geom_line() +
+  geom_errorbar(aes(ymin = r_mean - r_sem, ymax = r_mean + r_sem), width = 1) +
+  facet_grid(type~ind) +
+  labs(x = &quot;Number of subsampled cells&quot;,
+       y = &quot;Pearson&#39;s r&quot;,
+       color = &quot;Depth&quot;,
+       title = &quot;Subsample: Correlation of variance estimates&quot;)
+p_r</code></pre>
+<p><img src="figure/subsample-variance.Rmd/subsample-variance-r-1.png" title="" alt="" width="960" style="display: block; margin: auto;" /></p>
+</div>
+<div id="root-mean-square-error" class="section level2">
+<h2>Root-mean-square error</h2>
+<pre class="r"><code>p_rmse &lt;- ggplot(var_data_plot, aes(x = num_cells, y = rmse_mean, color = as.factor(depth))) +
+  geom_line() +
+  geom_errorbar(aes(ymin = rmse_mean - rmse_sem, ymax = rmse_mean + rmse_sem), width = 1) +
+  facet_grid(type~ind) +
+  labs(x = &quot;Number of subsampled cells&quot;,
+       y = &quot;Root-mean-square error&quot;,
+       color = &quot;Depth&quot;,
+       title = &quot;Subsample: RMSE of variance estimates&quot;)
+p_rmse</code></pre>
+<p><img src="figure/subsample-variance.Rmd/subsample-variance-rmse-1.png" title="" alt="" width="960" style="display: block; margin: auto;" /></p>
+</div>
+<div id="effect-of-read-depth-on-total-number-of-cells" class="section level2">
+<h2>Effect of read depth on total number of cells</h2>
+<p>One thing to keep in mind is that the total number of cells used to calculate the “true” variance varies by sequencing depth.</p>
+<pre class="r"><code>ggplot(var_data_plot, aes(x = depth, y = total_cells)) +
+  geom_point() +
+  facet_grid(~ind) +
+  labs(x = &quot;Sequencing depth&quot;,
+       y = &quot;Total number of cells&quot;,
+       title = &quot;Effect of read depth on total number of cells&quot;)</code></pre>
+<p><img src="figure/subsample-variance.Rmd/total-cells-by-depth-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>Also need to keep in mind that the <a href="detect-genes.html">number of genes included changes due to sequencing depth and number of cells subsampled</a>.</p>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] ggplot2_1.0.1 dplyr_0.4.1   knitr_1.10.5 
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.11.6      magrittr_1.5     MASS_7.3-40      munsell_0.4.2   
+ [5] colorspace_1.2-6 stringr_1.0.0    plyr_1.8.2       tools_3.2.0     
+ [9] parallel_3.2.0   grid_3.2.0       gtable_0.1.2     DBI_0.3.1       
+[13] htmltools_0.2.6  yaml_2.1.13      lazyeval_0.1.10  assertthat_0.1  
+[17] digest_0.6.8     reshape2_1.4.1   formatR_1.2      evaluate_0.7    
+[21] rmarkdown_0.6.1  labeling_0.3     stringi_0.4-1    scales_0.2.4    
+[25] proto_0.3-10    </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+
+</body>
+</html>
