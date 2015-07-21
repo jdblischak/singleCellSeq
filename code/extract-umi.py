@@ -1,10 +1,12 @@
 #!/usr/bin/env python
 
-# This script was modeled after the subsampling script I found on SeqAnswers
-# for fasta/fastq files. I remodeled it for use with bam files by
-# utilizing the pysam module.
-# http://seqanswers.com/forums/showpost.php?p=60581&postcount=12
-
+# Extract UMI from name of bam entries.
+# Usage: extract-umi.py region outdir filename
+#
+# region - pull reads aligned to this region, e.g. ERCC-00130
+# outdir - write files to this directory.
+# filename - input bam file
+#
 ################################################################################
 
 import sys
