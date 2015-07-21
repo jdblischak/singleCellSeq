@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+
+<meta name="date" content="2015-07-21" />
+
+<title>Investigating over-sequenced ERCC genes</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Investigating over-sequenced ERCC genes</h1>
+<h4 class="date"><em>2015-07-21</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#input">Input</a></li>
+<li><a href="#identifying-ercc-genes-with-high-molecule-counts">Identifying ERCC genes with high molecule counts</a></li>
+<li><a href="#extracting-umis-from-bam-files">Extracting UMIs from bam files</a></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2015-07-21</p>
+<p><strong>Code version:</strong> c81003a9f8c7df2925a675f7e59f32b4a1c0833a</p>
+<p>For the LCLs sequenced in an entire lane, some of the ERCC genes have greater than 1024 molecules. Investigating to see what is causing this.</p>
+<pre class="r"><code>library(&quot;ggplot2&quot;)
+theme_set(theme_bw(base_size = 16))</code></pre>
+<div id="input" class="section level2">
+<h2>Input</h2>
+<pre class="r"><code>molecules &lt;- read.table(&quot;../data/molecules-lcl.txt&quot;, header = TRUE,
+                        stringsAsFactors = FALSE)
+reads &lt;- read.table(&quot;../data/reads-lcl.txt&quot;, header = TRUE,
+                        stringsAsFactors = FALSE)
+anno &lt;- read.table(&quot;../data/annotation-lcl.txt&quot;, header = TRUE,
+                        stringsAsFactors = FALSE)</code></pre>
+</div>
+<div id="identifying-ercc-genes-with-high-molecule-counts" class="section level2">
+<h2>Identifying ERCC genes with high molecule counts</h2>
+<pre class="r"><code>sum(molecules &gt; 1024)</code></pre>
+<pre><code>[1] 150</code></pre>
+<pre class="r"><code># Full lane samples
+sum(molecules[, anno$full_lane] &gt; 1024)</code></pre>
+<pre><code>[1] 81</code></pre>
+<pre class="r"><code># Multiplexed samples
+sum(molecules[, !anno$full_lane] &gt; 1024)</code></pre>
+<pre><code>[1] 69</code></pre>
+<pre class="r"><code># Full lane ERCC
+sum(molecules[grep(&quot;ERCC&quot;, rownames(molecules)), anno$full_lane] &gt; 1024)</code></pre>
+<pre><code>[1] 5</code></pre>
+<pre class="r"><code># Multiplexed ERCC
+sum(molecules[grep(&quot;ERCC&quot;, rownames(molecules)), !anno$full_lane] &gt; 1024)</code></pre>
+<pre><code>[1] 0</code></pre>
+<p>Select the ERCC genes which have greater than 1024 molecule counts in any of the four full lane samples.</p>
+<pre class="r"><code>ercc_over &lt;- molecules[grepl(&quot;ERCC&quot;, rownames(molecules)) &amp;
+                         apply(molecules[, anno$full_lane], 1, function(x) any(x &gt; 1024)),
+                       anno$full_lane]
+ercc_over</code></pre>
+<pre><code>           NA19239.1.A9E1 NA19239.1.B2E2 NA19239.1.B4H1 NA19239.1.D2H2
+ERCC-00074           1006            819            975           1263
+ERCC-00130           1444           1314           1299           1733</code></pre>
+<pre class="r"><code>reads[rownames(ercc_over), anno$full_lane]</code></pre>
+<pre><code>           NA19239.1.A9E1 NA19239.1.B2E2 NA19239.1.B4H1 NA19239.1.D2H2
+ERCC-00074         208048         159085         199067         230380
+ERCC-00130         310263         212316         269041         355580</code></pre>
+</div>
+<div id="extracting-umis-from-bam-files" class="section level2">
+<h2>Extracting UMIs from bam files</h2>
+<pre class="bash"><code>cd $ssd/lcl
+for REGION in ERCC-00074 ERCC-00130
+do
+  mkdir -p umi/$REGION
+  mkdir -p ~/log/umi/$REGION
+  for LCL in A9E1 B2E2 B4H1 D2H2
+  do
+    echo &quot;extract-umi.py $REGION umi/$REGION bam-combined/19239.1.$LCL.trim.sickle.sorted.combined.bam&quot; | \
+    qsub -l h_vmem=2g -cwd -V -j y -o ~/log/umi/$REGION -N umi-$LCL-$REGION
+  done
+done</code></pre>
+<pre class="r"><code>umi &lt;- vector()
+# colnames(umi) &lt;- c(&quot;chr&quot;, &quot;start&quot;, &quot;umi&quot;, &quot;lcl&quot;)
+for (ercc in c(&quot;ERCC-00074&quot;, &quot;ERCC-00130&quot;)) {
+  for (lcl in c(&quot;A9E1&quot;, &quot;B2E2&quot;, &quot;B4H1&quot;, &quot;D2H2&quot;)) {
+    input &lt;- read.table(paste0(&quot;/mnt/gluster/data/internal_supp/singleCellSeq/lcl/umi/&quot;,
+                               ercc, &quot;/19239.1.&quot;, lcl,
+                               &quot;.trim.sickle.sorted.combined.umi.txt&quot;),
+                        header = TRUE, sep = &quot;\t&quot;, stringsAsFactors = FALSE)
+    input$lcl &lt;- lcl
+    umi &lt;- rbind(umi, input)
+  }
+}</code></pre>
+<pre class="r"><code>p &lt;- ggplot(umi, aes(x = start)) +
+  geom_histogram() +
+  facet_grid(lcl~chr)
+p</code></pre>
+<p><img src="figure/ercc-over-sequenced.Rmd/ercc-read-distribution-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>umi_unique &lt;- umi[!duplicated(paste0(umi$chr, umi$start, umi$umi)), ]</code></pre>
+<pre class="r"><code>p %+% umi_unique</code></pre>
+<p><img src="figure/ercc-over-sequenced.Rmd/ercc-molecule-distribution-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] ggplot2_1.0.1 knitr_1.10.5 
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.11.6      digest_0.6.8     MASS_7.3-40      grid_3.2.0      
+ [5] plyr_1.8.2       gtable_0.1.2     formatR_1.2      magrittr_1.5    
+ [9] scales_0.2.4     evaluate_0.7     stringi_0.4-1    reshape2_1.4.1  
+[13] rmarkdown_0.6.1  labeling_0.3     proto_0.3-10     tools_3.2.0     
+[17] stringr_1.0.0    munsell_0.4.2    yaml_2.1.13      colorspace_1.2-6
+[21] htmltools_0.2.6 </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+
+</body>
+</html>
