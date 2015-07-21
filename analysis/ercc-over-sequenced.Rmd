@@ -1,0 +1,107 @@
+---
+title: "Investigating over-sequenced ERCC genes"
+date: 2015-07-21
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+```
+
+For the LCLs sequenced in an entire lane, some of the ERCC genes have greater than 1024 molecules.
+Investigating to see what is causing this.
+
+```{r packages}
+library("ggplot2")
+theme_set(theme_bw(base_size = 16))
+```
+
+## Input
+
+```{r}
+molecules <- read.table("../data/molecules-lcl.txt", header = TRUE,
+                        stringsAsFactors = FALSE)
+reads <- read.table("../data/reads-lcl.txt", header = TRUE,
+                        stringsAsFactors = FALSE)
+anno <- read.table("../data/annotation-lcl.txt", header = TRUE,
+                        stringsAsFactors = FALSE)
+```
+
+## Identifying ERCC genes with high molecule counts
+
+```{r}
+sum(molecules > 1024)
+# Full lane samples
+sum(molecules[, anno$full_lane] > 1024)
+# Multiplexed samples
+sum(molecules[, !anno$full_lane] > 1024)
+# Full lane ERCC
+sum(molecules[grep("ERCC", rownames(molecules)), anno$full_lane] > 1024)
+# Multiplexed ERCC
+sum(molecules[grep("ERCC", rownames(molecules)), !anno$full_lane] > 1024)
+```
+
+Select the ERCC genes which have greater than 1024 molecule counts in any of the four full lane samples.
+
+```{r}
+ercc_over <- molecules[grepl("ERCC", rownames(molecules)) &
+                         apply(molecules[, anno$full_lane], 1, function(x) any(x > 1024)),
+                       anno$full_lane]
+ercc_over
+reads[rownames(ercc_over), anno$full_lane]
+```
+
+## Extracting UMIs from bam files
+
+```bash
+cd $ssd/lcl
+for REGION in ERCC-00074 ERCC-00130
+do
+  mkdir -p umi/$REGION
+  mkdir -p ~/log/umi/$REGION
+  for LCL in A9E1 B2E2 B4H1 D2H2
+  do
+    echo "extract-umi.py $REGION umi/$REGION bam-combined/19239.1.$LCL.trim.sickle.sorted.combined.bam" | \
+    qsub -l h_vmem=2g -cwd -V -j y -o ~/log/umi/$REGION -N umi-$LCL-$REGION
+  done
+done
+```
+
+```{r input-umi}
+umi <- vector()
+# colnames(umi) <- c("chr", "start", "umi", "lcl")
+for (ercc in c("ERCC-00074", "ERCC-00130")) {
+  for (lcl in c("A9E1", "B2E2", "B4H1", "D2H2")) {
+    input <- read.table(paste0("/mnt/gluster/data/internal_supp/singleCellSeq/lcl/umi/",
+                               ercc, "/19239.1.", lcl,
+                               ".trim.sickle.sorted.combined.umi.txt"),
+                        header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+    input$lcl <- lcl
+    umi <- rbind(umi, input)
+  }
+}
+```
+
+```{r ercc-read-distribution}
+p <- ggplot(umi, aes(x = start)) +
+  geom_histogram() +
+  facet_grid(lcl~chr)
+p
+```
+
+```{r}
+umi_unique <- umi[!duplicated(paste0(umi$chr, umi$start, umi$umi)), ]
+```
+
+```{r ercc-molecule-distribution}
+p %+% umi_unique
+```
+
+## Session information
+
+```{r info}
+sessionInfo()
+```
