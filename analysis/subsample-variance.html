@@ -125,16 +125,26 @@ img {
 <div id="TOC">
 <ul>
 <li><a href="#batch-process-each-subsampled-data-set">Batch process each subsampled data set</a></li>
-<li><a href="#input-data">Input data</a></li>
-<li><a href="#pearsons-r">Pearson’s r</a></li>
-<li><a href="#root-mean-square-error">Root-mean-square error</a></li>
+<li><a href="#input-data">Input data</a><ul>
+<li><a href="#full-data">Full data</a></li>
+<li><a href="#quantiles">Quantiles</a></li>
+</ul></li>
+<li><a href="#pearsons-r">Pearson’s r</a><ul>
+<li><a href="#full-data-1">Full data</a></li>
+<li><a href="#quantiles-1">Quantiles</a></li>
+</ul></li>
+<li><a href="#root-mean-square-error">Root-mean-square error</a><ul>
+<li><a href="#full-data-2">Full data</a></li>
+<li><a href="#quantiles-2">Quantiles</a></li>
+</ul></li>
 <li><a href="#effect-of-read-depth-on-total-number-of-cells">Effect of read depth on total number of cells</a></li>
+<li><a href="#effect-of-read-depth-on-total-number-of-genes">Effect of read depth on total number of genes</a></li>
 <li><a href="#session-information">Session information</a></li>
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-07-16</p>
-<p><strong>Code version:</strong> 144f1aeedbf7301cd740fb4d1d58b5159218858c</p>
+<p><strong>Last updated:</strong> 2015-07-27</p>
+<p><strong>Code version:</strong> 07ed76a5f8f8bbe62a779ba8ca9585699887eced</p>
 <p>How does cell to cell variance in gene expression varies with subsampling both sequencing depth and number of cells? To do this I calculated the variance for each gene using all the single cells available for a given individual at a given sequencing depth and then compared these to the estimates from a random subsample of cells. I log-tranformed the values (plus a pseudocount of 0.25 to avoid dividing by zero) and then calculated the Pearson’s r and the <a href="https://en.wikipedia.org/wiki/Root-mean-square_deviation">root-mean-square error</a> (RMSE).</p>
 <pre class="r"><code>library(&quot;dplyr&quot;)
 library(&quot;ggplot2&quot;)
@@ -143,7 +153,7 @@ theme_set(theme_bw(base_size = 14))</code></pre>
 <h2>Batch process each subsampled data set</h2>
 <p>Run 10 iterations for each individual for each sequencing depth for each subsample of cells. The analysis is performed by <a href="https://github.com/jdblischak/singleCellSeq/blob/master/code/subsample-variance.R">subsample-variance.R</a>.</p>
 <pre class="bash"><code>cd $ssd/subsampled
-mkdir -p variance
+mkdir -p variance variance-quantiles
 mkdir -p ~/log/subsample-variance.R
 for IND in 19098 19101 19239
 do
@@ -153,15 +163,27 @@ do
     do
       for SEED in {1..10}
       do
-        # Molecules
+        # For all genes
+        ## Molecules
         CMD=&quot;subsample-variance.R $CELLS $SEED molecule-counts-$NUM.txt --individual=$IND --min_count=1 --min_cells=5 --good_cells=/mnt/lustre/home/jdblischak/singleCellSeq/data/quality-single-cells.txt&quot;
         DEST=&quot;variance/molecule-$IND-$CELLS-$SEED-$NUM.txt&quot;
         echo &quot;$CMD &gt; $DEST&quot; | qsub -l h_vmem=2g -cwd -V -N variance-molecule-$IND-$CELLS-$SEED-$NUM -j y -o ~/log/subsample-variance.R -l &#39;hostname=!bigmem01&#39;
         sleep .01s
-        # Reads
+        ## Reads
         CMD=&quot;subsample-variance.R $CELLS $SEED read-counts-$NUM.txt --individual=$IND --min_count=10 --min_cells=5 --good_cells=/mnt/lustre/home/jdblischak/singleCellSeq/data/quality-single-cells.txt&quot;
         DEST=&quot;variance/read-$IND-$CELLS-$SEED-$NUM.txt&quot;
         echo &quot;$CMD &gt; $DEST&quot; | qsub -l h_vmem=2g -cwd -V -N variance-read-$IND-$CELLS-$SEED-$NUM -j y -o ~/log/subsample-variance.R -l &#39;hostname=!bigmem01&#39;
+        sleep .01s
+        # For quantiles
+        ## Molecules
+        CMD=&quot;subsample-variance.R $CELLS $SEED molecule-counts-$NUM.txt --individual=$IND --min_count=1 --min_cells=5 --good_cells=/mnt/lustre/home/jdblischak/singleCellSeq/data/quality-single-cells.txt -q .25 -q .5 -q .75&quot;
+        DEST=&quot;variance-quantiles/molecule-$IND-$CELLS-$SEED-$NUM.txt&quot;
+        echo &quot;$CMD &gt; $DEST&quot; | qsub -l h_vmem=2g -cwd -V -N variance-molecule-$IND-$CELLS-$SEED-$NUM-quantiles -j y -o ~/log/subsample-variance.R -l &#39;hostname=!bigmem01&#39;
+        sleep .01s
+        ## Reads
+        CMD=&quot;subsample-variance.R $CELLS $SEED read-counts-$NUM.txt --individual=$IND --min_count=10 --min_cells=5 --good_cells=/mnt/lustre/home/jdblischak/singleCellSeq/data/quality-single-cells.txt -q .25 -q .5 -q .75&quot;
+        DEST=&quot;variance-quantiles/read-$IND-$CELLS-$SEED-$NUM.txt&quot;
+        echo &quot;$CMD &gt; $DEST&quot; | qsub -l h_vmem=2g -cwd -V -N variance-read-$IND-$CELLS-$SEED-$NUM-quantiles -j y -o ~/log/subsample-variance.R -l &#39;hostname=!bigmem01&#39;
         sleep .01s
       done
     done
@@ -170,33 +192,59 @@ done</code></pre>
 <p>Convert to one file using Python. Run from <code>$ssd/subsampled</code>.</p>
 <pre class="python"><code>import os
 import glob
-files = glob.glob(&quot;variance/*txt&quot;)
-out = open(&quot;variance.txt&quot;, &quot;w&quot;)
-out.write(&quot;type\tind\tdepth\tnum_cells\tseed\ttotal_cells\tr\trmse\n&quot;)
-for fname in files:
-    fname_parts = os.path.basename(fname).rstrip(&quot;.txt&quot;).split(&quot;-&quot;)
-    type = fname_parts[0]
-    ind = fname_parts[1]
-    depth = fname_parts[4]
-    f = open(fname, &quot;r&quot;)
-    out.write(type + &quot;\t&quot; + ind + &quot;\t&quot; + depth + &quot;\t&quot; + f.read())
-    f.close()
 
-out.close()</code></pre>
+def gather(files, outfile):
+    out = open(outfile, &quot;w&quot;)
+    out.write(&quot;type\tind\tdepth\tnum_cells\tseed\ttotal_cells\tr\trmse\tquantiles\tnum_genes\n&quot;)
+    for fname in files:
+        fname_parts = os.path.basename(fname).rstrip(&quot;.txt&quot;).split(&quot;-&quot;)
+        type = fname_parts[0]
+        ind = fname_parts[1]
+        depth = fname_parts[4]
+        f = open(fname, &quot;r&quot;)
+        for line in f:
+            out.write(type + &quot;\t&quot; + ind + &quot;\t&quot; + depth + &quot;\t&quot; + line)
+        f.close()
+    out.close()
+
+files = glob.glob(&quot;variance/*txt&quot;)
+gather(files, &quot;variance.txt&quot;)
+
+files = glob.glob(&quot;variance-quantiles/*txt&quot;)
+gather(files, &quot;variance-quantiles.txt&quot;)</code></pre>
 </div>
 <div id="input-data" class="section level2">
 <h2>Input data</h2>
+<div id="full-data" class="section level3">
+<h3>Full data</h3>
 <pre class="r"><code>var_data &lt;- read.table(&quot;/mnt/gluster/data/internal_supp/singleCellSeq/subsampled/variance.txt&quot;,
                          header = TRUE, sep = &quot;\t&quot;, stringsAsFactors = FALSE)</code></pre>
 <p>Calculate the mean and standard error of the mean (sem) for each of the 10 iterations.</p>
 <pre class="r"><code>var_data_plot &lt;- var_data %&gt;%
   group_by(type, ind, depth, num_cells, total_cells) %&gt;%
   summarize(r_mean = mean(r), r_sem = sd(r) / sqrt(length(r)),
-            rmse_mean = mean(rmse), rmse_sem = sd(rmse) / sqrt(length(rmse)))</code></pre>
+            rmse_mean = mean(rmse), rmse_sem = sd(rmse) / sqrt(length(rmse)),
+            num_genes = num_genes[1])</code></pre>
 <p>For the analysis of read counts, a gene was included if it had greater than 10 reads in at least 5 cells. For the analysis of molecule counts, a gene was included if it had greater than 1 molecule in at least 5 cells.</p>
+</div>
+<div id="quantiles" class="section level3">
+<h3>Quantiles</h3>
+<pre class="r"><code>var_data_q &lt;- read.table(&quot;/mnt/gluster/data/internal_supp/singleCellSeq/subsampled/variance-quantiles.txt&quot;,
+                         header = TRUE, sep = &quot;\t&quot;, stringsAsFactors = FALSE)</code></pre>
+<p>Calculate the mean and standard error of the mean (sem) for each of the 10 iterations.</p>
+<pre class="r"><code>var_data_plot_q &lt;- var_data_q %&gt;%
+  group_by(type, ind, depth, num_cells, total_cells, quantiles) %&gt;%
+  summarize(r_mean = mean(r), r_sem = sd(r) / sqrt(length(r)),
+            rmse_mean = mean(rmse), rmse_sem = sd(rmse) / sqrt(length(rmse)),
+            num_genes = num_genes[1])</code></pre>
+<p>Some single cells did not have enough reads for the higher subsamples.</p>
+<pre class="r"><code>var_data_plot_q &lt;- na.omit(var_data_plot_q)</code></pre>
+</div>
 </div>
 <div id="pearsons-r" class="section level2">
 <h2>Pearson’s r</h2>
+<div id="full-data-1" class="section level3">
+<h3>Full data</h3>
 <pre class="r"><code>p_r &lt;- ggplot(var_data_plot, aes(x = num_cells, y = r_mean, color = as.factor(depth))) +
   geom_line() +
   geom_errorbar(aes(ymin = r_mean - r_sem, ymax = r_mean + r_sem), width = 1) +
@@ -208,8 +256,38 @@ out.close()</code></pre>
 p_r</code></pre>
 <p><img src="figure/subsample-variance.Rmd/subsample-variance-r-1.png" title="" alt="" width="960" style="display: block; margin: auto;" /></p>
 </div>
+<div id="quantiles-1" class="section level3">
+<h3>Quantiles</h3>
+<p>First for the molecules:</p>
+<pre class="r"><code>p_r_q_mol &lt;- ggplot(var_data_plot_q[var_data_plot_q$type == &quot;molecule&quot;, ],
+              aes(x = num_cells, y = r_mean, color = as.factor(depth))) +
+  geom_line() +
+  geom_errorbar(aes(ymin = r_mean - r_sem, ymax = r_mean + r_sem), width = 1) +
+  facet_grid(quantiles~ind) +
+  labs(x = &quot;Number of subsampled cells&quot;,
+       y = &quot;Pearson&#39;s r&quot;,
+       color = &quot;Depth&quot;,
+       title = &quot;Subsample: Correlation of variance estimates of molecules by expression level&quot;)
+p_r_q_mol</code></pre>
+<p><img src="figure/subsample-variance.Rmd/subsample-variance-r-quantiles-molecules-1.png" title="" alt="" width="960" style="display: block; margin: auto;" /></p>
+<p>Second for the reads:</p>
+<pre class="r"><code>p_r_q_read &lt;- ggplot(var_data_plot_q[var_data_plot_q$type == &quot;read&quot;, ],
+              aes(x = num_cells, y = r_mean, color = as.factor(depth))) +
+  geom_line() +
+  geom_errorbar(aes(ymin = r_mean - r_sem, ymax = r_mean + r_sem), width = 1) +
+  facet_grid(quantiles~ind) +
+  labs(x = &quot;Number of subsampled cells&quot;,
+       y = &quot;Pearson&#39;s r&quot;,
+       color = &quot;Depth&quot;,
+       title = &quot;Subsample: Correlation of variance estimates of reads by expression level&quot;)
+p_r_q_read</code></pre>
+<p><img src="figure/subsample-variance.Rmd/subsample-variance-r-quantiles-reads-1.png" title="" alt="" width="960" style="display: block; margin: auto;" /></p>
+</div>
+</div>
 <div id="root-mean-square-error" class="section level2">
 <h2>Root-mean-square error</h2>
+<div id="full-data-2" class="section level3">
+<h3>Full data</h3>
 <pre class="r"><code>p_rmse &lt;- ggplot(var_data_plot, aes(x = num_cells, y = rmse_mean, color = as.factor(depth))) +
   geom_line() +
   geom_errorbar(aes(ymin = rmse_mean - rmse_sem, ymax = rmse_mean + rmse_sem), width = 1) +
@@ -221,6 +299,34 @@ p_r</code></pre>
 p_rmse</code></pre>
 <p><img src="figure/subsample-variance.Rmd/subsample-variance-rmse-1.png" title="" alt="" width="960" style="display: block; margin: auto;" /></p>
 </div>
+<div id="quantiles-2" class="section level3">
+<h3>Quantiles</h3>
+<p>First for the molecules:</p>
+<pre class="r"><code>p_rmse_q_mol &lt;- ggplot(var_data_plot_q[var_data_plot_q$type == &quot;molecule&quot;, ],
+                       aes(x = num_cells, y = rmse_mean, color = as.factor(depth))) +
+  geom_line() +
+  geom_errorbar(aes(ymin = rmse_mean - rmse_sem, ymax = rmse_mean + rmse_sem), width = 1) +
+  facet_grid(quantiles~ind) +
+  labs(x = &quot;Number of subsampled cells&quot;,
+       y = &quot;Root-mean-square error&quot;,
+       color = &quot;Depth&quot;,
+       title = &quot;Subsample: RMSE of variance estimates of molecules by expression level&quot;)
+p_rmse_q_mol</code></pre>
+<p><img src="figure/subsample-variance.Rmd/subsample-variance-rmse-molecules-1.png" title="" alt="" width="960" style="display: block; margin: auto;" /></p>
+<p>Second for the reads:</p>
+<pre class="r"><code>p_rmse_q_read &lt;- ggplot(var_data_plot_q[var_data_plot_q$type == &quot;read&quot;, ],
+                       aes(x = num_cells, y = rmse_mean, color = as.factor(depth))) +
+  geom_line() +
+  geom_errorbar(aes(ymin = rmse_mean - rmse_sem, ymax = rmse_mean + rmse_sem), width = 1) +
+  facet_grid(quantiles~ind) +
+  labs(x = &quot;Number of subsampled cells&quot;,
+       y = &quot;Root-mean-square error&quot;,
+       color = &quot;Depth&quot;,
+       title = &quot;Subsample: RMSE of variance estimates of reads by expression level&quot;)
+p_rmse_q_read</code></pre>
+<p><img src="figure/subsample-variance.Rmd/subsample-variance-rmse-reads-1.png" title="" alt="" width="960" style="display: block; margin: auto;" /></p>
+</div>
+</div>
 <div id="effect-of-read-depth-on-total-number-of-cells" class="section level2">
 <h2>Effect of read depth on total number of cells</h2>
 <p>One thing to keep in mind is that the total number of cells used to calculate the “true” variance varies by sequencing depth.</p>
@@ -231,7 +337,17 @@ p_rmse</code></pre>
        y = &quot;Total number of cells&quot;,
        title = &quot;Effect of read depth on total number of cells&quot;)</code></pre>
 <p><img src="figure/subsample-variance.Rmd/total-cells-by-depth-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="effect-of-read-depth-on-total-number-of-genes" class="section level2">
+<h2>Effect of read depth on total number of genes</h2>
 <p>Also need to keep in mind that the <a href="detect-genes.html">number of genes included changes due to sequencing depth and number of cells subsampled</a>.</p>
+<pre class="r"><code>ggplot(var_data_plot, aes(x = depth, y = num_genes)) +
+  geom_point() +
+  facet_grid(type~ind) +
+  labs(x = &quot;Sequencing depth&quot;,
+       y = &quot;Total number of genes&quot;,
+       title = &quot;Effect of read depth on total number of genes&quot;)</code></pre>
+<p><img src="figure/subsample-variance.Rmd/num-genes-by-depth-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
 <div id="session-information" class="section level2">
 <h2>Session information</h2>
