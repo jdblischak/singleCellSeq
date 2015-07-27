@@ -93,7 +93,7 @@ molecules_single <- molecules_single[!(rownames(molecules_single) %in% overexpre
 
 ## Calculate the molecule counts of each ERCC in single cell
 
-Accorindg to Pollen et al.[Pollen2014], there are total 28,000 ERCC molecule per cell when the ERCC stock is used in 1:20,000 dilution. In our study, I used 1:50,000 dilution. Therefore, we have total 28000/2.5= 11200 ERCC molecule per cell.
+Accorindg to [Pollen et al.][Pollen2014], there are total 28,000 ERCC molecule per cell when the ERCC stock is used in 1:20,000 dilution. In our study, I used 1:50,000 dilution. Therefore, we have total 28000/2.5= 11200 ERCC molecule per cell.
 
 [Pollen2014]: http://www.ncbi.nlm.nih.gov/pmc/articles/PMC4191988/
 
@@ -164,6 +164,90 @@ molecules_single_cpm <- cpm(molecules_single_collision, log = TRUE)
 
 correlate_ercc(rowMeans(molecules_single_cpm[ercc_rows_molecules_single, ]), log2(ercc_molecules_single$counts),
                description = "single cell log2 molecules per million")
+```
+
+## Capture efficiency
+
+Invitrogen provides the concentration of each ERCC spike-in in attomoles per uL.
+
+```{r ercc-conc-mix1}
+summary(ercc$conc_mix1)
+```
+
+PoYuan diluted mix 1 1:2500.
+Then she combined 1 uL of this 1:2500 diluted mix with 19 uL of other stuff to create 20 uL of lysis buffer.
+She added 9 uL of lysis buffer to the C1 chip.
+Each well received 13.5 uL of lysis buffer.
+
+How many molecules do we expect each sample to contain?
+
+```{r calculate-expected-molecules}
+# Dilute 1:2500
+ercc_conc_diluted <- ercc$conc_mix1 / 2500
+# Dilute 1:20
+ercc_conc_lysis <- ercc_conc_diluted / 20
+ercc_molecules_lysis <- ercc_conc_lysis *
+                        20 * # Number of uL of lysis buffer
+                        1/10^18 * # Number of attomoles in a mole
+                        6.02214179e23 # Number of molecules in a mole
+# 9 uL added to chip
+ercc_molecules_chip <- ercc_molecules_lysis * 9 / 20
+summary(ercc_molecules_chip)
+# 13.5 uL per well
+ercc_molecules_well <- ercc_molecules_lysis * 13.5e-3 / 20
+summary(ercc_molecules_well)
+sum(ercc_molecules_well)
+sum(ercc_molecules_well >= 1)
+sum(ercc_molecules_well > 1024)
+sum(ercc_molecules_well %% 2 == 0)
+```
+
+[Pollen et al.][Pollen2014] calculated that they had 28,000 molecules per sample.
+Thus our estimate of `r sprintf("%.1f", sum(ercc_molecules_well))` seems reasonable, especially since we diluted our samples more.
+
+```{r ercc-index}
+ercc_index <- grep("ERCC", rownames(molecules_single))
+length(ercc_index)
+```
+
+`r length(ercc_index)` of the ERCC spike-ins had at least one molecule observed in at least one of the `r ncol(molecules_single)` single cells.
+
+The "capture efficiency" is defined differently across studies.
+Some use it to report the number of wells that had exactly one viable cell out of the possible 96 on a C1 chip.
+Others use it to report how many of the added ERCC spike-in molecules were successfully sequenced.
+We are using the latter definition.
+Thus after calculating the total number of expected ERCC molecules, I simply add up all the ERCC molecules observed for a given single cell and divide it by this total.
+
+```{r capture-efficiency}
+efficiency <- numeric(length = length(ercc_index))
+total_ercc_molecules <- sum(ercc_molecules_well)
+for (i in 1:ncol(molecules_single)) {
+  efficiency[i] <- sum(molecules_single[ercc_index, i]) / total_ercc_molecules
+}
+summary(efficiency)
+```
+
+[Islam et al.][Islam2014] calculated efficiency using only those ERCC with molecule counts in the range of 1-504 (see Figure S6A).
+I am assuming this filtering was done at the level of _expected_ molecule counts, since this would be consistent from cell to cell.
+
+[Islam2014]: http://www.nature.com/nmeth/journal/v11/n2/full/nmeth.2772.html
+
+```{r errc-index-islam}
+ercc_islam <- ercc$id[ercc_molecules_well >= 1 & ercc_molecules_well <= 504]
+ercc_molecules_well_islam <- ercc_molecules_well[ercc$id %in% ercc_islam]
+ercc_index_islam <- which(rownames(molecules_single) %in% ercc_islam)
+```
+
+`r length(ercc_islam)` ERCC spike-ins are expected to have molecule counts in the range of 1-504.
+Of these, `r length(ercc_index_islam)` were observed to have at least one molecule in at least one of the cells.
+
+```{r capture-efficiency-islam}
+efficiency_islam <- numeric(length = length(ercc_index_islam))
+total_ercc_molecules_islam <- sum(ercc_molecules_well_islam)
+for (i in 1:ncol(molecules_single)) {
+  efficiency_islam[i] <- sum(molecules_single[ercc_index_islam, i]) / total_ercc_molecules_islam
+}
+summary(efficiency_islam)
 ```
 
 ## Session information
