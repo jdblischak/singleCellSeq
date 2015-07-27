@@ -3,7 +3,7 @@
 "Compare the variance estimates of subsamples to all cells.
 
 Usage:
-subsample-variance.R [options] <num_cells> <seed> <exp>
+subsample-variance.R [options] [--quantiles=<q>...] <num_cells> <seed> <exp>
 
 Options:
   -h --help              Show this screen.
@@ -11,6 +11,8 @@ Options:
   --min_count=<x>        The minimum count required for inclusion [default: 1]
   --min_cells=<x>        The minimum number of cells required for inclusion [default: 1]
   --good_cells=<file>    A 1-column file with the names of good quality cells to maintain
+  -q --quantiles=<q>     Calculate the correlation for the genes separated by the provided
+                         quantiles, e.g. -q .25 -q .75
 
 Arguments:
   num_cells     number of single cells to subsample
@@ -21,7 +23,7 @@ suppressMessages(library("docopt"))
 library("testit")
 
 main <- function(num_cells, seed, exp_fname, individual = NULL, min_count = 1,
-                 min_cells = 1, good_cells = NULL) {
+                 min_cells = 1, good_cells = NULL, quantiles = NULL) {
   # Load expression data
   exp_dat <- read.table(exp_fname, header = TRUE, sep = "\t",
                         stringsAsFactors = FALSE)
@@ -58,7 +60,7 @@ main <- function(num_cells, seed, exp_fname, individual = NULL, min_count = 1,
 
   # Subsample number of single cells
   if (total_cells < num_cells) {
-    cat(sprintf("%d\t%d\t%d\tNA\tNA\n", num_cells, seed, total_cells))
+    cat(sprintf("%d\t%d\t%d\tNA\tNA\tNA\tNA\n", num_cells, seed, total_cells))
     return(invisible())
   }
   set.seed(seed)
@@ -75,14 +77,32 @@ main <- function(num_cells, seed, exp_fname, individual = NULL, min_count = 1,
   var_sub <- apply(exp_dat[, sub_indices, drop = FALSE], 1, var)
   var_sub <- log(var_sub + 0.25)
 
-  # Calculate Pearson correlation coefficient
-  r <- cor(var_full, var_sub)
-
-  # Calculate root-mean-square error (RMSE)
-  rmse <- calc_rmse(var_full, var_sub)
-
-  # Output
-  cat(sprintf("%d\t%d\t%d\t%.2f\t%.2f\n", num_cells, seed, total_cells, r, rmse))
+  # Calculate expression in order to separate by quantiles
+  mean_expression <-rowMeans(exp_dat)
+  quantiles <- c(quantiles, 1)
+  quantiles <- sort(quantiles)
+  q_cutoffs <- quantile(mean_expression, probs = quantiles)
+  q_r <- numeric(length = length(quantiles))
+  q_rmse <- numeric(length = length(quantiles))
+  q_n <- numeric(length = length(quantiles))
+  for (i in 1:length(quantiles)) {
+    gene_in_quantile <- mean_expression <= q_cutoffs[i]
+    # Number of genes in each quantile
+    q_n[i] <- sum(gene_in_quantile)
+    # Calculate Pearson correlation coefficient
+    q_r[i] <- cor(var_full[gene_in_quantile],
+                  var_sub[gene_in_quantile])
+    # Calculate root-mean-square error (RMSE)
+    q_rmse[i] <- calc_rmse(var_full[gene_in_quantile],
+                           var_sub[gene_in_quantile])
+    # Output
+    cat(sprintf("%d\t%d\t%d\t%.2f\t%.2f\t%.2f\t%d\n", num_cells, seed,
+                total_cells, q_r[i], q_rmse[i], quantiles[i], q_n[i]))
+    # Remove genes already analyzed
+    var_full <- var_full[!gene_in_quantile]
+    var_sub <- var_sub[!gene_in_quantile]
+    mean_expression <- mean_expression[!gene_in_quantile]
+  }
 }
 
 detect_expression <- function(x, min_count, min_cells) {
@@ -124,7 +144,8 @@ if (!interactive() & getOption('run.main', default = TRUE)) {
        min_count = as.numeric(opts$min_count),
        min_cells = as.numeric(opts$min_cells),
        individual = opts$individual,
-       good_cells = opts$good_cells)
+       good_cells = opts$good_cells,
+       quantiles = as.numeric(opts$quantiles))
 } else if (interactive() & getOption('run.main', default = TRUE)) {
   # what to do if interactively testing
   main(num_cells = 20,
@@ -133,5 +154,6 @@ if (!interactive() & getOption('run.main', default = TRUE)) {
        individual = "19098",
        min_count = 10,
        min_cells = 5,
-       good_cells = "../data/quality-single-cells.txt")
+       good_cells = "../data/quality-single-cells.txt"#, quantiles = c(.25, .5, .75)
+       )
 }
