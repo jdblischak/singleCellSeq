@@ -11,6 +11,8 @@ date: 2015-07-07
 ```{r chunk-options, include=FALSE}
 source("chunk-options.R")
 library("edgeR")
+library("ggplot2")
+theme_set(theme_bw(base_size = 14))
 ```
 
 
@@ -249,6 +251,43 @@ for (i in 1:ncol(molecules_single)) {
 }
 summary(efficiency_islam)
 ```
+
+Creating a visualization similar to [Figure 2I][Islam2014Fig2] in [Islam et al.][Islam2014].
+
+[Islam2014Fig2]: http://www.nature.com/nmeth/journal/v11/n2/fig_tab/nmeth.2772_F2.html
+
+```{r create-ercc-plot-data}
+ercc_list <- list()
+for (spike in ercc$id) {
+  if (spike %in% rownames(molecules_single)) {
+    ercc_list$id <- c(ercc_list$id, spike)
+    ercc_list$observed_mean <- c(ercc_list$observed_mean,
+                                 mean(as.numeric(molecules_single[spike, ])))
+    ercc_list$observed_sem <- c(ercc_list$observed_sem,
+                                 sd(as.numeric(molecules_single[spike, ])) /
+                                 sqrt(ncol(molecules_single)))
+    ercc_list$expected <- c(ercc_list$expected,
+                            ercc_molecules_well[ercc$id == spike])
+  }
+}
+ercc_plot <- as.data.frame(ercc_list, stringsAsFactors = FALSE)
+str(ercc_plot)
+```
+
+```{r ercc-capture-efficiency, fig.width=8, fig.height=8}
+p_efficiency <- ggplot(ercc_plot, aes(x = expected, y = observed_mean)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = observed_mean - observed_sem,
+                    ymax = observed_mean + observed_sem), width = 50) +
+  labs(x = "Expected ERCC molecules",
+       y = "Observed ERCC molecules\n(mean +/- sem)",
+       title = "ERCC capture efficiency")
+p_efficiency
+```
+
+Here is their result:
+
+![Islam et al. Figure 2](http://www.nature.com/nmeth/journal/v11/n2/images/nmeth.2772-F2.jpg)
 
 ## Session information
 
