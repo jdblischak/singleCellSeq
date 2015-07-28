@@ -139,8 +139,8 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-07-27</p>
-<p><strong>Code version:</strong> 07ed76a5f8f8bbe62a779ba8ca9585699887eced</p>
+<p><strong>Last updated:</strong> 2015-07-28</p>
+<p><strong>Code version:</strong> 2eafa0eddb889fe12fca5b6ce2dea8b7f2070e66</p>
 <div id="input" class="section level2">
 <h2>Input</h2>
 <p>Input annotation.</p>
@@ -355,6 +355,38 @@ for (i in 1:ncol(molecules_single)) {
 summary(efficiency_islam)</code></pre>
 <pre><code>   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
 0.04556 0.07720 0.09049 0.09539 0.11140 0.19050 </code></pre>
+<p>Creating a visualization similar to <a href="http://www.nature.com/nmeth/journal/v11/n2/fig_tab/nmeth.2772_F2.html">Figure 2I</a> in <a href="http://www.nature.com/nmeth/journal/v11/n2/full/nmeth.2772.html">Islam et al.</a>.</p>
+<pre class="r"><code>ercc_list &lt;- list()
+for (spike in ercc$id) {
+  if (spike %in% rownames(molecules_single)) {
+    ercc_list$id &lt;- c(ercc_list$id, spike)
+    ercc_list$observed_mean &lt;- c(ercc_list$observed_mean,
+                                 mean(as.numeric(molecules_single[spike, ])))
+    ercc_list$observed_sem &lt;- c(ercc_list$observed_sem,
+                                 sd(as.numeric(molecules_single[spike, ])) /
+                                 sqrt(ncol(molecules_single)))
+    ercc_list$expected &lt;- c(ercc_list$expected,
+                            ercc_molecules_well[ercc$id == spike])
+  }
+}
+ercc_plot &lt;- as.data.frame(ercc_list, stringsAsFactors = FALSE)
+str(ercc_plot)</code></pre>
+<pre><code>&#39;data.frame&#39;:   81 obs. of  4 variables:
+ $ id           : chr  &quot;ERCC-00002&quot; &quot;ERCC-00003&quot; &quot;ERCC-00004&quot; &quot;ERCC-00009&quot; ...
+ $ observed_mean: num  223.9076 20.8988 76.9396 11.5151 0.0124 ...
+ $ observed_sem : num  2.52239 0.34752 0.90664 0.21506 0.00531 ...
+ $ expected     : num  2.44e+03 1.52e+02 1.22e+03 1.52e+02 1.86e-02 ...</code></pre>
+<pre class="r"><code>p_efficiency &lt;- ggplot(ercc_plot, aes(x = expected, y = observed_mean)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = observed_mean - observed_sem,
+                    ymax = observed_mean + observed_sem), width = 50) +
+  labs(x = &quot;Expected ERCC molecules&quot;,
+       y = &quot;Observed ERCC molecules\n(mean +/- sem)&quot;,
+       title = &quot;ERCC capture efficiency&quot;)
+p_efficiency</code></pre>
+<p><img src="figure/ercc-counts.Rmd/ercc-capture-efficiency-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p>Here is their result:</p>
+<p><img src="http://www.nature.com/nmeth/journal/v11/n2/images/nmeth.2772-F2.jpg" alt="Islam et al. Figure 2" /></p>
 </div>
 <div id="session-information" class="section level2">
 <h2>Session information</h2>
@@ -374,12 +406,15 @@ attached base packages:
 [1] stats     graphics  grDevices utils     datasets  methods   base     
 
 other attached packages:
-[1] edgeR_3.10.2 limma_3.24.9 knitr_1.10.5
+[1] ggplot2_1.0.1 edgeR_3.10.2  limma_3.24.9  knitr_1.10.5 
 
 loaded via a namespace (and not attached):
- [1] magrittr_1.5    formatR_1.2     tools_3.2.0     htmltools_0.2.6
- [5] yaml_2.1.13     stringi_0.4-1   rmarkdown_0.6.1 stringr_1.0.0  
- [9] digest_0.6.8    evaluate_0.7   </code></pre>
+ [1] Rcpp_0.11.6      digest_0.6.8     MASS_7.3-40      grid_3.2.0      
+ [5] plyr_1.8.2       gtable_0.1.2     formatR_1.2      magrittr_1.5    
+ [9] scales_0.2.4     evaluate_0.7     stringi_0.4-1    reshape2_1.4.1  
+[13] rmarkdown_0.6.1  labeling_0.3     proto_0.3-10     tools_3.2.0     
+[17] stringr_1.0.0    munsell_0.4.2    yaml_2.1.13      colorspace_1.2-6
+[21] htmltools_0.2.6 </code></pre>
 </div>
 
 
