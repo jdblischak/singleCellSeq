@@ -1,0 +1,266 @@
+---
+title: "Capture efficiency"
+date: 2015-08-10
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+library("edgeR")
+library("ggplot2")
+theme_set(theme_bw(base_size = 14))
+```
+
+Here capture efficiency is defined as the fraction of the added ERCC spike-in molecules that were sequenced.
+
+## Input
+
+Input annotation.
+
+```{r input-annotation}
+anno <- read.table("../data/annotation.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno)
+```
+
+Input ERCC concentration information.
+
+```{r input-ercc}
+ercc <- read.table("../data/ercc-info.txt", header = TRUE, sep = "\t",
+                   stringsAsFactors = FALSE)
+colnames(ercc) <- c("num", "id", "subgroup", "conc_mix1", "conc_mix2",
+                    "expected_fc", "log2_mix1_mix2")
+head(ercc)
+stopifnot(nrow(ercc) == 92)
+```
+
+Input molecule counts.
+
+```{r input-molecule-counts}
+molecules <- read.table("../data/molecules.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+```
+
+Input list of quality single cells.
+
+```{r input-quality-single-cells}
+quality_single_cells <- scan("../data/quality-single-cells.txt",
+                             what = "character")
+```
+
+Input quality control data.
+
+```{r qc-data}
+qc <- read.table("../data/qc-ipsc.txt", header = TRUE, stringsAsFactors = FALSE)
+stopifnot(nrow(qc) == sum(anno$well != "bulk"))
+```
+
+## Prepare single cell molecule data
+
+Remove bulk samples.
+
+```{r remove-bulk}
+molecules_single <- molecules[, anno$well != "bulk"]
+anno_single <- anno[anno$well != "bulk", ]
+```
+
+Remove genes with zero read counts in the single cells.
+
+```{r remove-non-expressed-genes}
+expressed_single <- rowSums(molecules_single) > 0
+molecules_single <- molecules_single[expressed_single, ]
+dim(molecules_single)
+```
+
+How many genes have greater than or equal to 1,024 molecules in at least one of the cells?
+
+```{r over-expressed}
+overexpressed_genes <- rownames(molecules_single)[apply(molecules_single, 1,
+                                                        function(x) any(x >= 1024))]
+```
+
+`r length(overexpressed_genes)` have greater than or equal to 1,024 molecules.
+
+## Calculate number of ERCC molecules added to each well
+
+Invitrogen provides the concentration of each ERCC spike-in in attomoles per uL.
+
+```{r ercc-conc-mix1}
+summary(ercc$conc_mix1)
+```
+
+PoYuan diluted mix 1 1:2500.
+Then she combined 1 uL of this 1:2500 diluted mix with 19 uL of other stuff to create 20 uL of lysis buffer.
+She added 9 uL of lysis buffer to the C1 chip.
+Each well received 13.5 uL of lysis buffer.
+
+How many molecules do we expect each sample to contain?
+
+```{r calculate-expected-molecules}
+# Dilute 1:2500
+ercc_conc_diluted <- ercc$conc_mix1 / 2500
+# Dilute 1:20
+ercc_conc_lysis <- ercc_conc_diluted / 20
+ercc_molecules_lysis <- ercc_conc_lysis *
+                        20 * # Number of uL of lysis buffer
+                        1/10^18 * # Number of attomoles in a mole
+                        6.02214179e23 # Number of molecules in a mole
+# 9 uL added to chip
+ercc_molecules_chip <- ercc_molecules_lysis * 9 / 20
+summary(ercc_molecules_chip)
+# 13.5 uL per well
+ercc_molecules_well <- ercc_molecules_lysis * 13.5e-3 / 20
+summary(ercc_molecules_well)
+sum(ercc_molecules_well)
+sum(ercc_molecules_well >= 1)
+sum(ercc_molecules_well > 1024)
+sum(ercc_molecules_well %% 2 == 0)
+```
+
+[Pollen et al.][Pollen2014] calculated that they had 28,000 molecules per sample.
+Thus our estimate of `r sprintf("%.1f", sum(ercc_molecules_well))` seems reasonable, especially since we diluted our samples more.
+
+[Pollen2014]: http://www.ncbi.nlm.nih.gov/pmc/articles/PMC4191988/
+
+```{r ercc-index}
+ercc_index <- grep("ERCC", rownames(molecules_single))
+length(ercc_index)
+```
+
+`r length(ercc_index)` of the ERCC spike-ins had at least one molecule observed in at least one of the `r ncol(molecules_single)` single cells.
+
+## Capture efficiency
+
+The "capture efficiency" is defined differently across studies.
+Some use it to report the number of wells that had exactly one viable cell out of the possible 96 on a C1 chip.
+Others use it to report how many of the added ERCC spike-in molecules were successfully sequenced.
+We are using the latter definition.
+Thus after calculating the total number of expected ERCC molecules, I simply add up all the ERCC molecules observed for a given single cell and divide it by this total.
+
+```{r capture-efficiency}
+efficiency <- numeric(length = ncol(molecules_single))
+total_ercc_molecules <- sum(ercc_molecules_well)
+for (i in 1:ncol(molecules_single)) {
+  efficiency[i] <- sum(molecules_single[ercc_index, i]) / total_ercc_molecules
+}
+summary(efficiency)
+```
+
+## Factors affecting capture efficiency
+
+```{r combine-qc-efficiency}
+qc$efficiency <- efficiency
+qc$quality <- anno_single$sample_id %in% quality_single_cells
+```
+
+Single cells from batch 2 of individual 19098 ahve the highest efficiency.
+This was expected since they have an [abnormally high ERCC ratio](qc-cell-ipsc.html#total-mapped-reads-unmapped-ratios-and-ercc-ratios).
+
+```{r efficiency-19098-2-outlier}
+efficiency_box <- ggplot(qc, aes(y = efficiency, x = as.factor(individual), fill = as.factor(batch))) +
+  geom_boxplot()
+efficiency_box
+```
+
+Removing batch 2 of individual 19098.
+
+```{r qc-remove-19098-batch-2-single}
+qc_sub <- qc[!(anno_single$individual == 19098 & anno_single$batch == 2), ]
+```
+
+```{r efficiency-wo-19098-2-outlier}
+efficiency_box %+% qc_sub
+```
+
+There doesn't seem to be a relationship between Bioanalyzer concentration and capture efficiency.
+
+```{r efficiency-concentration}
+efficiency_conc <- ggplot(qc_sub, aes(x = concentration, y = efficiency)) +
+  geom_point() +
+  facet_grid(batch ~ individual) +
+  geom_smooth()
+efficiency_conc
+```
+
+And this does change when limiting to high quality cells.
+
+```{r efficiency-concentration-quality}
+efficiency_conc %+% qc_sub[qc_sub$quality, ]
+```
+
+The capture efficiency decreases with increasing cell number.
+This is expected because the more RNA that is present in a well, the ERCC spike-ins are a lower percentage of the total.
+However, this effect is not striking.
+
+```{r efficiency-cell-number}
+efficiency_cells <- ggplot(qc_sub, aes(x = cell_number, y = efficiency)) +
+  geom_point() +
+  geom_smooth(method = "lm")
+efficiency_cells
+```
+
+## Visualizing capture efficiency
+
+Creating a visualization similar to [Figure 2I][Islam2014Fig2] in [Islam et al.][Islam2014].
+
+[Islam2014]: http://www.nature.com/nmeth/journal/v11/n2/full/nmeth.2772.html
+[Islam2014Fig2]: http://www.nature.com/nmeth/journal/v11/n2/fig_tab/nmeth.2772_F2.html
+
+First filter to only keep quality single cells.
+
+```{r qc-filter}
+molecules_single <- molecules_single[, colnames(molecules_single) %in% quality_single_cells]
+anno_single <- anno_single[anno_single$sample_id %in% quality_single_cells, ]
+stopifnot(ncol(molecules_single) == nrow(anno_single),
+          colnames(molecules_single) == anno_single$sample_id)
+```
+
+Also remove batch 2 of individual 19098.
+
+```{r remove-19098-batch-2-single, eval=FALSE}
+molecules_single <- molecules_single[, !(anno_single$individual == 19098 & anno_single$batch == 2)]
+anno_single <- anno_single[!(anno_single$individual == 19098 & anno_single$batch == 2), ]
+stopifnot(ncol(molecules_single) == nrow(anno_single))
+```
+
+```{r create-ercc-plot-data}
+ercc_list <- list()
+for (spike in ercc$id) {
+  if (spike %in% rownames(molecules_single)) {
+    ercc_list$id <- c(ercc_list$id, spike)
+    ercc_list$observed_mean <- c(ercc_list$observed_mean,
+                                 mean(as.numeric(molecules_single[spike, ])))
+    ercc_list$observed_sem <- c(ercc_list$observed_sem,
+                                 sd(as.numeric(molecules_single[spike, ])) /
+                                 sqrt(ncol(molecules_single)))
+    ercc_list$expected <- c(ercc_list$expected,
+                            ercc_molecules_well[ercc$id == spike])
+  }
+}
+ercc_plot <- as.data.frame(ercc_list, stringsAsFactors = FALSE)
+str(ercc_plot)
+```
+
+```{r ercc-capture-efficiency, fig.width=8, fig.height=8}
+p_efficiency <- ggplot(ercc_plot, aes(x = expected, y = observed_mean)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = observed_mean - observed_sem,
+                    ymax = observed_mean + observed_sem), width = 50) +
+  labs(x = "Expected ERCC molecules",
+       y = "Observed ERCC molecules\n(mean +/- sem)",
+       title = "ERCC capture efficiency")
+p_efficiency
+```
+
+Here is their result:
+
+![Islam et al. Figure 2](http://www.nature.com/nmeth/journal/v11/n2/images/nmeth.2772-F2.jpg)
+
+## Session information
+
+```{r info}
+sessionInfo()
+```
