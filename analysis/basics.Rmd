@@ -179,8 +179,38 @@ ggplot(phi, aes(x = total_count, y = Phi)) +
 
 ## Capture efficiency
 
+S is supposed to measure the capture efficiency.
+
 ```{r s-capture-efficiency}
 plot(mcmc_summary, Param = "s")
+```
+
+```{r capture-efficiency}
+efficiency <- numeric(length = ncol(counts(filter_data)))
+total_ercc_molecules <- sum(spike$ercc_molecules_well)
+for (i in 1:ncol(counts(filter_data))) {
+  efficiency[i] <- sum(counts(filter_data, type = "technical")[, i]) /
+                   total_ercc_molecules
+}
+summary(efficiency)
+```
+
+```{r extract-s}
+s <- displaySummaryBASiCS(mcmc_summary, Param = "s")
+s <- cbind(s, anno_single)
+s$efficiency <- efficiency
+```
+
+This does not appear to be estimated very well.
+It may need more iterations, but it already takes ~5 hours to run the 4000 iterations.
+
+```{r s-capture-efficiency}
+ggplot(s, aes(x = efficiency, y = S)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = lower, ymax = upper), alpha = 0.5) +
+  geom_smooth() +
+  labs(x = "ERCC capture efficiency",
+       title = "S poorly models differences in capture efficiency")
 ```
 
 ## Denoised data
