@@ -127,13 +127,14 @@ img {
 <div id="TOC">
 <ul>
 <li><a href="#input">Input</a></li>
-<li><a href="#expressions-of-pluripotency-genes">Expressions of pluripotency genes</a></li>
+<li><a href="#expressions-of-pluripotency-genes-in-ipscs">Expressions of pluripotency genes in iPSCs</a></li>
+<li><a href="#use-lcls-as-a-negative-control">Use LCLs as a negative control</a></li>
 <li><a href="#session-information">Session information</a></li>
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-07-13</p>
-<p><strong>Code version:</strong> a4d865fb33bba771e8c3bdcd182882556aedab55</p>
+<p><strong>Last updated:</strong> 2015-08-11</p>
+<p><strong>Code version:</strong> 71b0941a1ada8745544596478a1a97761f5a4b2a</p>
 <p>Current model of reprogramming suggests that pluripotency occurs in two-phases: a prolonged stochastic phase followed by a rapid deterministic phase. <a href="http://journals.plos.org/plosone/article?id=10.1371/journal.pone.0095304">Chung2014</a> Our iPSCs were reprogrammed and cultured in mane different batches. In addition, some lines have been through different culture mediums. In order to make sure that the variance we observed at the single cell level is not cause by different levels of plupotency, we need to more rigorously estimate the cells status than just carrying out pluritest from the bulk.</p>
 <div id="input" class="section level2">
 <h2>Input</h2>
@@ -141,7 +142,8 @@ img {
 library(&quot;ggplot2&quot;)
 theme_set(theme_bw(base_size = 16))
 library(&quot;edgeR&quot;)
-library(&quot;gplots&quot;)</code></pre>
+library(&quot;gplots&quot;)
+library(&quot;RColorBrewer&quot;)</code></pre>
 <p>Input annotation.</p>
 <pre class="r"><code>anno &lt;- read.table(&quot;../data/annotation.txt&quot;, header = TRUE,
                    stringsAsFactors = FALSE)
@@ -200,18 +202,88 @@ reads_single &lt;- reads[, anno$well != &quot;bulk&quot;]</code></pre>
 reads_bulk_cpm &lt;- cpm(reads_bulk, log = TRUE,
                           lib.size = colSums(reads_bulk) * norm_factors_bulk)</code></pre>
 </div>
-<div id="expressions-of-pluripotency-genes" class="section level2">
-<h2>Expressions of pluripotency genes</h2>
+<div id="expressions-of-pluripotency-genes-in-ipscs" class="section level2">
+<h2>Expressions of pluripotency genes in iPSCs</h2>
 <p>Input pluripotency genes. A list of 27 pluripotency genes used to demonstrate iPSC heterogeneity in <a href="http://www.jci.org/articles/view/44635">Narshinh2011</a> Gene ID conversion was done by using the DAVID <a href="http://david.abcc.ncifcrf.gov" class="uri">http://david.abcc.ncifcrf.gov</a></p>
 <pre class="r"><code>pluripotency_genes &lt;- read.table(&quot;../data/pluripotency-genes.txt&quot;, header = TRUE, sep=&quot;\t&quot;)</code></pre>
 <p>Expression of plurypotency genes in iPSCs</p>
-<pre class="r"><code>molecules_single_pluripotency &lt;- molecules_single_cpm[pluripotency_genes[,2],]
-reads_bulk_pluripotency &lt;- reads_bulk_cpm[pluripotency_genes[,2],]
+<pre class="r"><code>molecules_single_pluripotency &lt;- molecules_single_cpm[rownames(molecules_single_cpm) %in% pluripotency_genes[,2],]
 
-heatmap.2(molecules_single_pluripotency, trace=&quot;none&quot;, cexRow=1,cexCol=1,margins=c(8,8),xlab=&quot;single cells&quot;, ylab= &quot;pluripotency gene&quot;)</code></pre>
+reads_bulk_pluripotency &lt;- reads_bulk_cpm[rownames(reads_bulk_cpm) %in% pluripotency_genes[,2],]
+
+### heatmap 
+individual &lt;- colnames(molecules_single_pluripotency)
+color &lt;- rep(&quot;yellow&quot;,dim(molecules_single_pluripotency)[2])
+color[grep(&quot;19098&quot;, individual)] &lt;- &quot;red&quot;
+color[grep(&quot;19239&quot;, individual)] &lt;- &quot;blue&quot;
+
+heatmap.2(molecules_single_pluripotency, trace=&quot;none&quot;, cexRow=1, cexCol=1, margins=c(8,8), xlab=&quot;single cells&quot;, ColSideColors=color)</code></pre>
 <p><img src="figure/stemness.Rmd/expressed-pluripotency-gene-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>heatmap.2(reads_bulk_pluripotency, trace=&quot;none&quot;, cexRow=1,cexCol=1,margins=c(8,8),xlab=&quot;bulk&quot;, ylab= &quot;pluripotency gene&quot;)</code></pre>
+<pre class="r"><code>colorbulk &lt;- rep(c(&quot;red&quot;,&quot;yellow&quot;,&quot;blue&quot;),each=3)
+heatmap.2(reads_bulk_pluripotency, trace=&quot;none&quot;, cexRow=1, cexCol=1, margins=c(8,8),xlab=&quot;bulk&quot;, ColSideColors=colorbulk)</code></pre>
 <p><img src="figure/stemness.Rmd/expressed-pluripotency-gene-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>pca_single_cells &lt;- prcomp(t(molecules_single_pluripotency), retx = TRUE, scale. = TRUE, center = TRUE)
+
+plot(pca_single_cells)</code></pre>
+<p><img src="figure/stemness.Rmd/expressed-pluripotency-gene-pca-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="use-lcls-as-a-negative-control" class="section level2">
+<h2>Use LCLs as a negative control</h2>
+<p>Input LCL annotation.</p>
+<pre class="r"><code>anno_lcl &lt;- read.table(&quot;../data/annotation-lcl.txt&quot;, header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno_lcl)</code></pre>
+<pre><code>  individual batch well     sample_id full_lane
+1      19239     1  A01 NA19239.1.A01     FALSE
+2      19239     1  A02 NA19239.1.A02     FALSE
+3      19239     1  A03 NA19239.1.A03     FALSE
+4      19239     1  A04 NA19239.1.A04     FALSE
+5      19239     1  A05 NA19239.1.A05     FALSE
+6      19239     1  A06 NA19239.1.A06     FALSE</code></pre>
+<p>Input LCL molecule counts.</p>
+<pre class="r"><code>molecules_lcl &lt;- read.table(&quot;../data/molecules-lcl.txt&quot;, header = TRUE,
+                    stringsAsFactors = FALSE)</code></pre>
+<p>Input LCL read counts.</p>
+<pre class="r"><code>reads_lcl &lt;- read.table(&quot;../data/reads-lcl.txt&quot;, header = TRUE,
+                    stringsAsFactors = FALSE)</code></pre>
+<p>Input list of quality single cells of LCL.</p>
+<pre class="r"><code>quality_single_cells_lcl &lt;- scan(&quot;../data/quality-single-cells-lcl.txt&quot;,
+                             what = &quot;character&quot;)</code></pre>
+<p>Keep only the single cells that passed the <a href="qc-cell-lcl.html">QC filters</a> and the bulk samples.</p>
+<pre class="r"><code>molecules_lcl &lt;- molecules_lcl[colnames(molecules_lcl) %in% quality_single_cells_lcl]
+anno_lcl &lt;- anno_lcl[anno_lcl$full_lane == &quot;FALSE&quot; &amp; anno_lcl$sample_id %in% quality_single_cells_lcl, ]
+stopifnot(ncol(molecules_lcl) == nrow(anno_lcl),
+          colnames(molecules_lcl) == anno_lcl$sample_id)
+molecules_single_lcl &lt;- molecules_lcl[, anno_lcl$full_lane == &quot;FALSE&quot;]</code></pre>
+<pre class="r"><code>molecules_single_lcl &lt;- molecules_single_lcl[apply(molecules_single_lcl,1,max) &lt; 1024,]
+molecules_single_collision_lcl &lt;- -1024 * log(1 - molecules_single_lcl / 1024)</code></pre>
+<p>Standardization</p>
+<pre class="r"><code>molecules_single_cpm_lcl &lt;- cpm(molecules_single_collision_lcl, log = TRUE)</code></pre>
+<p>Expression of plurypotency genes in LCL</p>
+<pre class="r"><code>molecules_single_pluripotency_lcl &lt;- molecules_single_cpm_lcl[rownames(molecules_single_cpm_lcl) %in% pluripotency_genes[,2],]
+
+heatmap.2(molecules_single_pluripotency_lcl, trace=&quot;none&quot;, cexRow=1, cexCol=1, margins=c(8,8),xlab=&quot;single cells&quot;, ylab= &quot;pluripotency gene&quot;)</code></pre>
+<p><img src="figure/stemness.Rmd/expressed-pluripotency-gene-lcl-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>### merge two cell types
+molecules_single_pluripotency_all &lt;- merge(molecules_single_pluripotency,molecules_single_pluripotency_lcl,by = &quot;row.names&quot;, all = TRUE)
+
+### save gene name
+gene_name &lt;- molecules_single_pluripotency_all[,&quot;Row.names&quot;]
+
+### remove the column and na for data.matrix
+molecules_single_pluripotency_all  &lt;- molecules_single_pluripotency_all[,!colnames(molecules_single_pluripotency_all) == &quot;Row.names&quot;]
+
+molecules_single_pluripotency_all[is.na(molecules_single_pluripotency_all)] &lt;- 0
+
+### data.matrix for heatmap and add gene name
+molecules_single_pluripotency_all &lt;- 
+data.matrix(molecules_single_pluripotency_all)
+
+rownames(molecules_single_pluripotency_all) &lt;- gene_name
+
+### heatmap
+heatmap.2(molecules_single_pluripotency_all, trace=&quot;none&quot;, cexRow=1, cexCol=1, margins=c(8,8),xlab=&quot;single cells&quot;, ylab= &quot;pluripotency gene&quot;)</code></pre>
+<p><img src="figure/stemness.Rmd/expressed-pluripotency-gene-all-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
 <div id="session-information" class="section level2">
 <h2>Session information</h2>
@@ -231,8 +303,9 @@ attached base packages:
 [1] stats     graphics  grDevices utils     datasets  methods   base     
 
 other attached packages:
-[1] gplots_2.17.0 edgeR_3.10.2  limma_3.24.9  ggplot2_1.0.1 dplyr_0.4.1  
-[6] knitr_1.10.5 
+[1] RColorBrewer_1.1-2 gplots_2.17.0      edgeR_3.10.2      
+[4] limma_3.24.9       ggplot2_1.0.1      dplyr_0.4.1       
+[7] knitr_1.10.5      
 
 loaded via a namespace (and not attached):
  [1] Rcpp_0.11.6        magrittr_1.5       MASS_7.3-40       
