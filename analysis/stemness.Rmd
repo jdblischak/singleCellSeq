@@ -120,7 +120,7 @@ reads_bulk_cpm <- cpm(reads_bulk, log = TRUE,
                           lib.size = colSums(reads_bulk) * norm_factors_bulk)
 ```
 
-## Expressions of pluripotency genes
+## Expressions of pluripotency genes in iPSCs
 
 Input pluripotency genes.
 A list of 27 pluripotency genes used to demonstrate iPSC heterogeneity in [Narshinh2011]
@@ -134,14 +134,99 @@ pluripotency_genes <- read.table("../data/pluripotency-genes.txt", header = TRUE
 
 Expression of plurypotency genes in iPSCs
 ```{r expressed-pluripotency-gene}
-molecules_single_pluripotency <- molecules_single_cpm[pluripotency_genes[,2],]
-reads_bulk_pluripotency <- reads_bulk_cpm[pluripotency_genes[,2],]
+molecules_single_pluripotency <- molecules_single_cpm[rownames(molecules_single_cpm) %in% pluripotency_genes[,2],]
 
-heatmap.2(molecules_single_pluripotency, trace="none", cexRow=1,cexCol=1,margins=c(8,8),xlab="single cells", ylab= "pluripotency gene")
+reads_bulk_pluripotency <- reads_bulk_cpm[rownames(reads_bulk_cpm) %in% pluripotency_genes[,2],]
 
-heatmap.2(reads_bulk_pluripotency, trace="none", cexRow=1,cexCol=1,margins=c(8,8),xlab="bulk", ylab= "pluripotency gene")
+heatmap.2(molecules_single_pluripotency, trace="none", cexRow=1, cexCol=1, margins=c(8,8), xlab="single cells", ylab= "pluripotency gene")
+
+heatmap.2(reads_bulk_pluripotency, trace="none", cexRow=1, cexCol=1, margins=c(8,8),xlab="bulk", ylab= "pluripotency gene")
 ```
 
+```{r expressed-pluripotency-gene-pca}
+pca_single_cells <- prcomp(t(molecules_single_pluripotency), retx = TRUE, scale. = TRUE, center = TRUE)
+```
+
+## Use LCLs as a negative control 
+Input LCL annotation.
+
+```{r input-annotation-lcl}
+anno_lcl <- read.table("../data/annotation-lcl.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno_lcl)
+```
+
+Input LCL molecule counts.
+
+```{r input-molecule-counts-lcl}
+molecules_lcl <- read.table("../data/molecules-lcl.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+```
+
+Input LCL read counts.
+
+```{r input-read-counts-lcl}
+reads_lcl <- read.table("../data/reads-lcl.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+```
+
+Input list of quality single cells of LCL.
+
+```{r input-quality-single-cells-lcl}
+quality_single_cells_lcl <- scan("../data/quality-single-cells-lcl.txt",
+                             what = "character")
+```
+
+Keep only the single cells that passed the [QC filters](qc-cell-lcl.html) and the bulk samples.
+
+```{r qc-filter-lcl}
+molecules_lcl <- molecules_lcl[colnames(molecules_lcl) %in% quality_single_cells_lcl]
+anno_lcl <- anno_lcl[anno_lcl$full_lane == "FALSE" & anno_lcl$sample_id %in% quality_single_cells_lcl, ]
+stopifnot(ncol(molecules_lcl) == nrow(anno_lcl),
+          colnames(molecules_lcl) == anno_lcl$sample_id)
+molecules_single_lcl <- molecules_lcl[, anno_lcl$full_lane == "FALSE"]
+```
+
+```{r collision-probability-lcl}
+molecules_single_lcl <- molecules_single_lcl[apply(molecules_single_lcl,1,max) < 1024,]
+molecules_single_collision_lcl <- -1024 * log(1 - molecules_single_lcl / 1024)
+```
+
+Standardization
+```{r calc-cpm-single-lcl}
+molecules_single_cpm_lcl <- cpm(molecules_single_collision_lcl, log = TRUE)
+```
+
+
+Expression of plurypotency genes in LCL
+```{r expressed-pluripotency-gene-lcl}
+molecules_single_pluripotency_lcl <- molecules_single_cpm_lcl[rownames(molecules_single_cpm_lcl) %in% pluripotency_genes[,2],]
+
+heatmap.2(molecules_single_pluripotency_lcl, trace="none", cexRow=1, cexCol=1, margins=c(8,8),xlab="single cells", ylab= "pluripotency gene")
+```
+
+
+```{r expressed-pluripotency-gene-all}
+### merge two cell types
+molecules_single_pluripotency_all <- merge(molecules_single_pluripotency,molecules_single_pluripotency_lcl,by = "row.names", all = TRUE)
+
+### save gene name
+gene_name <- molecules_single_pluripotency_all[,"Row.names"]
+
+### remove the column and na for data.matrix
+molecules_single_pluripotency_all  <- molecules_single_pluripotency_all[,!colnames(molecules_single_pluripotency_all) == "Row.names"]
+
+molecules_single_pluripotency_all[is.na(molecules_single_pluripotency_all)] <- 0
+
+### data.matrix for heatmap and add gene name
+molecules_single_pluripotency_all <- 
+data.matrix(molecules_single_pluripotency_all)
+
+rownames(molecules_single_pluripotency_all) <- gene_name
+
+### plot
+heatmap.2(molecules_single_pluripotency_all, trace="none", cexRow=1, cexCol=1, margins=c(8,8),xlab="single cells", ylab= "pluripotency gene")
+```
 
 ## Session information
 
