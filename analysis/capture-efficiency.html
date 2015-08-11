@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+
+<meta name="date" content="2015-08-10" />
+
+<title>Capture efficiency</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Capture efficiency</h1>
+<h4 class="date"><em>2015-08-10</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#input">Input</a></li>
+<li><a href="#prepare-single-cell-molecule-data">Prepare single cell molecule data</a></li>
+<li><a href="#calculate-number-of-ercc-molecules-added-to-each-well">Calculate number of ERCC molecules added to each well</a></li>
+<li><a href="#capture-efficiency">Capture efficiency</a></li>
+<li><a href="#factors-affecting-capture-efficiency">Factors affecting capture efficiency</a></li>
+<li><a href="#visualizing-capture-efficiency">Visualizing capture efficiency</a></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2015-08-11</p>
+<p><strong>Code version:</strong> 54b5090efa940ffc9920fdee95e8364552464e2b</p>
+<p>Here capture efficiency is defined as the fraction of the added ERCC spike-in molecules that were sequenced.</p>
+<div id="input" class="section level2">
+<h2>Input</h2>
+<p>Input annotation.</p>
+<pre class="r"><code>anno &lt;- read.table(&quot;../data/annotation.txt&quot;, header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno)</code></pre>
+<pre><code>  individual batch well     sample_id
+1      19098     1  A01 NA19098.1.A01
+2      19098     1  A02 NA19098.1.A02
+3      19098     1  A03 NA19098.1.A03
+4      19098     1  A04 NA19098.1.A04
+5      19098     1  A05 NA19098.1.A05
+6      19098     1  A06 NA19098.1.A06</code></pre>
+<p>Input ERCC concentration information.</p>
+<pre class="r"><code>ercc &lt;- read.table(&quot;../data/ercc-info.txt&quot;, header = TRUE, sep = &quot;\t&quot;,
+                   stringsAsFactors = FALSE)
+colnames(ercc) &lt;- c(&quot;num&quot;, &quot;id&quot;, &quot;subgroup&quot;, &quot;conc_mix1&quot;, &quot;conc_mix2&quot;,
+                    &quot;expected_fc&quot;, &quot;log2_mix1_mix2&quot;)
+head(ercc)</code></pre>
+<pre><code>  num         id subgroup conc_mix1  conc_mix2 expected_fc log2_mix1_mix2
+1   1 ERCC-00130        A 30000.000 7500.00000           4              2
+2   2 ERCC-00004        A  7500.000 1875.00000           4              2
+3   3 ERCC-00136        A  1875.000  468.75000           4              2
+4   4 ERCC-00108        A   937.500  234.37500           4              2
+5   5 ERCC-00116        A   468.750  117.18750           4              2
+6   6 ERCC-00092        A   234.375   58.59375           4              2</code></pre>
+<pre class="r"><code>stopifnot(nrow(ercc) == 92)</code></pre>
+<p>Input molecule counts.</p>
+<pre class="r"><code>molecules &lt;- read.table(&quot;../data/molecules.txt&quot;, header = TRUE,
+                    stringsAsFactors = FALSE)</code></pre>
+<p>Input list of quality single cells.</p>
+<pre class="r"><code>quality_single_cells &lt;- scan(&quot;../data/quality-single-cells.txt&quot;,
+                             what = &quot;character&quot;)</code></pre>
+<p>Input quality control data.</p>
+<pre class="r"><code>qc &lt;- read.table(&quot;../data/qc-ipsc.txt&quot;, header = TRUE, stringsAsFactors = FALSE)
+stopifnot(nrow(qc) == sum(anno$well != &quot;bulk&quot;))</code></pre>
+</div>
+<div id="prepare-single-cell-molecule-data" class="section level2">
+<h2>Prepare single cell molecule data</h2>
+<p>Remove bulk samples.</p>
+<pre class="r"><code>molecules_single &lt;- molecules[, anno$well != &quot;bulk&quot;]
+anno_single &lt;- anno[anno$well != &quot;bulk&quot;, ]</code></pre>
+<p>Remove genes with zero read counts in the single cells.</p>
+<pre class="r"><code>expressed_single &lt;- rowSums(molecules_single) &gt; 0
+molecules_single &lt;- molecules_single[expressed_single, ]
+dim(molecules_single)</code></pre>
+<pre><code>[1] 17771   864</code></pre>
+<p>How many genes have greater than or equal to 1,024 molecules in at least one of the cells?</p>
+<pre class="r"><code>overexpressed_genes &lt;- rownames(molecules_single)[apply(molecules_single, 1,
+                                                        function(x) any(x &gt;= 1024))]</code></pre>
+<p>23 have greater than or equal to 1,024 molecules.</p>
+</div>
+<div id="calculate-number-of-ercc-molecules-added-to-each-well" class="section level2">
+<h2>Calculate number of ERCC molecules added to each well</h2>
+<p>Invitrogen provides the concentration of each ERCC spike-in in attomoles per uL.</p>
+<pre class="r"><code>summary(ercc$conc_mix1)</code></pre>
+<pre><code>     Min.   1st Qu.    Median      Mean   3rd Qu.      Max. 
+    0.014     0.801     7.324  1125.000   117.200 30000.000 </code></pre>
+<p>PoYuan diluted mix 1 1:2500. Then she combined 1 uL of this 1:2500 diluted mix with 19 uL of other stuff to create 20 uL of lysis buffer. She added 9 uL of lysis buffer to the C1 chip. Each well received 13.5 uL of lysis buffer.</p>
+<p>How many molecules do we expect each sample to contain?</p>
+<pre class="r"><code># Dilute 1:2500
+ercc_conc_diluted &lt;- ercc$conc_mix1 / 2500
+# Dilute 1:20
+ercc_conc_lysis &lt;- ercc_conc_diluted / 20
+ercc_molecules_lysis &lt;- ercc_conc_lysis *
+                        20 * # Number of uL of lysis buffer
+                        1/10^18 * # Number of attomoles in a mole
+                        6.02214179e23 # Number of molecules in a mole
+# 9 uL added to chip
+ercc_molecules_chip &lt;- ercc_molecules_lysis * 9 / 20
+summary(ercc_molecules_chip)</code></pre>
+<pre><code>   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+      2      87     794  122000   12700 3252000 </code></pre>
+<pre class="r"><code># 13.5 uL per well
+ercc_molecules_well &lt;- ercc_molecules_lysis * 13.5e-3 / 20
+summary(ercc_molecules_well)</code></pre>
+<pre><code>    Min.  1st Qu.   Median     Mean  3rd Qu.     Max. 
+   0.002    0.130    1.191  182.900   19.050 4878.000 </code></pre>
+<pre class="r"><code>sum(ercc_molecules_well)</code></pre>
+<pre><code>[1] 16831.32</code></pre>
+<pre class="r"><code>sum(ercc_molecules_well &gt;= 1)</code></pre>
+<pre><code>[1] 50</code></pre>
+<pre class="r"><code>sum(ercc_molecules_well &gt; 1024)</code></pre>
+<pre><code>[1] 5</code></pre>
+<pre class="r"><code>sum(ercc_molecules_well %% 2 == 0)</code></pre>
+<pre><code>[1] 0</code></pre>
+<p><a href="http://www.ncbi.nlm.nih.gov/pmc/articles/PMC4191988/">Pollen et al.</a> calculated that they had 28,000 molecules per sample. Thus our estimate of 16831.3 seems reasonable, especially since we diluted our samples more.</p>
+<p>Save the expected number of molecules per well.</p>
+<pre class="r"><code>write.table(data.frame(id = ercc$id, conc_mix1 = ercc$conc_mix1, ercc_molecules_well),
+            &quot;../data/expected-ercc-molecules.txt&quot;, sep = &quot;\t&quot;, quote = FALSE,
+            row.names = FALSE)</code></pre>
+<pre class="r"><code>ercc_index &lt;- grep(&quot;ERCC&quot;, rownames(molecules_single))
+length(ercc_index)</code></pre>
+<pre><code>[1] 84</code></pre>
+<p>84 of the ERCC spike-ins had at least one molecule observed in at least one of the 864 single cells.</p>
+</div>
+<div id="capture-efficiency" class="section level2">
+<h2>Capture efficiency</h2>
+<p>The “capture efficiency” is defined differently across studies. Some use it to report the number of wells that had exactly one viable cell out of the possible 96 on a C1 chip. Others use it to report how many of the added ERCC spike-in molecules were successfully sequenced. We are using the latter definition. Thus after calculating the total number of expected ERCC molecules, I simply add up all the ERCC molecules observed for a given single cell and divide it by this total.</p>
+<pre class="r"><code>efficiency &lt;- numeric(length = ncol(molecules_single))
+total_ercc_molecules &lt;- sum(ercc_molecules_well)
+for (i in 1:ncol(molecules_single)) {
+  efficiency[i] &lt;- sum(molecules_single[ercc_index, i]) / total_ercc_molecules
+}
+summary(efficiency)</code></pre>
+<pre><code>   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+0.03957 0.07439 0.08558 0.14830 0.11130 0.92040 </code></pre>
+</div>
+<div id="factors-affecting-capture-efficiency" class="section level2">
+<h2>Factors affecting capture efficiency</h2>
+<pre class="r"><code>qc$efficiency &lt;- efficiency
+qc$quality &lt;- anno_single$sample_id %in% quality_single_cells</code></pre>
+<p>Single cells from batch 2 of individual 19098 ahve the highest efficiency. This was expected since they have an <a href="qc-cell-ipsc.html#total-mapped-reads-unmapped-ratios-and-ercc-ratios">abnormally high ERCC ratio</a>.</p>
+<pre class="r"><code>efficiency_box &lt;- ggplot(qc, aes(y = efficiency, x = as.factor(individual), fill = as.factor(batch))) +
+  geom_boxplot()
+efficiency_box</code></pre>
+<p><img src="figure/capture-efficiency.Rmd/efficiency-19098-2-outlier-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>Removing batch 2 of individual 19098.</p>
+<pre class="r"><code>qc_sub &lt;- qc[!(anno_single$individual == 19098 &amp; anno_single$batch == 2), ]</code></pre>
+<pre class="r"><code>efficiency_box %+% qc_sub</code></pre>
+<p><img src="figure/capture-efficiency.Rmd/efficiency-wo-19098-2-outlier-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>There doesn’t seem to be a relationship between Bioanalyzer concentration and capture efficiency.</p>
+<pre class="r"><code>efficiency_conc &lt;- ggplot(qc_sub, aes(x = concentration, y = efficiency)) +
+  geom_point() +
+  facet_grid(batch ~ individual) +
+  geom_smooth()
+efficiency_conc</code></pre>
+<p><img src="figure/capture-efficiency.Rmd/efficiency-concentration-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>And this does change when limiting to high quality cells.</p>
+<pre class="r"><code>efficiency_conc %+% qc_sub[qc_sub$quality, ]</code></pre>
+<p><img src="figure/capture-efficiency.Rmd/efficiency-concentration-quality-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>The capture efficiency decreases with increasing cell number. This is expected because the more RNA that is present in a well, the ERCC spike-ins are a lower percentage of the total. However, this effect is not striking.</p>
+<pre class="r"><code>efficiency_cells &lt;- ggplot(qc_sub, aes(x = cell_number, y = efficiency)) +
+  geom_point() +
+  geom_smooth(method = &quot;lm&quot;)
+efficiency_cells</code></pre>
+<p><img src="figure/capture-efficiency.Rmd/efficiency-cell-number-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>Comparing capture efficiency with the percent of total molecules that are ERCC.</p>
+<pre class="r"><code>perc_ercc &lt;- colSums(molecules_single[grep(&quot;ERCC&quot;,
+                                           rownames(molecules_single)), ]) /
+             colSums(molecules_single)
+perc_ercc_data &lt;- cbind(perc_ercc, efficiency, anno[anno$well != &quot;bulk&quot;, ])</code></pre>
+<p>As expected, there is a relationship between the percent of molecules that are ERCC and the capture efficiency. Also, it appears this is another technical difference between the individuals.</p>
+<pre class="r"><code>perc_ercc_plot &lt;- ggplot(perc_ercc_data, aes(x = perc_ercc, y = efficiency,
+                                             col = as.factor(individual),
+                                             shape = as.factor(batch))) +
+  geom_point()
+perc_ercc_plot</code></pre>
+<p><img src="figure/capture-efficiency.Rmd/efficiency-v-perc-ercc-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>Focusing on the lower part of the distribution, which ignores the outlier batch 2 of individual 19098.</p>
+<pre class="r"><code>perc_ercc_plot + ylim(0, 0.25)</code></pre>
+<pre><code>Warning in loop_apply(n, do.ply): Removed 96 rows containing missing values
+(geom_point).</code></pre>
+<p><img src="figure/capture-efficiency.Rmd/efficiency-v-perc-ercc-focused-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="visualizing-capture-efficiency" class="section level2">
+<h2>Visualizing capture efficiency</h2>
+<p>Creating a visualization similar to <a href="http://www.nature.com/nmeth/journal/v11/n2/fig_tab/nmeth.2772_F2.html">Figure 2I</a> in <a href="http://www.nature.com/nmeth/journal/v11/n2/full/nmeth.2772.html">Islam et al.</a>.</p>
+<p>First filter to only keep quality single cells.</p>
+<pre class="r"><code>molecules_single &lt;- molecules_single[, colnames(molecules_single) %in% quality_single_cells]
+anno_single &lt;- anno_single[anno_single$sample_id %in% quality_single_cells, ]
+stopifnot(ncol(molecules_single) == nrow(anno_single),
+          colnames(molecules_single) == anno_single$sample_id)</code></pre>
+<p>Also remove batch 2 of individual 19098.</p>
+<pre class="r"><code>molecules_single &lt;- molecules_single[, !(anno_single$individual == 19098 &amp; anno_single$batch == 2)]
+anno_single &lt;- anno_single[!(anno_single$individual == 19098 &amp; anno_single$batch == 2), ]
+stopifnot(ncol(molecules_single) == nrow(anno_single))</code></pre>
+<p>Use only those 50 ERCC genes with at least 1 expected molecule per well.</p>
+<pre class="r"><code>ercc_list &lt;- list()
+for (spike in ercc$id[ercc_molecules_well &gt;= 1]) {
+  if (spike %in% rownames(molecules_single)) {
+    ercc_list$id &lt;- c(ercc_list$id, spike)
+    ercc_list$observed_mean &lt;- c(ercc_list$observed_mean,
+                                 mean(as.numeric(molecules_single[spike, ])))
+    ercc_list$observed_sem &lt;- c(ercc_list$observed_sem,
+                                 sd(as.numeric(molecules_single[spike, ])) /
+                                 sqrt(ncol(molecules_single)))
+    ercc_list$expected &lt;- c(ercc_list$expected,
+                            ercc_molecules_well[ercc$id == spike])
+  }
+}
+ercc_plot &lt;- as.data.frame(ercc_list, stringsAsFactors = FALSE)
+str(ercc_plot)</code></pre>
+<pre><code>&#39;data.frame&#39;:   50 obs. of  4 variables:
+ $ id           : chr  &quot;ERCC-00130&quot; &quot;ERCC-00004&quot; &quot;ERCC-00136&quot; &quot;ERCC-00108&quot; ...
+ $ observed_mean: num  481.073 87.391 31.49 21.566 0.325 ...
+ $ observed_sem : num  14.1687 2.8826 1.1007 0.7198 0.0367 ...
+ $ expected     : num  4877.9 1219.5 304.9 152.4 76.2 ...</code></pre>
+<pre class="r"><code>p_efficiency &lt;- ggplot(ercc_plot, aes(x = expected, y = observed_mean)) +
+  geom_point(col = &quot;red&quot;) +
+  geom_errorbar(aes(ymin = observed_mean - observed_sem,
+                    ymax = observed_mean + observed_sem), width = 0) +
+  labs(x = &quot;Expected ERCC molecules&quot;,
+       y = &quot;Observed ERCC molecules\n(mean +/- sem)&quot;,
+       title = &quot;ERCC capture efficiency&quot;)
+p_efficiency</code></pre>
+<p><img src="figure/capture-efficiency.Rmd/ercc-capture-efficiency-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p>There plot appears to be log-transformed (it doesn’t explicitly say this in the axes or legend).</p>
+<pre class="r"><code>p_efficiency + scale_x_log10() +
+  scale_y_log10() +
+  labs(x = &quot;log10 Expected ERCC molecules&quot;,
+       y = &quot;log10 Observed ERCC molecules\n(mean +/- sem)&quot;,
+       title = &quot;ERCC capture efficiency - log transformed&quot;)</code></pre>
+<p><img src="figure/capture-efficiency.Rmd/ercc-capture-efficiency-log10-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p>Here is their result:</p>
+<p><img src="http://www.nature.com/nmeth/journal/v11/n2/images/nmeth.2772-F2.jpg" alt="Islam et al. Figure 2" /></p>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] ggplot2_1.0.1 edgeR_3.10.2  limma_3.24.9  knitr_1.10.5 
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.11.6      digest_0.6.8     MASS_7.3-40      grid_3.2.0      
+ [5] plyr_1.8.2       gtable_0.1.2     formatR_1.2      magrittr_1.5    
+ [9] scales_0.2.4     evaluate_0.7     stringi_0.4-1    reshape2_1.4.1  
+[13] rmarkdown_0.6.1  labeling_0.3     proto_0.3-10     tools_3.2.0     
+[17] stringr_1.0.0    munsell_0.4.2    yaml_2.1.13      colorspace_1.2-6
+[21] htmltools_0.2.6 </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+
+</body>
+</html>

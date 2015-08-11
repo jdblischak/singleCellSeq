@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+
+<meta name="date" content="2015-08-10" />
+
+<title>BASiCS</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">BASiCS</h1>
+<h4 class="date"><em>2015-08-10</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#input">Input</a></li>
+<li><a href="#filter">Filter</a></li>
+<li><a href="#fit-the-model">Fit the model</a></li>
+<li><a href="#cellular-mrna-content">Cellular mRNA content</a></li>
+<li><a href="#capture-efficiency">Capture efficiency</a></li>
+<li><a href="#denoised-data">Denoised data</a><ul>
+<li><a href="#pca---basics-denoised">PCA - BASiCS Denoised</a></li>
+<li><a href="#pca---basics-denoised-cpm">PCA - BASiCS Denoised cpm</a></li>
+<li><a href="#pca---non-normalized">PCA - non-normalized</a></li>
+<li><a href="#pca---non-normalized-cpm">PCA - non-normalized cpm</a></li>
+</ul></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2015-08-11</p>
+<p><strong>Code version:</strong> 54b5090efa940ffc9920fdee95e8364552464e2b</p>
+<p>This was run on Ubuntu. A dependency, RccpArmadillo, cannot be installed on the cluster. Our systems admin has not been able to figure out the reason.</p>
+<pre class="r"><code>library(&quot;BASiCS&quot;)
+library(&quot;data.table&quot;)
+source(&quot;functions.R&quot;)
+library(&quot;ggplot2&quot;)
+theme_set(theme_bw(base_size = 16))
+library(&quot;edgeR&quot;)</code></pre>
+<pre><code>Loading required package: limma</code></pre>
+<div id="input" class="section level2">
+<h2>Input</h2>
+<p>Below is the description of the data from the BASiCS vignette, interspersed with my code to load the data.</p>
+<blockquote>
+<p>The input dataset for BASiCS must contain the following 3 elements:</p>
+</blockquote>
+<blockquote>
+<ul>
+<li><code>Counts</code>: a matrix of raw expression counts with dimensions <span class="math"><em>q</em></span> times <span class="math"><em>n</em></span>. First <span class="math"><em>q</em><sub>0</sub></span> rows must correspond to biological genes. Last <span class="math"><em>q</em> − <em>q</em><sub>0</sub></span> rows must correspond to technical spike-in genes.</li>
+</ul>
+</blockquote>
+<p>Input annotation.</p>
+<pre class="r"><code>anno &lt;- read.table(&quot;../data/annotation.txt&quot;, header = TRUE,
+                   stringsAsFactors = FALSE)</code></pre>
+<p>Input molecule counts.</p>
+<pre class="r"><code>molecules &lt;- read.table(&quot;../data/molecules.txt&quot;, header = TRUE,
+                    stringsAsFactors = FALSE)</code></pre>
+<p>Input list of quality single cells.</p>
+<pre class="r"><code>quality_single_cells &lt;- scan(&quot;../data/quality-single-cells.txt&quot;,
+                             what = &quot;character&quot;)</code></pre>
+<p>Keep only the single cells that passed the <a href="qc-cell-ipsc.html">QC filters</a>. This also removes the bulk samples.</p>
+<pre class="r"><code>molecules_single &lt;- molecules[, colnames(molecules) %in% quality_single_cells]
+anno_single &lt;- anno[anno$sample_id %in% quality_single_cells, ]
+stopifnot(ncol(molecules_single) == nrow(anno_single),
+          colnames(molecules_single) == anno_single$sample_id)</code></pre>
+<p>Also remove batch 2 of individual 19098.</p>
+<pre class="r"><code>molecules_single &lt;- molecules_single[, !(anno_single$individual == 19098 &amp; anno_single$batch == 2)]
+anno_single &lt;- anno_single[!(anno_single$individual == 19098 &amp; anno_single$batch == 2), ]
+stopifnot(ncol(molecules_single) == nrow(anno_single))</code></pre>
+<p>Remove genes with zero read counts in the single cells.</p>
+<pre class="r"><code>expressed_single &lt;- rowSums(molecules_single) &gt; 0
+molecules_single &lt;- molecules_single[expressed_single, ]
+dim(molecules_single)</code></pre>
+<pre><code>[1] 17478   563</code></pre>
+<blockquote>
+<ul>
+<li><code>Tech</code>: a vector of <code>TRUE</code>/<code>FALSE</code> elements with length <span class="math"><em>q</em></span>. If <code>Tech[i] = FALSE</code> the gene <code>i</code> is biological; otherwise the gene is spike-in.</li>
+</ul>
+</blockquote>
+<pre class="r"><code>tech &lt;- grepl(&quot;ERCC&quot;, rownames(molecules_single))</code></pre>
+<blockquote>
+<ul>
+<li><code>SpikeInput</code>: a vector of length <span class="math"><em>q</em> − <em>q</em><sub>0</sub></span> whose elements contain the input number of molecules for the spike-in genes (amount per cell).</li>
+</ul>
+</blockquote>
+<pre class="r"><code>spike &lt;- read.table(&quot;../data/expected-ercc-molecules.txt&quot;, header = TRUE,
+                    sep = &quot;\t&quot;, stringsAsFactors = FALSE)</code></pre>
+<p>Only keep the spike-ins that were observed in at least one cell.</p>
+<pre class="r"><code>spike_input &lt;- spike$ercc_molecules_well[spike$id %in% rownames(molecules_single)]
+stopifnot(sum(tech) == length(spike_input))</code></pre>
+<p>81 of the ERCC spike-ins were observed in the single cell data.</p>
+<blockquote>
+<p>These elements must be stored into an object of class <code>BASiCS_Data</code>.</p>
+</blockquote>
+<pre class="r"><code>basics_data &lt;- newBASiCS_Data(as.matrix(molecules_single), tech, spike_input)</code></pre>
+<pre><code>An object of class BASiCS_Data
+ Dataset contains 17478 genes (17397 biological and 81 technical) and 563 cells.
+ Elements (slots): Counts, Tech and SpikeInput.
+
+NOTICE: BASiCS requires a pre-filtered dataset 
+    - You must remove poor quality cells before creating the BASiCS data object 
+    - We recommend to pre-filter very lowly expressed transcripts before creating the object. 
+      Inclusion criteria may vary for each data. For example, remove transcripts 
+          - with very low total counts across of all samples 
+          - that are only expressed in few cells 
+            (by default genes expressed in only 1 cell are not accepted) 
+          - with very low total counts across the samples where the transcript is expressed 
+
+ BASiCS_Filter can be used for this purpose </code></pre>
+</div>
+<div id="filter" class="section level2">
+<h2>Filter</h2>
+<pre class="r"><code>basics_filter = BASiCS_Filter(as.matrix(molecules_single), tech, spike_input, 
+                              MinTotalCountsPerCell = 2,
+                              MinTotalCountsPerGene = 2, 
+                              MinCellsWithExpression = 2,
+                              MinAvCountsPerCellsWithExpression = 2)
+filter_data = newBASiCS_Data(basics_filter$Counts, basics_filter$Tech,
+                             basics_filter$SpikeInput)</code></pre>
+<pre><code>An object of class BASiCS_Data
+ Dataset contains 9378 genes (9348 biological and 30 technical) and 563 cells.
+ Elements (slots): Counts, Tech and SpikeInput.
+
+NOTICE: BASiCS requires a pre-filtered dataset 
+    - You must remove poor quality cells before creating the BASiCS data object 
+    - We recommend to pre-filter very lowly expressed transcripts before creating the object. 
+      Inclusion criteria may vary for each data. For example, remove transcripts 
+          - with very low total counts across of all samples 
+          - that are only expressed in few cells 
+            (by default genes expressed in only 1 cell are not accepted) 
+          - with very low total counts across the samples where the transcript is expressed 
+
+ BASiCS_Filter can be used for this purpose </code></pre>
+</div>
+<div id="fit-the-model" class="section level2">
+<h2>Fit the model</h2>
+<pre class="r"><code>if (file.exists(&quot;../data/chain_phi_mcmc.txt&quot;)) {
+  chain_mu = as.matrix(fread(&quot;../data/chain_mu_mcmc.txt&quot;))
+  chain_delta = as.matrix(fread(&quot;../data/chain_delta_mcmc.txt&quot;))
+  chain_phi = as.matrix(fread(&quot;../data/chain_phi_mcmc.txt&quot;))
+  chain_s = as.matrix(fread(&quot;../data/chain_s_mcmc.txt&quot;))
+  chain_nu = as.matrix(fread(&quot;../data/chain_nu_mcmc.txt&quot;))#
+  chain_theta = as.matrix(fread(&quot;../data/chain_theta_mcmc.txt&quot;)[, 1, with = FALSE])
+
+  mcmc_output &lt;- newBASiCS_Chain(mu = chain_mu, delta = chain_delta,
+                                 phi = chain_phi, s = chain_s,
+                                 nu = chain_nu, theta = chain_theta)
+} else {
+  mcmc_output &lt;- BASiCS_MCMC(filter_data, N = 4000, Thin = 10, Burn = 2000,
+                             PrintProgress = TRUE, StoreChains = TRUE,
+                             StoreDir = &quot;../data&quot;, RunName = &quot;mcmc&quot;)
+}</code></pre>
+<pre><code>An object of class BASiCS_Chain
+ 200 MCMC samples.
+ Dataset contains 9378 genes (9348 biological and 30 technical) and 563 cells.
+ Elements (slots): mu, delta, phi, s, nu and theta.</code></pre>
+<p>Summarize the results.</p>
+<pre class="r"><code>mcmc_summary &lt;- Summary(mcmc_output)</code></pre>
+</div>
+<div id="cellular-mrna-content" class="section level2">
+<h2>Cellular mRNA content</h2>
+<p>Phi is the cellular RNA content differences. They ascribe all these differences to true biological differences in RNA content from cell to cell, i.e. due to the cell cylce.</p>
+<pre class="r"><code>plot(mcmc_summary, Param = &quot;phi&quot;)</code></pre>
+<p><img src="figure/basics.Rmd/phi-rna-content-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>However, we have observed that</p>
+<ul>
+<li><a href="detect-genes.html#mean-number-of-total-counts">total molecule count increases with increasing sequencing depth</a></li>
+<li><a href="cell-cycle.html#total-molecule-counts-and-reads-counts-of-each-cell">this relationship holds within cell cycle phases</a></li>
+<li><a href="subsample-high-coverage-lcl.html#number-of-total-counts">molecules are not exhausted even after thorough sequencing</a></li>
+</ul>
+<p>It is no suprise that Phi and the total molecule counts are highly correlated. But we believe most of these differences are due to sequencing depth and the counts should be standardized.</p>
+<pre class="r"><code>phi &lt;- displaySummaryBASiCS(mcmc_summary, Param = &quot;phi&quot;)
+phi &lt;- cbind(phi, anno_single)
+phi$total_count &lt;- colSums(counts(filter_data))</code></pre>
+<pre class="r"><code>ggplot(phi, aes(x = total_count, y = Phi)) +
+  geom_point() +
+  labs(x = &quot;Total molecule count&quot;,
+       title = &quot;Phi measures total molecule count differences&quot;)</code></pre>
+<p><img src="figure/basics.Rmd/phi-versus-molecule-count-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="capture-efficiency" class="section level2">
+<h2>Capture efficiency</h2>
+<p>S is supposed to measure the capture efficiency.</p>
+<pre class="r"><code>plot(mcmc_summary, Param = &quot;s&quot;)</code></pre>
+<p><img src="figure/basics.Rmd/s-capture-efficiency-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>efficiency &lt;- numeric(length = ncol(counts(filter_data)))
+total_ercc_molecules &lt;- sum(spike$ercc_molecules_well)
+for (i in 1:ncol(counts(filter_data))) {
+  efficiency[i] &lt;- sum(counts(filter_data, type = &quot;technical&quot;)[, i]) /
+                   total_ercc_molecules
+}
+summary(efficiency)</code></pre>
+<pre><code>   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+0.04581 0.07525 0.08383 0.09030 0.10720 0.15850 </code></pre>
+<pre class="r"><code>s &lt;- displaySummaryBASiCS(mcmc_summary, Param = &quot;s&quot;)
+s &lt;- cbind(s, anno_single)
+s$efficiency &lt;- efficiency</code></pre>
+<p>This does not appear to be estimated very well. It may need more iterations, but it already takes ~5 hours to run the 4000 iterations.</p>
+<pre class="r"><code>ggplot(s, aes(x = efficiency, y = S)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = lower, ymax = upper), alpha = 0.5) +
+  geom_smooth() +
+  labs(x = &quot;ERCC capture efficiency&quot;,
+       title = &quot;S poorly models differences in capture efficiency&quot;)</code></pre>
+<pre><code>geom_smooth: method=&quot;auto&quot; and size of largest group is &lt;1000, so using loess. Use &#39;method = x&#39; to change the smoothing method.</code></pre>
+<p><img src="figure/basics.Rmd/s-v-capture-efficiency-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="denoised-data" class="section level2">
+<h2>Denoised data</h2>
+<p>Remove technical noise (i.e. normalize using the ERCC spike-ins).</p>
+<pre class="r"><code>denoised = BASiCS_DenoisedCounts(Data = filter_data, Chain = mcmc_output)</code></pre>
+<div id="pca---basics-denoised" class="section level3">
+<h3>PCA - BASiCS Denoised</h3>
+<p>Both the raw and the cpm versions of the BASiCS denoised data appear similar to the result with the <a href="#pca-non-normalized-cpm">non-normalized cpm data</a>.</p>
+<pre class="r"><code>pca_basics &lt;- run_pca(denoised)
+plot_pca(pca_basics$PCs, explained = pca_basics$explained,
+         metadata = anno_single, color = &quot;individual&quot;,
+         shape = &quot;batch&quot;, factors = c(&quot;individual&quot;, &quot;batch&quot;))</code></pre>
+<p><img src="figure/basics.Rmd/pca-basics-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="pca---basics-denoised-cpm" class="section level3">
+<h3>PCA - BASiCS Denoised cpm</h3>
+<pre class="r"><code>denoised_cpm &lt;- cpm(denoised, log = TRUE,
+                    lib.size = colSums(denoised) *
+                               calcNormFactors(denoised, method = &quot;TMM&quot;))
+pca_basics_cpm &lt;- run_pca(denoised_cpm)
+plot_pca(pca_basics_cpm$PCs, explained = pca_basics_cpm$explained,
+         metadata = anno_single, color = &quot;individual&quot;,
+         shape = &quot;batch&quot;, factors = c(&quot;individual&quot;, &quot;batch&quot;))</code></pre>
+<p><img src="figure/basics.Rmd/pca-basics-cpm-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="pca---non-normalized" class="section level3">
+<h3>PCA - non-normalized</h3>
+<pre class="r"><code>pca_non &lt;- run_pca(counts(filter_data))
+plot_pca(pca_non$PCs, explained = pca_non$explained,
+         metadata = anno_single, color = &quot;individual&quot;,
+         shape = &quot;batch&quot;, factors = c(&quot;individual&quot;, &quot;batch&quot;))</code></pre>
+<p><img src="figure/basics.Rmd/pca-non-normalized-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="pca---non-normalized-cpm" class="section level3">
+<h3>PCA - non-normalized cpm</h3>
+<pre class="r"><code>non_cpm &lt;- cpm(counts(filter_data), log = TRUE,
+               lib.size = colSums(counts(filter_data)) *
+                          calcNormFactors(counts(filter_data), method = &quot;TMM&quot;))
+pca_non_cpm &lt;- run_pca(non_cpm)
+plot_pca(pca_non_cpm$PCs, explained = pca_non_cpm$explained,
+         metadata = anno_single, color = &quot;individual&quot;,
+         shape = &quot;batch&quot;, factors = c(&quot;individual&quot;, &quot;batch&quot;))</code></pre>
+<p><img src="figure/basics.Rmd/pca-non-normalized-cpm-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.1 (2015-06-18)
+Platform: x86_64-pc-linux-gnu (64-bit)
+Running under: Ubuntu 14.04.3 LTS
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] testit_0.4       edgeR_3.10.2     limma_3.24.13    ggplot2_1.0.1   
+[5] data.table_1.9.4 BASiCS_0.2.0     knitr_1.10.5    
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.11.6         magrittr_1.5        BiocGenerics_0.14.0
+ [4] MASS_7.3-43         munsell_0.4.2       colorspace_1.2-6   
+ [7] lattice_0.20-33     stringr_1.0.0       plyr_1.8.3         
+[10] tools_3.2.1         parallel_3.2.1      grid_3.2.1         
+[13] gtable_0.1.2        coda_0.17-1         htmltools_0.2.6    
+[16] yaml_2.1.13         digest_0.6.8        reshape2_1.4.1     
+[19] formatR_1.2         evaluate_0.7        rmarkdown_0.7      
+[22] labeling_0.3        stringi_0.5-5       scales_0.2.5       
+[25] chron_2.3-47        proto_0.3-10       </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+
+</body>
+</html>

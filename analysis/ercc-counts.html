@@ -134,13 +134,12 @@ img {
 <li><a href="#correct-for-the-collision-probability.">Correct for the collision probability.</a></li>
 <li><a href="#standardize-molecule-numbers.">Standardize molecule numbers.</a></li>
 </ul></li>
-<li><a href="#capture-efficiency">Capture efficiency</a></li>
 <li><a href="#session-information">Session information</a></li>
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-07-28</p>
-<p><strong>Code version:</strong> 2eafa0eddb889fe12fca5b6ce2dea8b7f2070e66</p>
+<p><strong>Last updated:</strong> 2015-08-11</p>
+<p><strong>Code version:</strong> 54b5090efa940ffc9920fdee95e8364552464e2b</p>
 <div id="input" class="section level2">
 <h2>Input</h2>
 <p>Input annotation.</p>
@@ -294,100 +293,6 @@ correlate_ercc(rowMeans(molecules_single_cpm[ercc_rows_molecules_single, ]), log
 <p><img src="figure/ercc-counts.Rmd/calc-cpm-single-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
 </div>
-<div id="capture-efficiency" class="section level2">
-<h2>Capture efficiency</h2>
-<p>Invitrogen provides the concentration of each ERCC spike-in in attomoles per uL.</p>
-<pre class="r"><code>summary(ercc$conc_mix1)</code></pre>
-<pre><code>     Min.   1st Qu.    Median      Mean   3rd Qu.      Max. 
-    0.014     0.801     7.324  1125.000   117.200 30000.000 </code></pre>
-<p>PoYuan diluted mix 1 1:2500. Then she combined 1 uL of this 1:2500 diluted mix with 19 uL of other stuff to create 20 uL of lysis buffer. She added 9 uL of lysis buffer to the C1 chip. Each well received 13.5 uL of lysis buffer.</p>
-<p>How many molecules do we expect each sample to contain?</p>
-<pre class="r"><code># Dilute 1:2500
-ercc_conc_diluted &lt;- ercc$conc_mix1 / 2500
-# Dilute 1:20
-ercc_conc_lysis &lt;- ercc_conc_diluted / 20
-ercc_molecules_lysis &lt;- ercc_conc_lysis *
-                        20 * # Number of uL of lysis buffer
-                        1/10^18 * # Number of attomoles in a mole
-                        6.02214179e23 # Number of molecules in a mole
-# 9 uL added to chip
-ercc_molecules_chip &lt;- ercc_molecules_lysis * 9 / 20
-summary(ercc_molecules_chip)</code></pre>
-<pre><code>   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-      2      87     794  122000   12700 3252000 </code></pre>
-<pre class="r"><code># 13.5 uL per well
-ercc_molecules_well &lt;- ercc_molecules_lysis * 13.5e-3 / 20
-summary(ercc_molecules_well)</code></pre>
-<pre><code>    Min.  1st Qu.   Median     Mean  3rd Qu.     Max. 
-   0.002    0.130    1.191  182.900   19.050 4878.000 </code></pre>
-<pre class="r"><code>sum(ercc_molecules_well)</code></pre>
-<pre><code>[1] 16831.32</code></pre>
-<pre class="r"><code>sum(ercc_molecules_well &gt;= 1)</code></pre>
-<pre><code>[1] 50</code></pre>
-<pre class="r"><code>sum(ercc_molecules_well &gt; 1024)</code></pre>
-<pre><code>[1] 5</code></pre>
-<pre class="r"><code>sum(ercc_molecules_well %% 2 == 0)</code></pre>
-<pre><code>[1] 0</code></pre>
-<p><a href="http://www.ncbi.nlm.nih.gov/pmc/articles/PMC4191988/">Pollen et al.</a> calculated that they had 28,000 molecules per sample. Thus our estimate of 16831.3 seems reasonable, especially since we diluted our samples more.</p>
-<pre class="r"><code>ercc_index &lt;- grep(&quot;ERCC&quot;, rownames(molecules_single))
-length(ercc_index)</code></pre>
-<pre><code>[1] 81</code></pre>
-<p>81 of the ERCC spike-ins had at least one molecule observed in at least one of the 563 single cells.</p>
-<p>The “capture efficiency” is defined differently across studies. Some use it to report the number of wells that had exactly one viable cell out of the possible 96 on a C1 chip. Others use it to report how many of the added ERCC spike-in molecules were successfully sequenced. We are using the latter definition. Thus after calculating the total number of expected ERCC molecules, I simply add up all the ERCC molecules observed for a given single cell and divide it by this total.</p>
-<pre class="r"><code>efficiency &lt;- numeric(length = length(ercc_index))
-total_ercc_molecules &lt;- sum(ercc_molecules_well)
-for (i in 1:ncol(molecules_single)) {
-  efficiency[i] &lt;- sum(molecules_single[ercc_index, i]) / total_ercc_molecules
-}
-summary(efficiency)</code></pre>
-<pre><code>   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-0.04622 0.07551 0.08419 0.09081 0.10780 0.15960 </code></pre>
-<p><a href="http://www.nature.com/nmeth/journal/v11/n2/full/nmeth.2772.html">Islam et al.</a> calculated efficiency using only those ERCC with molecule counts in the range of 1-504 (see Figure S6A). I am assuming this filtering was done at the level of <em>expected</em> molecule counts, since this would be consistent from cell to cell.</p>
-<pre class="r"><code>ercc_islam &lt;- ercc$id[ercc_molecules_well &gt;= 1 &amp; ercc_molecules_well &lt;= 504]
-ercc_molecules_well_islam &lt;- ercc_molecules_well[ercc$id %in% ercc_islam]
-ercc_index_islam &lt;- which(rownames(molecules_single) %in% ercc_islam)</code></pre>
-<p>42 ERCC spike-ins are expected to have molecule counts in the range of 1-504. Of these, 42 were observed to have at least one molecule in at least one of the cells.</p>
-<pre class="r"><code>efficiency_islam &lt;- numeric(length = length(ercc_index_islam))
-total_ercc_molecules_islam &lt;- sum(ercc_molecules_well_islam)
-for (i in 1:ncol(molecules_single)) {
-  efficiency_islam[i] &lt;- sum(molecules_single[ercc_index_islam, i]) / total_ercc_molecules_islam
-}
-summary(efficiency_islam)</code></pre>
-<pre><code>   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-0.04556 0.07720 0.09049 0.09539 0.11140 0.19050 </code></pre>
-<p>Creating a visualization similar to <a href="http://www.nature.com/nmeth/journal/v11/n2/fig_tab/nmeth.2772_F2.html">Figure 2I</a> in <a href="http://www.nature.com/nmeth/journal/v11/n2/full/nmeth.2772.html">Islam et al.</a>.</p>
-<pre class="r"><code>ercc_list &lt;- list()
-for (spike in ercc$id) {
-  if (spike %in% rownames(molecules_single)) {
-    ercc_list$id &lt;- c(ercc_list$id, spike)
-    ercc_list$observed_mean &lt;- c(ercc_list$observed_mean,
-                                 mean(as.numeric(molecules_single[spike, ])))
-    ercc_list$observed_sem &lt;- c(ercc_list$observed_sem,
-                                 sd(as.numeric(molecules_single[spike, ])) /
-                                 sqrt(ncol(molecules_single)))
-    ercc_list$expected &lt;- c(ercc_list$expected,
-                            ercc_molecules_well[ercc$id == spike])
-  }
-}
-ercc_plot &lt;- as.data.frame(ercc_list, stringsAsFactors = FALSE)
-str(ercc_plot)</code></pre>
-<pre><code>&#39;data.frame&#39;:   81 obs. of  4 variables:
- $ id           : chr  &quot;ERCC-00002&quot; &quot;ERCC-00003&quot; &quot;ERCC-00004&quot; &quot;ERCC-00009&quot; ...
- $ observed_mean: num  223.9076 20.8988 76.9396 11.5151 0.0124 ...
- $ observed_sem : num  2.52239 0.34752 0.90664 0.21506 0.00531 ...
- $ expected     : num  2.44e+03 1.52e+02 1.22e+03 1.52e+02 1.86e-02 ...</code></pre>
-<pre class="r"><code>p_efficiency &lt;- ggplot(ercc_plot, aes(x = expected, y = observed_mean)) +
-  geom_point() +
-  geom_errorbar(aes(ymin = observed_mean - observed_sem,
-                    ymax = observed_mean + observed_sem), width = 50) +
-  labs(x = &quot;Expected ERCC molecules&quot;,
-       y = &quot;Observed ERCC molecules\n(mean +/- sem)&quot;,
-       title = &quot;ERCC capture efficiency&quot;)
-p_efficiency</code></pre>
-<p><img src="figure/ercc-counts.Rmd/ercc-capture-efficiency-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
-<p>Here is their result:</p>
-<p><img src="http://www.nature.com/nmeth/journal/v11/n2/images/nmeth.2772-F2.jpg" alt="Islam et al. Figure 2" /></p>
-</div>
 <div id="session-information" class="section level2">
 <h2>Session information</h2>
 <pre class="r"><code>sessionInfo()</code></pre>
@@ -412,9 +317,8 @@ loaded via a namespace (and not attached):
  [1] Rcpp_0.11.6      digest_0.6.8     MASS_7.3-40      grid_3.2.0      
  [5] plyr_1.8.2       gtable_0.1.2     formatR_1.2      magrittr_1.5    
  [9] scales_0.2.4     evaluate_0.7     stringi_0.4-1    reshape2_1.4.1  
-[13] rmarkdown_0.6.1  labeling_0.3     proto_0.3-10     tools_3.2.0     
-[17] stringr_1.0.0    munsell_0.4.2    yaml_2.1.13      colorspace_1.2-6
-[21] htmltools_0.2.6 </code></pre>
+[13] rmarkdown_0.6.1  proto_0.3-10     tools_3.2.0      stringr_1.0.0   
+[17] munsell_0.4.2    yaml_2.1.13      colorspace_1.2-6 htmltools_0.2.6 </code></pre>
 </div>
 
 
