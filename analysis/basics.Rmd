@@ -11,7 +11,9 @@ date: 2015-08-10
 source("chunk-options.R")
 ```
 
-This is run on my work laptop.
+This was run on Ubuntu.
+A dependency, RccpArmadillo, cannot be installed on the cluster.
+Our systems admin has not been able to figure out the reason.
 
 ```{r packages}
 library("BASiCS")
@@ -19,6 +21,7 @@ library("data.table")
 source("functions.R")
 library("ggplot2")
 theme_set(theme_bw(base_size = 16))
+library("edgeR")
 ```
 
 ##  Input
@@ -163,12 +166,46 @@ Remove technical noise (i.e. normalize using the ERCC spike-ins).
 denoised = BASiCS_DenoisedCounts(Data = filter_data, Chain = mcmc_output)
 ```
 
-```{r run-pca}
-pca_basics <- run_pca(denoised)
-```
+### PCA - BASiCS Denoised
+
+Both the raw and the cpm versions of the BASiCS denoised data appear similar to the result with the [non-normalized cpm data](#pca-non-normalized-cpm).
 
 ```{r pca-basics}
+pca_basics <- run_pca(denoised)
 plot_pca(pca_basics$PCs, explained = pca_basics$explained,
+         metadata = anno_single, color = "individual",
+         shape = "batch", factors = c("individual", "batch"))
+```
+
+### PCA - BASiCS Denoised cpm
+
+```{r pca-basics-cpm}
+denoised_cpm <- cpm(denoised, log = TRUE,
+                    lib.size = colSums(denoised) *
+                               calcNormFactors(denoised, method = "TMM"))
+pca_basics_cpm <- run_pca(denoised_cpm)
+plot_pca(pca_basics_cpm$PCs, explained = pca_basics_cpm$explained,
+         metadata = anno_single, color = "individual",
+         shape = "batch", factors = c("individual", "batch"))
+```
+
+### PCA - non-normalized
+
+```{r pca-non-normalized}
+pca_non <- run_pca(counts(filter_data))
+plot_pca(pca_non$PCs, explained = pca_non$explained,
+         metadata = anno_single, color = "individual",
+         shape = "batch", factors = c("individual", "batch"))
+```
+
+### PCA - non-normalized cpm
+
+```{r pca-non-normalized-cpm}
+non_cpm <- cpm(counts(filter_data), log = TRUE,
+               lib.size = colSums(counts(filter_data)) *
+                          calcNormFactors(counts(filter_data), method = "TMM"))
+pca_non_cpm <- run_pca(non_cpm)
+plot_pca(pca_non_cpm$PCs, explained = pca_non_cpm$explained,
          metadata = anno_single, color = "individual",
          shape = "batch", factors = c("individual", "batch"))
 ```
