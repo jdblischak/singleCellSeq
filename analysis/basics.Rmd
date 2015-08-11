@@ -148,8 +148,33 @@ mcmc_summary <- Summary(mcmc_output)
 
 ## Cellular mRNA content
 
+Phi is the cellular RNA content differences.
+They ascribe all these differences to true biological differences in RNA content from cell to cell, i.e. due to the cell cylce.
+
 ```{r phi-rna-content}
 plot(mcmc_summary, Param = "phi")
+```
+
+However, we have observed that
+
+* [total molecule count increases with increasing sequencing depth](detect-genes.html#mean-number-of-total-counts)
+* [this relationship holds within cell cycle phases](cell-cycle.html#total-molecule-counts-and-reads-counts-of-each-cell)
+* [molecules are not exhausted even after thorough sequencing](subsample-high-coverage-lcl.html#number-of-total-counts)
+
+It is no suprise that Phi and the total molecule counts are highly correlated.
+But we believe most of these differences are due to sequencing depth and the counts should be standardized.
+
+```{r extract-phi}
+phi <- displaySummaryBASiCS(mcmc_summary, Param = "phi")
+phi <- cbind(phi, anno_single)
+phi$total_count <- colSums(counts(filter_data))
+```
+
+```{r phi-versus-molecule-count}
+ggplot(phi, aes(x = total_count, y = Phi)) +
+  geom_point() +
+  labs(x = "Total molecule count",
+       title = "Phi measures total molecule count differences")
 ```
 
 ## Capture efficiency
