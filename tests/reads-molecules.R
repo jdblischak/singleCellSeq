@@ -1,6 +1,6 @@
 
 library(testit)
-library(dplyr)
+suppressPackageStartupMessages(library(dplyr))
 
 assert(
   "file with read counts exists",
