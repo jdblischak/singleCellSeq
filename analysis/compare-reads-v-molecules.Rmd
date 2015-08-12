@@ -9,6 +9,7 @@ date: 2015-06-11
 
 ```{r chunk-options, include=FALSE}
 source("chunk-options.R")
+# opts_chunk$set(cache = TRUE)
 ```
 
 First, compared counts via three methods:
@@ -32,6 +33,7 @@ library("ggplot2")
 theme_set(theme_bw(base_size = 16))
 library("edgeR")
 source("functions.R")
+library("tidyr")
 ```
 
 Input annotation.
@@ -311,6 +313,43 @@ pc2_v_total_mol_corrected
 ```
 
 PC1 is no longer associated with sequencing depth!
+
+## Differences in conversion of reads to molecules
+
+As seen above with the total counts, the conversion of reads to molecules varies between each of the 9 batches.
+Below I fit a loess transformation to each individually.
+It would be ideal if we could somehow we could correct for these differences and have them all follow a similar transformation from reads to molecules.
+
+In order to be able to make this plot, I have to subsample to fewer genes.
+
+```{r gather-cols-to-rows}
+set.seed(12345)
+sub_indices <- sample(1:nrow(reads), 250)
+reads_sub <- reads[sub_indices, ]
+reads_long <- gather(reads_sub, key = "id", value = "reads")
+molecules_sub <- molecules[sub_indices, ]
+molecules_long <- gather(molecules_sub, key = "id", value = "molecules")
+reads_long <- separate(reads_long, col = "id",  sep = "\\.", remove = FALSE,
+                       into = c("individual", "batch", "well"))
+stopifnot(reads_long$id == molecules_long$id)
+conversion <- cbind(reads_long, molecules_long)
+stopifnot(nrow(conversion) == nrow(molecules_long))
+dim(conversion)
+head(conversion)
+```
+
+```{r convert-reads-molecules-per-batch, fig.width=9, fig.height=9}
+ggplot(conversion[conversion$well != "bulk", ],
+       aes(x = reads, y = molecules, col = individual,
+           shape = as.factor(batch))) +
+  geom_point() +
+  geom_smooth(method = "loess", color = "black") +
+  facet_grid(batch ~ individual) +
+  theme(legend.position = "none") +
+  labs(x = "Total number of reads",
+       y = "Total number of molecules",
+       title = "Conversion per batch (subsample of 250 genes)")
+```
 
 ## Compare reads and standardized molecules
 
