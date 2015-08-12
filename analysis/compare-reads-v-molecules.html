@@ -135,8 +135,8 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-07-02</p>
-<p><strong>Code version:</strong> 7bb9ae37e360f8cae9e1d9ccb00035590d88ba5b</p>
+<p><strong>Last updated:</strong> 2015-08-11</p>
+<p><strong>Code version:</strong> 2f8997a273da647825038f59564eca77b21b6770</p>
 <p>First, compared counts via three methods:</p>
 <ul>
 <li><strong>reads_cpm</strong> - standard counts per million</li>
@@ -227,9 +227,9 @@ molecules_per_lane_cpm &lt;- cpm(molecules_per_lane,
                         molecules_per_lane = rowMeans(molecules_per_lane))
 cor(mean_data)</code></pre>
 <pre><code>                   reads_cpm molecules molecules_per_lane
-reads_cpm          1.0000000 0.8967257          0.8819679
-molecules          0.8967257 1.0000000          0.9947502
-molecules_per_lane 0.8819679 0.9947502          1.0000000</code></pre>
+reads_cpm          1.0000000 0.8909973          0.8769356
+molecules          0.8909973 1.0000000          0.9944794
+molecules_per_lane 0.8769356 0.9944794          1.0000000</code></pre>
 <p>All three are highly correlated.</p>
 <pre class="r"><code>mean_data$type &lt;- ifelse(grepl(&quot;ERCC&quot;, rownames(mean_data)), &quot;ERCC&quot;, &quot;gene&quot;)
 ggplot(mean_data, aes(x = reads_cpm, y = molecules)) +
@@ -263,57 +263,66 @@ ggplot(mean_data, aes(x = reads_cpm, y = molecules)) +
 <h2>Effect of sequencing depth on molecule count</h2>
 <p>How dependent are the molecule counts on the total molecule count for a given sample? Should we standardize by the total molecule count per sample? <a href="http://www.nature.com/nmeth/journal/v11/n2/full/nmeth.2772.html">Islam et al. 2014</a> argue that this is not necessary, “scales for molecule-counting scatterplots (Fig. 2d,e) are absolute and would not change appreciably if the number of reads were increased.” Let’s check this assumption.</p>
 <p>Does the total number of molecules per sample vary with the total number of reads? If it is not necessary to standardize the molecule counts, the molecule counts should be consistent across varying read depths.</p>
-<pre class="r"><code>total_reads_single &lt;- colSums(reads)[anno$well != &quot;bulk&quot;] / 10^6
-total_molecules_single &lt;- colSums(molecules)[anno$well != &quot;bulk&quot;] / 10^3
-plot(total_reads_single, total_molecules_single,
-     xlab = &quot;Total number of reads (x10^6)&quot;,
-     ylab = &quot;Total number of molecules (x10^3)&quot;,
-     main = &quot;Effect of read depth on single cells&quot;,
-     col = anno$individual[anno$well != &quot;bulk&quot;])
-abline(lm(total_molecules_single ~ total_reads_single), col = &quot;red&quot;)</code></pre>
+<pre class="r"><code>total_counts_data &lt;- data.frame(total_reads = colSums(reads) / 10^6,
+                                total_molecules = colSums(molecules) / 10^3,
+                                anno)
+str(total_counts_data)</code></pre>
+<pre><code>&#39;data.frame&#39;:   587 obs. of  6 variables:
+ $ total_reads    : num  1.89 1.99 1.27 1.99 1.75 ...
+ $ total_molecules: num  93.1 95.1 74.7 104.7 98.2 ...
+ $ individual     : int  19098 19098 19098 19098 19098 19098 19098 19098 19098 19098 ...
+ $ batch          : int  1 1 1 1 1 1 1 1 1 1 ...
+ $ well           : chr  &quot;A01&quot; &quot;A02&quot; &quot;A04&quot; &quot;A05&quot; ...
+ $ sample_id      : chr  &quot;NA19098.1.A01&quot; &quot;NA19098.1.A02&quot; &quot;NA19098.1.A04&quot; &quot;NA19098.1.A05&quot; ...</code></pre>
+<pre class="r"><code>total_counts_single &lt;- ggplot(total_counts_data[total_counts_data$well != &quot;bulk&quot;, ],
+                              aes(x = total_reads, y = total_molecules)) +
+  geom_point(aes(col = as.factor(individual), shape = as.factor(batch))) +
+  geom_smooth(method = &quot;lm&quot;) +
+  labs(x = &quot;Total number of reads (x10^6)&quot;,
+       y = &quot;Total number of molecules (x10^3)&quot;,
+       title = &quot;Effect of read depth on single cells&quot;)
+total_counts_single</code></pre>
 <p><img src="figure/compare-reads-v-molecules.Rmd/total-mol-v-reads-single-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>total_reads_bulk &lt;- colSums(reads)[anno$well == &quot;bulk&quot;] / 10^6
-total_molecules_bulk &lt;- colSums(molecules)[anno$well == &quot;bulk&quot;] / 10^3
-plot(total_reads_bulk, total_molecules_bulk,
-     xlab = &quot;Total number of reads (x10^6)&quot;,
-     ylab = &quot;Total number of molecules (x10^3)&quot;,
-     main = &quot;Effect of read depth on bulk samples&quot;,
-     col = anno$individual[anno$well == &quot;bulk&quot;],
-     pch = 19)
-abline(lm((total_molecules_bulk) ~ (total_reads_bulk)), col = &quot;red&quot;)</code></pre>
+<pre class="r"><code>total_counts_bulk &lt;- total_counts_single %+%
+  total_counts_data[total_counts_data$well == &quot;bulk&quot;, ] +
+  labs(x = &quot;Total number of reads (x10^6)&quot;,
+       y = &quot;Total number of molecules (x10^3)&quot;,
+       title = &quot;Effect of read depth on bulk samples&quot;)
+total_counts_bulk</code></pre>
 <p><img src="figure/compare-reads-v-molecules.Rmd/total-mol-v-reads-bulk-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <p>So this is clearly not the case. Perhaps in the ideal case where all the cells are sequenced to saturation, then any increasing sequencing would not make a difference in the molecule counts.</p>
 <p>Also, there is a difference in total molecule count between the three individuals.</p>
-<pre class="r"><code>boxplot(total_molecules_single ~ anno$individual[anno$well != &quot;bulk&quot;],
-        xlab = &quot;Individual&quot;,
-        ylab = &quot;Molecules (x10^3)&quot;,
-        main = &quot;Total molecule counts vary across individuals&quot;,
-        col = c(19098, 19101, 19239))</code></pre>
+<pre class="r"><code>total_molecules_ind &lt;- ggplot(total_counts_data[total_counts_data$well != &quot;bulk&quot;, ],
+                              aes(x = as.factor(individual), y = total_molecules)) +
+  geom_boxplot(aes(fill = as.factor(individual))) +
+  theme(legend.position=&quot;none&quot;) +
+  labs(x = &quot;Individual&quot;,
+       y = &quot;Molecules (x10^3)&quot;,
+       title = &quot;Total molecule counts vary across individuals&quot;)
+total_molecules_ind</code></pre>
 <p><img src="figure/compare-reads-v-molecules.Rmd/total-molecules-by-ind-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <p>But not for the total number of reads, as expected from the plot above of the effect of read depth where all three individuals span the x-axis of the total number of reads.</p>
-<pre class="r"><code>boxplot(total_reads_single ~ anno$individual[anno$well != &quot;bulk&quot;],
-        xlab = &quot;Individual&quot;,
-        ylab = &quot;Reads (x10^6)&quot;,
-        main = &quot;Total read counts vary across individuals&quot;,
-        col = c(19098, 19101, 19239))</code></pre>
+<pre class="r"><code>total_reads_ind &lt;- total_molecules_ind %+% aes(y = total_reads) +
+  labs(y = &quot;Reads (x10^6)&quot;,
+       title = &quot;Total read counts vary across individuals&quot;)
+total_reads_ind</code></pre>
 <p><img src="figure/compare-reads-v-molecules.Rmd/total-reads-by-ind-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <p>What effect does this difference in total molecule count have in PCA?</p>
 <pre class="r"><code>pca_single &lt;- run_pca(molecules[, anno$well != &quot;bulk&quot;])</code></pre>
-<pre class="r"><code>plot(pca_single$PCs[, &quot;PC1&quot;], pca_single$PCs[, &quot;PC2&quot;],
-     col = anno$individual[anno$well != &quot;bulk&quot;],
-     xlab = &quot;PC1&quot;, ylab = &quot;PC2&quot;, main = &quot;PCA single cells uncorrected for depth&quot;)</code></pre>
+<pre class="r"><code>plot_pca(pca_single$PCs, explained = pca_single$explained,
+         metadata = anno[anno$well != &quot;bulk&quot;, ], color = &quot;individual&quot;,
+         shape = &quot;batch&quot;, factors = c(&quot;individual&quot;, &quot;batch&quot;)) +
+  labs(title = &quot;PCA single cells uncorrected for depth&quot;)</code></pre>
 <p><img src="figure/compare-reads-v-molecules.Rmd/pca-single-uncorrected-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>plot(total_molecules_single, pca_single$PCs[, &quot;PC1&quot;],
-     col = anno$individual[anno$well != &quot;bulk&quot;],
-     main = sprintf(&quot;Pearson r: %.2f&quot;,
-                    cor(total_molecules_single, pca_single$PCs[, &quot;PC1&quot;])),
-     xlab = &quot;Total number of molecules&quot;, ylab = &quot;PC1&quot;)</code></pre>
+<pre class="r"><code>pc1_v_total_mol_uncorrected &lt;- ggplot(cbind(total_counts_data[total_counts_data$well != &quot;bulk&quot;, ], pca_single$PCs),
+       aes(x = total_molecules, y = PC1, col = as.factor(individual),
+           shape = as.factor(batch))) +
+  geom_point(alpha = 0.5) +
+  labs(x = &quot;Total number of molecules (x10^3)&quot;)
+pc1_v_total_mol_uncorrected</code></pre>
 <p><img src="figure/compare-reads-v-molecules.Rmd/pc1-v-total-molecules-uncorrected-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>plot(total_molecules_single, pca_single$PCs[, &quot;PC2&quot;],
-     col = anno$individual[anno$well != &quot;bulk&quot;],
-     main = sprintf(&quot;Pearson r: %.2f&quot;,
-                    cor(total_molecules_single, pca_single$PCs[, &quot;PC2&quot;])),
-     xlab = &quot;Total number of molecules&quot;, ylab = &quot;PC2&quot;)</code></pre>
+<pre class="r"><code>pc2_v_total_mol_uncorrected &lt;- pc1_v_total_mol_uncorrected %+% aes(y = PC2)
+pc2_v_total_mol_uncorrected</code></pre>
 <p><img src="figure/compare-reads-v-molecules.Rmd/pc2-v-total-molecules-uncorrected-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <p>The total molecule depth per sample is highly correlated with PC1. However, it did not affect PC2, which captures the individual effect.</p>
 <p>What happens to the PCA results when depth is properly accounted for using TMM-normalized counts per million?</p>
@@ -323,21 +332,18 @@ molecules_cpm_single &lt;- cpm(molecules[, anno$well != &quot;bulk&quot;],
                             lib.size = colSums(molecules[, anno$well != &quot;bulk&quot;]) *
                                        norm_factors_mol_single)</code></pre>
 <pre class="r"><code>pca_single_cpm &lt;- run_pca(molecules_cpm_single)</code></pre>
-<pre class="r"><code>plot(pca_single_cpm$PCs[, &quot;PC1&quot;], pca_single_cpm$PCs[, &quot;PC2&quot;],
-     col = anno$individual[anno$well != &quot;bulk&quot;],
-     xlab = &quot;PC1&quot;, ylab = &quot;PC2&quot;, main = &quot;PCA single cells *corrected* for depth&quot;)</code></pre>
+<pre class="r"><code>plot_pca(pca_single_cpm$PCs, explained = pca_single_cpm$explained,
+         metadata = anno[anno$well != &quot;bulk&quot;, ], color = &quot;individual&quot;,
+         shape = &quot;batch&quot;, factors = c(&quot;individual&quot;, &quot;batch&quot;)) +
+  labs(title = &quot;PCA single cells *corrected* for depth&quot;)</code></pre>
 <p><img src="figure/compare-reads-v-molecules.Rmd/pca-single-corrected-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>plot(total_molecules_single, pca_single_cpm$PCs[, &quot;PC1&quot;],
-     col = anno$individual[anno$well != &quot;bulk&quot;],
-     main = sprintf(&quot;Pearson r: %.2f&quot;,
-                    cor(total_molecules_single, pca_single_cpm$PCs[, &quot;PC1&quot;])),
-     xlab = &quot;Total number of molecules&quot;, ylab = &quot;PC1&quot;)</code></pre>
+<pre class="r"><code>pc1_v_total_mol_corrected &lt;- pc1_v_total_mol_uncorrected %+%
+  cbind(total_counts_data[total_counts_data$well != &quot;bulk&quot;, ], pca_single_cpm$PCs) +
+  labs(title = &quot;PCA single cells *corrected* for depth&quot;)
+pc1_v_total_mol_corrected</code></pre>
 <p><img src="figure/compare-reads-v-molecules.Rmd/pc1-v-total-molecules-corrected-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>plot(total_molecules_single, pca_single_cpm$PCs[, &quot;PC2&quot;],
-     col = anno$individual[anno$well != &quot;bulk&quot;],
-     main = sprintf(&quot;Pearson r: %.2f&quot;,
-                    cor(total_molecules_single, pca_single_cpm$PCs[, &quot;PC2&quot;])),
-     xlab = &quot;Total number of molecules&quot;, ylab = &quot;PC2&quot;)</code></pre>
+<pre class="r"><code>pc2_v_total_mol_corrected &lt;- pc1_v_total_mol_corrected %+% aes(y = PC2)
+pc2_v_total_mol_corrected</code></pre>
 <p><img src="figure/compare-reads-v-molecules.Rmd/pc2-v-total-molecules-corrected-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <p>PC1 is no longer associated with sequencing depth!</p>
 </div>
@@ -350,9 +356,9 @@ molecules_cpm_single &lt;- cpm(molecules[, anno$well != &quot;bulk&quot;],
                         molecules_per_lane_cpm = rowMeans(molecules_per_lane_cpm))
 cor(mean_data_std)</code></pre>
 <pre><code>                       reads_cpm molecules_cpm molecules_per_lane_cpm
-reads_cpm              1.0000000     0.9705950              0.9710289
-molecules_cpm          0.9705950     1.0000000              0.9986052
-molecules_per_lane_cpm 0.9710289     0.9986052              1.0000000</code></pre>
+reads_cpm              1.0000000     0.9704740              0.9703383
+molecules_cpm          0.9704740     1.0000000              0.9986011
+molecules_per_lane_cpm 0.9703383     0.9986011              1.0000000</code></pre>
 <p>All three are even more highly correlated now that the molecules are standardized.</p>
 <pre class="r"><code>mean_data_std$type &lt;- ifelse(grepl(&quot;ERCC&quot;, rownames(mean_data_std)), &quot;ERCC&quot;, &quot;gene&quot;)
 ggplot(mean_data_std, aes(x = reads_cpm, y = molecules_cpm)) +
