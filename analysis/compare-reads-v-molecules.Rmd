@@ -199,26 +199,27 @@ Does the total number of molecules per sample vary with the total number of read
 If it is not necessary to standardize the molecule counts, the molecule counts should be consistent across varying read depths.
 
 ```{r total-mol-v-reads-single}
-total_reads_single <- colSums(reads)[anno$well != "bulk"] / 10^6
-total_molecules_single <- colSums(molecules)[anno$well != "bulk"] / 10^3
-plot(total_reads_single, total_molecules_single,
-     xlab = "Total number of reads (x10^6)",
-     ylab = "Total number of molecules (x10^3)",
-     main = "Effect of read depth on single cells",
-     col = anno$individual[anno$well != "bulk"])
-abline(lm(total_molecules_single ~ total_reads_single), col = "red")
+total_counts_data <- data.frame(total_reads = colSums(reads) / 10^6,
+                                total_molecules = colSums(molecules) / 10^3,
+                                anno)
+str(total_counts_data)
+total_counts_single <- ggplot(total_counts_data[total_counts_data$well != "bulk", ],
+                              aes(x = total_reads, y = total_molecules)) +
+  geom_point(aes(col = as.factor(individual), shape = as.factor(batch))) +
+  geom_smooth(method = "lm") +
+  labs(x = "Total number of reads (x10^6)",
+       y = "Total number of molecules (x10^3)",
+       title = "Effect of read depth on single cells")
+total_counts_single
 ```
 
 ```{r total-mol-v-reads-bulk}
-total_reads_bulk <- colSums(reads)[anno$well == "bulk"] / 10^6
-total_molecules_bulk <- colSums(molecules)[anno$well == "bulk"] / 10^3
-plot(total_reads_bulk, total_molecules_bulk,
-     xlab = "Total number of reads (x10^6)",
-     ylab = "Total number of molecules (x10^3)",
-     main = "Effect of read depth on bulk samples",
-     col = anno$individual[anno$well == "bulk"],
-     pch = 19)
-abline(lm((total_molecules_bulk) ~ (total_reads_bulk)), col = "red")
+total_counts_bulk <- total_counts_single %+%
+  total_counts_data[total_counts_data$well == "bulk", ] +
+  labs(x = "Total number of reads (x10^6)",
+       y = "Total number of molecules (x10^3)",
+       title = "Effect of read depth on bulk samples")
+total_counts_bulk
 ```
 
 So this is clearly not the case.
@@ -227,21 +228,23 @@ Perhaps in the ideal case where all the cells are sequenced to saturation, then 
 Also, there is a difference in total molecule count between the three individuals.
 
 ```{r total-molecules-by-ind}
-boxplot(total_molecules_single ~ anno$individual[anno$well != "bulk"],
-        xlab = "Individual",
-        ylab = "Molecules (x10^3)",
-        main = "Total molecule counts vary across individuals",
-        col = c(19098, 19101, 19239))
+total_molecules_ind <- ggplot(total_counts_data[total_counts_data$well != "bulk", ],
+                              aes(x = as.factor(individual), y = total_molecules)) +
+  geom_boxplot(aes(fill = as.factor(individual))) +
+  theme(legend.position="none") +
+  labs(x = "Individual",
+       y = "Molecules (x10^3)",
+       title = "Total molecule counts vary across individuals")
+total_molecules_ind
 ```
 
 But not for the total number of reads, as expected from the plot above of the effect of read depth where all three individuals span the x-axis of the total number of reads.
 
 ```{r total-reads-by-ind}
-boxplot(total_reads_single ~ anno$individual[anno$well != "bulk"],
-        xlab = "Individual",
-        ylab = "Reads (x10^6)",
-        main = "Total read counts vary across individuals",
-        col = c(19098, 19101, 19239))
+total_reads_ind <- total_molecules_ind %+% aes(y = total_reads) +
+  labs(y = "Reads (x10^6)",
+       title = "Total read counts vary across individuals")
+total_reads_ind
 ```
 
 What effect does this difference in total molecule count have in PCA?
@@ -251,25 +254,24 @@ pca_single <- run_pca(molecules[, anno$well != "bulk"])
 ```
 
 ```{r pca-single-uncorrected}
-plot(pca_single$PCs[, "PC1"], pca_single$PCs[, "PC2"],
-     col = anno$individual[anno$well != "bulk"],
-     xlab = "PC1", ylab = "PC2", main = "PCA single cells uncorrected for depth")
+plot_pca(pca_single$PCs, explained = pca_single$explained,
+         metadata = anno[anno$well != "bulk", ], color = "individual",
+         shape = "batch", factors = c("individual", "batch")) +
+  labs(title = "PCA single cells uncorrected for depth")
 ```
 
 ```{r pc1-v-total-molecules-uncorrected}
-plot(total_molecules_single, pca_single$PCs[, "PC1"],
-     col = anno$individual[anno$well != "bulk"],
-     main = sprintf("Pearson r: %.2f",
-                    cor(total_molecules_single, pca_single$PCs[, "PC1"])),
-     xlab = "Total number of molecules", ylab = "PC1")
+pc1_v_total_mol_uncorrected <- ggplot(cbind(total_counts_data[total_counts_data$well != "bulk", ], pca_single$PCs),
+       aes(x = total_molecules, y = PC1, col = as.factor(individual),
+           shape = as.factor(batch))) +
+  geom_point(alpha = 0.5) +
+  labs(x = "Total number of molecules (x10^3)")
+pc1_v_total_mol_uncorrected
 ```
 
 ```{r pc2-v-total-molecules-uncorrected}
-plot(total_molecules_single, pca_single$PCs[, "PC2"],
-     col = anno$individual[anno$well != "bulk"],
-     main = sprintf("Pearson r: %.2f",
-                    cor(total_molecules_single, pca_single$PCs[, "PC2"])),
-     xlab = "Total number of molecules", ylab = "PC2")
+pc2_v_total_mol_uncorrected <- pc1_v_total_mol_uncorrected %+% aes(y = PC2)
+pc2_v_total_mol_uncorrected
 ```
 
 The total molecule depth per sample is highly correlated with PC1.
@@ -290,25 +292,22 @@ pca_single_cpm <- run_pca(molecules_cpm_single)
 ```
 
 ```{r pca-single-corrected}
-plot(pca_single_cpm$PCs[, "PC1"], pca_single_cpm$PCs[, "PC2"],
-     col = anno$individual[anno$well != "bulk"],
-     xlab = "PC1", ylab = "PC2", main = "PCA single cells *corrected* for depth")
+plot_pca(pca_single_cpm$PCs, explained = pca_single_cpm$explained,
+         metadata = anno[anno$well != "bulk", ], color = "individual",
+         shape = "batch", factors = c("individual", "batch")) +
+  labs(title = "PCA single cells *corrected* for depth")
 ```
 
 ```{r pc1-v-total-molecules-corrected}
-plot(total_molecules_single, pca_single_cpm$PCs[, "PC1"],
-     col = anno$individual[anno$well != "bulk"],
-     main = sprintf("Pearson r: %.2f",
-                    cor(total_molecules_single, pca_single_cpm$PCs[, "PC1"])),
-     xlab = "Total number of molecules", ylab = "PC1")
+pc1_v_total_mol_corrected <- pc1_v_total_mol_uncorrected %+%
+  cbind(total_counts_data[total_counts_data$well != "bulk", ], pca_single_cpm$PCs) +
+  labs(title = "PCA single cells *corrected* for depth")
+pc1_v_total_mol_corrected
 ```
 
 ```{r pc2-v-total-molecules-corrected}
-plot(total_molecules_single, pca_single_cpm$PCs[, "PC2"],
-     col = anno$individual[anno$well != "bulk"],
-     main = sprintf("Pearson r: %.2f",
-                    cor(total_molecules_single, pca_single_cpm$PCs[, "PC2"])),
-     xlab = "Total number of molecules", ylab = "PC2")
+pc2_v_total_mol_corrected <- pc1_v_total_mol_corrected %+% aes(y = PC2)
+pc2_v_total_mol_corrected
 ```
 
 PC1 is no longer associated with sequencing depth!
