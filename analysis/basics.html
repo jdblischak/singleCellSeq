@@ -139,8 +139,8 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-08-11</p>
-<p><strong>Code version:</strong> 54b5090efa940ffc9920fdee95e8364552464e2b</p>
+<p><strong>Last updated:</strong> 2015-08-12</p>
+<p><strong>Code version:</strong> aadaca7368bed05e4b91e502ca9186246c40eef5</p>
 <p>This was run on Ubuntu. A dependency, RccpArmadillo, cannot be installed on the cluster. Our systems admin has not been able to figure out the reason.</p>
 <pre class="r"><code>library(&quot;BASiCS&quot;)
 library(&quot;data.table&quot;)
@@ -283,11 +283,29 @@ NOTICE: BASiCS requires a pre-filtered dataset
 <pre class="r"><code>phi &lt;- displaySummaryBASiCS(mcmc_summary, Param = &quot;phi&quot;)
 phi &lt;- cbind(phi, anno_single)
 phi$total_count &lt;- colSums(counts(filter_data))</code></pre>
-<pre class="r"><code>ggplot(phi, aes(x = total_count, y = Phi)) +
+<pre class="r"><code>phi_molecule_plot &lt;- ggplot(phi, aes(x = total_count, y = Phi)) +
   geom_point() +
   labs(x = &quot;Total molecule count&quot;,
-       title = &quot;Phi measures total molecule count differences&quot;)</code></pre>
+       title = &quot;Phi measures total molecule count differences&quot;)
+phi_molecule_plot</code></pre>
 <p><img src="figure/basics.Rmd/phi-versus-molecule-count-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>Since read and molecule counts are highly correlated, we expect the same relationship to hold for read depth. But it does drive the point home more that we think this is due to sequencing depth and not a difference in cell size.</p>
+<p>Input read counts.</p>
+<pre class="r"><code>reads &lt;- read.table(&quot;../data/reads.txt&quot;, header = TRUE,
+                    stringsAsFactors = FALSE)</code></pre>
+<p>Subset to only include the quality single cells and the genes used in the BASiCS analysis.</p>
+<pre class="r"><code>reads_sub &lt;- reads[rownames(reads) %in% rownames(counts(filter_data)),
+                   colnames(reads) %in% colnames(counts(filter_data))]
+stopifnot(dim(reads_sub) == dim(counts(filter_data)))
+phi$total_read_count &lt;- colSums(reads_sub) / 10^6</code></pre>
+<p>While the fit is not as good, it is still clearly driving the pattern.</p>
+<pre class="r"><code>phi_read_plot &lt;- phi_molecule_plot %+% phi %+% aes(x = total_read_count) +
+  geom_smooth() +
+  labs(x = &quot;Total read count (x10^6)&quot;,
+       title = &quot;Phi measure total read count differences&quot;)
+phi_read_plot</code></pre>
+<pre><code>geom_smooth: method=&quot;auto&quot; and size of largest group is &lt;1000, so using loess. Use &#39;method = x&#39; to change the smoothing method.</code></pre>
+<p><img src="figure/basics.Rmd/phi-versus-read-count-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
 <div id="capture-efficiency" class="section level2">
 <h2>Capture efficiency</h2>
