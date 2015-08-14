@@ -171,10 +171,40 @@ phi$total_count <- colSums(counts(filter_data))
 ```
 
 ```{r phi-versus-molecule-count}
-ggplot(phi, aes(x = total_count, y = Phi)) +
+phi_molecule_plot <- ggplot(phi, aes(x = total_count, y = Phi)) +
   geom_point() +
   labs(x = "Total molecule count",
        title = "Phi measures total molecule count differences")
+phi_molecule_plot
+```
+
+Since read and molecule counts are highly correlated, we expect the same relationship to hold for read depth.
+But it does drive the point home more that we think this is due to sequencing depth and not a difference in cell size.
+
+Input read counts.
+
+```{r input-read-counts}
+reads <- read.table("../data/reads.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+```
+
+Subset to only include the quality single cells and the genes used in the BASiCS analysis.
+
+```{r subset-reads}
+reads_sub <- reads[rownames(reads) %in% rownames(counts(filter_data)),
+                   colnames(reads) %in% colnames(counts(filter_data))]
+stopifnot(dim(reads_sub) == dim(counts(filter_data)))
+phi$total_read_count <- colSums(reads_sub) / 10^6
+```
+
+While the fit is not as good, it is still clearly driving the pattern.
+
+```{r phi-versus-read-count}
+phi_read_plot <- phi_molecule_plot %+% phi %+% aes(x = total_read_count) +
+  geom_smooth() +
+  labs(x = "Total read count (x10^6)",
+       title = "Phi measure total read count differences")
+phi_read_plot
 ```
 
 ## Capture efficiency
