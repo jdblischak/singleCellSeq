@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+
+<meta name="date" content="2015-08-18" />
+
+<title>Compare read and molecule counts per batch</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Compare read and molecule counts per batch</h1>
+<h4 class="date"><em>2015-08-18</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#input">Input</a></li>
+<li><a href="#filter">Filter</a></li>
+<li><a href="#transformation">Transformation</a></li>
+<li><a href="#differences-in-conversion-of-reads-to-molecules">Differences in conversion of reads to molecules</a><ul>
+<li><a href="#counts">Counts</a></li>
+<li><a href="#log2-counts">Log2 counts</a></li>
+<li><a href="#log2-counts-per-million">Log2 counts per million</a></li>
+<li><a href="#ercc-counts">ERCC counts</a></li>
+<li><a href="#ercc-log2-counts">ERCC log2 counts</a></li>
+<li><a href="#ercc-log2-counts-per-million">ERCC log2 counts per million</a></li>
+</ul></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2015-08-18</p>
+<p><strong>Code version:</strong> c9f21d3104d8d5b57ff63de56a4cf64155c81dcf</p>
+<p>Comparing the conversion of reads to molecules for each of the 9 batches. Used three different metrics:</p>
+<ul>
+<li>Raw counts</li>
+<li>Log2 counts (pseudocount of 1)</li>
+<li>Log2 TMM-normalized counts per million (pseudocount of 0.25)</li>
+</ul>
+<div id="input" class="section level2">
+<h2>Input</h2>
+<pre class="r"><code>library(&quot;dplyr&quot;)
+library(&quot;ggplot2&quot;)
+theme_set(theme_bw(base_size = 16))
+library(&quot;edgeR&quot;)
+source(&quot;functions.R&quot;)
+library(&quot;tidyr&quot;)</code></pre>
+<p>Input annotation.</p>
+<pre class="r"><code>anno &lt;- read.table(&quot;../data/annotation.txt&quot;, header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno)</code></pre>
+<pre><code>  individual batch well     sample_id
+1      19098     1  A01 NA19098.1.A01
+2      19098     1  A02 NA19098.1.A02
+3      19098     1  A03 NA19098.1.A03
+4      19098     1  A04 NA19098.1.A04
+5      19098     1  A05 NA19098.1.A05
+6      19098     1  A06 NA19098.1.A06</code></pre>
+<p>Input read counts.</p>
+<pre class="r"><code>reads &lt;- read.table(&quot;../data/reads.txt&quot;, header = TRUE,
+                    stringsAsFactors = FALSE)</code></pre>
+<p>Input molecule counts.</p>
+<pre class="r"><code>molecules &lt;- read.table(&quot;../data/molecules.txt&quot;, header = TRUE,
+                    stringsAsFactors = FALSE)</code></pre>
+<p>Input list of quality single cells.</p>
+<pre class="r"><code>quality_single_cells &lt;- scan(&quot;../data/quality-single-cells.txt&quot;,
+                             what = &quot;character&quot;)</code></pre>
+</div>
+<div id="filter" class="section level2">
+<h2>Filter</h2>
+<p>Keep only the single cells that passed the <a href="qc-cell-ipsc.html">QC filters</a>.</p>
+<pre class="r"><code>reads &lt;- reads[, colnames(reads) %in% quality_single_cells]
+molecules &lt;- molecules[, colnames(molecules) %in% quality_single_cells]
+anno &lt;- anno[anno$sample_id %in% quality_single_cells, ]
+stopifnot(dim(reads) == dim(molecules),
+          nrow(anno) == ncol(reads))</code></pre>
+<p>Only keep the following genes:</p>
+<ul>
+<li>ERCC genes with at least one molecule observed in at least one single cell</li>
+</ul>
+<pre class="r"><code>ercc_keep &lt;- rownames(molecules)[grepl(&quot;ERCC&quot;, rownames(molecules)) &amp;
+                                 rowSums(molecules) &gt; 1]</code></pre>
+<ul>
+<li>The top expressed endogenous genes in terms of mean molecule counts per million</li>
+</ul>
+<pre class="r"><code>num_genes &lt;- 12000
+mean_cpm &lt;- molecules %&gt;%
+  filter(!grepl(&quot;ERCC&quot;, rownames(molecules))) %&gt;%
+  cpm %&gt;%
+  rowMeans
+gene_keep &lt;- rownames(molecules)[!grepl(&quot;ERCC&quot;, rownames(molecules))][order(mean_cpm, decreasing = TRUE)][1:num_genes]</code></pre>
+<p>Filter the genes:</p>
+<pre class="r"><code>reads &lt;- reads[rownames(reads) %in% c(gene_keep, ercc_keep), ]
+molecules &lt;- molecules[rownames(molecules) %in% c(gene_keep, ercc_keep), ]</code></pre>
+</div>
+<div id="transformation" class="section level2">
+<h2>Transformation</h2>
+<p>In addition to comparing the raw counts of reads and molecules, we compare the log2 counts and the log counts per million.</p>
+<p>For the log counts, I add a pseudocount of 1.</p>
+<pre class="r"><code>reads_log &lt;- log2(reads + 1)
+molecules_log &lt;- log2(molecules + 1)</code></pre>
+<p>Calculate cpm for the reads data using TMM-normalization.</p>
+<pre class="r"><code>norm_factors_reads &lt;- calcNormFactors(reads, method = &quot;TMM&quot;)
+reads_cpm &lt;- cpm(reads, lib.size = colSums(reads) * norm_factors_reads,
+                 log = TRUE)</code></pre>
+<p>And for the molecules.</p>
+<pre class="r"><code>norm_factors_mol &lt;- calcNormFactors(molecules, method = &quot;TMM&quot;)
+molecules_cpm &lt;- cpm(molecules, lib.size = colSums(molecules) * norm_factors_mol,
+                     log = TRUE)</code></pre>
+</div>
+<div id="differences-in-conversion-of-reads-to-molecules" class="section level2">
+<h2>Differences in conversion of reads to molecules</h2>
+<p>As seen above with the total counts, the conversion of reads to molecules varies between each of the 9 batches. Below I fit a loess transformation to each individually. It would be ideal if we could somehow we could correct for these differences and have them all follow a similar transformation from reads to molecules.</p>
+<pre class="r"><code>convert_to_long &lt;- function(r, m) {
+  # Combines reads and molecules into long format for comparison of conversion
+  #
+  # r - reads in wide format
+  # m - molecules in wide format
+  r &lt;- data.frame(gene = rownames(r), r)
+  m &lt;- data.frame(gene = rownames(m), m)
+  r_long &lt;- gather_(r, key = &quot;id&quot;, value = &quot;reads&quot;,
+                    grep(&quot;NA&quot;, colnames(r), value = TRUE))
+  m_long &lt;- gather_(m, key = &quot;id&quot;, value = &quot;molecules&quot;,
+                    grep(&quot;NA&quot;, colnames(m), value = TRUE))
+  r_long &lt;- separate_(r_long, col = &quot;id&quot;,  sep = &quot;\\.&quot;, remove = FALSE,
+                     into = c(&quot;individual&quot;, &quot;batch&quot;, &quot;well&quot;))
+  stopifnot(r_long$id == m_long$id,
+            r_long$gene == m_long$gene)
+  conversion &lt;- cbind(r_long, m_long$molecules)
+  colnames(conversion)[ncol(conversion)] &lt;- &quot;molecules&quot;
+  stopifnot(nrow(conversion) == nrow(m_long))
+  return(conversion)
+}</code></pre>
+<p>In order to be able to make this plot, I have to subsample to fewer genes. Otherwise it runs out of memory.</p>
+<pre class="r"><code>set.seed(12345)
+num_subsampled &lt;- 5000
+sub_indices &lt;- sample(1:nrow(reads), num_subsampled)
+# counts
+reads_sub &lt;- reads[sub_indices, ]
+molecules_sub &lt;- molecules[sub_indices, ]
+# log counts
+reads_log_sub &lt;- reads_log[sub_indices, ]
+molecules_log_sub &lt;- molecules_log[sub_indices, ]
+# log counts per million
+reads_cpm_sub &lt;- reads_cpm[sub_indices, ]
+molecules_cpm_sub &lt;- molecules_cpm[sub_indices, ]
+# Convert to long format
+conversion &lt;- convert_to_long(reads_sub, molecules_sub)
+conversion_log &lt;- convert_to_long(reads_log_sub, molecules_log_sub)
+conversion_cpm &lt;- convert_to_long(reads_cpm_sub, molecules_cpm_sub)
+head(conversion)</code></pre>
+<pre><code>             gene            id individual batch well reads molecules
+1 ENSG00000118777 NA19098.1.A01    NA19098     1  A01     0         0
+2 ENSG00000157800 NA19098.1.A01    NA19098     1  A01     2         2
+3 ENSG00000168944 NA19098.1.A01    NA19098     1  A01     0         0
+4 ENSG00000158941 NA19098.1.A01    NA19098     1  A01   198         4
+5 ENSG00000167671 NA19098.1.A01    NA19098     1  A01     0         0
+6 ENSG00000171219 NA19098.1.A01    NA19098     1  A01     0         0</code></pre>
+<p>Summarize across the single cells for each of the 9 batches.</p>
+<pre class="r"><code># counts
+conversion_mean &lt;- conversion %&gt;%
+  filter(well != &quot;bulk&quot;) %&gt;%
+  group_by(individual, batch, gene) %&gt;%
+  summarize(reads_mean = mean(reads),
+            reads_sem = sd(reads) / sqrt(length(reads)),
+            molecules_mean = mean(molecules),
+            molecules_sem = sd(molecules) / sqrt(length(molecules)))
+# log counts
+conversion_log_mean &lt;- conversion_log %&gt;%
+  filter(well != &quot;bulk&quot;) %&gt;%
+  group_by(individual, batch, gene) %&gt;%
+  summarize(reads_mean = mean(reads),
+            reads_sem = sd(reads) / sqrt(length(reads)),
+            molecules_mean = mean(molecules),
+            molecules_sem = sd(molecules) / sqrt(length(molecules)))
+
+# counts per million
+conversion_cpm_mean &lt;- conversion_cpm %&gt;%
+  filter(well != &quot;bulk&quot;) %&gt;%
+  group_by(individual, batch, gene) %&gt;%
+  summarize(reads_mean = mean(reads),
+            reads_sem = sd(reads) / sqrt(length(reads)),
+            molecules_mean = mean(molecules),
+            molecules_sem = sd(molecules) / sqrt(length(molecules)))
+head(conversion_cpm_mean)</code></pre>
+<pre><code>Source: local data frame [6 x 7]
+Groups: individual, batch
+
+  individual batch            gene reads_mean reads_sem molecules_mean
+1    NA19098     1 ENSG00000000457 -0.8607341 0.3575195       2.574378
+2    NA19098     1 ENSG00000000460  2.7123079 0.3738981       4.629304
+3    NA19098     1 ENSG00000001460  0.4673185 0.3861463       3.414075
+4    NA19098     1 ENSG00000001617 -1.7289385 0.2945758       2.027832
+5    NA19098     1 ENSG00000002016 -2.0541566 0.2846078       1.898482
+6    NA19098     1 ENSG00000002549  3.9782091 0.3088070       5.525236
+Variables not shown: molecules_sem (dbl)</code></pre>
+<div id="counts" class="section level3">
+<h3>Counts</h3>
+<p>Compare the counts.</p>
+<pre class="r"><code>conver_plot_counts &lt;- ggplot(conversion_mean,
+                             aes(x = reads_mean, y = molecules_mean, col = individual,
+                                 shape = as.factor(batch))) +
+  geom_point() +
+  geom_errorbar(aes(ymin = molecules_mean - molecules_sem,
+                    ymax = molecules_mean + molecules_sem)) +
+  geom_errorbarh(aes(xmin = reads_mean - reads_sem,
+                     xmax = reads_mean + reads_sem)) +
+  geom_smooth(method = &quot;loess&quot;, color = &quot;black&quot;) +
+  facet_grid(batch ~ individual) +
+  theme(legend.position = &quot;none&quot;) +
+  labs(x = &quot;Reads per gene&quot;,
+       y = &quot;Molecules per gene&quot;,
+       title = sprintf(&quot;Conversion per batch (subsample of %d genes)&quot;, num_subsampled))
+conver_plot_counts</code></pre>
+<p><img src="figure/compare-reads-v-molecules-per-batch.Rmd/convert-reads-molecules-per-batch-1.png" title="" alt="" width="864" style="display: block; margin: auto;" /></p>
+</div>
+<div id="log2-counts" class="section level3">
+<h3>Log2 counts</h3>
+<p>Compare the log counts.</p>
+<pre class="r"><code>conver_plot_log &lt;- conver_plot_counts %+%
+  conversion_log_mean +
+  labs(x = &quot;Reads per gene (log2)&quot;,
+       y = &quot;Molecules per gene (log2)&quot;,
+       title = sprintf(&quot;Conversion per batch (subsample of %d genes) - log&quot;, num_subsampled))
+conver_plot_log</code></pre>
+<p><img src="figure/compare-reads-v-molecules-per-batch.Rmd/convert-reads-molecules-per-batch-log-1.png" title="" alt="" width="864" style="display: block; margin: auto;" /></p>
+</div>
+<div id="log2-counts-per-million" class="section level3">
+<h3>Log2 counts per million</h3>
+<p>Compare the counts per million.</p>
+<pre class="r"><code>conver_plot_cpm &lt;- conver_plot_counts %+%
+  conversion_cpm_mean +
+  labs(x = &quot;Reads per million per gene (log2)&quot;,
+       y = &quot;Molecules per million per gene (log2)&quot;,
+       title = sprintf(&quot;Conversion per batch (subsample of %d genes) - cpm&quot;, num_subsampled))
+conver_plot_cpm</code></pre>
+<p><img src="figure/compare-reads-v-molecules-per-batch.Rmd/convert-reads-molecules-per-batch-cpm-1.png" title="" alt="" width="864" style="display: block; margin: auto;" /></p>
+<p>Now visualizing only the ERCC.</p>
+<pre class="r"><code>conversion_ercc &lt;- convert_to_long(reads[grep(&quot;ERCC&quot;, rownames(reads)), ],
+                                   molecules[grep(&quot;ERCC&quot;, rownames(molecules)), ])
+conversion_ercc_log &lt;- convert_to_long(reads_log[grep(&quot;ERCC&quot;, rownames(reads_log)), ],
+                                       molecules_log[grep(&quot;ERCC&quot;, rownames(molecules_log)), ])
+conversion_ercc_cpm &lt;- convert_to_long(reads_cpm[grep(&quot;ERCC&quot;, rownames(reads_cpm)), ],
+                                       molecules_cpm[grep(&quot;ERCC&quot;, rownames(molecules_cpm)), ])
+# Remove 19098 batch 2 because the outlier throws off the axes
+conversion_ercc &lt;- conversion_ercc[!(conversion_ercc$individual == &quot;NA19098&quot; &amp;
+                                     conversion_ercc$batch == 2), ]
+conversion_ercc_log &lt;- conversion_ercc_log[!(conversion_ercc_log$individual == &quot;NA19098&quot; &amp;
+                                             conversion_ercc_log$batch == 2), ]
+conversion_ercc_cpm &lt;- conversion_ercc_cpm[!(conversion_ercc_cpm$individual == &quot;NA19098&quot; &amp;
+                                             conversion_ercc_cpm$batch == 2), ]</code></pre>
+<pre class="r"><code># counts
+conversion_ercc_mean &lt;- conversion_ercc %&gt;%
+  filter(well != &quot;bulk&quot;) %&gt;%
+  group_by(individual, batch, gene) %&gt;%
+  summarize(reads_mean = mean(reads),
+         reads_sem = sd(reads) / sqrt(length(reads)),
+         molecules_mean = mean(molecules),
+         molecules_sem = sd(molecules) / sqrt(length(molecules)))
+# log counts
+conversion_ercc_log_mean &lt;- conversion_ercc_log %&gt;%
+  filter(well != &quot;bulk&quot;) %&gt;%
+  group_by(individual, batch, gene) %&gt;%
+  summarize(reads_mean = mean(reads),
+         reads_sem = sd(reads) / sqrt(length(reads)),
+         molecules_mean = mean(molecules),
+         molecules_sem = sd(molecules) / sqrt(length(molecules)))
+# counts per million
+conversion_ercc_cpm_mean &lt;- conversion_ercc_cpm %&gt;%
+  filter(well != &quot;bulk&quot;) %&gt;%
+  group_by(individual, batch, gene) %&gt;%
+  summarize(reads_mean = mean(reads),
+         reads_sem = sd(reads) / sqrt(length(reads)),
+         molecules_mean = mean(molecules),
+         molecules_sem = sd(molecules) / sqrt(length(molecules)))
+head(conversion_ercc_cpm_mean)</code></pre>
+<pre><code>Source: local data frame [6 x 7]
+Groups: individual, batch
+
+  individual batch       gene reads_mean    reads_sem molecules_mean
+1    NA19098     1 ERCC-00002  11.443245 7.161031e-02      11.357225
+2    NA19098     1 ERCC-00003   7.789998 1.437894e-01       7.802351
+3    NA19098     1 ERCC-00004   9.740596 8.954873e-02       9.725388
+4    NA19098     1 ERCC-00009   6.684334 1.715310e-01       6.895313
+5    NA19098     1 ERCC-00012  -3.253281 3.527606e-02       1.267489
+6    NA19098     1 ERCC-00013  -3.303453 2.878603e-17       1.218331
+Variables not shown: molecules_sem (dbl)</code></pre>
+</div>
+<div id="ercc-counts" class="section level3">
+<h3>ERCC counts</h3>
+<pre class="r"><code>conver_plot_ercc &lt;- conver_plot_counts %+%
+  conversion_ercc_mean +
+  labs(title = &quot;Conversion per batch (ERCC genes)&quot;)
+conver_plot_ercc</code></pre>
+<p><img src="figure/compare-reads-v-molecules-per-batch.Rmd/convert-reads-molecules-per-batch-ercc-1.png" title="" alt="" width="864" style="display: block; margin: auto;" /></p>
+</div>
+<div id="ercc-log2-counts" class="section level3">
+<h3>ERCC log2 counts</h3>
+<pre class="r"><code>conver_plot_ercc_log &lt;- conver_plot_counts %+%
+  conversion_ercc_log_mean +
+  labs(x = &quot;Reads per million per gene (log2)&quot;,
+       y = &quot;Molecules per million per gene (log2)&quot;,
+       title = &quot;Conversion per batch (ERCC genes) - log&quot;)
+conver_plot_ercc_log</code></pre>
+<p><img src="figure/compare-reads-v-molecules-per-batch.Rmd/convert-reads-molecules-per-batch-ercc-log-1.png" title="" alt="" width="864" style="display: block; margin: auto;" /></p>
+</div>
+<div id="ercc-log2-counts-per-million" class="section level3">
+<h3>ERCC log2 counts per million</h3>
+<pre class="r"><code>conver_plot_ercc_cpm &lt;- conver_plot_counts %+%
+  conversion_ercc_cpm_mean +
+  labs(x = &quot;Reads per million per gene&quot;,
+       y = &quot;Molecules per million per gene&quot;,
+       title = &quot;Conversion per batch (ERCC genes) - cpm&quot;)
+conver_plot_ercc_cpm</code></pre>
+<p><img src="figure/compare-reads-v-molecules-per-batch.Rmd/convert-reads-molecules-per-batch-ercc-cpm-1.png" title="" alt="" width="864" style="display: block; margin: auto;" /></p>
+</div>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] tidyr_0.2.0   edgeR_3.10.2  limma_3.24.9  ggplot2_1.0.1 dplyr_0.4.1  
+[6] knitr_1.10.5 
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.11.6      magrittr_1.5     MASS_7.3-40      munsell_0.4.2   
+ [5] colorspace_1.2-6 stringr_1.0.0    plyr_1.8.2       tools_3.2.0     
+ [9] parallel_3.2.0   grid_3.2.0       gtable_0.1.2     DBI_0.3.1       
+[13] htmltools_0.2.6  lazyeval_0.1.10  yaml_2.1.13      assertthat_0.1  
+[17] digest_0.6.8     reshape2_1.4.1   formatR_1.2      evaluate_0.7    
+[21] rmarkdown_0.6.1  labeling_0.3     stringi_0.4-1    scales_0.2.4    
+[25] proto_0.3-10    </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+
+</body>
+</html>

@@ -130,12 +130,11 @@ img {
 <li><a href="#expressions-of-pluripotency-genes-in-ipscs">Expressions of pluripotency genes in iPSCs</a></li>
 <li><a href="#use-lcls-as-a-negative-control">Use LCLs as a negative control</a></li>
 <li><a href="#the-cv-between-ipsc-and-lcl">The CV between iPSC and LCL</a></li>
-<li><a href="#session-information">Session information</a></li>
 </ul>
 </div>
 
 <p><strong>Last updated:</strong> 2015-08-18</p>
-<p><strong>Code version:</strong> 60a212f941df6f91b772339aebd682435732d8f4</p>
+<p><strong>Code version:</strong> c9f21d3104d8d5b57ff63de56a4cf64155c81dcf</p>
 <p>Current model of reprogramming suggests that pluripotency occurs in two-phases: a prolonged stochastic phase followed by a rapid deterministic phase. <a href="http://journals.plos.org/plosone/article?id=10.1371/journal.pone.0095304">Chung2014</a> Our iPSCs were reprogrammed and cultured in mane different batches. In addition, some lines have been through different culture mediums. In order to make sure that the variance we observed at the single cell level is not cause by different levels of plupotency, we need to more rigorously estimate the cells status than just carrying out pluritest from the bulk.</p>
 <div id="input" class="section level2">
 <h2>Input</h2>
@@ -302,9 +301,8 @@ CV &lt;- function(x){apply(x,1,sd)/apply(x,1,mean)}
 CV_iPSC &lt;- CV(molecules_single_cpm_iPSC_19239)
 CV_LCL &lt;- CV(molecules_single_cpm_lcl_19239)
 
+## combine the CV values from the 2 cell types
 iPSC_LCL &lt;- as.data.frame(cbind(CV_iPSC,CV_LCL))
-#iPSC_LCL$gene &lt;- rownames(molecules_single_cpm_iPSC_19239)
-
 
 ## select ERCC
 iPSC_LCL$ERCC &lt;- grepl(&quot;ERCC&quot;, rownames(iPSC_LCL))
@@ -312,11 +310,51 @@ iPSC_LCL$ERCC &lt;- grepl(&quot;ERCC&quot;, rownames(iPSC_LCL))
 ## color palette
 cbPalette &lt;- c(&quot;#999999&quot;, &quot;#0000FF&quot;, &quot;#990033&quot;, &quot;#F0E442&quot;, &quot;#0072B2&quot;, &quot;#D55E00&quot;, &quot;#CC79A7&quot;, &quot;#009E73&quot;)
 
-ggplot(iPSC_LCL, aes(x = CV_iPSC, y = CV_LCL, col = ERCC)) + geom_point(size = 3, alpha = 0.5) + scale_colour_manual(values=cbPalette) + stat_function(fun= function(x) {x}, col= &quot;#56B4E9&quot;)</code></pre>
+ggplot(iPSC_LCL, aes(x = CV_iPSC, y = CV_LCL, col = ERCC)) + geom_point(size = 3, alpha = 0.5) + scale_colour_manual(values=cbPalette) + stat_function(fun= function(x) {x}, col= &quot;#56B4E9&quot;) + labs(x = &quot;CV of iPSC&quot;, y =  &quot;CV of LCL&quot;, title = &quot;cpm with log&quot;)</code></pre>
 <p><img src="figure/stemness.Rmd/CV-iPSC-LCL-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-</div>
-<div id="session-information" class="section level2">
-<h2>Session information</h2>
+<pre class="r"><code>iPSC_LCL$mean_iPSC &lt;- apply(molecules_single_cpm_iPSC_19239,1, mean)
+iPSC_LCL$mean_LCL &lt;- apply(molecules_single_cpm_lcl_19239,1, mean)
+
+ggplot(iPSC_LCL, aes(x = mean_iPSC, y = mean_LCL, col = ERCC)) + geom_point(size = 3, alpha = 0.5) + scale_colour_manual(values=cbPalette) + stat_function(fun= function(x) {x}, col= &quot;#56B4E9&quot;) </code></pre>
+<p><img src="figure/stemness.Rmd/CV-iPSC-LCL-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>Use the non-standardized molecule numbers</p>
+<pre class="r"><code>## select 19239 iPSC
+molecules_single_collision_19239 &lt;- molecules_single_collision[,grep(19239,colnames(molecules_single_collision))]
+
+## keep the common genes iPSCs and LCLs data
+molecules_single_collision_lcl_19239 &lt;- molecules_single_collision_lcl[rownames(molecules_single_collision_lcl) %in% rownames(molecules_single_collision_19239), ]
+
+molecules_single_collision_iPSC_19239 &lt;- molecules_single_collision_19239[rownames(molecules_single_collision_19239) %in% rownames(molecules_single_collision_lcl_19239),]
+
+## calculate CV
+iPSC_LCL$CV_iPSC_collision &lt;- CV(molecules_single_collision_iPSC_19239)
+iPSC_LCL$CV_LCL_collision &lt;- CV(molecules_single_collision_lcl_19239)
+iPSC_LCL$mean_iPSC_collision &lt;- apply(molecules_single_collision_iPSC_19239,1, mean)
+iPSC_LCL$mean_LCL_collision &lt;- apply(molecules_single_collision_lcl_19239,1, mean)
+
+ggplot(iPSC_LCL, aes(x = mean_iPSC_collision, y = CV_iPSC_collision, col = ERCC)) + geom_point(size = 3, alpha = 0.5) + scale_colour_manual(values=cbPalette) + scale_x_log10()</code></pre>
+<pre><code>Warning in loop_apply(n, do.ply): Removed 1073 rows containing missing
+values (geom_point).</code></pre>
+<p><img src="figure/stemness.Rmd/CV-iPSC-LCL-non-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(iPSC_LCL, aes(x = mean_LCL_collision, y = CV_LCL_collision, col = ERCC)) + geom_point(size = 3, alpha = 0.5) + scale_colour_manual(values=cbPalette) + scale_x_log10()</code></pre>
+<pre><code>Warning in loop_apply(n, do.ply): Removed 4184 rows containing missing
+values (geom_point).</code></pre>
+<p><img src="figure/stemness.Rmd/CV-iPSC-LCL-non-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(iPSC_LCL, aes(x = CV_iPSC_collision, y = CV_LCL_collision, col = ERCC)) + geom_point(size = 3, alpha = 0.5) + scale_colour_manual(values=cbPalette) + stat_function(fun= function(x) {x}, col= &quot;#56B4E9&quot;) + scale_x_log10() + scale_y_log10() + labs(x = &quot;CV of iPSC&quot;, y =  &quot;CV of LCL&quot;, title = &quot;non standarized&quot;)</code></pre>
+<pre><code>Warning in loop_apply(n, do.ply): Removed 4474 rows containing missing
+values (geom_point).</code></pre>
+<p><img src="figure/stemness.Rmd/CV-iPSC-LCL-non-3.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>## cpm without log 
+molecules_single_cpmnolog_lcl_19239 &lt;- cpm(molecules_single_collision_lcl_19239, log = FALSE)
+molecules_single_cpmnolog_iPSC_19239 &lt;- cpm(molecules_single_collision_iPSC_19239, log = FALSE)
+
+iPSC_LCL$CV_iPSC_cpmnolog &lt;- CV(molecules_single_cpmnolog_iPSC_19239)
+iPSC_LCL$CV_LCL_cpmnolog &lt;- CV(molecules_single_cpmnolog_lcl_19239)
+
+ggplot(iPSC_LCL, aes(x = CV_iPSC_cpmnolog, y = CV_LCL_cpmnolog, col = ERCC)) + geom_point(size = 3, alpha = 0.5) + scale_colour_manual(values=cbPalette) + stat_function(fun= function(x) {x}, col= &quot;#56B4E9&quot;) + scale_x_log10() + scale_y_log10() + labs(x = &quot;CV of iPSC&quot;, y =  &quot;CV of LCL&quot;, title = &quot;cpm no log&quot;)</code></pre>
+<pre><code>Warning in loop_apply(n, do.ply): Removed 4474 rows containing missing
+values (geom_point).</code></pre>
+<p><img src="figure/stemness.Rmd/CV-iPSC-LCL-non-4.png" title="" alt="" width="672" style="display: block; margin: auto;" /> ## Session information</p>
 <pre class="r"><code>sessionInfo()</code></pre>
 <pre><code>R version 3.2.0 (2015-04-16)
 Platform: x86_64-unknown-linux-gnu (64-bit)
