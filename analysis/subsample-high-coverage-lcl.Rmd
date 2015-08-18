@@ -32,16 +32,19 @@ for WELL in A9E1 B2E2 B4H1 D2H2
 do
   for NUM in 200000 1000000 10000000 20000000 30000000 40000000 50000000
   do
-    # Molecules
-    CMD="detect-genes.R $CELLS $SEED molecule-counts-$NUM.txt --min_count=1 --min_cells=1 --wells=$WELL"
-    DEST="genes-detected/molecule-$WELL-$CELLS-$SEED-$NUM.txt"
-    echo "$CMD > $DEST" | qsub -l h_vmem=2g -cwd -V -N detect-molecule-$WELL-$CELLS-$SEED-$NUM -j y -o ~/log/detect-genes.R -l 'hostname=!bigmem01'
-    sleep .01s
-    # Reads
-    CMD="detect-genes.R $CELLS $SEED read-counts-$NUM.txt --min_count=10 --min_cells=1 --wells=$WELL"
-    DEST="genes-detected/read-$WELL-$CELLS-$SEED-$NUM.txt"
-    echo "$CMD > $DEST" | qsub -l h_vmem=2g -cwd -V -N detect-read-$WELL-$CELLS-$SEED-$NUM -j y -o ~/log/detect-genes.R -l 'hostname=!bigmem01'
-    sleep .01s
+    for GENE in ENSG ERCC
+    do
+      # Molecules
+      CMD="detect-genes.R $CELLS $SEED molecule-counts-$NUM.txt --min_count=1 --min_cells=1 --wells=$WELL --gene=$GENE"
+      DEST="genes-detected/molecule-$WELL-$CELLS-$SEED-$NUM-$GENE.txt"
+      echo "$CMD > $DEST" | qsub -l h_vmem=2g -cwd -V -N detect-molecule-$WELL-$CELLS-$SEED-$NUM-$GENE -j y -o ~/log/detect-genes.R -l 'hostname=!bigmem01'
+      sleep .01s
+      # Reads
+      CMD="detect-genes.R $CELLS $SEED read-counts-$NUM.txt --min_count=10 --min_cells=1 --wells=$WELL --gene=$GENE"
+      DEST="genes-detected/read-$WELL-$CELLS-$SEED-$NUM-$GENE.txt"
+      echo "$CMD > $DEST" | qsub -l h_vmem=2g -cwd -V -N detect-read-$WELL-$CELLS-$SEED-$NUM-$GENE -j y -o ~/log/detect-genes.R -l 'hostname=!bigmem01'
+      sleep .01s
+    done
   done
 done
 ```
@@ -54,14 +57,15 @@ import os
 import glob
 files = glob.glob("genes-detected/*txt")
 out = open("genes-detected.txt", "w")
-out.write("type\twell\tdepth\tnum_cells\tseed\tgenes\tmean_counts\n")
+out.write("type\twell\tdepth\tfeatures\tnum_cells\tseed\tgenes\tmean_counts\n")
 for fname in files:
     fname_parts = os.path.basename(fname).rstrip(".txt").split("-")
     type = fname_parts[0]
     well = fname_parts[1]
     depth = fname_parts[4]
+    features = fname_parts[5]
     f = open(fname, "r")
-    out.write(type + "\t" + well + "\t" + depth + "\t" + f.read())
+    out.write(type + "\t" + well + "\t" + depth + "\t" + features + "\t" + f.read())
     f.close()
 
 out.close()
@@ -83,7 +87,7 @@ For the analysis of molecule counts, a gene was detected if it had greater than 
 p <- ggplot(genes_data, aes(x = as.factor(depth), y = genes)) +
   geom_boxplot() +
   geom_jitter(aes(color = as.factor(depth), shape = well)) +
-  facet_wrap(~type) +
+  facet_wrap(features~type) +
   labs(x = "Sequencing depth (millions)",
        y = "Number of genes detected",
        color = "Depth",
@@ -100,7 +104,7 @@ Only includes counts of genes which had the minumum count (10 reads; 1 molecule)
 p <- ggplot(genes_data, aes(x = as.factor(depth), y = mean_counts)) +
   geom_boxplot() +
   geom_jitter(aes(color = as.factor(depth), shape = well)) +
-  facet_wrap(~type) +
+  facet_wrap(features~type) +
   labs(x = "Sequencing depth (millions)",
        y = "Total count",
        color = "Depth",
@@ -120,11 +124,11 @@ p %+% genes_data[genes_data$type == "molecule", ] +
 ## Sample concentrations
 
 The cDNA concentrations are listed as followed:
-A9E1: 1.73 ng/ul 
-B2E2: 2.25 ng/ul
-B4H1: 1.74 ng/ul
-D2H2: 1.73 ng/ul
 
+*  A9E1: 1.73 ng/ul 
+*  B2E2: 2.25 ng/ul
+*  B4H1: 1.74 ng/ul
+*  D2H2: 1.73 ng/ul
 
 ## Session information
 
