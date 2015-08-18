@@ -126,6 +126,7 @@ img {
 <ul>
 <li><a href="#input">Input</a></li>
 <li><a href="#total-mapped-reads-unmapped-ratios-and-ercc-ratios">Total mapped reads, unmapped ratios, and ERCC ratios</a></li>
+<li><a href="#the-total-molecule-number-of-ercc-and-endogenous-genes">The total molecule number of ERCC and endogenous genes</a></li>
 <li><a href="#cell-number">Cell number</a></li>
 <li><a href="#number-of-genes-detected">Number of genes detected</a></li>
 <li><a href="#reads-mapped-to-mitochondrial-genes">Reads mapped to mitochondrial genes</a></li>
@@ -135,8 +136,8 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-07-21</p>
-<p><strong>Code version:</strong> c81003a9f8c7df2925a675f7e59f32b4a1c0833a</p>
+<p><strong>Last updated:</strong> 2015-08-18</p>
+<p><strong>Code version:</strong> 60a212f941df6f91b772339aebd682435732d8f4</p>
 <p>This is the quality control at single cell level of 19239 LCLs. 96 cells were collected on a C1 prep. I only purchased enough Tn5 from Epicentre for the generation of transposomes with 24 different barcodes. As a results, the 96 cells were divided into four groups, each have 24 cells, for library preps (4 batches) and for sequencing (4 lanes). Additionally, 4 individual cells collected from a different C1 prep were sujected to library preps using either the Epicentre Tn5 (A9E1 and B2E2) or the home-made Tn5 (B4H1 and D2H2).</p>
 <div id="input" class="section level2">
 <h2>Input</h2>
@@ -287,6 +288,17 @@ summary_per_sample_reads$ERCC.ratios &lt;- apply(reads[grep(&quot;ERCC&quot;, ro
 # plot
 ggplot(summary_per_sample_reads, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), shape = as.factor(batch), label = well)) + geom_point(size = 3, alpha = 0.5) + geom_text(angle = 45)</code></pre>
 <p><img src="figure/qc-cell-lcl.Rmd/reads-4.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
+<div id="the-total-molecule-number-of-ercc-and-endogenous-genes" class="section level2">
+<h2>The total molecule number of ERCC and endogenous genes</h2>
+<pre class="r"><code>summary_per_sample_reads$total_ERCC_molecule &lt;- apply(molecules[grep(&quot;ERCC&quot;, rownames(molecules)), ],2,sum)
+
+summary_per_sample_reads$total_gene_molecule &lt;- apply(molecules[grep(&quot;ENSG&quot;, rownames(molecules)), ],2,sum)
+
+ggplot(summary_per_sample_reads, aes(x = total.mapped, y = total_gene_molecule, col = as.factor(individual), shape = as.factor(batch), label = well)) + geom_point(size = 3, alpha = 0.5) + xlab(&quot;Total mapped reads&quot;) + ylab(&quot;Total gene molecule&quot;) + geom_smooth()</code></pre>
+<p><img src="figure/qc-cell-lcl.Rmd/total-molecule-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(summary_per_sample_reads, aes(x = total.mapped, y = total_ERCC_molecule, col = as.factor(individual), shape = as.factor(batch), label = well)) + geom_point(size = 3, alpha = 0.5) + xlab(&quot;Total mapped reads&quot;) + ylab(&quot;Total ERCC molecule&quot;) + geom_smooth()</code></pre>
+<p><img src="figure/qc-cell-lcl.Rmd/total-molecule-2.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <p>Looking at only the multiplexed single cell libraries (96 samples total, 24 each in lanes 1-4):</p>
 <pre class="r"><code># remove the 4 individual cells
 summary_per_sample_reads_single &lt;- summary_per_sample_reads[!anno$full_lane, ]

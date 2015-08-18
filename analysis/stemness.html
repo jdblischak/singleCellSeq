@@ -129,12 +129,13 @@ img {
 <li><a href="#input">Input</a></li>
 <li><a href="#expressions-of-pluripotency-genes-in-ipscs">Expressions of pluripotency genes in iPSCs</a></li>
 <li><a href="#use-lcls-as-a-negative-control">Use LCLs as a negative control</a></li>
+<li><a href="#the-cv-between-ipsc-and-lcl">The CV between iPSC and LCL</a></li>
 <li><a href="#session-information">Session information</a></li>
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-08-11</p>
-<p><strong>Code version:</strong> 71b0941a1ada8745544596478a1a97761f5a4b2a</p>
+<p><strong>Last updated:</strong> 2015-08-18</p>
+<p><strong>Code version:</strong> 60a212f941df6f91b772339aebd682435732d8f4</p>
 <p>Current model of reprogramming suggests that pluripotency occurs in two-phases: a prolonged stochastic phase followed by a rapid deterministic phase. <a href="http://journals.plos.org/plosone/article?id=10.1371/journal.pone.0095304">Chung2014</a> Our iPSCs were reprogrammed and cultured in mane different batches. In addition, some lines have been through different culture mediums. In order to make sure that the variance we observed at the single cell level is not cause by different levels of plupotency, we need to more rigorously estimate the cells status than just carrying out pluritest from the bulk.</p>
 <div id="input" class="section level2">
 <h2>Input</h2>
@@ -285,6 +286,35 @@ rownames(molecules_single_pluripotency_all) &lt;- gene_name
 heatmap.2(molecules_single_pluripotency_all, trace=&quot;none&quot;, cexRow=1, cexCol=1, margins=c(8,8),xlab=&quot;single cells&quot;, ylab= &quot;pluripotency gene&quot;)</code></pre>
 <p><img src="figure/stemness.Rmd/expressed-pluripotency-gene-all-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
+<div id="the-cv-between-ipsc-and-lcl" class="section level2">
+<h2>The CV between iPSC and LCL</h2>
+<p>The CV values are calculated based on standardized molecule numbers</p>
+<pre class="r"><code>## select 19239 iPSC
+molecules_single_cpm_19239 &lt;- molecules_single_cpm[,grep(19239,colnames(molecules_single_cpm))]
+
+## keep the common genes iPSCs and LCLs data
+molecules_single_cpm_lcl_19239 &lt;- molecules_single_cpm_lcl[rownames(molecules_single_cpm_lcl) %in% rownames(molecules_single_cpm_19239), ]
+
+molecules_single_cpm_iPSC_19239 &lt;- molecules_single_cpm_19239[rownames(molecules_single_cpm_19239) %in% rownames(molecules_single_cpm_lcl_19239),]
+
+## calculate CV
+CV &lt;- function(x){apply(x,1,sd)/apply(x,1,mean)}
+CV_iPSC &lt;- CV(molecules_single_cpm_iPSC_19239)
+CV_LCL &lt;- CV(molecules_single_cpm_lcl_19239)
+
+iPSC_LCL &lt;- as.data.frame(cbind(CV_iPSC,CV_LCL))
+#iPSC_LCL$gene &lt;- rownames(molecules_single_cpm_iPSC_19239)
+
+
+## select ERCC
+iPSC_LCL$ERCC &lt;- grepl(&quot;ERCC&quot;, rownames(iPSC_LCL))
+
+## color palette
+cbPalette &lt;- c(&quot;#999999&quot;, &quot;#0000FF&quot;, &quot;#990033&quot;, &quot;#F0E442&quot;, &quot;#0072B2&quot;, &quot;#D55E00&quot;, &quot;#CC79A7&quot;, &quot;#009E73&quot;)
+
+ggplot(iPSC_LCL, aes(x = CV_iPSC, y = CV_LCL, col = ERCC)) + geom_point(size = 3, alpha = 0.5) + scale_colour_manual(values=cbPalette) + stat_function(fun= function(x) {x}, col= &quot;#56B4E9&quot;)</code></pre>
+<p><img src="figure/stemness.Rmd/CV-iPSC-LCL-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
 <div id="session-information" class="section level2">
 <h2>Session information</h2>
 <pre class="r"><code>sessionInfo()</code></pre>
@@ -316,8 +346,8 @@ loaded via a namespace (and not attached):
 [16] htmltools_0.2.6    yaml_2.1.13        assertthat_0.1    
 [19] digest_0.6.8       reshape2_1.4.1     formatR_1.2       
 [22] bitops_1.0-6       evaluate_0.7       rmarkdown_0.6.1   
-[25] gdata_2.16.1       stringi_0.4-1      scales_0.2.4      
-[28] proto_0.3-10      </code></pre>
+[25] labeling_0.3       gdata_2.16.1       stringi_0.4-1     
+[28] scales_0.2.4       proto_0.3-10      </code></pre>
 </div>
 
 
