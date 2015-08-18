@@ -83,11 +83,14 @@ levels(genes_data$depth) <- c("0.2", "1", "10", "20", "30", "40", "50")
 For the analysis of read counts, a gene was detected if it had greater than 10 reads.
 For the analysis of molecule counts, a gene was detected if it had greater than 1 molecule.
 
-```{r subsample-genes-detected, fig.width=10, fig.height=10}
-p <- ggplot(genes_data, aes(x = as.factor(depth), y = genes)) +
+### Endogenous genes
+
+```{r subsample-genes-detected-ensg, fig.width=10, fig.height=10}
+p <- ggplot(genes_data[genes_data$features == "ENSG", ],
+            aes(x = as.factor(depth), y = genes)) +
   geom_boxplot() +
-  geom_jitter(aes(color = as.factor(depth), shape = well)) +
-  facet_wrap(features~type) +
+  geom_point(aes(color = as.factor(depth), shape = well)) +
+  facet_wrap(~type) +
   labs(x = "Sequencing depth (millions)",
        y = "Number of genes detected",
        color = "Depth",
@@ -95,30 +98,57 @@ p <- ggplot(genes_data, aes(x = as.factor(depth), y = genes)) +
 p
 ```
 
+### ERCC
+
+```{r subsample-genes-detected-ercc, fig.width=10, fig.height=10}
+p %+% genes_data[genes_data$features == "ERCC", ]
+```
+
 ## Number of total counts
 
 Explore the effect of subsampling sequencing depth on the total count.
 Only includes counts of genes which had the minumum count (10 reads; 1 molecule).
 
-```{r subsample-total-counts, fig.width=10, fig.height=10}
-p <- ggplot(genes_data, aes(x = as.factor(depth), y = mean_counts)) +
+### Endogenous genes - reads
+
+```{r subsample-total-counts-ensg-reads}
+p <- ggplot(genes_data[genes_data$features == "ENSG" &
+                       genes_data$type == "read", ],
+            aes(x = as.factor(depth), y = mean_counts)) +
   geom_boxplot() +
-  geom_jitter(aes(color = as.factor(depth), shape = well)) +
-  facet_wrap(features~type) +
+  geom_point(aes(color = as.factor(depth), shape = well)) +
   labs(x = "Sequencing depth (millions)",
        y = "Total count",
        color = "Depth",
-       title = "Subsample: Total count")
+       title = "Subsample: Endogenous genes, reads")
 p
 ```
 
-It's difficult to see the differences in the molecule counts because of the range of the y-axis.
-Here is the molecule counts alone.
+### Endogenous genes - molecules
 
-```{r subsample-total-counts-molecules-only, fig.width=10, fig.height=10}
-p %+% genes_data[genes_data$type == "molecule", ] +
+```{r subsample-total-counts-ensg-molecules}
+p %+% genes_data[genes_data$features == "ENSG" & 
+                 genes_data$type == "molecule", ] +
   labs(y = "Total count",
-       title = "Subsample: Total count, molecules only")
+       title = "Subsample: Endogenous genes, molecules")
+```
+
+### ERCC - reads
+
+```{r subsample-total-counts-ercc-reads}
+p %+% genes_data[genes_data$features == "ERCC" & 
+                 genes_data$type == "read", ] +
+  labs(y = "Total count",
+       title = "Subsample: ERCC, reads")
+```
+
+### ERCC - molecules
+
+```{r subsample-total-counts-ercc-molecules}
+p %+% genes_data[genes_data$features == "ERCC" & 
+                 genes_data$type == "molecule", ] +
+  labs(y = "Total count",
+       title = "Subsample: ERCC, molecules")
 ```
 
 ## Sample concentrations
