@@ -239,6 +239,36 @@ rownames(molecules_single_pluripotency_all) <- gene_name
 heatmap.2(molecules_single_pluripotency_all, trace="none", cexRow=1, cexCol=1, margins=c(8,8),xlab="single cells", ylab= "pluripotency gene")
 ```
 
+## The CV between iPSC and LCL 
+The CV values are calculated based on standardized molecule numbers
+```{r CV-iPSC-LCL}
+## select 19239 iPSC
+molecules_single_cpm_19239 <- molecules_single_cpm[,grep(19239,colnames(molecules_single_cpm))]
+
+## keep the common genes iPSCs and LCLs data
+molecules_single_cpm_lcl_19239 <- molecules_single_cpm_lcl[rownames(molecules_single_cpm_lcl) %in% rownames(molecules_single_cpm_19239), ]
+
+molecules_single_cpm_iPSC_19239 <- molecules_single_cpm_19239[rownames(molecules_single_cpm_19239) %in% rownames(molecules_single_cpm_lcl_19239),]
+
+## calculate CV
+CV <- function(x){apply(x,1,sd)/apply(x,1,mean)}
+CV_iPSC <- CV(molecules_single_cpm_iPSC_19239)
+CV_LCL <- CV(molecules_single_cpm_lcl_19239)
+
+iPSC_LCL <- as.data.frame(cbind(CV_iPSC,CV_LCL))
+#iPSC_LCL$gene <- rownames(molecules_single_cpm_iPSC_19239)
+
+
+## select ERCC
+iPSC_LCL$ERCC <- grepl("ERCC", rownames(iPSC_LCL))
+
+## color palette
+cbPalette <- c("#999999", "#0000FF", "#990033", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#009E73")
+
+ggplot(iPSC_LCL, aes(x = CV_iPSC, y = CV_LCL, col = ERCC)) + geom_point(size = 3, alpha = 0.5) + scale_colour_manual(values=cbPalette) + stat_function(fun= function(x) {x}, col= "#56B4E9")
+
+```
+
 ## Session information
 
 ```{r info}
