@@ -9,7 +9,6 @@ date: 2015-06-11
 
 ```{r chunk-options, include=FALSE}
 source("chunk-options.R")
-opts_chunk$set(cache = TRUE)
 ```
 
 First, compared counts via three methods:
@@ -27,13 +26,12 @@ The correlation of the mean expression improved.
 
 ## Input
 
-```{r packages, message=FALSE, cache=FALSE}
+```{r packages, message=FALSE}
 library("dplyr")
 library("ggplot2")
 theme_set(theme_bw(base_size = 16))
 library("edgeR")
 source("functions.R")
-library("tidyr")
 ```
 
 Input annotation.
@@ -313,165 +311,6 @@ pc2_v_total_mol_corrected
 ```
 
 PC1 is no longer associated with sequencing depth!
-
-## Differences in conversion of reads to molecules
-
-As seen above with the total counts, the conversion of reads to molecules varies between each of the 9 batches.
-Below I fit a loess transformation to each individually.
-It would be ideal if we could somehow we could correct for these differences and have them all follow a similar transformation from reads to molecules.
-
-```{r gather-cols-to-rows}
-convert_to_long <- function(r, m) {
-  # Combines reads and molecules into long format for comparison of conversion
-  #
-  # r - reads in wide format
-  # m - molecules in wide format
-  r <- data.frame(gene = rownames(r), r)
-  m <- data.frame(gene = rownames(m), m)
-  r_long <- gather_(r, key = "id", value = "reads",
-                    grep("NA", colnames(r), value = TRUE))
-  m_long <- gather_(m, key = "id", value = "molecules",
-                    grep("NA", colnames(m), value = TRUE))
-  r_long <- separate_(r_long, col = "id",  sep = "\\.", remove = FALSE,
-                     into = c("individual", "batch", "well"))
-  stopifnot(r_long$id == m_long$id,
-            r_long$gene == m_long$gene)
-  conversion <- cbind(r_long, m_long$molecules)
-  colnames(conversion)[ncol(conversion)] <- "molecules"
-  stopifnot(nrow(conversion) == nrow(m_long))
-  return(conversion)
-}
-```
-
-In order to be able to make this plot, I have to subsample to fewer genes.
-Otherwise it runs out of memory.
-
-```{r subsample, cache=FALSE}
-set.seed(12345)
-num_subsampled <- 5000
-sub_indices <- sample(1:nrow(reads), num_subsampled)
-dim(reads)
-reads_sub <- reads[sub_indices, ]
-molecules_sub <- molecules[sub_indices, ]
-reads_cpm_sub <- reads_cpm[sub_indices, ]
-molecules_cpm_sub <- molecules_cpm[sub_indices, ]
-conversion <- convert_to_long(reads_sub, molecules_sub)
-conversion_cpm <- convert_to_long(reads_cpm_sub, molecules_cpm_sub)
-head(conversion)
-```
-
-Summarize across the single cells for each of the 9 batches.
-
-```{r summarize-conversion, cache=FALSE}
-# counts
-conversion_mean <- conversion %>%
-  filter(well != "bulk") %>%
-  group_by(individual, batch, gene) %>%
-  summarize(reads_mean = mean(reads),
-            reads_sem = sd(reads) / sqrt(length(reads)),
-            molecules_mean = mean(molecules),
-            molecules_sem = sd(molecules) / sqrt(length(molecules)))
-# counts per million
-conversion_cpm_mean <- conversion_cpm %>%
-  filter(well != "bulk") %>%
-  group_by(individual, batch, gene) %>%
-  summarize(reads_mean = mean(reads),
-            reads_sem = sd(reads) / sqrt(length(reads)),
-            molecules_mean = mean(molecules),
-            molecules_sem = sd(molecules) / sqrt(length(molecules)))
-head(conversion_cpm_mean)
-```
-
-Compare the counts.
-
-```{r convert-reads-molecules-per-batch, fig.width=9, fig.height=9, cache=FALSE}
-conver_plot_counts <- ggplot(conversion_mean,
-                             aes(x = reads_mean, y = molecules_mean, col = individual,
-                                 shape = as.factor(batch))) +
-  geom_point() +
-  geom_errorbar(aes(ymin = molecules_mean - molecules_sem,
-                    ymax = molecules_mean + molecules_sem)) +
-  geom_errorbarh(aes(xmin = reads_mean - reads_sem,
-                     xmax = reads_mean + reads_sem)) +
-  geom_smooth(method = "loess", color = "black") +
-  facet_grid(batch ~ individual) +
-  # scale_x_log10() + scale_y_log10() +
-  theme(legend.position = "none") +
-  labs(x = "Reads per gene",
-       y = "Molecules per gene",
-       title = sprintf("Conversion per batch (subsample of %d genes)", num_subsampled))
-conver_plot_counts
-```
-
-Compare the counts per million.
-
-```{r convert-reads-molecules-per-batch-cpm, fig.width=9, fig.height=9, cache=FALSE}
-conver_plot_cpm <- conver_plot_counts %+%
-  conversion_cpm_mean +
-  labs(x = "Reads per million per gene",
-       y = "Molecules per million per gene",
-       title = sprintf("Conversion per batch (subsample of %d genes) - cpm", num_subsampled))
-conver_plot_cpm
-```
-
-Now visualizing only the ERCC.
-
-```{r prepare-ercc, cache=FALSE}
-conversion_ercc <- convert_to_long(reads[grep("ERCC", rownames(reads)), ],
-                                   molecules[grep("ERCC", rownames(molecules)), ])
-conversion_ercc_cpm <- convert_to_long(reads_cpm[grep("ERCC", rownames(reads_cpm)), ],
-                                       molecules_cpm[grep("ERCC", rownames(molecules_cpm)), ])
-# Remove 19098 batch 2 because the outlier throws off the axes
-conversion_ercc <- conversion_ercc[!(conversion_ercc$individual == "NA19098" &
-                                     conversion_ercc$batch == 2), ]
-conversion_ercc_cpm <- conversion_ercc_cpm[!(conversion_ercc_cpm$individual == "NA19098" &
-                                             conversion_ercc_cpm$batch == 2), ]
-```
-
-```{r summarize-conversion-ercc, cache=FALSE}
-# counts
-conversion_ercc_mean <- conversion_ercc %>%
-  filter(well != "bulk") %>%
-  group_by(individual, batch, gene) %>%
-  summarize(reads_mean = mean(reads),
-         reads_sem = sd(reads) / sqrt(length(reads)),
-         molecules_mean = mean(molecules),
-         molecules_sem = sd(molecules) / sqrt(length(molecules)))
-# counts per million
-conversion_ercc_cpm_mean <- conversion_ercc_cpm %>%
-  filter(well != "bulk") %>%
-  group_by(individual, batch, gene) %>%
-  summarize(reads_mean = mean(reads),
-         reads_sem = sd(reads) / sqrt(length(reads)),
-         molecules_mean = mean(molecules),
-         molecules_sem = sd(molecules) / sqrt(length(molecules)))
-head(conversion_ercc_cpm_mean)
-```
-
-```{r check-ercc, cache=FALSE}
-str(conversion_ercc)
-table(conversion_ercc$individual, conversion_ercc$batch)
-```
-
-ERCC counts
-
-```{r convert-reads-molecules-per-batch-ercc, fig.width=9, fig.height=9, cache=FALSE}
-conver_plot_ercc <- conver_plot_counts %+%
-  conversion_ercc_mean +
-  labs(title = "Conversion per batch (ERCC genes)")
-conver_plot_ercc
-```
-
-ERCC counts per million
-
-```{r convert-reads-molecules-per-batch-ercc-cpm, fig.width=9, fig.height=9, cache=FALSE}
-conver_plot_ercc_cpm <- conver_plot_counts %+%
-  conversion_ercc_cpm_mean +
-  labs(x = "Reads per million per gene",
-       y = "Molecules per million per gene",
-       title = "Conversion per batch (ERCC genes) - cpm")
-conver_plot_ercc_cpm
-```
 
 ## Compare reads and standardized molecules
 
