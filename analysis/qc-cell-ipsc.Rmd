@@ -123,6 +123,26 @@ ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = ERCC.ratios, c
 ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = total.ERCC, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))
 ```
 
+### Total molecules of ERCC and endogenous genes
+looking at the total molecule number of ERCC and endogenous genes
+```{r total-molecule}
+summary_per_sample_reads$total_ERCC_molecule <- apply(molecules[grep("ERCC", rownames(molecules)), ],2,sum)
+
+summary_per_sample_reads$total_gene_molecule <- apply(molecules[grep("ENSG", rownames(molecules)), ],2,sum)
+
+summary_per_sample_reads_single <- summary_per_sample_reads[summary_per_sample_reads$well!="bulk",]
+
+ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = total_gene_molecule, col = as.factor(individual), shape = as.factor(batch), label = well)) + geom_point(size = 3, alpha = 0.5) + xlab("Total mapped reads") + ylab("Total gene molecule")
+
+total_ERCC_plot <- ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = total_ERCC_molecule, col = as.factor(individual), shape = as.factor(batch), label = well)) + geom_point(size = 3, alpha = 0.5) + xlab("Total mapped reads") + ylab("Total ERCC molecule") 
+
+total_ERCC_plot
+total_ERCC_plot + facet_grid(individual ~ batch) + geom_smooth()
+total_ERCC_plot + scale_y_continuous(limits=c(0, 4000)) + facet_grid(individual ~ batch) + geom_smooth()
+
+plot(summary_per_sample_reads_single$total_ERCC_molecule)
+```
+
 ### Adjust the ERCC total reads of 19098 batch 2
 
 It is obvious that the 19098 batch 2 have a lot more ERCC than all the other. Here is trying to fix it by adjusting the ERCC of the super sad batch.
@@ -156,6 +176,9 @@ summary_per_sample_reads_single_qc <- merge(summary_per_sample_reads_single,qc,b
 ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)
 
 ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)
+
+# look at total molecule
+ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = total_gene_molecule, col = as.factor(individual), label = as.character(cell_number))) + xlab("Total mapped reads") + ylab("Total endogenous gene molecule") + geom_text(fontface=3)
 ```
 
 Based on the observation that these is a dinstint cell population with more than 2 million reads, we used it as a cutoff.
