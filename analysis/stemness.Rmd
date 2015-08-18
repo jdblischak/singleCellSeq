@@ -255,9 +255,8 @@ CV <- function(x){apply(x,1,sd)/apply(x,1,mean)}
 CV_iPSC <- CV(molecules_single_cpm_iPSC_19239)
 CV_LCL <- CV(molecules_single_cpm_lcl_19239)
 
+## combine the CV values from the 2 cell types
 iPSC_LCL <- as.data.frame(cbind(CV_iPSC,CV_LCL))
-#iPSC_LCL$gene <- rownames(molecules_single_cpm_iPSC_19239)
-
 
 ## select ERCC
 iPSC_LCL$ERCC <- grepl("ERCC", rownames(iPSC_LCL))
@@ -265,10 +264,45 @@ iPSC_LCL$ERCC <- grepl("ERCC", rownames(iPSC_LCL))
 ## color palette
 cbPalette <- c("#999999", "#0000FF", "#990033", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#009E73")
 
-ggplot(iPSC_LCL, aes(x = CV_iPSC, y = CV_LCL, col = ERCC)) + geom_point(size = 3, alpha = 0.5) + scale_colour_manual(values=cbPalette) + stat_function(fun= function(x) {x}, col= "#56B4E9")
+ggplot(iPSC_LCL, aes(x = CV_iPSC, y = CV_LCL, col = ERCC)) + geom_point(size = 3, alpha = 0.5) + scale_colour_manual(values=cbPalette) + stat_function(fun= function(x) {x}, col= "#56B4E9") + labs(x = "CV of iPSC", y =  "CV of LCL", title = "cpm with log")
 
+iPSC_LCL$mean_iPSC <- apply(molecules_single_cpm_iPSC_19239,1, mean)
+iPSC_LCL$mean_LCL <- apply(molecules_single_cpm_lcl_19239,1, mean)
+
+ggplot(iPSC_LCL, aes(x = mean_iPSC, y = mean_LCL, col = ERCC)) + geom_point(size = 3, alpha = 0.5) + scale_colour_manual(values=cbPalette) + stat_function(fun= function(x) {x}, col= "#56B4E9") 
 ```
 
+Use the non-standardized molecule numbers
+```{r CV-iPSC-LCL-non}
+## select 19239 iPSC
+molecules_single_collision_19239 <- molecules_single_collision[,grep(19239,colnames(molecules_single_collision))]
+
+## keep the common genes iPSCs and LCLs data
+molecules_single_collision_lcl_19239 <- molecules_single_collision_lcl[rownames(molecules_single_collision_lcl) %in% rownames(molecules_single_collision_19239), ]
+
+molecules_single_collision_iPSC_19239 <- molecules_single_collision_19239[rownames(molecules_single_collision_19239) %in% rownames(molecules_single_collision_lcl_19239),]
+
+## calculate CV
+iPSC_LCL$CV_iPSC_collision <- CV(molecules_single_collision_iPSC_19239)
+iPSC_LCL$CV_LCL_collision <- CV(molecules_single_collision_lcl_19239)
+iPSC_LCL$mean_iPSC_collision <- apply(molecules_single_collision_iPSC_19239,1, mean)
+iPSC_LCL$mean_LCL_collision <- apply(molecules_single_collision_lcl_19239,1, mean)
+
+ggplot(iPSC_LCL, aes(x = mean_iPSC_collision, y = CV_iPSC_collision, col = ERCC)) + geom_point(size = 3, alpha = 0.5) + scale_colour_manual(values=cbPalette) + scale_x_log10()
+
+ggplot(iPSC_LCL, aes(x = mean_LCL_collision, y = CV_LCL_collision, col = ERCC)) + geom_point(size = 3, alpha = 0.5) + scale_colour_manual(values=cbPalette) + scale_x_log10()
+
+ggplot(iPSC_LCL, aes(x = CV_iPSC_collision, y = CV_LCL_collision, col = ERCC)) + geom_point(size = 3, alpha = 0.5) + scale_colour_manual(values=cbPalette) + stat_function(fun= function(x) {x}, col= "#56B4E9") + scale_x_log10() + scale_y_log10() + labs(x = "CV of iPSC", y =  "CV of LCL", title = "non standarized")
+
+## cpm without log 
+molecules_single_cpmnolog_lcl_19239 <- cpm(molecules_single_collision_lcl_19239, log = FALSE)
+molecules_single_cpmnolog_iPSC_19239 <- cpm(molecules_single_collision_iPSC_19239, log = FALSE)
+
+iPSC_LCL$CV_iPSC_cpmnolog <- CV(molecules_single_cpmnolog_iPSC_19239)
+iPSC_LCL$CV_LCL_cpmnolog <- CV(molecules_single_cpmnolog_lcl_19239)
+
+ggplot(iPSC_LCL, aes(x = CV_iPSC_cpmnolog, y = CV_LCL_cpmnolog, col = ERCC)) + geom_point(size = 3, alpha = 0.5) + scale_colour_manual(values=cbPalette) + stat_function(fun= function(x) {x}, col= "#56B4E9") + scale_x_log10() + scale_y_log10() + labs(x = "CV of iPSC", y =  "CV of LCL", title = "cpm no log")
+```
 ## Session information
 
 ```{r info}
