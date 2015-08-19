@@ -164,20 +164,22 @@ dup_corrs <-
 
 Fit a mixed model with the 9 batches being the random effect.
 
-```{r, eval = FALSE}
-gls_fit <- 
-    Humanzee::ruv_mixed_model(molecules_single_cpm[gene_rows_single, ], 
-                    ndups = 1,
-                    design = design, block = block, 
-                    correlation = dup_corrs$cons)
-save(gls_fit, file = "../data/limma-crossed.rda")
+```{r}
+if (file.exists("../data/limma-crossed.rda")) {
+  load("../data/limma-crossed.rda")
+} else {
+  gls_fit <-
+      Humanzee::ruv_mixed_model(molecules_single_cpm[gene_rows_single, ],
+                      ndups = 1,
+                      design = design, block = block,
+                      correlation = dup_corrs$cons)
+  save(gls_fit, file = "../data/limma-crossed.rda")
+}
 ```
-
 
 Compute expression levels after removing variation due to random effects.
 
 ```{r}
-load("../data/limma-crossed.rda")
 molecule_batch_removed <- t( design %*% t(gls_fit$coef) ) + gls_fit$resid
 
 pca_single_mixed_correction <- run_pca(molecule_batch_removed)
