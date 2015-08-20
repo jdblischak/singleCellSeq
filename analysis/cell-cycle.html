@@ -138,8 +138,8 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-08-18</p>
-<p><strong>Code version:</strong> 60a212f941df6f91b772339aebd682435732d8f4</p>
+<p><strong>Last updated:</strong> 2015-08-19</p>
+<p><strong>Code version:</strong> a4bb82c5aade6d33efedf3960a4225c645e117ec</p>
 <p>Carry out cell cycle analysis of single cell iPSCs using the method by <a href="http://www.sciencedirect.com/science/article/pii/S0092867415005498">Macosko2015</a></p>
 <p>Gene sets reflecting five phases of the HeLa cell cycle (G1/S, S, G2/M, M and M/G1) were taken from Whitfield et al. (Whitfield et al., 2002) (Table S2), and refined by examining the correlation between the expression pattern of each gene and the average expression pattern of all genes in the respective gene-set, and excluding genes with a low correlation (R&lt;0.3). This step removed genes that were identified as phase-specific in HeLa cells but did not correlate with that phase in our single-cell data. The remaining genes in each refined gene-set were highly correlated (not shown). We then averaged the normalized expression levels (log2(TPM+1)) of the genes in each gene-set to define the phase-specific scores of each cell. These scores were then subjected to two normalization steps. First, for each phase, the scores were centered and divided by their standard deviation. Second, the normalized scores of each cell were centered and normalized.</p>
 <div id="input" class="section level2">
@@ -358,62 +358,66 @@ p</code></pre>
 </div>
 <div id="the-ratios-of-endogenous-gene-and-ercc" class="section level2">
 <h2>The ratios of endogenous gene and ERCC</h2>
-<p>Hypothesis: cells with more mRNA molecule (presumbely G2 phase) will have higher endogenous gene ratio and lower ERCC ratio. Definition: endogenous gene ratios (total gene reads/ total mapped reads) ERCC ratio (total ERCC reads/ total mapped reads) total reads (total number of reads from both ERCC and endogenous genes) total molecules (total number of molecules from both ERCC and endogenous genes) Conclusion: 1. endogenous gene ratios do not corelate with total mapped reads, ERCC ratios, endogenous gene ratios are pretty similar across individual and across cell cycle 2. ERCC ratios strongly corrlate with total molecules G2, G2/M have lower ERCC ratios than others</p>
+<ul>
+<li>Hypothesis: cells with more mRNA molecule (presumbely G2 phase) will have higher endogenous gene ratio and lower ERCC ratio.</li>
+<li>Definition: endogenous gene ratios (total gene molecule/ total molecule) ERCC ratio (total ERCC molecule/ total molecule) total reads (total number of reads from both ERCC and endogenous genes) total molecules (total number of molecules from both ERCC and endogenous genes)</li>
+<li>Conclusion:</li>
+</ul>
+<ol style="list-style-type: decimal">
+<li>ERCC ratios strongly corrlate with total molecules G2, G2/M have lower ERCC ratios than others</li>
+</ol>
 <pre class="r"><code># remove bulk
 summary_per_sample_reads_single &lt;- summary_per_sample_reads_qc[summary_per_sample_reads_qc$well!=&quot;bulk&quot;,]
 
 # create total mapped reads
 summary_per_sample_reads_single$total_mapped &lt;- apply(summary_per_sample_reads_single[,5:8],1,sum)
 
-# total ERCC reads 
-summary_per_sample_reads_single$total_ERCC &lt;- apply(reads_single[grep(&quot;ERCC&quot;, rownames(reads_single)), ],2,sum)
+# total ERCC molecules 
+summary_per_sample_reads_single$total_ERCC_mol &lt;- apply(molecules_single[grep(&quot;ERCC&quot;, rownames(molecules_single)), ],2,sum)
 
-# creat ERCC ratios
-summary_per_sample_reads_single$ERCC_ratios &lt;- apply(reads_single[grep(&quot;ERCC&quot;, rownames(reads_single)), ],2,sum)/apply(summary_per_sample_reads_single[,5:8],1,sum)
+# creat ERCC molecule ratios
+summary_per_sample_reads_single$ERCC_mol_ratios &lt;- apply(molecules_single[grep(&quot;ERCC&quot;, rownames(molecules_single)), ],2,sum)/apply(molecules_single,2,sum)
 
-# creat endogenous gene ratios
-summary_per_sample_reads_single$gene_ratios &lt;- apply(reads_single[grep(&quot;ENSG&quot;, rownames(reads_single)), ],2,sum)/apply(summary_per_sample_reads_single[,5:8],1,sum)
+# creat endogenous gene molecule
+summary_per_sample_reads_single$total_gene_mol &lt;- apply(molecules_single[grep(&quot;ENSG&quot;, rownames(molecules_single)), ],2,sum)
+
+# creat endogenous gene molecule ratios
+summary_per_sample_reads_single$gene_mol_ratios &lt;- apply(molecules_single[grep(&quot;ENSG&quot;, rownames(molecules_single)), ],2,sum)/apply(molecules_single,2,sum)
 
 # plot
-ggplot(summary_per_sample_reads_single, aes(x = total_mapped, y = ERCC_ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5)</code></pre>
+ggplot(summary_per_sample_reads_single, aes(x = total_mapped, y = ERCC_mol_ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5)</code></pre>
 <p><img src="figure/cell-cycle.Rmd/ratios-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>ggplot(summary_per_sample_reads_single, aes(x = total_mapped, y = gene_ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5)</code></pre>
+<pre class="r"><code>ggplot(summary_per_sample_reads_single, aes(x = total_mapped, y = gene_mol_ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5)</code></pre>
 <p><img src="figure/cell-cycle.Rmd/ratios-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>ggplot(summary_per_sample_reads_single, aes(x = ERCC_ratios, y = gene_ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5)</code></pre>
-<p><img src="figure/cell-cycle.Rmd/ratios-3.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>anno_single$gene_ratios &lt;- summary_per_sample_reads_single$gene_ratios
-anno_single$ERCC_ratios &lt;- summary_per_sample_reads_single$ERCC_ratios
+<pre class="r"><code>anno_single$gene_mol_ratios &lt;- summary_per_sample_reads_single$gene_mol_ratios
+anno_single$ERCC_mol_ratios &lt;- summary_per_sample_reads_single$ERCC_mol_ratios
 
-ggplot(anno_single, aes(x = gene_ratios, y = total_molecules, col = cell_phase)) + geom_point(size = 3, alpha = 0.5, fontface=3) + scale_colour_manual(values=cbPalette, breaks=phase_order, labels=c(&quot;G1/S&quot;,&quot;S&quot;,&quot;G2&quot;,&quot;G2/M&quot;,&quot;M/G1&quot;)) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + xlab(&quot;total endogenou gene reads/total mapped&quot;) + ylab(&quot;Total molecules&quot;)</code></pre>
+ggplot(anno_single, aes(x = gene_mol_ratios, y = total_molecules, col = cell_phase)) + geom_point(size = 3, alpha = 0.5, fontface=3) + scale_colour_manual(values=cbPalette, breaks=phase_order, labels=c(&quot;G1/S&quot;,&quot;S&quot;,&quot;G2&quot;,&quot;G2/M&quot;,&quot;M/G1&quot;)) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + xlab(&quot;total endogenou gene molecule/total molecule&quot;) + ylab(&quot;Total molecules&quot;)</code></pre>
 <p><img src="figure/cell-cycle.Rmd/cell-cycle-ratio-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>ggplot(anno_single, aes(x = gene_ratios, y = total_reads, col = cell_phase)) + geom_point(size = 3, alpha = 0.5, fontface=3) + scale_colour_manual(values=cbPalette, breaks=phase_order, labels=c(&quot;G1/S&quot;,&quot;S&quot;,&quot;G2&quot;,&quot;G2/M&quot;,&quot;M/G1&quot;)) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + xlab(&quot;total endogenou gene reads/total mapped&quot;) + ylab(&quot;Total reads&quot;)</code></pre>
+<pre class="r"><code>ggplot(anno_single, aes(x = ERCC_mol_ratios, y = total_molecules, col = cell_phase)) + geom_point(size = 3, alpha = 0.5, fontface=3) + scale_colour_manual(values=cbPalette, breaks=phase_order, labels=c(&quot;G1/S&quot;,&quot;S&quot;,&quot;G2&quot;,&quot;G2/M&quot;,&quot;M/G1&quot;)) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + xlab(&quot;total ERCC molecule/total molecule&quot;) + ylab(&quot;Total molecules&quot;)</code></pre>
 <p><img src="figure/cell-cycle.Rmd/cell-cycle-ratio-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>ggplot(anno_single, aes(x = ERCC_ratios, y = total_molecules, col = cell_phase)) + geom_point(size = 3, alpha = 0.5, fontface=3) + scale_colour_manual(values=cbPalette, breaks=phase_order, labels=c(&quot;G1/S&quot;,&quot;S&quot;,&quot;G2&quot;,&quot;G2/M&quot;,&quot;M/G1&quot;)) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + xlab(&quot;total ERCC reads/total mapped&quot;) + ylab(&quot;Total molecules&quot;)</code></pre>
-<p><img src="figure/cell-cycle.Rmd/cell-cycle-ratio-3.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>ggplot(anno_single, aes(x = ERCC_ratios, y = total_reads, col = cell_phase)) + geom_point(size = 3, alpha = 0.5, fontface=3) + scale_colour_manual(values=cbPalette, breaks=phase_order, labels=c(&quot;G1/S&quot;,&quot;S&quot;,&quot;G2&quot;,&quot;G2/M&quot;,&quot;M/G1&quot;)) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + xlab(&quot;total ERCC reads/total mapped&quot;) + ylab(&quot;Total reads&quot;)</code></pre>
-<p><img src="figure/cell-cycle.Rmd/cell-cycle-ratio-4.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <pre class="r"><code># box plots
-r &lt;- ggplot(anno_single, aes(x = as.factor(cell_phase), y = gene_ratios)) + geom_boxplot(aes(fill=factor(cell_phase))) + scale_x_discrete(limits=phase_order, labels=c(&quot;G1/S&quot;,&quot;S&quot;,&quot;G2&quot;,&quot;G2/M&quot;,&quot;M/G1&quot;)) + scale_fill_manual(values=cbPalette, breaks=phase_order, labels=c(&quot;G1/S&quot;,&quot;S&quot;,&quot;G2&quot;,&quot;G2/M&quot;,&quot;M/G1&quot;)) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + xlab(&quot;Cell cycle phase&quot;) + ylab(&quot;total endogenou gene reads/total mapped&quot;)
+r &lt;- ggplot(anno_single, aes(x = as.factor(cell_phase), y = gene_mol_ratios)) + geom_boxplot(aes(fill=factor(cell_phase))) + scale_x_discrete(limits=phase_order, labels=c(&quot;G1/S&quot;,&quot;S&quot;,&quot;G2&quot;,&quot;G2/M&quot;,&quot;M/G1&quot;)) + scale_fill_manual(values=cbPalette, breaks=phase_order, labels=c(&quot;G1/S&quot;,&quot;S&quot;,&quot;G2&quot;,&quot;G2/M&quot;,&quot;M/G1&quot;)) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + xlab(&quot;Cell cycle phase&quot;) + ylab(&quot;total endogenou gene molecule/total molecules&quot;)
 r</code></pre>
-<p><img src="figure/cell-cycle.Rmd/cell-cycle-ratio-5.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="figure/cell-cycle.Rmd/cell-cycle-ratio-3.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>r + facet_grid(individual ~ batch) </code></pre>
-<p><img src="figure/cell-cycle.Rmd/cell-cycle-ratio-6.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>e &lt;- ggplot(anno_single, aes(x = as.factor(cell_phase), y= ERCC_ratios)) + geom_boxplot(aes(fill=factor(cell_phase))) + scale_x_discrete(limits=phase_order, labels=c(&quot;G1/S&quot;,&quot;S&quot;,&quot;G2&quot;,&quot;G2/M&quot;,&quot;M/G1&quot;)) + scale_fill_manual(values=cbPalette, breaks=phase_order, labels=c(&quot;G1/S&quot;,&quot;S&quot;,&quot;G2&quot;,&quot;G2/M&quot;,&quot;M/G1&quot;)) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + xlab(&quot;Cell cycle phase&quot;) + ylab(&quot;total ERCC reads/total mapped&quot;)
+<p><img src="figure/cell-cycle.Rmd/cell-cycle-ratio-4.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>e &lt;- ggplot(anno_single, aes(x = as.factor(cell_phase), y= ERCC_mol_ratios)) + geom_boxplot(aes(fill=factor(cell_phase))) + scale_x_discrete(limits=phase_order, labels=c(&quot;G1/S&quot;,&quot;S&quot;,&quot;G2&quot;,&quot;G2/M&quot;,&quot;M/G1&quot;)) + scale_fill_manual(values=cbPalette, breaks=phase_order, labels=c(&quot;G1/S&quot;,&quot;S&quot;,&quot;G2&quot;,&quot;G2/M&quot;,&quot;M/G1&quot;)) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + xlab(&quot;Cell cycle phase&quot;) + ylab(&quot;total ERCC molecule/total molecules&quot;)
 e</code></pre>
-<p><img src="figure/cell-cycle.Rmd/cell-cycle-ratio-7.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="figure/cell-cycle.Rmd/cell-cycle-ratio-5.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>e + facet_grid(individual ~ batch) </code></pre>
-<p><img src="figure/cell-cycle.Rmd/cell-cycle-ratio-8.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="figure/cell-cycle.Rmd/cell-cycle-ratio-6.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <pre class="r"><code># density plots
-d &lt;- ggplot(anno_single, aes(x = gene_ratios, fill = cell_phase)) + geom_density(alpha = 0.5)
+d &lt;- ggplot(anno_single, aes(x = gene_mol_ratios, fill = cell_phase)) + geom_density(alpha = 0.5)
 d + facet_grid(individual ~ batch)</code></pre>
-<p><img src="figure/cell-cycle.Rmd/cell-cycle-ratio-9.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="figure/cell-cycle.Rmd/cell-cycle-ratio-7.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>d + facet_grid(cell_phase ~ individual)</code></pre>
-<p><img src="figure/cell-cycle.Rmd/cell-cycle-ratio-10.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>s &lt;- ggplot(anno_single, aes(x = ERCC_ratios, fill = cell_phase)) + geom_density(alpha = 0.5)
+<p><img src="figure/cell-cycle.Rmd/cell-cycle-ratio-8.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>s &lt;- ggplot(anno_single, aes(x = ERCC_mol_ratios, fill = cell_phase)) + geom_density(alpha = 0.5)
 s + facet_grid(individual ~ batch)</code></pre>
-<p><img src="figure/cell-cycle.Rmd/cell-cycle-ratio-11.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="figure/cell-cycle.Rmd/cell-cycle-ratio-9.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>s + facet_grid(cell_phase ~ individual)</code></pre>
-<p><img src="figure/cell-cycle.Rmd/cell-cycle-ratio-12.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="figure/cell-cycle.Rmd/cell-cycle-ratio-10.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
 <div id="test-test" class="section level2">
 <h2>test test</h2>
@@ -474,8 +478,8 @@ attached base packages:
 [1] stats     graphics  grDevices utils     datasets  methods   base     
 
 other attached packages:
-[1] gplots_2.17.0 edgeR_3.10.2  limma_3.24.9  ggplot2_1.0.1 dplyr_0.4.1  
-[6] knitr_1.10.5 
+[1] gplots_2.17.0   edgeR_3.10.2    limma_3.24.9    ggplot2_1.0.1  
+[5] dplyr_0.4.1     knitr_1.10.5    rmarkdown_0.6.1
 
 loaded via a namespace (and not attached):
  [1] Rcpp_0.11.6        magrittr_1.5       MASS_7.3-40       
@@ -486,8 +490,8 @@ loaded via a namespace (and not attached):
 [16] htmltools_0.2.6    lazyeval_0.1.10    yaml_2.1.13       
 [19] assertthat_0.1     digest_0.6.8       reshape2_1.4.1    
 [22] formatR_1.2        bitops_1.0-6       evaluate_0.7      
-[25] rmarkdown_0.6.1    labeling_0.3       gdata_2.16.1      
-[28] stringi_0.4-1      scales_0.2.4       proto_0.3-10      </code></pre>
+[25] labeling_0.3       gdata_2.16.1       stringi_0.4-1     
+[28] scales_0.2.4       proto_0.3-10      </code></pre>
 </div>
 
 
