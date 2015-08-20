@@ -11,9 +11,13 @@ date: 2015-08-10
 source("chunk-options.R")
 ```
 
-This was run on Ubuntu.
-A dependency, RccpArmadillo, cannot be installed on the cluster.
-Our systems admin has not been able to figure out the reason.
+BASiCS and its dependency, RcppArmadillo, were able to be installed on the cluster using a new version of gcc.
+Since this took a long time to run, it was submitted via the following:
+
+```bash
+echo "Rscript -e 'library(rmarkdown); render(\"basics.Rmd\")'" | \
+  qsub -l h_vmem=32g -cwd -V -j y -o ~/log/ -N basics
+```
 
 ```{r packages}
 library("BASiCS")
@@ -122,23 +126,33 @@ filter_data = newBASiCS_Data(basics_filter$Counts, basics_filter$Tech,
 ## Fit the model
 
 ```{r fit-model}
-if (file.exists("../data/chain_phi_mcmc.txt")) {
-  chain_mu = as.matrix(fread("../data/chain_mu_mcmc.txt"))
-  chain_delta = as.matrix(fread("../data/chain_delta_mcmc.txt"))
-  chain_phi = as.matrix(fread("../data/chain_phi_mcmc.txt"))
-  chain_s = as.matrix(fread("../data/chain_s_mcmc.txt"))
-  chain_nu = as.matrix(fread("../data/chain_nu_mcmc.txt"))#
-  chain_theta = as.matrix(fread("../data/chain_theta_mcmc.txt")[, 1, with = FALSE])
+store_dir <- "../data"
+run_name <- "40000"
+if (file.exists(paste0(store_dir, "/chain_phi_", run_name, ".txt"))) {
+  chain_mu = as.matrix(fread(paste0(store_dir, "/chain_mu_", run_name, ".txt")))
+  chain_delta = as.matrix(fread(paste0(store_dir, "/chain_delta_", run_name, ".txt")))
+  chain_phi = as.matrix(fread(paste0(store_dir, "/chain_phi_", run_name, ".txt")))
+  chain_s = as.matrix(fread(paste0(store_dir, "/chain_s_", run_name, ".txt")))
+  chain_nu = as.matrix(fread(paste0(store_dir, "/chain_nu_", run_name, ".txt")))
+  chain_theta = as.matrix(fread(paste0(store_dir, "/chain_mu_", run_name, ".txt"))[, 1, with = FALSE])
 
   mcmc_output <- newBASiCS_Chain(mu = chain_mu, delta = chain_delta,
                                  phi = chain_phi, s = chain_s,
                                  nu = chain_nu, theta = chain_theta)
+
+  time_total <- readRDS(paste0(store_dir, "/time_total_", run_name, ".rds"))
 } else {
-  mcmc_output <- BASiCS_MCMC(filter_data, N = 4000, Thin = 10, Burn = 2000,
+  time_start <- Sys.time()
+  mcmc_output <- BASiCS_MCMC(filter_data, N = 40000, Thin = 10, Burn = 20000,
                              PrintProgress = TRUE, StoreChains = TRUE,
-                             StoreDir = "../data", RunName = "mcmc")
+                             StoreDir = store_dir, RunName = run_name)
+  time_end <- Sys.time()
+  time_total <- difftime(time_end, time_start, units = "hours")
+  saveRDS(time_total, paste0(store_dir, "/time_total_", run_name, ".rds"))
 }
 ```
+
+Fitting the model took `r round(as.numeric(time_total), 2)` hours.
 
 Summarize the results.
 
