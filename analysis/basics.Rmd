@@ -187,8 +187,10 @@ phi$total_count <- colSums(counts(filter_data))
 ```{r phi-versus-molecule-count}
 phi_molecule_plot <- ggplot(phi, aes(x = total_count, y = Phi)) +
   geom_point() +
+  geom_smooth(method = "lm") +
   labs(x = "Total molecule count",
-       title = "Phi measures total molecule count differences")
+       title = paste0("Phi measures total molecule count differences\nr = ",
+                      round(cor(phi$total_count, phi$Phi), 2)))
 phi_molecule_plot
 ```
 
@@ -215,15 +217,16 @@ While the fit is not as good, it is still clearly driving the pattern.
 
 ```{r phi-versus-read-count}
 phi_read_plot <- phi_molecule_plot %+% phi %+% aes(x = total_read_count) +
-  geom_smooth() +
+  geom_smooth(method = "lm") +
   labs(x = "Total read count (x10^6)",
-       title = "Phi measure total read count differences")
+       title = paste0("Phi measures total read count differences\nr = ",
+                      round(cor(phi$total_read_count, phi$Phi), 2)))
 phi_read_plot
 ```
 
 ## Capture efficiency
 
-S is supposed to measure the capture efficiency.
+S measures the capture efficiency.
 
 ```{r s-capture-efficiency}
 plot(mcmc_summary, Param = "s")
@@ -245,16 +248,24 @@ s <- cbind(s, anno_single)
 s$efficiency <- efficiency
 ```
 
-This does not appear to be estimated very well.
-It may need more iterations, but it already takes ~5 hours to run the 4000 iterations.
+This takes lots of iterations to estimate well.
+With just a few thousand iterations, the correlation with the capture efficiency is low.
+Once the iterations are in the tens of thousands, the correlation with the capture efficiency is better.
 
 ```{r s-v-capture-efficiency}
-ggplot(s, aes(x = efficiency, y = S)) +
+s_plot <- ggplot(s, aes(x = efficiency, y = S)) +
   geom_point() +
-  geom_errorbar(aes(ymin = lower, ymax = upper), alpha = 0.5) +
-  geom_smooth() +
+  geom_smooth(method = "lm") +
   labs(x = "ERCC capture efficiency",
-       title = "S poorly models differences in capture efficiency")
+       title = paste0("S measures capture efficiency\nr = ",
+                      round(cor(s$efficiency, s$S), 2)))
+s_plot
+```
+
+The correlation is harder to see when the the 95% posterior density intervals are added the posterior medians.
+
+```{r s-v-capture-efficiency-prob-density}
+s_plot + geom_errorbar(aes(ymin = lower, ymax = upper), alpha = 0.5)
 ```
 
 ## Denoised data
@@ -268,6 +279,7 @@ denoised = BASiCS_DenoisedCounts(Data = filter_data, Chain = mcmc_output)
 ### PCA - BASiCS Denoised
 
 Both the raw and the cpm versions of the BASiCS denoised data appear similar to the result with the [non-normalized cpm data](#pca-non-normalized-cpm).
+This does not change substantially when increasing the iterations from a few thousands to a few tens of thousands.
 
 ```{r pca-basics}
 pca_basics <- run_pca(denoised)
