@@ -133,8 +133,8 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-08-18</p>
-<p><strong>Code version:</strong> c9f21d3104d8d5b57ff63de56a4cf64155c81dcf</p>
+<p><strong>Last updated:</strong> 2015-08-26</p>
+<p><strong>Code version:</strong> 37b0aacfab1630c60c0da565cedbdc74c4cf1a52</p>
 <p>Current model of reprogramming suggests that pluripotency occurs in two-phases: a prolonged stochastic phase followed by a rapid deterministic phase. <a href="http://journals.plos.org/plosone/article?id=10.1371/journal.pone.0095304">Chung2014</a> Our iPSCs were reprogrammed and cultured in mane different batches. In addition, some lines have been through different culture mediums. In order to make sure that the variance we observed at the single cell level is not cause by different levels of plupotency, we need to more rigorously estimate the cells status than just carrying out pluritest from the bulk.</p>
 <div id="input" class="section level2">
 <h2>Input</h2>
@@ -267,22 +267,13 @@ heatmap.2(molecules_single_pluripotency_lcl, trace=&quot;none&quot;, cexRow=1, c
 <pre class="r"><code>### merge two cell types
 molecules_single_pluripotency_all &lt;- merge(molecules_single_pluripotency,molecules_single_pluripotency_lcl,by = &quot;row.names&quot;, all = TRUE)
 
-### save gene name
-gene_name &lt;- molecules_single_pluripotency_all[,&quot;Row.names&quot;]
-
 ### remove the column and na for data.matrix
-molecules_single_pluripotency_all  &lt;- molecules_single_pluripotency_all[,!colnames(molecules_single_pluripotency_all) == &quot;Row.names&quot;]
-
-molecules_single_pluripotency_all[is.na(molecules_single_pluripotency_all)] &lt;- 0
-
-### data.matrix for heatmap and add gene name
-molecules_single_pluripotency_all &lt;- 
-data.matrix(molecules_single_pluripotency_all)
-
-rownames(molecules_single_pluripotency_all) &lt;- gene_name
+molecules_single_pluripotency_all_matrix  &lt;- as.matrix(molecules_single_pluripotency_all[,2:654])
+rownames(molecules_single_pluripotency_all_matrix) &lt;- molecules_single_pluripotency_all[,1]
+molecules_single_pluripotency_all_matrix[is.na(molecules_single_pluripotency_all_matrix)] &lt;- 0
 
 ### heatmap
-heatmap.2(molecules_single_pluripotency_all, trace=&quot;none&quot;, cexRow=1, cexCol=1, margins=c(8,8),xlab=&quot;single cells&quot;, ylab= &quot;pluripotency gene&quot;)</code></pre>
+heatmap.2(molecules_single_pluripotency_all_matrix, trace=&quot;none&quot;, cexRow=1, cexCol=1, margins=c(8,8), xlab=&quot;single cells&quot;, ylab= &quot;pluripotency gene&quot;)</code></pre>
 <p><img src="figure/stemness.Rmd/expressed-pluripotency-gene-all-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
 <div id="the-cv-between-ipsc-and-lcl" class="section level2">
@@ -354,7 +345,30 @@ iPSC_LCL$CV_LCL_cpmnolog &lt;- CV(molecules_single_cpmnolog_lcl_19239)
 ggplot(iPSC_LCL, aes(x = CV_iPSC_cpmnolog, y = CV_LCL_cpmnolog, col = ERCC)) + geom_point(size = 3, alpha = 0.5) + scale_colour_manual(values=cbPalette) + stat_function(fun= function(x) {x}, col= &quot;#56B4E9&quot;) + scale_x_log10() + scale_y_log10() + labs(x = &quot;CV of iPSC&quot;, y =  &quot;CV of LCL&quot;, title = &quot;cpm no log&quot;)</code></pre>
 <pre><code>Warning in loop_apply(n, do.ply): Removed 4474 rows containing missing
 values (geom_point).</code></pre>
-<p><img src="figure/stemness.Rmd/CV-iPSC-LCL-non-4.png" title="" alt="" width="672" style="display: block; margin: auto;" /> ## Session information</p>
+<p><img src="figure/stemness.Rmd/CV-iPSC-LCL-non-4.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>## density plot
+CV_cmpnolog &lt;- data.frame(CV = c(iPSC_LCL$CV_iPSC_cpmnolog,iPSC_LCL$CV_LCL_cpmnolog), cell_type = rep(c(&quot;iPSC&quot;, &quot;LCL&quot;), each = 17130))
+ggplot(CV_cmpnolog, aes(x = CV, fill = cell_type)) + geom_density(alpha = 0.5) + labs(title = &quot;cpm no log&quot;)</code></pre>
+<pre><code>Warning in loop_apply(n, do.ply): Removed 1073 rows containing non-finite
+values (stat_density).</code></pre>
+<pre><code>Warning in loop_apply(n, do.ply): Removed 4184 rows containing non-finite
+values (stat_density).</code></pre>
+<p><img src="figure/stemness.Rmd/CV-iPSC-LCL-non-5.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>## look at only one batah of iPSC
+molecules_single_cpmnolog_iPSC_19239.1 &lt;- molecules_single_cpmnolog_iPSC_19239[,grep(19239.1,colnames(molecules_single_cpmnolog_iPSC_19239))]
+iPSC_LCL$CV_iPSC_cpmnolog_1 &lt;- CV(molecules_single_cpmnolog_iPSC_19239.1)
+
+ggplot(iPSC_LCL, aes(x = CV_iPSC_cpmnolog_1, y = CV_LCL_cpmnolog, col = ERCC)) + geom_point(size = 3, alpha = 0.5) + scale_colour_manual(values=cbPalette) + stat_function(fun= function(x) {x}, col= &quot;#56B4E9&quot;) + scale_x_log10() + scale_y_log10() + labs(x = &quot;CV of iPSC batch 1&quot;, y =  &quot;CV of LCL&quot;, title = &quot;cpm no log&quot;)</code></pre>
+<pre><code>Warning in loop_apply(n, do.ply): Removed 5036 rows containing missing
+values (geom_point).</code></pre>
+<p><img src="figure/stemness.Rmd/CV-iPSC-LCL-non-6.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>CV_cmpnolog_1 &lt;- data.frame(CV = c(iPSC_LCL$CV_iPSC_cpmnolog_1,iPSC_LCL$CV_LCL_cpmnolog), cell_type = rep(c(&quot;iPSC&quot;, &quot;LCL&quot;), each = 17130))
+ggplot(CV_cmpnolog_1, aes(x = CV, fill = cell_type)) + geom_density(alpha = 0.5) + labs(title = &quot;cpm no log, 19239 batch 1&quot;)</code></pre>
+<pre><code>Warning in loop_apply(n, do.ply): Removed 2477 rows containing non-finite
+values (stat_density).</code></pre>
+<pre><code>Warning in loop_apply(n, do.ply): Removed 4184 rows containing non-finite
+values (stat_density).</code></pre>
+<p><img src="figure/stemness.Rmd/CV-iPSC-LCL-non-7.png" title="" alt="" width="672" style="display: block; margin: auto;" /> ## Session information</p>
 <pre class="r"><code>sessionInfo()</code></pre>
 <pre><code>R version 3.2.0 (2015-04-16)
 Platform: x86_64-unknown-linux-gnu (64-bit)
