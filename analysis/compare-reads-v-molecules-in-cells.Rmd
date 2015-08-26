@@ -1,0 +1,106 @@
+---
+title: "Compare read and molecule counts in single cells per batch"
+author: "PoYuan Tung"
+date: 2015-08-24
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+opts_chunk$set(cache = FALSE)
+```
+
+Comparing the conversion of reads to molecules for each of the 9 batches.
+Used three different metrics:
+
+*  Raw counts
+*  Log2 counts (pseudocount of 1)
+*  Log2 TMM-normalized counts per million (pseudocount of 0.25)
+
+## Input
+
+```{r packages, message=FALSE, cache=FALSE}
+library("dplyr")
+library("ggplot2")
+theme_set(theme_bw(base_size = 16))
+library("edgeR")
+source("functions.R")
+library("tidyr")
+```
+
+Input annotation.
+
+```{r input-annotation}
+anno <- read.table("../data/annotation.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno)
+```
+
+Input read counts.
+
+```{r input-read-counts}
+reads <- read.table("../data/reads.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+```
+
+Input molecule counts.
+
+```{r input-molecule-counts}
+molecules <- read.table("../data/molecules.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+```
+
+Input list of quality single cells.
+
+```{r input-quality-single-cells}
+quality_single_cells <- scan("../data/quality-single-cells.txt",
+                             what = "character")
+```
+
+## Filter
+
+Keep only the single cells that passed the [QC filters](qc-cell-ipsc.html).
+
+```{r filter-cells}
+reads <- reads[, colnames(reads) %in% quality_single_cells]
+molecules <- molecules[, colnames(molecules) %in% quality_single_cells]
+anno <- anno[anno$sample_id %in% quality_single_cells, ]
+stopifnot(dim(reads) == dim(molecules),
+          nrow(anno) == ncol(reads))
+```
+
+Only keep the following genes:
+
+*  ERCC genes with at least one molecule observed in at least one single cell
+
+```{r keep-ercc}
+ercc_keep <- rownames(molecules)[grepl("ERCC", rownames(molecules)) &
+                                 rowSums(molecules) > 1]
+```
+
+*  The top expressed endogenous genes in terms of mean molecule counts per million
+
+```{r top-expressed-genes}
+num_genes <- 12000
+mean_cpm <- molecules %>%
+  filter(!grepl("ERCC", rownames(molecules))) %>%
+  cpm %>%
+  rowMeans
+gene_keep <- rownames(molecules)[!grepl("ERCC", rownames(molecules))][order(mean_cpm, decreasing = TRUE)][1:num_genes]
+```
+
+Filter the genes:
+
+```{r filter-genes}
+reads <- reads[rownames(reads) %in% c(gene_keep, ercc_keep), ]
+molecules <- molecules[rownames(molecules) %in% c(gene_keep, ercc_keep), ]
+```
+
+## Session information
+
+```{r info}
+sessionInfo()
+```

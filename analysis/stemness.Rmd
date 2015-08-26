@@ -221,22 +221,13 @@ heatmap.2(molecules_single_pluripotency_lcl, trace="none", cexRow=1, cexCol=1, m
 ### merge two cell types
 molecules_single_pluripotency_all <- merge(molecules_single_pluripotency,molecules_single_pluripotency_lcl,by = "row.names", all = TRUE)
 
-### save gene name
-gene_name <- molecules_single_pluripotency_all[,"Row.names"]
-
 ### remove the column and na for data.matrix
-molecules_single_pluripotency_all  <- molecules_single_pluripotency_all[,!colnames(molecules_single_pluripotency_all) == "Row.names"]
-
-molecules_single_pluripotency_all[is.na(molecules_single_pluripotency_all)] <- 0
-
-### data.matrix for heatmap and add gene name
-molecules_single_pluripotency_all <- 
-data.matrix(molecules_single_pluripotency_all)
-
-rownames(molecules_single_pluripotency_all) <- gene_name
+molecules_single_pluripotency_all_matrix  <- as.matrix(molecules_single_pluripotency_all[,2:654])
+rownames(molecules_single_pluripotency_all_matrix) <- molecules_single_pluripotency_all[,1]
+molecules_single_pluripotency_all_matrix[is.na(molecules_single_pluripotency_all_matrix)] <- 0
 
 ### heatmap
-heatmap.2(molecules_single_pluripotency_all, trace="none", cexRow=1, cexCol=1, margins=c(8,8),xlab="single cells", ylab= "pluripotency gene")
+heatmap.2(molecules_single_pluripotency_all_matrix, trace="none", cexRow=1, cexCol=1, margins=c(8,8), xlab="single cells", ylab= "pluripotency gene")
 ```
 
 ## The CV between iPSC and LCL 
@@ -302,6 +293,19 @@ iPSC_LCL$CV_iPSC_cpmnolog <- CV(molecules_single_cpmnolog_iPSC_19239)
 iPSC_LCL$CV_LCL_cpmnolog <- CV(molecules_single_cpmnolog_lcl_19239)
 
 ggplot(iPSC_LCL, aes(x = CV_iPSC_cpmnolog, y = CV_LCL_cpmnolog, col = ERCC)) + geom_point(size = 3, alpha = 0.5) + scale_colour_manual(values=cbPalette) + stat_function(fun= function(x) {x}, col= "#56B4E9") + scale_x_log10() + scale_y_log10() + labs(x = "CV of iPSC", y =  "CV of LCL", title = "cpm no log")
+
+## density plot
+CV_cmpnolog <- data.frame(CV = c(iPSC_LCL$CV_iPSC_cpmnolog,iPSC_LCL$CV_LCL_cpmnolog), cell_type = rep(c("iPSC", "LCL"), each = 17130))
+ggplot(CV_cmpnolog, aes(x = CV, fill = cell_type)) + geom_density(alpha = 0.5) + labs(title = "cpm no log")
+
+## look at only one batah of iPSC
+molecules_single_cpmnolog_iPSC_19239.1 <- molecules_single_cpmnolog_iPSC_19239[,grep(19239.1,colnames(molecules_single_cpmnolog_iPSC_19239))]
+iPSC_LCL$CV_iPSC_cpmnolog_1 <- CV(molecules_single_cpmnolog_iPSC_19239.1)
+
+ggplot(iPSC_LCL, aes(x = CV_iPSC_cpmnolog_1, y = CV_LCL_cpmnolog, col = ERCC)) + geom_point(size = 3, alpha = 0.5) + scale_colour_manual(values=cbPalette) + stat_function(fun= function(x) {x}, col= "#56B4E9") + scale_x_log10() + scale_y_log10() + labs(x = "CV of iPSC batch 1", y =  "CV of LCL", title = "cpm no log")
+
+CV_cmpnolog_1 <- data.frame(CV = c(iPSC_LCL$CV_iPSC_cpmnolog_1,iPSC_LCL$CV_LCL_cpmnolog), cell_type = rep(c("iPSC", "LCL"), each = 17130))
+ggplot(CV_cmpnolog_1, aes(x = CV, fill = cell_type)) + geom_density(alpha = 0.5) + labs(title = "cpm no log, 19239 batch 1")
 ```
 ## Session information
 
