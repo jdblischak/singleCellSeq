@@ -133,8 +133,8 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-08-26</p>
-<p><strong>Code version:</strong> 37b0aacfab1630c60c0da565cedbdc74c4cf1a52</p>
+<p><strong>Last updated:</strong> 2015-08-28</p>
+<p><strong>Code version:</strong> 4b60929b44b585789da8bbab66261d3d17e08b6c</p>
 <p>Current model of reprogramming suggests that pluripotency occurs in two-phases: a prolonged stochastic phase followed by a rapid deterministic phase. <a href="http://journals.plos.org/plosone/article?id=10.1371/journal.pone.0095304">Chung2014</a> Our iPSCs were reprogrammed and cultured in mane different batches. In addition, some lines have been through different culture mediums. In order to make sure that the variance we observed at the single cell level is not cause by different levels of plupotency, we need to more rigorously estimate the cells status than just carrying out pluritest from the bulk.</p>
 <div id="input" class="section level2">
 <h2>Input</h2>
@@ -223,9 +223,20 @@ heatmap.2(molecules_single_pluripotency, trace=&quot;none&quot;, cexRow=1, cexCo
 heatmap.2(reads_bulk_pluripotency, trace=&quot;none&quot;, cexRow=1, cexCol=1, margins=c(8,8),xlab=&quot;bulk&quot;, ColSideColors=colorbulk)</code></pre>
 <p><img src="figure/stemness.Rmd/expressed-pluripotency-gene-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>pca_single_cells &lt;- prcomp(t(molecules_single_pluripotency), retx = TRUE, scale. = TRUE, center = TRUE)
-
 plot(pca_single_cells)</code></pre>
 <p><img src="figure/stemness.Rmd/expressed-pluripotency-gene-pca-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>pca_single_cells$perc_explained &lt;- pca_single_cells$sdev^2 / sum(pca_single_cells$sdev^2) * 100
+plot(pca_single_cells$perc_explained)</code></pre>
+<p><img src="figure/stemness.Rmd/expressed-pluripotency-gene-pca-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>anno_single &lt;- anno[anno$well != &quot;bulk&quot;,]
+stopifnot(colnames(pca_single_cells) == 
+            paste(paste0(&quot;NA&quot;, anno_single$individual),
+                   anno_single$batch,
+                   anno_single$well, sep = &quot;.&quot;))
+
+pca_single_cells_anno &lt;- cbind(anno_single, pca_single_cells$x)
+ggplot(pca_single_cells_anno, aes(x = PC1, y = PC2, col = as.factor(individual), shape = as.factor(batch))) +geom_point()</code></pre>
+<p><img src="figure/stemness.Rmd/expressed-pluripotency-gene-pca-3.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
 <div id="use-lcls-as-a-negative-control" class="section level2">
 <h2>Use LCLs as a negative control</h2>
@@ -278,7 +289,7 @@ heatmap.2(molecules_single_pluripotency_all_matrix, trace=&quot;none&quot;, cexR
 </div>
 <div id="the-cv-between-ipsc-and-lcl" class="section level2">
 <h2>The CV between iPSC and LCL</h2>
-<p>The CV values are calculated based on standardized molecule numbers</p>
+<p>The CV values are calculated based on standardized molecule numbers (cpm and log transformed)</p>
 <pre class="r"><code>## select 19239 iPSC
 molecules_single_cpm_19239 &lt;- molecules_single_cpm[,grep(19239,colnames(molecules_single_cpm))]
 
@@ -303,12 +314,7 @@ cbPalette &lt;- c(&quot;#999999&quot;, &quot;#0000FF&quot;, &quot;#990033&quot;,
 
 ggplot(iPSC_LCL, aes(x = CV_iPSC, y = CV_LCL, col = ERCC)) + geom_point(size = 3, alpha = 0.5) + scale_colour_manual(values=cbPalette) + stat_function(fun= function(x) {x}, col= &quot;#56B4E9&quot;) + labs(x = &quot;CV of iPSC&quot;, y =  &quot;CV of LCL&quot;, title = &quot;cpm with log&quot;)</code></pre>
 <p><img src="figure/stemness.Rmd/CV-iPSC-LCL-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>iPSC_LCL$mean_iPSC &lt;- apply(molecules_single_cpm_iPSC_19239,1, mean)
-iPSC_LCL$mean_LCL &lt;- apply(molecules_single_cpm_lcl_19239,1, mean)
-
-ggplot(iPSC_LCL, aes(x = mean_iPSC, y = mean_LCL, col = ERCC)) + geom_point(size = 3, alpha = 0.5) + scale_colour_manual(values=cbPalette) + stat_function(fun= function(x) {x}, col= &quot;#56B4E9&quot;) </code></pre>
-<p><img src="figure/stemness.Rmd/CV-iPSC-LCL-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<p>Use the non-standardized molecule numbers</p>
+<p>Use the non-standardized molecule numbers (no cpm) or standardized but not log transformed (cpm no log)</p>
 <pre class="r"><code>## select 19239 iPSC
 molecules_single_collision_19239 &lt;- molecules_single_collision[,grep(19239,colnames(molecules_single_collision))]
 
@@ -324,51 +330,51 @@ iPSC_LCL$mean_iPSC_collision &lt;- apply(molecules_single_collision_iPSC_19239,1
 iPSC_LCL$mean_LCL_collision &lt;- apply(molecules_single_collision_lcl_19239,1, mean)
 
 ggplot(iPSC_LCL, aes(x = mean_iPSC_collision, y = CV_iPSC_collision, col = ERCC)) + geom_point(size = 3, alpha = 0.5) + scale_colour_manual(values=cbPalette) + scale_x_log10()</code></pre>
-<pre><code>Warning in loop_apply(n, do.ply): Removed 1073 rows containing missing
-values (geom_point).</code></pre>
+<pre><code>Warning: Removed 1073 rows containing missing values (geom_point).</code></pre>
 <p><img src="figure/stemness.Rmd/CV-iPSC-LCL-non-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>ggplot(iPSC_LCL, aes(x = mean_LCL_collision, y = CV_LCL_collision, col = ERCC)) + geom_point(size = 3, alpha = 0.5) + scale_colour_manual(values=cbPalette) + scale_x_log10()</code></pre>
-<pre><code>Warning in loop_apply(n, do.ply): Removed 4184 rows containing missing
-values (geom_point).</code></pre>
+<pre><code>Warning: Removed 4184 rows containing missing values (geom_point).</code></pre>
 <p><img src="figure/stemness.Rmd/CV-iPSC-LCL-non-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>ggplot(iPSC_LCL, aes(x = CV_iPSC_collision, y = CV_LCL_collision, col = ERCC)) + geom_point(size = 3, alpha = 0.5) + scale_colour_manual(values=cbPalette) + stat_function(fun= function(x) {x}, col= &quot;#56B4E9&quot;) + scale_x_log10() + scale_y_log10() + labs(x = &quot;CV of iPSC&quot;, y =  &quot;CV of LCL&quot;, title = &quot;non standarized&quot;)</code></pre>
-<pre><code>Warning in loop_apply(n, do.ply): Removed 4474 rows containing missing
-values (geom_point).</code></pre>
+<pre><code>Warning: Removed 4474 rows containing missing values (geom_point).</code></pre>
 <p><img src="figure/stemness.Rmd/CV-iPSC-LCL-non-3.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>## cpm without log 
 molecules_single_cpmnolog_lcl_19239 &lt;- cpm(molecules_single_collision_lcl_19239, log = FALSE)
 molecules_single_cpmnolog_iPSC_19239 &lt;- cpm(molecules_single_collision_iPSC_19239, log = FALSE)
 
+## calculate CV of cpm no log
 iPSC_LCL$CV_iPSC_cpmnolog &lt;- CV(molecules_single_cpmnolog_iPSC_19239)
 iPSC_LCL$CV_LCL_cpmnolog &lt;- CV(molecules_single_cpmnolog_lcl_19239)
 
 ggplot(iPSC_LCL, aes(x = CV_iPSC_cpmnolog, y = CV_LCL_cpmnolog, col = ERCC)) + geom_point(size = 3, alpha = 0.5) + scale_colour_manual(values=cbPalette) + stat_function(fun= function(x) {x}, col= &quot;#56B4E9&quot;) + scale_x_log10() + scale_y_log10() + labs(x = &quot;CV of iPSC&quot;, y =  &quot;CV of LCL&quot;, title = &quot;cpm no log&quot;)</code></pre>
-<pre><code>Warning in loop_apply(n, do.ply): Removed 4474 rows containing missing
-values (geom_point).</code></pre>
+<pre><code>Warning: Removed 4474 rows containing missing values (geom_point).</code></pre>
 <p><img src="figure/stemness.Rmd/CV-iPSC-LCL-non-4.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>## density plot
 CV_cmpnolog &lt;- data.frame(CV = c(iPSC_LCL$CV_iPSC_cpmnolog,iPSC_LCL$CV_LCL_cpmnolog), cell_type = rep(c(&quot;iPSC&quot;, &quot;LCL&quot;), each = 17130))
 ggplot(CV_cmpnolog, aes(x = CV, fill = cell_type)) + geom_density(alpha = 0.5) + labs(title = &quot;cpm no log&quot;)</code></pre>
-<pre><code>Warning in loop_apply(n, do.ply): Removed 1073 rows containing non-finite
-values (stat_density).</code></pre>
-<pre><code>Warning in loop_apply(n, do.ply): Removed 4184 rows containing non-finite
-values (stat_density).</code></pre>
+<pre><code>Warning: Removed 1073 rows containing non-finite values (stat_density).</code></pre>
+<pre><code>Warning: Removed 4184 rows containing non-finite values (stat_density).</code></pre>
 <p><img src="figure/stemness.Rmd/CV-iPSC-LCL-non-5.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>## MA plot
+iPSC_LCL$fold_change_CV &lt;- log2(iPSC_LCL$CV_iPSC_cpmnolog / iPSC_LCL$CV_LCL_cpmnolog)
+iPSC_LCL$mean_CV &lt;- 0.5 * log2((iPSC_LCL$CV_iPSC_cpmnolog + iPSC_LCL$CV_LCL_cpmnolog))
+
+ggplot(iPSC_LCL, aes(x = mean_CV, y = fold_change_CV, col = ERCC)) + geom_point(size = 3, alpha = 0.5) + scale_colour_manual(values=cbPalette)  + labs(x = &quot;1/2(iPSC.CV + LCL.CV)&quot;, y =  &quot;log2(iPSC.CV/LCL.CV)&quot;, title = &quot;cpm no log&quot;)</code></pre>
+<pre><code>Warning: Removed 4474 rows containing missing values (geom_point).</code></pre>
+<p><img src="figure/stemness.Rmd/CV-iPSC-LCL-non-6.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>Look at only batch one of 19239 to see if sample size (cell numbers) matters.</p>
 <pre class="r"><code>## look at only one batah of iPSC
 molecules_single_cpmnolog_iPSC_19239.1 &lt;- molecules_single_cpmnolog_iPSC_19239[,grep(19239.1,colnames(molecules_single_cpmnolog_iPSC_19239))]
 iPSC_LCL$CV_iPSC_cpmnolog_1 &lt;- CV(molecules_single_cpmnolog_iPSC_19239.1)
 
 ggplot(iPSC_LCL, aes(x = CV_iPSC_cpmnolog_1, y = CV_LCL_cpmnolog, col = ERCC)) + geom_point(size = 3, alpha = 0.5) + scale_colour_manual(values=cbPalette) + stat_function(fun= function(x) {x}, col= &quot;#56B4E9&quot;) + scale_x_log10() + scale_y_log10() + labs(x = &quot;CV of iPSC batch 1&quot;, y =  &quot;CV of LCL&quot;, title = &quot;cpm no log&quot;)</code></pre>
-<pre><code>Warning in loop_apply(n, do.ply): Removed 5036 rows containing missing
-values (geom_point).</code></pre>
-<p><img src="figure/stemness.Rmd/CV-iPSC-LCL-non-6.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre><code>Warning: Removed 5036 rows containing missing values (geom_point).</code></pre>
+<p><img src="figure/stemness.Rmd/CV-iPSC-LCL-19293batch1-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>CV_cmpnolog_1 &lt;- data.frame(CV = c(iPSC_LCL$CV_iPSC_cpmnolog_1,iPSC_LCL$CV_LCL_cpmnolog), cell_type = rep(c(&quot;iPSC&quot;, &quot;LCL&quot;), each = 17130))
 ggplot(CV_cmpnolog_1, aes(x = CV, fill = cell_type)) + geom_density(alpha = 0.5) + labs(title = &quot;cpm no log, 19239 batch 1&quot;)</code></pre>
-<pre><code>Warning in loop_apply(n, do.ply): Removed 2477 rows containing non-finite
-values (stat_density).</code></pre>
-<pre><code>Warning in loop_apply(n, do.ply): Removed 4184 rows containing non-finite
-values (stat_density).</code></pre>
-<p><img src="figure/stemness.Rmd/CV-iPSC-LCL-non-7.png" title="" alt="" width="672" style="display: block; margin: auto;" /> ## Session information</p>
+<pre><code>Warning: Removed 2477 rows containing non-finite values (stat_density).</code></pre>
+<pre><code>Warning: Removed 4184 rows containing non-finite values (stat_density).</code></pre>
+<p><img src="figure/stemness.Rmd/CV-iPSC-LCL-19293batch1-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /> ## Session information</p>
 <pre class="r"><code>sessionInfo()</code></pre>
 <pre><code>R version 3.2.0 (2015-04-16)
 Platform: x86_64-unknown-linux-gnu (64-bit)
@@ -386,20 +392,20 @@ attached base packages:
 
 other attached packages:
 [1] RColorBrewer_1.1-2 gplots_2.17.0      edgeR_3.10.2      
-[4] limma_3.24.9       ggplot2_1.0.1      dplyr_0.4.1       
+[4] limma_3.24.9       ggplot2_1.0.1      dplyr_0.4.2       
 [7] knitr_1.10.5      
 
 loaded via a namespace (and not attached):
- [1] Rcpp_0.11.6        magrittr_1.5       MASS_7.3-40       
- [4] munsell_0.4.2      colorspace_1.2-6   stringr_1.0.0     
- [7] plyr_1.8.2         caTools_1.17.1     tools_3.2.0       
-[10] parallel_3.2.0     grid_3.2.0         gtable_0.1.2      
-[13] KernSmooth_2.23-14 DBI_0.3.1          gtools_3.5.0      
-[16] htmltools_0.2.6    yaml_2.1.13        assertthat_0.1    
-[19] digest_0.6.8       reshape2_1.4.1     formatR_1.2       
-[22] bitops_1.0-6       evaluate_0.7       rmarkdown_0.6.1   
-[25] labeling_0.3       gdata_2.16.1       stringi_0.4-1     
-[28] scales_0.2.4       proto_0.3-10      </code></pre>
+ [1] Rcpp_0.12.0        magrittr_1.5       MASS_7.3-40       
+ [4] munsell_0.4.2      colorspace_1.2-6   R6_2.1.1          
+ [7] stringr_1.0.0      plyr_1.8.3         caTools_1.17.1    
+[10] tools_3.2.0        parallel_3.2.0     grid_3.2.0        
+[13] gtable_0.1.2       KernSmooth_2.23-14 DBI_0.3.1         
+[16] gtools_3.5.0       htmltools_0.2.6    yaml_2.1.13       
+[19] assertthat_0.1     digest_0.6.8       reshape2_1.4.1    
+[22] formatR_1.2        bitops_1.0-6       evaluate_0.7      
+[25] rmarkdown_0.6.1    labeling_0.3       gdata_2.16.1      
+[28] stringi_0.4-1      scales_0.2.4       proto_0.3-10      </code></pre>
 </div>
 
 
