@@ -60,8 +60,6 @@ quality_single_cells <- scan("../data/quality-single-cells.txt",
                              what = "character")
 ```
 
-## Filter
-
 Keep only the single cells that passed the [QC filters](qc-cell-ipsc.html).
 
 ```{r filter-cells}
@@ -71,6 +69,30 @@ anno <- anno[anno$sample_id %in% quality_single_cells, ]
 stopifnot(dim(reads) == dim(molecules),
           nrow(anno) == ncol(reads))
 ```
+
+## Distribution 
+Look at the distribution of fold change to mean.  
+
+```{r distribution}
+## calculate mean
+reads_mean     <- apply(reads, 1, mean)
+molecules_mean <- apply(molecules, 1, mean)
+distribution <- data.frame(reads_mean, molecules_mean)
+
+## calculate fold change to mean
+distribution$fold_change_read     <- log2(reads_mean/mean(reads_mean))
+distribution$fold_change_molecule <- log2(molecules_mean/mean(molecules_mean))
+
+## select ERCC
+distribution$ERCC <- grepl("ERCC", rownames(distribution))
+
+## color palette
+cbPalette <- c("#999999", "#0000FF", "#990033", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#009E73")
+
+ggplot(distribution, aes(x = fold_change_molecule, y = fold_change_read, col = ERCC)) + geom_point(size = 3, alpha = 0.5) + scale_colour_manual(values=cbPalette) + stat_function(fun= function(x) {x}, col= "#56B4E9") + labs(x = "log2 fold change to mean (molecule)", y =  "log2 fold change to mean (reads)")
+```
+
+## Filter
 
 Only keep the following genes:
 
@@ -98,6 +120,35 @@ Filter the genes:
 reads <- reads[rownames(reads) %in% c(gene_keep, ercc_keep), ]
 molecules <- molecules[rownames(molecules) %in% c(gene_keep, ercc_keep), ]
 ```
+
+## Transformation
+
+In addition to comparing the raw counts of reads and molecules, we compare the log2 counts and the log counts per million.
+
+For the log counts, I add a pseudocount of 1.
+
+```{r log-counts}
+reads_log <- log2(reads + 1)
+molecules_log <- log2(molecules + 1)
+```
+
+Calculate cpm for the reads data using TMM-normalization.
+
+```{r calc-cpm-reads}
+norm_factors_reads <- calcNormFactors(reads, method = "TMM")
+reads_cpm <- cpm(reads, lib.size = colSums(reads) * norm_factors_reads,
+                 log = TRUE)
+```
+
+And for the molecules.
+
+```{r calc-cpm-molecules}
+norm_factors_mol <- calcNormFactors(molecules, method = "TMM")
+molecules_cpm <- cpm(molecules, lib.size = colSums(molecules) * norm_factors_mol,
+                     log = TRUE)
+```
+
+## conversion in each single cell
 
 ## Session information
 
