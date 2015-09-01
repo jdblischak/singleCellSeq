@@ -149,6 +149,57 @@ molecules_cpm <- cpm(molecules, lib.size = colSums(molecules) * norm_factors_mol
 ```
 
 ## conversion in each single cell
+```{r conversion-in-cell}
+reads1 <- reads[,1]
+molecules1 <- molecules[,1]
+lm.D <- lm(molecules1 ~ reads1)
+lm.DD <- lm(molecules1 ~ reads1 - 1) # omitting intercept
+
+reads_cpm1 <- reads_cpm[,1]
+molecules_cpm1 <- molecules_cpm[,1]
+lm.E <- lm(molecules_cpm1 ~ reads_cpm1)
+
+regression_table <- as.data.frame(do.call(rbind,lapply(names(reads),function(x){
+    c(x,lm(molecules[,x]~reads[,x])$coef)
+})))
+names(regression_table) <- c("sample_id","Intercept","slope")
+regression_table$Intercept <- as.numeric(as.character(regression_table$Intercept))
+regression_table$slope <- as.numeric(as.character(regression_table$slope))
+
+
+anno_regression <- merge(anno,regression_table,by="sample_id")
+
+ggplot(anno_regression,aes(x=Intercept,y=slope,col=as.factor(individual),shape=as.factor(batch)))+geom_point()
+ggplot(anno_regression,aes(x=Intercept,y=slope,shape=as.factor(individual),col=as.factor(batch)))+geom_point()
+```
+
+```{r I-want-to-learn}
+data_use <- data.frame(y=c(molecules_cpm),sample_id=rep(colnames(molecules_cpm),each=dim(molecules_cpm)[1]))
+data_use <- merge(data_use,anno,by="sample_id")
+head(data_use)
+data_use$individual <- "19098"
+data_use[grep("19101",data_use$sample_id),"individual"] <- "19101"
+data_use[grep("19239",data_use$sample_id),"individual"] <- "19239"
+
+data_use$batch <- as.factor(substr(data_use$sample_id,3,9))
+head(data_use)
+
+library(nlme)
+iii <- sample(1:dim(data_use)[1],10000)
+fit2 <- lme(y~individual,random=~1|batch,data=data_use[iii,])
+
+
+molecule_batch_removed <- (summary(fit2))$fitted [,2]
+
+plot(data_use$y[iii],molecule_batch_removed)
+
+pca_single_mixed_correction <- run_pca(molecule_batch_removed)
+plot_pca(pca_single_mixed_correction$PCs, 
+         explained = pca_single_mixed_correction$explained,
+         metadata = anno_single, color = "individual",
+         shape = "batch", factors = c("individual", "batch"))
+
+```
 
 ## Session information
 
