@@ -127,14 +127,21 @@ img {
 <div id="TOC">
 <ul>
 <li><a href="#input">Input</a></li>
+<li><a href="#distribution">Distribution</a></li>
 <li><a href="#filter">Filter</a></li>
+<li><a href="#transformation">Transformation</a></li>
+<li><a href="#conversion-in-each-single-cell">conversion in each single cell</a><ul>
+<li><a href="#counts">Counts</a></li>
+<li><a href="#log2-counts">Log2 counts</a></li>
+<li><a href="#log2-counts-per-million">Log2 counts per million</a></li>
+</ul></li>
 <li><a href="#session-information">Session information</a></li>
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-08-26</p>
-<p><strong>Code version:</strong> 37b0aacfab1630c60c0da565cedbdc74c4cf1a52</p>
-<p>Comparing the conversion of reads to molecules for each of the 9 batches. Used three different metrics:</p>
+<p><strong>Last updated:</strong> 2015-09-01</p>
+<p><strong>Code version:</strong> 3ed9a1a2f8688e20c4db665f985091172f763ab6</p>
+<p>Comparing the conversion of reads to molecules for each cell. Used three different metrics:</p>
 <ul>
 <li>Raw counts</li>
 <li>Log2 counts (pseudocount of 1)</li>
@@ -168,15 +175,36 @@ head(anno)</code></pre>
 <p>Input list of quality single cells.</p>
 <pre class="r"><code>quality_single_cells &lt;- scan(&quot;../data/quality-single-cells.txt&quot;,
                              what = &quot;character&quot;)</code></pre>
-</div>
-<div id="filter" class="section level2">
-<h2>Filter</h2>
 <p>Keep only the single cells that passed the <a href="qc-cell-ipsc.html">QC filters</a>.</p>
 <pre class="r"><code>reads &lt;- reads[, colnames(reads) %in% quality_single_cells]
 molecules &lt;- molecules[, colnames(molecules) %in% quality_single_cells]
 anno &lt;- anno[anno$sample_id %in% quality_single_cells, ]
 stopifnot(dim(reads) == dim(molecules),
           nrow(anno) == ncol(reads))</code></pre>
+</div>
+<div id="distribution" class="section level2">
+<h2>Distribution</h2>
+<p>Look at the distribution of fold change to mean.</p>
+<pre class="r"><code>## calculate mean
+reads_mean     &lt;- apply(reads, 1, mean)
+molecules_mean &lt;- apply(molecules, 1, mean)
+distribution &lt;- data.frame(reads_mean, molecules_mean)
+
+## calculate fold change to mean
+distribution$fold_change_read     &lt;- log2(reads_mean/mean(reads_mean))
+distribution$fold_change_molecule &lt;- log2(molecules_mean/mean(molecules_mean))
+
+## select ERCC
+distribution$ERCC &lt;- grepl(&quot;ERCC&quot;, rownames(distribution))
+
+## color palette
+cbPalette &lt;- c(&quot;#999999&quot;, &quot;#0000FF&quot;, &quot;#990033&quot;, &quot;#F0E442&quot;, &quot;#0072B2&quot;, &quot;#D55E00&quot;, &quot;#CC79A7&quot;, &quot;#009E73&quot;)
+
+ggplot(distribution, aes(x = fold_change_molecule, y = fold_change_read, col = ERCC)) + geom_point(size = 3, alpha = 0.5) + scale_colour_manual(values=cbPalette) + stat_function(fun= function(x) {x}, col= &quot;#56B4E9&quot;) + labs(x = &quot;log2 fold change to mean (molecule)&quot;, y =  &quot;log2 fold change to mean (reads)&quot;)</code></pre>
+<p><img src="figure/compare-reads-v-molecules-in-cells.Rmd/distribution-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="filter" class="section level2">
+<h2>Filter</h2>
 <p>Only keep the following genes:</p>
 <ul>
 <li>ERCC genes with at least one molecule observed in at least one single cell</li>
@@ -196,6 +224,102 @@ gene_keep &lt;- rownames(molecules)[!grepl(&quot;ERCC&quot;, rownames(molecules)
 <pre class="r"><code>reads &lt;- reads[rownames(reads) %in% c(gene_keep, ercc_keep), ]
 molecules &lt;- molecules[rownames(molecules) %in% c(gene_keep, ercc_keep), ]</code></pre>
 </div>
+<div id="transformation" class="section level2">
+<h2>Transformation</h2>
+<p>In addition to comparing the raw counts of reads and molecules, we compare the log2 counts and the log counts per million.</p>
+<p>For the log counts, I add a pseudocount of 1.</p>
+<pre class="r"><code>reads_log &lt;- log2(reads + 1)
+molecules_log &lt;- log2(molecules + 1)</code></pre>
+<p>Calculate cpm for the reads data using TMM-normalization.</p>
+<pre class="r"><code>norm_factors_reads &lt;- calcNormFactors(reads, method = &quot;TMM&quot;)
+reads_cpm &lt;- cpm(reads, lib.size = colSums(reads) * norm_factors_reads,
+                 log = TRUE)</code></pre>
+<p>And for the molecules.</p>
+<pre class="r"><code>norm_factors_mol &lt;- calcNormFactors(molecules, method = &quot;TMM&quot;)
+molecules_cpm &lt;- cpm(molecules, lib.size = colSums(molecules) * norm_factors_mol,
+                     log = TRUE)</code></pre>
+</div>
+<div id="conversion-in-each-single-cell" class="section level2">
+<h2>conversion in each single cell</h2>
+<div id="counts" class="section level3">
+<h3>Counts</h3>
+<p>Compare the counts.</p>
+<pre class="r"><code>## linear regression per cell and make a table with intercept, slope, and r-squared
+regression_table &lt;- as.data.frame(do.call(rbind,lapply(names(reads),function(x){
+  fit.temp &lt;- lm(molecules[,x]~reads[,x])
+    c(x,fit.temp$coefficients,summary(fit.temp)$adj.r.squared)
+})))
+names(regression_table) &lt;- c(&quot;sample_id&quot;,&quot;Intercept&quot;,&quot;slope&quot;,&quot;r2&quot;)
+regression_table$Intercept &lt;- as.numeric(as.character(regression_table$Intercept))
+regression_table$slope &lt;- as.numeric(as.character(regression_table$slope))
+regression_table$r2 &lt;- as.numeric(as.character(regression_table$r2))
+plot(regression_table$r2)</code></pre>
+<p><img src="figure/compare-reads-v-molecules-in-cells.Rmd/conversion-in-cell-1.png" title="" alt="" width="864" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>anno_regression &lt;- merge(anno,regression_table,by=&quot;sample_id&quot;)
+
+ggplot(anno_regression,aes(x=Intercept,y=slope,col=as.factor(individual),shape=as.factor(batch))) + geom_point() + labs(x = &quot;intercept&quot;, y = &quot;slope&quot;, title = &quot;read-molecule conversion (counts)&quot;)</code></pre>
+<p><img src="figure/compare-reads-v-molecules-in-cells.Rmd/conversion-in-cell-2.png" title="" alt="" width="864" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(anno_regression,aes(x=Intercept,y=slope,col=as.factor(individual),shape=as.factor(batch))) + geom_point() + labs(x = &quot;intercept&quot;, y = &quot;slope&quot;, title = &quot;read-molecule conversion (counts)&quot;) + facet_grid(individual ~ batch)</code></pre>
+<p><img src="figure/compare-reads-v-molecules-in-cells.Rmd/conversion-in-cell-3.png" title="" alt="" width="864" style="display: block; margin: auto;" /></p>
+<p>Only ERCC genes</p>
+<pre class="r"><code>## grep ERCC
+reads_ERCC &lt;- reads[grep(&quot;ERCC&quot;, rownames(reads)), ]
+molecules_ERCC &lt;- molecules[grep(&quot;ERCC&quot;, rownames(molecules)), ]
+
+## linear regression per cell and make a table with intercept, slope, and r-squared
+regression_table_ERCC &lt;- as.data.frame(do.call(rbind,lapply(names(reads_ERCC),function(x){
+  fit.temp &lt;- lm(molecules_ERCC[,x]~reads_ERCC[,x])
+    c(x,fit.temp$coefficients,summary(fit.temp)$adj.r.squared)
+})))
+names(regression_table_ERCC) &lt;- c(&quot;sample_id&quot;,&quot;Intercept&quot;,&quot;slope&quot;,&quot;r2&quot;)
+regression_table_ERCC$Intercept &lt;- as.numeric(as.character(regression_table_ERCC$Intercept))
+regression_table_ERCC$slope &lt;- as.numeric(as.character(regression_table_ERCC$slope))
+regression_table_ERCC$r2 &lt;- as.numeric(as.character(regression_table_ERCC$r2))
+plot(regression_table_ERCC$r2)</code></pre>
+<p><img src="figure/compare-reads-v-molecules-in-cells.Rmd/conversion-in-cell-ERCC-1.png" title="" alt="" width="864" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>anno_regression_ERCC &lt;- merge(anno,regression_table_ERCC,by=&quot;sample_id&quot;)
+
+ggplot(anno_regression_ERCC,aes(x=Intercept,y=slope,col=as.factor(individual),shape=as.factor(batch))) + geom_point() + labs(x = &quot;intercept&quot;, y = &quot;slope&quot;, title = &quot;read-molecule conversion ERCC genes (counts)&quot;)</code></pre>
+<p><img src="figure/compare-reads-v-molecules-in-cells.Rmd/conversion-in-cell-ERCC-2.png" title="" alt="" width="864" style="display: block; margin: auto;" /></p>
+</div>
+<div id="log2-counts" class="section level3">
+<h3>Log2 counts</h3>
+<p>Compare the log counts.</p>
+<pre class="r"><code>regression_table_log &lt;- as.data.frame(do.call(rbind,lapply(names(reads_log),function(x){
+  fit.temp &lt;- lm(molecules_log[,x]~reads_log[,x])
+    c(x,fit.temp$coefficients,summary(fit.temp)$adj.r.squared)
+})))
+names(regression_table_log) &lt;- c(&quot;sample_id&quot;,&quot;Intercept&quot;,&quot;slope&quot;,&quot;r2&quot;)
+regression_table_log$Intercept &lt;- as.numeric(as.character(regression_table_log$Intercept))
+regression_table_log$slope &lt;- as.numeric(as.character(regression_table_log$slope))
+regression_table_log$r2 &lt;- as.numeric(as.character(regression_table_log$r2))
+plot(regression_table_log$r2)</code></pre>
+<p><img src="figure/compare-reads-v-molecules-in-cells.Rmd/conversion-in-cell-log-1.png" title="" alt="" width="864" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>anno_regression_log &lt;- merge(anno,regression_table_log,by=&quot;sample_id&quot;)
+ggplot(anno_regression_log,aes(x=Intercept,y=slope,col=as.factor(individual),shape=as.factor(batch))) + geom_point() + labs(x = &quot;intercept&quot;, y = &quot;slope&quot;, title = &quot;read-molecule conversion (log2)&quot;)</code></pre>
+<p><img src="figure/compare-reads-v-molecules-in-cells.Rmd/conversion-in-cell-log-2.png" title="" alt="" width="864" style="display: block; margin: auto;" /></p>
+</div>
+<div id="log2-counts-per-million" class="section level3">
+<h3>Log2 counts per million</h3>
+<p>Compare the counts per million.</p>
+<pre class="r"><code>regression_table_cpm &lt;- as.data.frame(do.call(rbind,lapply(colnames(reads_cpm),function(x){
+  fit.temp &lt;- lm(molecules_cpm[,x]~reads_cpm[,x])
+    c(x,fit.temp$coef,summary(fit.temp)$adj.r.squared)
+})))
+names(regression_table_cpm) &lt;- c(&quot;sample_id&quot;,&quot;Intercept&quot;,&quot;slope&quot;,&quot;r2&quot;)
+regression_table_cpm$Intercept &lt;- as.numeric(as.character(regression_table_cpm$Intercept))
+regression_table_cpm$slope &lt;- as.numeric(as.character(regression_table_cpm$slope))
+regression_table_cpm$r2 &lt;- as.numeric(as.character(regression_table_cpm$r2))
+plot(regression_table_cpm$r2)</code></pre>
+<p><img src="figure/compare-reads-v-molecules-in-cells.Rmd/conversion-in-cell-cpm-1.png" title="" alt="" width="864" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>anno_regression_cpm &lt;- merge(anno,regression_table_cpm,by=&quot;sample_id&quot;)
+
+ggplot(anno_regression_cpm,aes(x=Intercept,y=slope,col=as.factor(individual),shape=as.factor(batch))) + geom_point() + labs(x = &quot;intercept&quot;, y = &quot;slope&quot;, title = &quot;read-molecule conversion (log2-cpm)&quot;)</code></pre>
+<p><img src="figure/compare-reads-v-molecules-in-cells.Rmd/conversion-in-cell-cpm-2.png" title="" alt="" width="864" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(anno_regression_cpm,aes(x=Intercept,y=slope,col=as.factor(individual),shape=as.factor(batch))) + geom_point() + labs(x = &quot;intercept&quot;, y = &quot;slope&quot;, title = &quot;read-molecule conversion (log2-cpm)&quot;) + facet_grid(individual ~ batch) </code></pre>
+<p><img src="figure/compare-reads-v-molecules-in-cells.Rmd/conversion-in-cell-cpm-3.png" title="" alt="" width="864" style="display: block; margin: auto;" /></p>
+</div>
+</div>
 <div id="session-information" class="section level2">
 <h2>Session information</h2>
 <pre class="r"><code>sessionInfo()</code></pre>
@@ -214,16 +338,17 @@ attached base packages:
 [1] stats     graphics  grDevices utils     datasets  methods   base     
 
 other attached packages:
-[1] tidyr_0.2.0   edgeR_3.10.2  limma_3.24.9  ggplot2_1.0.1 dplyr_0.4.1  
+[1] tidyr_0.2.0   edgeR_3.10.2  limma_3.24.9  ggplot2_1.0.1 dplyr_0.4.2  
 [6] knitr_1.10.5 
 
 loaded via a namespace (and not attached):
- [1] Rcpp_0.11.6      magrittr_1.5     MASS_7.3-40      munsell_0.4.2   
- [5] colorspace_1.2-6 stringr_1.0.0    plyr_1.8.2       tools_3.2.0     
- [9] parallel_3.2.0   grid_3.2.0       gtable_0.1.2     DBI_0.3.1       
-[13] htmltools_0.2.6  lazyeval_0.1.10  yaml_2.1.13      assertthat_0.1  
-[17] digest_0.6.8     reshape2_1.4.1   formatR_1.2      evaluate_0.7    
-[21] rmarkdown_0.6.1  stringi_0.4-1    scales_0.2.4     proto_0.3-10    </code></pre>
+ [1] Rcpp_0.12.0      magrittr_1.5     MASS_7.3-40      munsell_0.4.2   
+ [5] colorspace_1.2-6 R6_2.1.1         stringr_1.0.0    plyr_1.8.3      
+ [9] tools_3.2.0      parallel_3.2.0   grid_3.2.0       gtable_0.1.2    
+[13] DBI_0.3.1        htmltools_0.2.6  lazyeval_0.1.10  yaml_2.1.13     
+[17] assertthat_0.1   digest_0.6.8     reshape2_1.4.1   formatR_1.2     
+[21] evaluate_0.7     rmarkdown_0.6.1  labeling_0.3     stringi_0.4-1   
+[25] scales_0.2.4     proto_0.3-10    </code></pre>
 </div>
 
 
