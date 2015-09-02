@@ -18,6 +18,7 @@ Used three different metrics:
 
 *  Raw counts
 *  Log2 counts (pseudocount of 1)
+*  cpm counts (no log transformation)
 *  Log2 TMM-normalized counts per million (pseudocount of 0.25)
 
 ## Input
@@ -177,6 +178,14 @@ anno_regression <- merge(anno,regression_table,by="sample_id")
 ggplot(anno_regression,aes(x=Intercept,y=slope,col=as.factor(individual),shape=as.factor(batch))) + geom_point() + labs(x = "intercept", y = "slope", title = "read-molecule conversion (counts)")
 
 ggplot(anno_regression,aes(x=Intercept,y=slope,col=as.factor(individual),shape=as.factor(batch))) + geom_point() + labs(x = "intercept", y = "slope", title = "read-molecule conversion (counts)") + facet_grid(individual ~ batch)
+
+## plot all the lines
+anno_regression$reads_mean <- apply(reads, 2, mean)
+anno_regression$molecules_mean <- apply(molecules, 2, mean)
+
+ggplot(anno_regression, aes(x= reads_mean, y= molecules_mean)) + geom_point() + geom_abline(aes(intercept=Intercept, slope=slope, col=as.factor(individual), alpha= 0.5), data=anno_regression) 
+
+ggplot(anno_regression, aes(x= reads_mean, y= molecules_mean)) + geom_point() + geom_abline(aes(intercept=Intercept, slope=slope, col=as.factor(individual), alpha= 0.5), data=anno_regression) + facet_grid(individual ~ batch)
 ```
 
 Only ERCC genes
@@ -197,10 +206,57 @@ regression_table_ERCC$r2 <- as.numeric(as.character(regression_table_ERCC$r2))
 plot(regression_table_ERCC$r2)
 
 anno_regression_ERCC <- merge(anno,regression_table_ERCC,by="sample_id")
-
 ggplot(anno_regression_ERCC,aes(x=Intercept,y=slope,col=as.factor(individual),shape=as.factor(batch))) + geom_point() + labs(x = "intercept", y = "slope", title = "read-molecule conversion ERCC genes (counts)") + facet_grid(individual ~ batch)
+
+## plot all the lines
+anno_regression_ERCC$reads_mean <- apply(reads_ERCC, 2, mean)
+anno_regression_ERCC$molecules_mean <- apply(molecules_ERCC, 2, mean)
+
+ggplot(anno_regression_ERCC, aes(x= reads_mean, y= molecules_mean)) + geom_point() + geom_abline(aes(intercept=Intercept, slope=slope, col=as.factor(individual), alpha= 0.5), data=anno_regression_ERCC) 
+
+ggplot(anno_regression_ERCC, aes(x= reads_mean, y= molecules_mean)) + geom_point() + geom_abline(aes(intercept=Intercept, slope=slope, col=as.factor(individual), alpha= 0.5), data=anno_regression) + facet_grid(individual ~ batch)
 ```
 
+without ERCC genes, only endogenous genes
+```{r conversion-in-cell-gene, fig.width=9, fig.height=9, cache=FALSE}
+## grep ENSG
+reads_ENSG <- reads[grep("ENSG", rownames(reads)), ]
+molecules_ENSG <- molecules[grep("ENSG", rownames(molecules)), ]
+
+## linear regression per cell and make a table with intercept, slope, and r-squared
+regression_table_ENSG <- as.data.frame(do.call(rbind,lapply(names(reads_ENSG),function(x){
+  fit.temp <- lm(molecules_ENSG[,x]~reads_ENSG[,x])
+    c(x,fit.temp$coefficients,summary(fit.temp)$adj.r.squared)
+})))
+names(regression_table_ENSG) <- c("sample_id","Intercept","slope","r2")
+regression_table_ENSG$Intercept <- as.numeric(as.character(regression_table_ENSG$Intercept))
+regression_table_ENSG$slope <- as.numeric(as.character(regression_table_ENSG$slope))
+regression_table_ENSG$r2 <- as.numeric(as.character(regression_table_ENSG$r2))
+plot(regression_table_ENSG$r2)
+
+anno_regression_ENSG <- merge(anno,regression_table_ENSG,by="sample_id")
+ggplot(anno_regression_ENSG,aes(x=Intercept,y=slope,col=as.factor(individual),shape=as.factor(batch))) + geom_point() + labs(x = "intercept", y = "slope", title = "read-molecule conversion endogenous genes (counts)")
+
+ggplot(anno_regression_ENSG,aes(x=Intercept,y=slope,col=as.factor(individual),shape=as.factor(batch))) + geom_point() + labs(x = "intercept", y = "slope", title = "read-molecule conversion endogenous genes (counts)") + facet_grid(individual ~ batch)
+
+## plot all the lines
+anno_regression_ENSG$reads_mean <- apply(reads_ENSG, 2, mean)
+anno_regression_ENSG$molecules_mean <- apply(molecules_ENSG, 2, mean)
+
+ggplot(anno_regression_ENSG, aes(x= reads_mean, y= molecules_mean)) + geom_point() + geom_abline(aes(intercept=Intercept, slope=slope, col=as.factor(individual), alpha= 0.5), data=anno_regression_ENSG) 
+
+ggplot(anno_regression_ENSG, aes(x= reads_mean, y= molecules_mean)) + geom_point() + geom_abline(aes(intercept=Intercept, slope=slope, col=as.factor(individual), alpha= 0.5), data=anno_regression_ENSG) + facet_grid(individual ~ batch)
+```
+
+```{r total-molecule, fig.width=9, fig.height=9, cache=FALSE}
+## 19098 have more total endogenous gene molecules and more ERCC molecule
+anno_regression$total_molecule_ERCC <- apply(molecules_ERCC, 2, sum)
+anno_regression$total_molecule_ENSG <- apply(molecules_ENSG, 2, sum)
+anno_regression$total_molecule <- apply(molecules, 2, sum) 
+ggplot(anno_regression, aes(x= total_molecule_ERCC, y= total_molecule,col=as.factor(individual),shape=as.factor(batch))) + geom_point()
+ggplot(anno_regression, aes(x = as.factor(individual), y = total_molecule_ENSG)) + geom_boxplot(aes(fill = as.factor(batch)))
+ggplot(anno_regression, aes(x = as.factor(individual), y = total_molecule_ERCC)) + geom_boxplot(aes(fill = as.factor(batch)))
+```
 
 ### Log2 counts
 
@@ -241,6 +297,12 @@ anno_regression_cpm <- merge(anno,regression_table_cpm,by="sample_id")
 ggplot(anno_regression_cpm,aes(x=Intercept,y=slope,col=as.factor(individual),shape=as.factor(batch))) + geom_point() + labs(x = "intercept", y = "slope", title = "read-molecule conversion (cpm no log)")
 
 ggplot(anno_regression_cpm,aes(x=Intercept,y=slope,col=as.factor(individual),shape=as.factor(batch))) + geom_point() + labs(x = "intercept", y = "slope", title = "read-molecule conversion (cpm no log)") + facet_grid(individual ~ batch) 
+
+## plot all the lines
+anno_regression_cpm$reads_mean <- apply(reads_cpm, 2, mean)
+anno_regression_cpm$molecules_mean <- apply(molecules_cpm, 2, mean)
+
+ggplot(anno_regression_cpm, aes(x= reads_mean, y= molecules_mean)) + geom_point() + geom_abline(aes(intercept=Intercept, slope=slope, col=as.factor(individual), alpha = 0.01), data=anno_regression_cpm) + facet_grid(individual ~ batch) 
 ```
 
 ## Session information
