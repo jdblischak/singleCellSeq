@@ -1,0 +1,250 @@
+---
+title: "Compare read and molecule counts in single cells per batch"
+author: "PoYuan Tung"
+date: 2015-08-24
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+opts_chunk$set(cache = FALSE)
+```
+
+Comparing the conversion of reads to molecules for each cell.
+Used three different metrics:
+
+*  Raw counts
+*  Log2 counts (pseudocount of 1)
+*  Log2 TMM-normalized counts per million (pseudocount of 0.25)
+
+## Input
+
+```{r packages, message=FALSE, cache=FALSE}
+library("dplyr")
+library("ggplot2")
+theme_set(theme_bw(base_size = 16))
+library("edgeR")
+source("functions.R")
+library("tidyr")
+```
+
+Input annotation.
+
+```{r input-annotation}
+anno <- read.table("../data/annotation.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno)
+```
+
+Input read counts.
+
+```{r input-read-counts}
+reads <- read.table("../data/reads.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+```
+
+Input molecule counts.
+
+```{r input-molecule-counts}
+molecules <- read.table("../data/molecules.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+```
+
+Input list of quality single cells.
+
+```{r input-quality-single-cells}
+quality_single_cells <- scan("../data/quality-single-cells.txt",
+                             what = "character")
+```
+
+Keep only the single cells that passed the [QC filters](qc-cell-ipsc.html).
+
+```{r filter-cells}
+reads <- reads[, colnames(reads) %in% quality_single_cells]
+molecules <- molecules[, colnames(molecules) %in% quality_single_cells]
+anno <- anno[anno$sample_id %in% quality_single_cells, ]
+stopifnot(dim(reads) == dim(molecules),
+          nrow(anno) == ncol(reads))
+```
+
+## Distribution 
+Look at the distribution of fold change to mean.  
+
+```{r distribution}
+## calculate mean
+reads_mean     <- apply(reads, 1, mean)
+molecules_mean <- apply(molecules, 1, mean)
+distribution <- data.frame(reads_mean, molecules_mean)
+
+## calculate fold change to mean
+distribution$fold_change_read     <- log2(reads_mean/mean(reads_mean))
+distribution$fold_change_molecule <- log2(molecules_mean/mean(molecules_mean))
+
+## select ERCC
+distribution$ERCC <- grepl("ERCC", rownames(distribution))
+
+## color palette
+cbPalette <- c("#999999", "#0000FF", "#990033", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#009E73")
+
+ggplot(distribution, aes(x = fold_change_molecule, y = fold_change_read, col = ERCC)) + geom_point(size = 3, alpha = 0.5) + scale_colour_manual(values=cbPalette) + stat_function(fun= function(x) {x}, col= "#56B4E9") + labs(x = "log2 fold change to mean (molecule)", y =  "log2 fold change to mean (reads)")
+```
+
+## Filter
+
+Only keep the following genes:
+
+*  ERCC genes with at least one molecule observed in at least one single cell
+
+```{r keep-ercc}
+ercc_keep <- rownames(molecules)[grepl("ERCC", rownames(molecules)) &
+                                 rowSums(molecules) > 1]
+```
+
+*  The top expressed endogenous genes in terms of mean molecule counts per million
+
+```{r top-expressed-genes}
+num_genes <- 12000
+mean_cpm <- molecules %>%
+  filter(!grepl("ERCC", rownames(molecules))) %>%
+  cpm %>%
+  rowMeans
+gene_keep <- rownames(molecules)[!grepl("ERCC", rownames(molecules))][order(mean_cpm, decreasing = TRUE)][1:num_genes]
+```
+
+Filter the genes:
+
+```{r filter-genes}
+reads <- reads[rownames(reads) %in% c(gene_keep, ercc_keep), ]
+molecules <- molecules[rownames(molecules) %in% c(gene_keep, ercc_keep), ]
+```
+
+## Transformation
+
+In addition to comparing the raw counts of reads and molecules, we compare the log2 counts and the log counts per million.
+
+For the log counts, I add a pseudocount of 1.
+
+```{r log-counts}
+reads_log <- log2(reads + 1)
+molecules_log <- log2(molecules + 1)
+```
+
+standardized by cmp and log-transform
+```{r cmp-counts}
+reads_cpm <- cpm(reads, log = FALSE)
+molecules_cpm <- cpm(molecules, log = FALSE)
+```
+
+Calculate cpm for the reads data using TMM-normalization.
+
+```{r calc-cpm-reads}
+norm_factors_reads <- calcNormFactors(reads, method = "TMM")
+reads_tmm <- cpm(reads, lib.size = colSums(reads) * norm_factors_reads,
+                 log = TRUE)
+```
+
+And for the molecules.
+
+```{r calc-cpm-molecules}
+norm_factors_mol <- calcNormFactors(molecules, method = "TMM")
+molecules_tmm <- cpm(molecules, lib.size = colSums(molecules) * norm_factors_mol,
+                     log = TRUE)
+```
+
+## conversion in each single cell
+
+### Counts
+
+Compare the counts.
+
+```{r conversion-in-cell, fig.width=9, fig.height=9, cache=FALSE}
+## linear regression per cell and make a table with intercept, slope, and r-squared
+regression_table <- as.data.frame(do.call(rbind,lapply(names(reads),function(x){
+  fit.temp <- lm(molecules[,x]~reads[,x])
+    c(x,fit.temp$coefficients,summary(fit.temp)$adj.r.squared)
+})))
+names(regression_table) <- c("sample_id","Intercept","slope","r2")
+regression_table$Intercept <- as.numeric(as.character(regression_table$Intercept))
+regression_table$slope <- as.numeric(as.character(regression_table$slope))
+regression_table$r2 <- as.numeric(as.character(regression_table$r2))
+plot(regression_table$r2)
+
+anno_regression <- merge(anno,regression_table,by="sample_id")
+
+ggplot(anno_regression,aes(x=Intercept,y=slope,col=as.factor(individual),shape=as.factor(batch))) + geom_point() + labs(x = "intercept", y = "slope", title = "read-molecule conversion (counts)")
+
+ggplot(anno_regression,aes(x=Intercept,y=slope,col=as.factor(individual),shape=as.factor(batch))) + geom_point() + labs(x = "intercept", y = "slope", title = "read-molecule conversion (counts)") + facet_grid(individual ~ batch)
+```
+
+Only ERCC genes
+```{r conversion-in-cell-ERCC, fig.width=9, fig.height=9, cache=FALSE}
+## grep ERCC
+reads_ERCC <- reads[grep("ERCC", rownames(reads)), ]
+molecules_ERCC <- molecules[grep("ERCC", rownames(molecules)), ]
+
+## linear regression per cell and make a table with intercept, slope, and r-squared
+regression_table_ERCC <- as.data.frame(do.call(rbind,lapply(names(reads_ERCC),function(x){
+  fit.temp <- lm(molecules_ERCC[,x]~reads_ERCC[,x])
+    c(x,fit.temp$coefficients,summary(fit.temp)$adj.r.squared)
+})))
+names(regression_table_ERCC) <- c("sample_id","Intercept","slope","r2")
+regression_table_ERCC$Intercept <- as.numeric(as.character(regression_table_ERCC$Intercept))
+regression_table_ERCC$slope <- as.numeric(as.character(regression_table_ERCC$slope))
+regression_table_ERCC$r2 <- as.numeric(as.character(regression_table_ERCC$r2))
+plot(regression_table_ERCC$r2)
+
+anno_regression_ERCC <- merge(anno,regression_table_ERCC,by="sample_id")
+
+ggplot(anno_regression_ERCC,aes(x=Intercept,y=slope,col=as.factor(individual),shape=as.factor(batch))) + geom_point() + labs(x = "intercept", y = "slope", title = "read-molecule conversion ERCC genes (counts)") + facet_grid(individual ~ batch)
+```
+
+
+### Log2 counts
+
+Compare the log counts.
+
+```{r conversion-in-cell-log, fig.width=9, fig.height=9, cache=FALSE}
+regression_table_log <- as.data.frame(do.call(rbind,lapply(names(reads_log),function(x){
+  fit.temp <- lm(molecules_log[,x]~reads_log[,x])
+    c(x,fit.temp$coefficients,summary(fit.temp)$adj.r.squared)
+})))
+names(regression_table_log) <- c("sample_id","Intercept","slope","r2")
+regression_table_log$Intercept <- as.numeric(as.character(regression_table_log$Intercept))
+regression_table_log$slope <- as.numeric(as.character(regression_table_log$slope))
+regression_table_log$r2 <- as.numeric(as.character(regression_table_log$r2))
+plot(regression_table_log$r2)
+
+anno_regression_log <- merge(anno,regression_table_log,by="sample_id")
+ggplot(anno_regression_log,aes(x=Intercept,y=slope,col=as.factor(individual),shape=as.factor(batch))) + geom_point() + labs(x = "intercept", y = "slope", title = "read-molecule conversion (log2)")
+```
+
+### counts per million
+
+Compare the counts per million.
+
+```{r conversion-in-cell-cpm, fig.width=9, fig.height=9, cache=FALSE}
+regression_table_cpm <- as.data.frame(do.call(rbind,lapply(colnames(reads_cpm),function(x){
+  fit.temp <- lm(molecules_cpm[,x]~reads_cpm[,x])
+    c(x,fit.temp$coefficients,summary(fit.temp)$adj.r.squared)
+})))
+names(regression_table_cpm) <- c("sample_id","Intercept","slope","r2")
+regression_table_cpm$Intercept <- as.numeric(as.character(regression_table_cpm$Intercept))
+regression_table_cpm$slope <- as.numeric(as.character(regression_table_cpm$slope))
+regression_table_cpm$r2 <- as.numeric(as.character(regression_table_cpm$r2))
+plot(regression_table_cpm$r2)
+
+anno_regression_cpm <- merge(anno,regression_table_cpm,by="sample_id")
+
+ggplot(anno_regression_cpm,aes(x=Intercept,y=slope,col=as.factor(individual),shape=as.factor(batch))) + geom_point() + labs(x = "intercept", y = "slope", title = "read-molecule conversion (cpm no log)")
+
+ggplot(anno_regression_cpm,aes(x=Intercept,y=slope,col=as.factor(individual),shape=as.factor(batch))) + geom_point() + labs(x = "intercept", y = "slope", title = "read-molecule conversion (cpm no log)") + facet_grid(individual ~ batch) 
+```
+
+## Session information
+
+```{r info}
+sessionInfo()
+```

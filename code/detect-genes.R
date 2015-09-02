@@ -12,6 +12,7 @@ Options:
   --min_cells=<x>        The minimum number of cells required for detection [default: 1]
   --good_cells=<file>    A 1-column file with the names of good quality cells to maintain
   -w --wells=<w>         Only use data from the specified well(s), e.g. A01
+  --gene=<pattern>       Only use genes whose name contains 'pattern'
 
 Arguments:
   num_cells     number of single cells to subsample
@@ -22,7 +23,7 @@ suppressMessages(library("docopt"))
 library("testit")
 
 main <- function(num_cells, seed, exp_fname, individual = NULL, min_count = 1,
-                 min_cells = 1, good_cells = NULL, wells = NULL) {
+                 min_cells = 1, good_cells = NULL, wells = NULL, gene = NULL) {
   # Load expression data
   exp_dat <- read.table(exp_fname, header = TRUE, sep = "\t",
                         stringsAsFactors = FALSE)
@@ -47,6 +48,15 @@ main <- function(num_cells, seed, exp_fname, individual = NULL, min_count = 1,
   # Fix ERCC names
   rownames(exp_dat) <- sub(pattern = "\\.", replacement = "-",
                                 rownames(exp_dat))
+  # Filter genes based on input pattern, e.g. "ENSG" or "ERCC"
+  # browser()
+  if (!is.null(gene)) {
+    # For some reason, the "drop = TRUE" trick to maintain a 1 column matrix
+    # does not work if it modifying itself.
+    tmp <- exp_dat[grep(gene, rownames(exp_dat)), , drop = FALSE]
+    exp_dat <- tmp
+    rm(tmp)
+  }
   # Keep only good quality cells
   if (!is.null(good_cells)) {
     assert("File with list of good quality cells exists.",
@@ -108,7 +118,8 @@ if (!interactive() & getOption('run.main', default = TRUE)) {
        min_cells = as.numeric(opts$min_cells),
        individual = opts$individual,
        good_cells = opts$good_cells,
-       wells = opts$wells)
+       wells = opts$wells,
+       gene = opts$gene)
 } else if (interactive() & getOption('run.main', default = TRUE)) {
   # what to do if interactively testing
   main(num_cells = 20,
@@ -123,5 +134,6 @@ if (!interactive() & getOption('run.main', default = TRUE)) {
 #        exp_fname = "/mnt/gluster/data/internal_supp/singleCellSeq/lcl/full-lane/molecule-counts-200000.txt",
 #        min_count = 1,
 #        min_cells = 1,
-#        wells = "A9E1")
+#        wells = "A9E1",
+#        gene = "ENSG")
 }

@@ -154,8 +154,19 @@ heatmap.2(reads_bulk_pluripotency, trace="none", cexRow=1, cexCol=1, margins=c(8
 
 ```{r expressed-pluripotency-gene-pca}
 pca_single_cells <- prcomp(t(molecules_single_pluripotency), retx = TRUE, scale. = TRUE, center = TRUE)
-
 plot(pca_single_cells)
+
+pca_single_cells$perc_explained <- pca_single_cells$sdev^2 / sum(pca_single_cells$sdev^2) * 100
+plot(pca_single_cells$perc_explained)
+
+anno_single <- anno[anno$well != "bulk",]
+stopifnot(colnames(pca_single_cells) == 
+            paste(paste0("NA", anno_single$individual),
+                   anno_single$batch,
+                   anno_single$well, sep = "."))
+
+pca_single_cells_anno <- cbind(anno_single, pca_single_cells$x)
+ggplot(pca_single_cells_anno, aes(x = PC1, y = PC2, col = as.factor(individual), shape = as.factor(batch))) +geom_point()
 ```
 
 ## Use LCLs as a negative control 
@@ -221,26 +232,17 @@ heatmap.2(molecules_single_pluripotency_lcl, trace="none", cexRow=1, cexCol=1, m
 ### merge two cell types
 molecules_single_pluripotency_all <- merge(molecules_single_pluripotency,molecules_single_pluripotency_lcl,by = "row.names", all = TRUE)
 
-### save gene name
-gene_name <- molecules_single_pluripotency_all[,"Row.names"]
-
 ### remove the column and na for data.matrix
-molecules_single_pluripotency_all  <- molecules_single_pluripotency_all[,!colnames(molecules_single_pluripotency_all) == "Row.names"]
-
-molecules_single_pluripotency_all[is.na(molecules_single_pluripotency_all)] <- 0
-
-### data.matrix for heatmap and add gene name
-molecules_single_pluripotency_all <- 
-data.matrix(molecules_single_pluripotency_all)
-
-rownames(molecules_single_pluripotency_all) <- gene_name
+molecules_single_pluripotency_all_matrix  <- as.matrix(molecules_single_pluripotency_all[,2:654])
+rownames(molecules_single_pluripotency_all_matrix) <- molecules_single_pluripotency_all[,1]
+molecules_single_pluripotency_all_matrix[is.na(molecules_single_pluripotency_all_matrix)] <- 0
 
 ### heatmap
-heatmap.2(molecules_single_pluripotency_all, trace="none", cexRow=1, cexCol=1, margins=c(8,8),xlab="single cells", ylab= "pluripotency gene")
+heatmap.2(molecules_single_pluripotency_all_matrix, trace="none", cexRow=1, cexCol=1, margins=c(8,8), xlab="single cells", ylab= "pluripotency gene")
 ```
 
 ## The CV between iPSC and LCL 
-The CV values are calculated based on standardized molecule numbers
+The CV values are calculated based on standardized molecule numbers (cpm and log transformed)
 ```{r CV-iPSC-LCL}
 ## select 19239 iPSC
 molecules_single_cpm_19239 <- molecules_single_cpm[,grep(19239,colnames(molecules_single_cpm))]
@@ -255,9 +257,8 @@ CV <- function(x){apply(x,1,sd)/apply(x,1,mean)}
 CV_iPSC <- CV(molecules_single_cpm_iPSC_19239)
 CV_LCL <- CV(molecules_single_cpm_lcl_19239)
 
+## combine the CV values from the 2 cell types
 iPSC_LCL <- as.data.frame(cbind(CV_iPSC,CV_LCL))
-#iPSC_LCL$gene <- rownames(molecules_single_cpm_iPSC_19239)
-
 
 ## select ERCC
 iPSC_LCL$ERCC <- grepl("ERCC", rownames(iPSC_LCL))
@@ -265,10 +266,63 @@ iPSC_LCL$ERCC <- grepl("ERCC", rownames(iPSC_LCL))
 ## color palette
 cbPalette <- c("#999999", "#0000FF", "#990033", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#009E73")
 
-ggplot(iPSC_LCL, aes(x = CV_iPSC, y = CV_LCL, col = ERCC)) + geom_point(size = 3, alpha = 0.5) + scale_colour_manual(values=cbPalette) + stat_function(fun= function(x) {x}, col= "#56B4E9")
-
+ggplot(iPSC_LCL, aes(x = CV_iPSC, y = CV_LCL, col = ERCC)) + geom_point(size = 3, alpha = 0.5) + scale_colour_manual(values=cbPalette) + stat_function(fun= function(x) {x}, col= "#56B4E9") + labs(x = "CV of iPSC", y =  "CV of LCL", title = "cpm with log")
 ```
 
+Use the non-standardized molecule numbers (no cpm) or standardized but not log transformed (cpm no log) 
+```{r CV-iPSC-LCL-non}
+## select 19239 iPSC
+molecules_single_collision_19239 <- molecules_single_collision[,grep(19239,colnames(molecules_single_collision))]
+
+## keep the common genes iPSCs and LCLs data
+molecules_single_collision_lcl_19239 <- molecules_single_collision_lcl[rownames(molecules_single_collision_lcl) %in% rownames(molecules_single_collision_19239), ]
+
+molecules_single_collision_iPSC_19239 <- molecules_single_collision_19239[rownames(molecules_single_collision_19239) %in% rownames(molecules_single_collision_lcl_19239),]
+
+## calculate CV
+iPSC_LCL$CV_iPSC_collision <- CV(molecules_single_collision_iPSC_19239)
+iPSC_LCL$CV_LCL_collision <- CV(molecules_single_collision_lcl_19239)
+iPSC_LCL$mean_iPSC_collision <- apply(molecules_single_collision_iPSC_19239,1, mean)
+iPSC_LCL$mean_LCL_collision <- apply(molecules_single_collision_lcl_19239,1, mean)
+
+ggplot(iPSC_LCL, aes(x = mean_iPSC_collision, y = CV_iPSC_collision, col = ERCC)) + geom_point(size = 3, alpha = 0.5) + scale_colour_manual(values=cbPalette) + scale_x_log10()
+
+ggplot(iPSC_LCL, aes(x = mean_LCL_collision, y = CV_LCL_collision, col = ERCC)) + geom_point(size = 3, alpha = 0.5) + scale_colour_manual(values=cbPalette) + scale_x_log10()
+
+ggplot(iPSC_LCL, aes(x = CV_iPSC_collision, y = CV_LCL_collision, col = ERCC)) + geom_point(size = 3, alpha = 0.5) + scale_colour_manual(values=cbPalette) + stat_function(fun= function(x) {x}, col= "#56B4E9") + scale_x_log10() + scale_y_log10() + labs(x = "CV of iPSC", y =  "CV of LCL", title = "non standarized")
+
+## cpm without log 
+molecules_single_cpmnolog_lcl_19239 <- cpm(molecules_single_collision_lcl_19239, log = FALSE)
+molecules_single_cpmnolog_iPSC_19239 <- cpm(molecules_single_collision_iPSC_19239, log = FALSE)
+
+## calculate CV of cpm no log
+iPSC_LCL$CV_iPSC_cpmnolog <- CV(molecules_single_cpmnolog_iPSC_19239)
+iPSC_LCL$CV_LCL_cpmnolog <- CV(molecules_single_cpmnolog_lcl_19239)
+
+ggplot(iPSC_LCL, aes(x = CV_iPSC_cpmnolog, y = CV_LCL_cpmnolog, col = ERCC)) + geom_point(size = 3, alpha = 0.5) + scale_colour_manual(values=cbPalette) + stat_function(fun= function(x) {x}, col= "#56B4E9") + scale_x_log10() + scale_y_log10() + labs(x = "CV of iPSC", y =  "CV of LCL", title = "cpm no log")
+
+## density plot
+CV_cmpnolog <- data.frame(CV = c(iPSC_LCL$CV_iPSC_cpmnolog,iPSC_LCL$CV_LCL_cpmnolog), cell_type = rep(c("iPSC", "LCL"), each = 17130))
+ggplot(CV_cmpnolog, aes(x = CV, fill = cell_type)) + geom_density(alpha = 0.5) + labs(title = "cpm no log")
+
+## MA plot
+iPSC_LCL$fold_change_CV <- log2(iPSC_LCL$CV_iPSC_cpmnolog / iPSC_LCL$CV_LCL_cpmnolog)
+iPSC_LCL$mean_CV <- 0.5 * log2((iPSC_LCL$CV_iPSC_cpmnolog + iPSC_LCL$CV_LCL_cpmnolog))
+
+ggplot(iPSC_LCL, aes(x = mean_CV, y = fold_change_CV, col = ERCC)) + geom_point(size = 3, alpha = 0.5) + scale_colour_manual(values=cbPalette)  + labs(x = "1/2(iPSC.CV + LCL.CV)", y =  "log2(iPSC.CV/LCL.CV)", title = "cpm no log")
+```
+
+Look at only batch one of 19239 to see if sample size (cell numbers) matters.
+```{r CV-iPSC-LCL-19293batch1}
+## look at only one batah of iPSC
+molecules_single_cpmnolog_iPSC_19239.1 <- molecules_single_cpmnolog_iPSC_19239[,grep(19239.1,colnames(molecules_single_cpmnolog_iPSC_19239))]
+iPSC_LCL$CV_iPSC_cpmnolog_1 <- CV(molecules_single_cpmnolog_iPSC_19239.1)
+
+ggplot(iPSC_LCL, aes(x = CV_iPSC_cpmnolog_1, y = CV_LCL_cpmnolog, col = ERCC)) + geom_point(size = 3, alpha = 0.5) + scale_colour_manual(values=cbPalette) + stat_function(fun= function(x) {x}, col= "#56B4E9") + scale_x_log10() + scale_y_log10() + labs(x = "CV of iPSC batch 1", y =  "CV of LCL", title = "cpm no log")
+
+CV_cmpnolog_1 <- data.frame(CV = c(iPSC_LCL$CV_iPSC_cpmnolog_1,iPSC_LCL$CV_LCL_cpmnolog), cell_type = rep(c("iPSC", "LCL"), each = 17130))
+ggplot(CV_cmpnolog_1, aes(x = CV, fill = cell_type)) + geom_density(alpha = 0.5) + labs(title = "cpm no log, 19239 batch 1")
+```
 ## Session information
 
 ```{r info}
