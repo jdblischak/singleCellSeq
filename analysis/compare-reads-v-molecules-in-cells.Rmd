@@ -159,7 +159,7 @@ molecules_tmm <- cpm(molecules, lib.size = colSums(molecules) * norm_factors_mol
 
 ### Counts
 
-Compare the counts.
+Compare the counts. (1) all genes. (2) only ERCC. (3) without ERCC, only endogenous genes
 
 ```{r conversion-in-cell, fig.width=9, fig.height=9, cache=FALSE}
 ## linear regression per cell and make a table with intercept, slope, and r-squared
@@ -260,7 +260,7 @@ ggplot(anno_regression, aes(x = as.factor(individual), y = total_molecule_ERCC))
 
 ### Log2 counts
 
-Compare the log counts.
+Compare the log counts. The r squared values of lm are relativiely low (around 0.85). 
 
 ```{r conversion-in-cell-log, fig.width=9, fig.height=9, cache=FALSE}
 regression_table_log <- as.data.frame(do.call(rbind,lapply(names(reads_log),function(x){
@@ -279,7 +279,7 @@ ggplot(anno_regression_log,aes(x=Intercept,y=slope,col=as.factor(individual),sha
 
 ### counts per million
 
-Compare the counts per million.
+Compare the counts per million. 
 
 ```{r conversion-in-cell-cpm, fig.width=9, fig.height=9, cache=FALSE}
 regression_table_cpm <- as.data.frame(do.call(rbind,lapply(colnames(reads_cpm),function(x){
@@ -303,6 +303,69 @@ anno_regression_cpm$reads_mean <- apply(reads_cpm, 2, mean)
 anno_regression_cpm$molecules_mean <- apply(molecules_cpm, 2, mean)
 
 ggplot(anno_regression_cpm, aes(x= reads_mean, y= molecules_mean)) + geom_point() + geom_abline(aes(intercept=Intercept, slope=slope, col=as.factor(individual), alpha = 0.01), data=anno_regression_cpm) + facet_grid(individual ~ batch) 
+
+## look at just the slope using total raw molecule counts (total cpm molecule counts are all the same across cells)
+anno_regression_cpm$total_molecule <- apply(molecules, 2, sum)
+ggplot(anno_regression_cpm, aes(x= total_molecule, y= slope,col=as.factor(individual),shape=as.factor(batch))) + geom_point()
+```
+
+Only ERCC genes
+```{r conversion-in-cell-cpm-ERCC, fig.width=9, fig.height=9, cache=FALSE}
+## grep ERCC
+reads_cpm_ERCC <- as.data.frame(reads_cpm[grep("ERCC", rownames(reads_cpm)), ])
+molecules_cpm_ERCC <- as.data.frame(molecules_cpm[grep("ERCC", rownames(molecules_cpm)), ])
+
+## linear regression per cell and make a table with intercept, slope, and r-squared
+regression_table_cpm_ERCC <- as.data.frame(do.call(rbind,lapply(names(reads_cpm_ERCC),function(x){
+  fit.temp <- lm(molecules_cpm_ERCC[,x]~reads_cpm_ERCC[,x])
+    c(x,fit.temp$coefficients,summary(fit.temp)$adj.r.squared)
+})))
+names(regression_table_cpm_ERCC) <- c("sample_id","Intercept","slope","r2")
+regression_table_cpm_ERCC$Intercept <- as.numeric(as.character(regression_table_cpm_ERCC$Intercept))
+regression_table_cpm_ERCC$slope <- as.numeric(as.character(regression_table_cpm_ERCC$slope))
+regression_table_cpm_ERCC$r2 <- as.numeric(as.character(regression_table_cpm_ERCC$r2))
+plot(regression_table_cpm_ERCC$r2)
+
+anno_regression_cpm_ERCC <- merge(anno,regression_table_cpm_ERCC,by="sample_id")
+ggplot(anno_regression_cpm_ERCC,aes(x=Intercept,y=slope,col=as.factor(individual),shape=as.factor(batch))) + geom_point() + labs(x = "intercept", y = "slope", title = "read-molecule conversion ERCC genes (cpm no log)") 
+
+## plot all the lines
+anno_regression_cpm_ERCC$reads_mean <- apply(reads_cpm_ERCC, 2, mean)
+anno_regression_cpm_ERCC$molecules_mean <- apply(molecules_cpm_ERCC, 2, mean)
+
+ggplot(anno_regression_cpm_ERCC, aes(x= reads_mean, y= molecules_mean)) + geom_point() + geom_abline(aes(intercept=Intercept, slope=slope, col=as.factor(individual), alpha= 0.5), data=anno_regression_cpm_ERCC) 
+
+ggplot(anno_regression_ERCC, aes(x= reads_mean, y= molecules_mean)) + geom_point() + geom_abline(aes(intercept=Intercept, slope=slope, col=as.factor(individual), alpha= 0.5), data=anno_regression) + facet_grid(individual ~ batch)
+```
+
+### TMM-normalized counts per million
+
+Compare TMM-normalized log2-transformed cpm . 
+
+```{r conversion-in-cell-tmm, fig.width=9, fig.height=9, cache=FALSE}
+regression_table_tmm <- as.data.frame(do.call(rbind,lapply(colnames(reads_tmm),function(x){
+  fit.temp <- lm(molecules_tmm[,x]~reads_tmm[,x])
+    c(x,fit.temp$coefficients,summary(fit.temp)$adj.r.squared)
+})))
+names(regression_table_tmm) <- c("sample_id","Intercept","slope","r2")
+regression_table_tmm$Intercept <- as.numeric(as.character(regression_table_tmm$Intercept))
+regression_table_tmm$slope <- as.numeric(as.character(regression_table_tmm$slope))
+regression_table_tmm$r2 <- as.numeric(as.character(regression_table_tmm$r2))
+plot(regression_table_tmm$r2)
+
+anno_regression_tmm <- merge(anno,regression_table_tmm,by="sample_id")
+
+ggplot(anno_regression_tmm,aes(x=Intercept,y=slope,col=as.factor(individual),shape=as.factor(batch))) + geom_point() + labs(x = "intercept", y = "slope", title = "read-molecule conversion (tmm cpm log)")
+
+ggplot(anno_regression_tmm,aes(x=Intercept,y=slope,col=as.factor(individual),shape=as.factor(batch))) + geom_point() + labs(x = "intercept", y = "slope", title = "read-molecule conversion (tmm cpm log)") + facet_grid(individual ~ batch) 
+
+## plot all the lines
+anno_regression_tmm$reads_mean <- apply(reads_tmm, 2, mean)
+anno_regression_tmm$molecules_mean <- apply(molecules_tmm, 2, mean)
+
+ggplot(anno_regression_tmm, aes(x= reads_mean, y= molecules_mean)) + geom_point() + geom_abline(aes(intercept=Intercept, slope=slope, col=as.factor(individual), alpha = 0.01), data=anno_regression_tmm) 
+
+ggplot(anno_regression_tmm, aes(x= reads_mean, y= molecules_mean)) + geom_point() + geom_abline(aes(intercept=Intercept, slope=slope, col=as.factor(individual), alpha = 0.01), data=anno_regression_tmm) + facet_grid(individual ~ batch) 
 ```
 
 ## Session information
