@@ -1,0 +1,362 @@
+---
+title: "Proportion of genes detected"
+author: "Joyce Hsiao"
+date: 2015-09-01
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+```
+
+
+## Setup
+```{r}
+source("functions.R")
+library("limma")
+library("edgeR")
+library(ggplot2)
+```
+
+## Prepare single cell molecule data
+
+
+Input annotation
+
+```{r}
+anno <- read.table("../data/annotation.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+```
+
+
+Input molecule counts
+
+```{r}
+molecules <- read.table("../data/molecules.txt", header = TRUE,
+           stringsAsFactors = FALSE)
+```
+
+
+Input read count
+
+```{r}
+reads <- read.table("../data/reads.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+```
+
+Remove batch 2 of individual 19098.
+
+```{r}
+molecules_single <- molecules[, !(anno$individual == 19098 & anno$batch == 2)]
+reads_single <- reads[, !(anno$individual == 19098 & anno$batch == 2)]
+
+anno_single <- anno[!(anno$individual == 19098 & anno$batch == 2), ]
+stopifnot(ncol(molecules_single) == nrow(anno_single))
+```
+
+
+Remove genes with zero count in the single cells
+```{r}
+expressed_single <- rowSums(molecules_single) > 0
+molecules_single <- molecules_single[which(expressed_single), ]
+reads_single <- reads_single[expressed_single, ]
+```
+
+
+
+## Molecule count data before QC filtering
+
+
+```{r}
+require(matrixStats)
+number_nonzero_cells <- colSums(molecules_single != 0)
+number_genes <- dim(molecules_single)[1]
+molecules_prop_genes_detected <- 
+    data.frame(prop = number_nonzero_cells/number_genes,
+               individual = anno_single$individual,
+               individual.batch = paste(anno_single$individual,
+                                        anno_single$batch, sep = "."))
+
+ggplot(molecules_prop_genes_detected,
+       aes(y = prop, x = as.factor(individual.batch))) + 
+  geom_boxplot( aes(fill = as.factor(individual)) ) +
+  labs(x = "Individual.batch ID", 
+       y = "Proportion of detected genes",
+       title = "Proportion of detected genes")
+```
+
+
+Principal component analysis on log2 transformed values. We avoid log of 0's
+by add 1's. In addition, our PCA analysis requires that every gene needs
+to be present in at least one of the cells.
+
+```{r}
+molecules_single_log2_pca <- run_pca( log2( molecules_single + 1 ) )
+
+qplot(y = molecules_single_log2_pca$PCs[,1],
+      x = molecules_prop_genes_detected$prop,
+      shape = as.factor(anno_single$batch),
+      colour = as.factor(anno_single$individual),
+      xlab = "Proportion of genes detected",
+      ylab = "First principal component score") 
+
+qplot(y = molecules_single_log2_pca$PCs[,2],
+      x = molecules_prop_genes_detected$prop,
+      shape = as.factor(anno_single$batch),
+      colour = as.factor(anno_single$individual),
+      xlab = "Proportion of genes detected",
+      ylab = "Second principal component score") 
+```
+
+
+
+Compute median of gene expression of non-zero measurements.
+
+```{r}
+require(matrixStats)
+molecules_single_log2_cpm <- molecules_single
+molecules_single_log2_cpm[molecules_single_log2_cpm==0] <- NA
+libsize <- colSums(molecules_single_log2_cpm, na.rm = TRUE)
+molecules_single_log2_cpm <- log2( 10^6 * t(t(molecules_single_log2_cpm)/libsize) )
+
+molecules_median_expression <- 
+    apply(molecules_single_log2_cpm, 2, 
+          function(per_cell) { median(per_cell[per_cell!=0],
+                                      na.rm = TRUE) })
+```
+
+
+
+```{r}
+molecules_df <- data.frame(medians = molecules_median_expression,
+                       prop = molecules_prop_genes_detected$prop,
+                       individual = anno_single$individual,
+                       batch = anno_single$batch,
+                       individual.batch = paste(anno_single$individual,
+                                                anno_single$batch, sep = "."))
+
+ggplot(molecules_df, aes(y = medians, x = prop) ) + 
+  geom_point( aes(shape = as.factor(batch), 
+                  colour = as.factor(individual) ) ) +
+  stat_smooth(method = "loess") +
+  labs( xlab = "Proportion of genes detected",
+        ylab = "Median expression of non-zero cells (log2 CPM)")
+```
+
+
+
+
+## Molecule count data of quality single cells
+
+Input list of quality single cells
+
+```{r}
+quality_single_cells <- scan("../data/quality-single-cells.txt", what = "character")
+```
+
+
+Keep only the single cells that pass the QC filters. This also removes the bulk samples
+
+```{r}
+reads_single <- reads_single[, colnames(reads_single) %in% quality_single_cells]
+molecules_single <- molecules_single[, colnames(molecules_single) %in% quality_single_cells]
+anno_single <- anno_single[anno_single$sample_id %in% quality_single_cells, ]
+stopifnot(ncol(molecules_single) == nrow(anno_single),
+          colnames(molecules_single) == anno_single$sample_id)
+```
+
+
+Remove genes with greater than or equal to 1,024 molecules 
+in at least one of the cells
+
+```{r}
+overexpressed_genes <- rownames(molecules_single)[ apply(molecules_single, 1, 
+                                function(x) any(x >= 1024))]
+molecules_single <- molecules_single[!(rownames(molecules_single) %in% overexpressed_genes), ]
+```
+
+
+Remove genes with zero count in the single cells
+```{r}
+molecules_single <- molecules_single[which(rowSums(molecules_single) > 0), ]
+reads_single <- reads_single[rowSums(reads_single) > 0, ]
+```
+
+
+The observations below were the same before removing
+genes with greater than or equal to 1,024 molecules in at least 
+one of the cells. 
+
+
+```{r}
+require(matrixStats)
+number_nonzero_cells <- colSums(molecules_single != 0)
+number_genes <- dim(molecules_single)[1]
+molecules_prop_genes_detected <- 
+    data.frame(prop = number_nonzero_cells/number_genes,
+               individual = anno_single$individual,
+               individual.batch = paste(anno_single$individual,
+                                        anno_single$batch, sep = "."))
+
+ggplot(molecules_prop_genes_detected,
+       aes(y = prop, x = as.factor(individual.batch))) + 
+  geom_boxplot( aes(fill = as.factor(individual)) ) +
+  labs(x = "Individual.batch ID", 
+       y = "Proportion of detected genes",
+       title = "Proportion of detected genes")
+```
+
+
+Principal component analysis on log2 transformed values. We avoid log of 0's
+by add 1's. In addition, our PCA analysis requires that every gene needs
+to be present in at least one of the cells.
+
+
+```{r}
+molecules_single_log2_pca <- run_pca( log2( molecules_single + 1 ) )
+
+qplot(y = molecules_single_log2_pca$PCs[,1],
+      x = molecules_prop_genes_detected$prop,
+      shape = as.factor(anno_single$batch),
+      colour = as.factor(anno_single$individual),
+      xlab = "Proportion of genes detected",
+      ylab = "First principal component score") 
+
+qplot(y = molecules_single_log2_pca$PCs[,2],
+      x = molecules_prop_genes_detected$prop,
+      shape = as.factor(anno_single$batch),
+      colour = as.factor(anno_single$individual),
+      xlab = "Proportion of genes detected",
+      ylab = "Second principal component score") 
+```
+
+
+
+Compute median of gene expression of non-zero measurements.
+
+```{r}
+require(matrixStats)
+molecules_single_log2_cpm <- molecules_single
+molecules_single_log2_cpm[molecules_single_log2_cpm==0] <- NA
+libsize <- colSums(molecules_single_log2_cpm, na.rm = TRUE)
+molecules_single_log2_cpm <- log2( 10^6 * t(t(molecules_single_log2_cpm)/libsize) )
+
+molecules_median_expression <- 
+    apply(molecules_single_log2_cpm, 2, 
+          function(per_cell) { median(per_cell[per_cell!=0],
+                                      na.rm = TRUE) })
+```
+
+
+
+```{r}
+molecules_df <- data.frame(medians = molecules_median_expression,
+                       prop = molecules_prop_genes_detected$prop,
+                       individual = anno_single$individual,
+                       batch = anno_single$batch,
+                       individual.batch = paste(anno_single$individual,
+                                                anno_single$batch, sep = "."))
+
+ggplot(molecules_df, aes(y = medians, x = prop) ) + 
+  geom_point( aes(shape = as.factor(batch), 
+                  colour = as.factor(individual) ) ) +
+  stat_smooth(method = "loess") +
+  labs( xlab = "Proportion of genes detected",
+          ylab = "Median expression of non-zero cells (log2 CPM)")
+```
+
+
+
+
+
+## Read count data of quality single cells
+
+
+```{r}
+require(matrixStats)
+number_nonzero_cells <- colSums(reads_single != 0)
+number_genes <- dim(reads_single)[1]
+reads_prop_genes_detected <- 
+    data.frame(prop = number_nonzero_cells/number_genes,
+               individual = anno_single$individual,
+               individual.batch = paste(anno_single$individual,
+                                        anno_single$batch, sep = "."))
+
+ggplot(reads_prop_genes_detected,
+       aes(y = prop, x = as.factor(individual.batch))) + 
+  geom_boxplot( aes(fill = as.factor(individual)) ) +
+  labs(x = "Individual.batch ID", 
+       y = "Proportion of detected genes",
+       title = "Proportion of detected genes in read count data")
+```
+
+
+Principal component analysis on log2 transformed values. We avoid log of 0's
+by add 1's. In addition, our PCA analysis requires that every gene needs
+to be present in at least one of the cells.
+
+```{r}
+reads_log2_pca <- run_pca( log2( reads_single + 1 ) )
+
+qplot(y = reads_log2_pca$PCs[,1],
+      x = reads_prop_genes_detected$prop,
+      shape = as.factor(anno_single$batch),
+      colour = as.factor(anno_single$individual),
+      xlab = "Proportion of genes detected",
+      ylab = "First principal component score") 
+
+qplot(y = reads_log2_pca$PCs[,2],
+      x = reads_prop_genes_detected$prop,
+      shape = as.factor(anno_single$batch),
+      colour = as.factor(anno_single$individual),
+      xlab = "Proportion of genes detected",
+      ylab = "Second principal component score") 
+```
+
+
+
+Compute median of gene expression of non-zero measurements.
+
+```{r}
+require(matrixStats)
+reads_single[reads_single==0] <- NA
+reads_libsize <- colSums(reads_single, na.rm = TRUE)
+reads_cpm <- log2( 10^6 * t(t(reads_single)/reads_libsize) )
+
+reads_median_expression <- 
+    apply(reads_cpm, 2, 
+          function(per_cell) { median(per_cell[per_cell!=0],
+                                      na.rm = TRUE) })
+```
+
+
+```{r}
+reads_df <- data.frame(medians = reads_median_expression,
+                       prop = reads_prop_genes_detected$prop,
+                       individual = anno_single$individual,
+                       batch = anno_single$batch,
+                       individual.batch = paste(anno_single$individual,
+                                                anno_single$batch, sep = "."))
+
+ggplot(reads_df, aes(y = medians, x = prop) ) + 
+  geom_point( aes(shape = as.factor(batch), 
+                  colour = as.factor(individual) ) ) +
+  stat_smooth(method = "loess") +
+  labs( xlab = "Proportion of genes detected",
+          ylab = "Median expression of non-zero cells (log2 CPM)")
+```
+
+
+
+
+
+
+
+## Session information
+
+```{r info}
+sessionInfo()
+```
