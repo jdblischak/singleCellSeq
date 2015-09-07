@@ -148,7 +148,7 @@ color[grep("19239", individual)] <- "blue"
 heatmap.2(molecules_single_pluripotency, trace="none", cexRow=1, cexCol=1, margins=c(8,8), xlab="single cells", ColSideColors=color)
 
 colorbulk <- rep(c("red","yellow","blue"),each=3)
-heatmap.2(reads_bulk_pluripotency, trace="none", cexRow=1, cexCol=1, margins=c(8,8),xlab="bulk", ColSideColors=colorbulk)
+heatmap.2(reads_bulk_pluripotency, trace="none", cexRow=1, cexCol=1, margins=c(8,8),xlab="bulk")
 
 ```
 
@@ -167,6 +167,43 @@ stopifnot(colnames(pca_single_cells) ==
 
 pca_single_cells_anno <- cbind(anno_single, pca_single_cells$x)
 ggplot(pca_single_cells_anno, aes(x = PC1, y = PC2, col = as.factor(individual), shape = as.factor(batch))) +geom_point()
+```
+
+## PCA ERCC 
+```{r pca-ercc}
+## without cpm standardization
+molecules_single_ERCC <- molecules_single_collision[grep("ERCC", rownames(molecules_single_collision)), ]
+
+pca_ERCC <- prcomp(t(molecules_single_ERCC), retx = TRUE, scale. = TRUE, center = TRUE)
+plot(pca_ERCC)
+
+pca_ERCC$perc_explained <- pca_ERCC$sdev^2 / sum(pca_ERCC$sdev^2) * 100
+plot(pca_ERCC$perc_explained)
+
+stopifnot(colnames(pca_ERCC) == 
+            paste(paste0("NA", anno_single$individual),
+                   anno_single$batch,
+                   anno_single$well, sep = "."))
+
+pca_ERCC_anno <- cbind(anno_single, pca_ERCC$x)
+ggplot(pca_ERCC_anno, aes(x = PC1, y = PC2, col = as.factor(individual), shape = as.factor(batch))) +geom_point()
+
+## try cpm
+molecules_single_cpm_ERCC <- molecules_single_cpm[grep("ERCC", rownames(molecules_single_cpm)), ]
+
+pca_cpm_ERCC <- prcomp(t(molecules_single_cpm_ERCC), retx = TRUE, scale. = TRUE, center = TRUE)
+plot(pca_cpm_ERCC)
+
+pca_cpm_ERCC$perc_explained <- pca_cpm_ERCC$sdev^2 / sum(pca_cpm_ERCC$sdev^2) * 100
+plot(pca_cpm_ERCC$perc_explained)
+
+stopifnot(colnames(pca_cpm_ERCC) == 
+            paste(paste0("NA", anno_single$individual),
+                   anno_single$batch,
+                   anno_single$well, sep = "."))
+
+pca_cpm_ERCC_anno <- cbind(anno_single, pca_cpm_ERCC$x)
+ggplot(pca_cpm_ERCC_anno, aes(x = PC1, y = PC2, col = as.factor(individual), shape = as.factor(batch))) +geom_point()
 ```
 
 ## Use LCLs as a negative control 
