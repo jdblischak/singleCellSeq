@@ -128,13 +128,14 @@ img {
 <ul>
 <li><a href="#input">Input</a></li>
 <li><a href="#expressions-of-pluripotency-genes-in-ipscs">Expressions of pluripotency genes in iPSCs</a></li>
+<li><a href="#pca-ercc">PCA ERCC</a></li>
 <li><a href="#use-lcls-as-a-negative-control">Use LCLs as a negative control</a></li>
 <li><a href="#the-cv-between-ipsc-and-lcl">The CV between iPSC and LCL</a></li>
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-08-28</p>
-<p><strong>Code version:</strong> 4b60929b44b585789da8bbab66261d3d17e08b6c</p>
+<p><strong>Last updated:</strong> 2015-09-07</p>
+<p><strong>Code version:</strong> ca4aa72d20c8aaf953483d5e334b5d7d1a6c719d</p>
 <p>Current model of reprogramming suggests that pluripotency occurs in two-phases: a prolonged stochastic phase followed by a rapid deterministic phase. <a href="http://journals.plos.org/plosone/article?id=10.1371/journal.pone.0095304">Chung2014</a> Our iPSCs were reprogrammed and cultured in mane different batches. In addition, some lines have been through different culture mediums. In order to make sure that the variance we observed at the single cell level is not cause by different levels of plupotency, we need to more rigorously estimate the cells status than just carrying out pluritest from the bulk.</p>
 <div id="input" class="section level2">
 <h2>Input</h2>
@@ -220,7 +221,7 @@ color[grep(&quot;19239&quot;, individual)] &lt;- &quot;blue&quot;
 heatmap.2(molecules_single_pluripotency, trace=&quot;none&quot;, cexRow=1, cexCol=1, margins=c(8,8), xlab=&quot;single cells&quot;, ColSideColors=color)</code></pre>
 <p><img src="figure/stemness.Rmd/expressed-pluripotency-gene-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>colorbulk &lt;- rep(c(&quot;red&quot;,&quot;yellow&quot;,&quot;blue&quot;),each=3)
-heatmap.2(reads_bulk_pluripotency, trace=&quot;none&quot;, cexRow=1, cexCol=1, margins=c(8,8),xlab=&quot;bulk&quot;, ColSideColors=colorbulk)</code></pre>
+heatmap.2(reads_bulk_pluripotency, trace=&quot;none&quot;, cexRow=1, cexCol=1, margins=c(8,8),xlab=&quot;bulk&quot;)</code></pre>
 <p><img src="figure/stemness.Rmd/expressed-pluripotency-gene-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>pca_single_cells &lt;- prcomp(t(molecules_single_pluripotency), retx = TRUE, scale. = TRUE, center = TRUE)
 plot(pca_single_cells)</code></pre>
@@ -237,6 +238,43 @@ stopifnot(colnames(pca_single_cells) ==
 pca_single_cells_anno &lt;- cbind(anno_single, pca_single_cells$x)
 ggplot(pca_single_cells_anno, aes(x = PC1, y = PC2, col = as.factor(individual), shape = as.factor(batch))) +geom_point()</code></pre>
 <p><img src="figure/stemness.Rmd/expressed-pluripotency-gene-pca-3.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="pca-ercc" class="section level2">
+<h2>PCA ERCC</h2>
+<pre class="r"><code>## without cpm standardization
+molecules_single_ERCC &lt;- molecules_single_collision[grep(&quot;ERCC&quot;, rownames(molecules_single_collision)), ]
+
+pca_ERCC &lt;- prcomp(t(molecules_single_ERCC), retx = TRUE, scale. = TRUE, center = TRUE)
+plot(pca_ERCC)</code></pre>
+<p><img src="figure/stemness.Rmd/pca-ercc-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>pca_ERCC$perc_explained &lt;- pca_ERCC$sdev^2 / sum(pca_ERCC$sdev^2) * 100
+plot(pca_ERCC$perc_explained)</code></pre>
+<p><img src="figure/stemness.Rmd/pca-ercc-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>stopifnot(colnames(pca_ERCC) == 
+            paste(paste0(&quot;NA&quot;, anno_single$individual),
+                   anno_single$batch,
+                   anno_single$well, sep = &quot;.&quot;))
+
+pca_ERCC_anno &lt;- cbind(anno_single, pca_ERCC$x)
+ggplot(pca_ERCC_anno, aes(x = PC1, y = PC2, col = as.factor(individual), shape = as.factor(batch))) +geom_point()</code></pre>
+<p><img src="figure/stemness.Rmd/pca-ercc-3.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>## try cpm
+molecules_single_cpm_ERCC &lt;- molecules_single_cpm[grep(&quot;ERCC&quot;, rownames(molecules_single_cpm)), ]
+
+pca_cpm_ERCC &lt;- prcomp(t(molecules_single_cpm_ERCC), retx = TRUE, scale. = TRUE, center = TRUE)
+plot(pca_cpm_ERCC)</code></pre>
+<p><img src="figure/stemness.Rmd/pca-ercc-4.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>pca_cpm_ERCC$perc_explained &lt;- pca_cpm_ERCC$sdev^2 / sum(pca_cpm_ERCC$sdev^2) * 100
+plot(pca_cpm_ERCC$perc_explained)</code></pre>
+<p><img src="figure/stemness.Rmd/pca-ercc-5.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>stopifnot(colnames(pca_cpm_ERCC) == 
+            paste(paste0(&quot;NA&quot;, anno_single$individual),
+                   anno_single$batch,
+                   anno_single$well, sep = &quot;.&quot;))
+
+pca_cpm_ERCC_anno &lt;- cbind(anno_single, pca_cpm_ERCC$x)
+ggplot(pca_cpm_ERCC_anno, aes(x = PC1, y = PC2, col = as.factor(individual), shape = as.factor(batch))) +geom_point()</code></pre>
+<p><img src="figure/stemness.Rmd/pca-ercc-6.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
 <div id="use-lcls-as-a-negative-control" class="section level2">
 <h2>Use LCLs as a negative control</h2>
