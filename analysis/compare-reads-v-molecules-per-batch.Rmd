@@ -336,7 +336,15 @@ conver_plot_ercc_cpm
 
 ## Comparing loess curves
 
-```{r}
+Can we identify batch effects in the conversion of reads to molecules by closely comparing the loess fits?
+Below I calculate two statistics for the log2 cpm data.
+The first is the maximum absolute difference between the loess curve and the line y=x.
+The largest differences are observed for the lowly expressed genes.
+The second is the x-coordinate (the mean number of log2 reads per million per gene) where the loess curve and the line y=x intersect.
+
+The first section below is simply the code I used to explore one batch.
+
+```{r loess-scratch}
 conversion_chunk <- filter(conversion_cpm_mean, individual == "NA19101", batch == 1)
 dim(conversion_chunk)
 head(conversion_chunk)
@@ -347,6 +355,58 @@ plot(conversion_chunk$reads_mean, loess_predict)
 abline(a = 0, b = 1, col = "red")
 plot(conversion_chunk$molecules_mean, loess_predict)
 plot(conversion_chunk$reads_mean, conversion_chunk$reads_mean - loess_predict)
+abline(h = 0, col = "red")
+max(abs(conversion_chunk$reads_mean - loess_predict))
+```
+
+Here are the functions I used.
+
+```{r}
+predict_loess <- function(x, y) {
+  # Perform loess regression and return the predicted y-values.
+  model <- loess(y ~ x)
+  prediction <- predict(model)
+  return(prediction)
+}
+find_max_loess_diff <- function(x, y) {
+  # Find the maximum absolute difference between the loess curve and the line
+  # y=x.
+  y_predict <- predict_loess(x, y)
+  max_loess_diff <- max(abs(x - y_predict))
+  return(max_loess_diff)
+}
+find_loess_intersect <- function(x, y) {
+  # Find the x-coordinate where the loess curve and the line y=x intersect.
+  y_predict <- predict_loess(x, y)
+  x_order <- order(x)
+  x <- x[x_order]
+  y_predict <- y_predict[x_order]
+  loess_diffs <- y_predict - x
+  intersection <- x[loess_diffs <= 0][1]
+  return(intersection)
+}
+find_max_loess_diff(conversion_chunk$reads_mean, conversion_chunk$molecules_mean)
+find_loess_intersect(conversion_chunk$reads_mean, conversion_chunk$molecules_mean)
+```
+
+These are the results for 5000 randomly subsampled genes (include endegenous genes and some ERCC).
+
+```{r}
+batch_loess <- conversion_cpm_mean %>%
+  group_by(individual, batch) %>%
+  summarize(max_loess_diff = find_max_loess_diff(reads_mean, molecules_mean),
+            loess_intersect = find_loess_intersect(reads_mean, molecules_mean))
+batch_loess
+```
+
+These are the results for the ERCC alone.
+
+```{r}
+batch_loess_ercc <- conversion_ercc_cpm_mean %>%
+  group_by(individual, batch) %>%
+  summarize(max_loess_diff = find_max_loess_diff(reads_mean, molecules_mean),
+            loess_intersect = find_loess_intersect(reads_mean, molecules_mean))
+batch_loess_ercc
 ```
 
 ## Session information
