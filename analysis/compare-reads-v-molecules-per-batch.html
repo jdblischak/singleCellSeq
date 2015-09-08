@@ -141,7 +141,7 @@ img {
 </div>
 
 <p><strong>Last updated:</strong> 2015-09-08</p>
-<p><strong>Code version:</strong> 8638af6fb413594e38dd74661e4e85d05c29cf00</p>
+<p><strong>Code version:</strong> 7ac0a8c74137d15731f4b4c1ab6acd4f21d2f8bd</p>
 <p>Comparing the conversion of reads to molecules for each of the 9 batches. Used three different metrics:</p>
 <ul>
 <li>Raw counts</li>
@@ -429,6 +429,8 @@ conver_plot_ercc_cpm</code></pre>
 </div>
 <div id="comparing-loess-curves" class="section level2">
 <h2>Comparing loess curves</h2>
+<p>Can we identify batch effects in the conversion of reads to molecules by closely comparing the loess fits? Below I calculate two statistics for the log2 cpm data. The first is the maximum absolute difference between the loess curve and the line y=x. The largest differences are observed for the lowly expressed genes. The second is the x-coordinate (the mean number of log2 reads per million per gene) where the loess curve and the line y=x intersect.</p>
+<p>The first section below is simply the code I used to explore one batch.</p>
 <pre class="r"><code>conversion_chunk &lt;- filter(conversion_cpm_mean, individual == &quot;NA19101&quot;, batch == 1)
 dim(conversion_chunk)</code></pre>
 <pre><code>[1] 5000    7</code></pre>
@@ -450,11 +452,79 @@ str(loess_predict)</code></pre>
 <pre><code> num [1:5000] 1.82 4.22 3.22 2.18 2.83 ...</code></pre>
 <pre class="r"><code>plot(conversion_chunk$reads_mean, loess_predict)
 abline(a = 0, b = 1, col = &quot;red&quot;)</code></pre>
-<p><img src="figure/compare-reads-v-molecules-per-batch.Rmd/unnamed-chunk-1-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="figure/compare-reads-v-molecules-per-batch.Rmd/loess-scratch-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>plot(conversion_chunk$molecules_mean, loess_predict)</code></pre>
-<p><img src="figure/compare-reads-v-molecules-per-batch.Rmd/unnamed-chunk-1-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>plot(conversion_chunk$reads_mean, conversion_chunk$reads_mean - loess_predict)</code></pre>
-<p><img src="figure/compare-reads-v-molecules-per-batch.Rmd/unnamed-chunk-1-3.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="figure/compare-reads-v-molecules-per-batch.Rmd/loess-scratch-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>plot(conversion_chunk$reads_mean, conversion_chunk$reads_mean - loess_predict)
+abline(h = 0, col = &quot;red&quot;)</code></pre>
+<p><img src="figure/compare-reads-v-molecules-per-batch.Rmd/loess-scratch-3.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>max(abs(conversion_chunk$reads_mean - loess_predict))</code></pre>
+<pre><code>[1] 4.528132</code></pre>
+<p>Here are the functions I used.</p>
+<pre class="r"><code>predict_loess &lt;- function(x, y) {
+  # Perform loess regression and return the predicted y-values.
+  model &lt;- loess(y ~ x)
+  prediction &lt;- predict(model)
+  return(prediction)
+}
+find_max_loess_diff &lt;- function(x, y) {
+  # Find the maximum absolute difference between the loess curve and the line
+  # y=x.
+  y_predict &lt;- predict_loess(x, y)
+  max_loess_diff &lt;- max(abs(x - y_predict))
+  return(max_loess_diff)
+}
+find_loess_intersect &lt;- function(x, y) {
+  # Find the x-coordinate where the loess curve and the line y=x intersect.
+  y_predict &lt;- predict_loess(x, y)
+  x_order &lt;- order(x)
+  x &lt;- x[x_order]
+  y_predict &lt;- y_predict[x_order]
+  loess_diffs &lt;- y_predict - x
+  intersection &lt;- x[loess_diffs &lt;= 0][1]
+  return(intersection)
+}
+find_max_loess_diff(conversion_chunk$reads_mean, conversion_chunk$molecules_mean)</code></pre>
+<pre><code>[1] 4.528132</code></pre>
+<pre class="r"><code>find_loess_intersect(conversion_chunk$reads_mean, conversion_chunk$molecules_mean)</code></pre>
+<pre><code>[1] 9.093351</code></pre>
+<p>These are the results for 5000 randomly subsampled genes (include endegenous genes and some ERCC).</p>
+<pre class="r"><code>batch_loess &lt;- conversion_cpm_mean %&gt;%
+  group_by(individual, batch) %&gt;%
+  summarize(max_loess_diff = find_max_loess_diff(reads_mean, molecules_mean),
+            loess_intersect = find_loess_intersect(reads_mean, molecules_mean))
+batch_loess</code></pre>
+<pre><code>Source: local data frame [9 x 4]
+Groups: individual
+
+  individual batch max_loess_diff loess_intersect
+1    NA19098     1       4.526934              NA
+2    NA19098     2       4.557171              NA
+3    NA19098     3       4.524544        8.909048
+4    NA19101     1       4.528132        9.093351
+5    NA19101     2       4.535132        9.102370
+6    NA19101     3       4.533278        9.750998
+7    NA19239     1       4.524167        9.519240
+8    NA19239     2       4.526112        9.202881
+9    NA19239     3       4.524408        9.695773</code></pre>
+<p>These are the results for the ERCC alone.</p>
+<pre class="r"><code>batch_loess_ercc &lt;- conversion_ercc_cpm_mean %&gt;%
+  group_by(individual, batch) %&gt;%
+  summarize(max_loess_diff = find_max_loess_diff(reads_mean, molecules_mean),
+            loess_intersect = find_loess_intersect(reads_mean, molecules_mean))
+batch_loess_ercc</code></pre>
+<pre><code>Source: local data frame [8 x 4]
+Groups: individual
+
+  individual batch max_loess_diff loess_intersect
+1    NA19098     1       4.523076        9.489872
+2    NA19098     3       4.519575        9.341845
+3    NA19101     1       4.522796        9.097392
+4    NA19101     2       4.517937        7.811393
+5    NA19101     3       4.520843        9.204111
+6    NA19239     1       4.515316        9.051180
+7    NA19239     2       4.522820        9.343531
+8    NA19239     3       4.521505        8.883230</code></pre>
 </div>
 <div id="session-information" class="section level2">
 <h2>Session information</h2>
