@@ -19,6 +19,7 @@ source("chunk-options.R")
 library("edgeR")
 library("ggplot2")
 theme_set(theme_bw(base_size = 14))
+source("functions.R")
 ```
 
 ## Input
@@ -164,21 +165,17 @@ PC1 of ERCC expression is explained by total ERCC molecule counts, but not total
 ## without cpm standardization
 molecules_single_ERCC <- molecules_single_collision[grep("ERCC", rownames(molecules_single_collision)), ]
 
+pca_ERCC <- run_pca(molecules_single_ERCC)
+pca_ERCC_plot <- plot_pca(pca_ERCC$PCs, explained = pca_ERCC$explained,
+         metadata = anno_single, color = "individual",
+         shape = "batch", factors = c("individual", "batch"))
+
+pca_ERCC_plot + labs(title="ERCC spike-in (no-cpm)")
+
+## PC1 of ERCC expression is explained by total ERCC molecule number
 pca_ERCC <- prcomp(t(molecules_single_ERCC), retx = TRUE, scale. = TRUE, center = TRUE)
-plot(pca_ERCC)
-
-pca_ERCC$perc_explained <- pca_ERCC$sdev^2 / sum(pca_ERCC$sdev^2) * 100
-plot(pca_ERCC$perc_explained)
-
-stopifnot(colnames(pca_ERCC) == 
-            paste(paste0("NA", anno_single$individual),
-                   anno_single$batch,
-                   anno_single$well, sep = "."))
-
 pca_ERCC_anno <- cbind(anno_single, pca_ERCC$x)
-ggplot(pca_ERCC_anno, aes(x = PC1, y = PC2, col = as.factor(individual), shape = as.factor(batch))) +geom_point() + labs(title="ERCC spike-in (no-cpm)")
 
-## PC1 of ERCC expression is explained by total ERCC molecule number 
 ggplot(pca_ERCC_anno, aes(x = PC1, y = total_ERCC_molecule, col = as.factor(individual), shape = as.factor(batch))) +geom_point() + labs(title="ERCC spike-in (no-cpm)")
 
 ggplot(pca_ERCC_anno, aes(x = PC1, y = total_molecules, col = as.factor(individual), shape = as.factor(batch))) +geom_point() + labs(title="ERCC spike-in (no-cpm)")
