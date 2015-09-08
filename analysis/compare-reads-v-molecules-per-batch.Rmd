@@ -9,7 +9,7 @@ date: 2015-08-18
 
 ```{r chunk-options, include=FALSE}
 source("chunk-options.R")
-opts_chunk$set(cache = FALSE)
+opts_chunk$set(cache = TRUE)
 ```
 
 Comparing the conversion of reads to molecules for each of the 9 batches.
@@ -237,6 +237,7 @@ Compare the log counts.
 ```{r convert-reads-molecules-per-batch-log, fig.width=9, fig.height=9, cache=FALSE}
 conver_plot_log <- conver_plot_counts %+%
   conversion_log_mean +
+  geom_line(aes(x = reads_mean, y = reads_mean)) +
   labs(x = "Reads per gene (log2)",
        y = "Molecules per gene (log2)",
        title = sprintf("Conversion per batch (subsample of %d genes) - log", num_subsampled))
@@ -248,12 +249,12 @@ conver_plot_log
 Compare the counts per million.
 
 ```{r convert-reads-molecules-per-batch-cpm, fig.width=9, fig.height=9, cache=FALSE}
-conver_plot_cpm <- conver_plot_counts %+%
+conver_plot_cpm <- conver_plot_log %+%
   conversion_cpm_mean +
   labs(x = "Reads per million per gene (log2)",
        y = "Molecules per million per gene (log2)",
        title = sprintf("Conversion per batch (subsample of %d genes) - cpm", num_subsampled))
-conver_plot_cpm
+conver_plot_cpm + geom_line(aes(x = reads_mean, y = reads_mean))
 ```
 
 Now visualizing only the ERCC.
@@ -314,7 +315,7 @@ conver_plot_ercc
 ### ERCC log2 counts
 
 ```{r convert-reads-molecules-per-batch-ercc-log, fig.width=9, fig.height=9, cache=FALSE}
-conver_plot_ercc_log <- conver_plot_counts %+%
+conver_plot_ercc_log <- conver_plot_log %+%
   conversion_ercc_log_mean +
   labs(x = "Reads per million per gene (log2)",
        y = "Molecules per million per gene (log2)",
@@ -325,12 +326,27 @@ conver_plot_ercc_log
 ### ERCC log2 counts per million
 
 ```{r convert-reads-molecules-per-batch-ercc-cpm, fig.width=9, fig.height=9, cache=FALSE}
-conver_plot_ercc_cpm <- conver_plot_counts %+%
+conver_plot_ercc_cpm <- conver_plot_log %+%
   conversion_ercc_cpm_mean +
   labs(x = "Reads per million per gene",
        y = "Molecules per million per gene",
        title = "Conversion per batch (ERCC genes) - cpm")
 conver_plot_ercc_cpm
+```
+
+## Comparing loess curves
+
+```{r}
+conversion_chunk <- filter(conversion_cpm_mean, individual == "NA19101", batch == 1)
+dim(conversion_chunk)
+head(conversion_chunk)
+loess_model <- loess(molecules_mean ~ reads_mean, data = conversion_chunk)
+loess_predict <- predict(loess_model)
+str(loess_predict)
+plot(conversion_chunk$reads_mean, loess_predict)
+abline(a = 0, b = 1, col = "red")
+plot(conversion_chunk$molecules_mean, loess_predict)
+plot(conversion_chunk$reads_mean, conversion_chunk$reads_mean - loess_predict)
 ```
 
 ## Session information
