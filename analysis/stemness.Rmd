@@ -166,7 +166,7 @@ stopifnot(colnames(pca_single_cells) ==
                    anno_single$well, sep = "."))
 
 pca_single_cells_anno <- cbind(anno_single, pca_single_cells$x)
-ggplot(pca_single_cells_anno, aes(x = PC1, y = PC2, col = as.factor(individual), shape = as.factor(batch))) +geom_point()
+ggplot(pca_single_cells_anno, aes(x = PC1, y = PC2, col = as.factor(individual), shape = as.factor(batch))) +geom_point() + labs(title="pluripotency genes (cpm)")
 ```
 
 ## PCA ERCC 
@@ -186,7 +186,7 @@ stopifnot(colnames(pca_ERCC) ==
                    anno_single$well, sep = "."))
 
 pca_ERCC_anno <- cbind(anno_single, pca_ERCC$x)
-ggplot(pca_ERCC_anno, aes(x = PC1, y = PC2, col = as.factor(individual), shape = as.factor(batch))) +geom_point()
+ggplot(pca_ERCC_anno, aes(x = PC1, y = PC2, col = as.factor(individual), shape = as.factor(batch))) +geom_point() + labs(title="ERCC spike-in (no-cpm)")
 
 ## try cpm
 molecules_single_cpm_ERCC <- molecules_single_cpm[grep("ERCC", rownames(molecules_single_cpm)), ]
@@ -203,7 +203,30 @@ stopifnot(colnames(pca_cpm_ERCC) ==
                    anno_single$well, sep = "."))
 
 pca_cpm_ERCC_anno <- cbind(anno_single, pca_cpm_ERCC$x)
-ggplot(pca_cpm_ERCC_anno, aes(x = PC1, y = PC2, col = as.factor(individual), shape = as.factor(batch))) +geom_point()
+ggplot(pca_cpm_ERCC_anno, aes(x = PC1, y = PC2, col = as.factor(individual), shape = as.factor(batch))) +geom_point() + labs(title="ERCC spike-in (cpm)")
+
+ggplot(pca_cpm_ERCC_anno, aes(x = PC1, y = PC2, col = as.factor(individual), shape = as.factor(batch))) +geom_point() + scale_x_continuous(limits=c(-10, 12))
+```
+
+## PCA random sample for endogenous genes
+```{r pca-gene}
+## sample 24 random genes
+random_24_genes <- sample(rownames(molecules_single_cpm), 24)
+molecules_single_random <- molecules_single_cpm[rownames(molecules_single_cpm) %in% random_24_genes,]
+
+pca_random <- prcomp(t(molecules_single_random), retx = TRUE, scale. = TRUE, center = TRUE)
+plot(pca_random)
+
+pca_random$perc_explained <- pca_random$sdev^2 / sum(pca_random$sdev^2) * 100
+plot(pca_random$perc_explained)
+
+stopifnot(colnames(pca_random) == 
+            paste(paste0("NA", anno_single$individual),
+                   anno_single$batch,
+                   anno_single$well, sep = "."))
+
+pca_random_anno <- cbind(anno_single, pca_random$x)
+ggplot(pca_random_anno, aes(x = PC1, y = PC2, col = as.factor(individual), shape = as.factor(batch))) +geom_point() + labs(title="random endogenous genes (cpm)")
 ```
 
 ## Use LCLs as a negative control 
