@@ -1,7 +1,7 @@
 ---
-title: "Mixed effect model for batch correction - crossed design"
+title: "Mixed effect model for batch correction - limma"
 author: "Joyce Hsiao"
-date: 2015-08-17
+date: 2015-09-09
 ---
 
 **Last updated:** `r Sys.Date()`
@@ -13,6 +13,44 @@ source("chunk-options.R")
 ```
 
 
+## Mixed model for batch-effect correction
+
+We adapted limma's algorithm for estimating variance components due to random effects. 
+This analysis operates under the assumption that biological replicates (or batches within an individual
+in this case) share similar correlation across genes. Morever, the analysis permis negative
+correlation between replicates. 
+
+
+### Crossed Model
+
+For every single gene, we will fit a mixed model assuming
+differences between batches are not individual-specific as follows
+
+$$ y_{ijk} = \mu + \alpha_i + b_j + \epsilon_{ijk} $$,
+
+where $y_{ijk}$ is the log2 counts-per-million (cpm) for any gene 
+in individual $i$, batch $j$, and cell $k$, $\mu$ is the gene-specific
+expression level across all cells, $\alpha_i$ is the expression level
+specific to individual $i$, $b_j$ is batch $j$'s deviation of expression
+level from gene-specific expression levels, and $\epsilon_{ijk}$ is 
+the models' residual error. 
+
+We assume that $b_j$ follows a normal distribution with $b_j \sim N(0, \sigma^2_b)$ for $j = 1, \dots, 9$, and $\epsilon_{ijk} \sim N(0, \sigma^2_\epsilon)$ for $i = 1, 2, 3; j = 1, \dots, 9; and k = 1, \dots, n_{ij}$, where $n_ij$ denotes the number of cells in individual $i$, batch $j$. 
+
+
+### Nested Model
+
+For every single gene, we will fit a mixed model assuming
+differences between batches as homogeneous within individuals as follows
+
+$$ y_{ijk} = \mu + \alpha_i + b_{ij} + \epsilon_{ijk} $$,
+
+where the only difference from the Cross model is the batch random effect $b_{ij}$, with $i = 1, 2, 3$ and $j = 1, 2, 3$. Hence $\hat{b}_{i.}$ estimates for individual $i$ the random variation of expression levels from the entire population as a function of the variation across the three batches. Note that as before, $b_{ij}$ follows a normal distribution $N(0, \sigma^2_{b})$. 
+
+Note that limma does not accommodate fitting of nested random effect. We will use other algorithms to remove unwanted variation under the nested model framework.
+
+
+
 ## Setup
 ```{r}
 source("functions.R")
@@ -21,6 +59,7 @@ library("edgeR")
 library(ggplot2)
 theme_set(theme_bw(base_size = 16))
 ```
+
 
 ## Prepare single cell molecule data
 
@@ -44,8 +83,7 @@ molecules <- read.table("../data/molecules.txt", header = TRUE,
 Input list of quality single cells
 
 ```{r}
-quality_single_cells <-
-  scan("../data/quality-single-cells.txt", what = "character")
+quality_single_cells <- scan("../data/quality-single-cells.txt", what = "character")
 ```
 
 
@@ -62,10 +100,8 @@ stopifnot(ncol(molecules_single) == nrow(anno_single),
 Also remove batch 2 of individual 19098.
 
 ```{r}
-molecules_single <- 
-  molecules_single[, !(anno_single$individual == 19098 & anno_single$batch == 2)]
-anno_single <- 
-  anno_single[!(anno_single$individual == 19098 & 
+molecules_single <- molecules_single[, !(anno_single$individual == 19098 & anno_single$batch == 2)]
+anno_single <- anno_single[!(anno_single$individual == 19098 & 
                 anno_single$batch == 2), ]
 stopifnot(ncol(molecules_single) == nrow(anno_single))
 ```
@@ -82,12 +118,9 @@ Remove genes with greater than or equal to 1,024 molecules
 in at least one of the cells
 
 ```{r}
-overexpressed_genes <- 
-  rownames(molecules_single)[ 
-  apply(molecules_single, 1, 
-          function(x) any(x >= 1024))]
-molecules_single <-
-  molecules_single[!(rownames(molecules_single) %in% overexpressed_genes), ]
+overexpressed_genes <- rownames(molecules_single)[ apply(molecules_single, 1, 
+                                                    function(x) any(x >= 1024))]
+molecules_single <- molecules_single[!(rownames(molecules_single) %in% overexpressed_genes), ]
 ```
 
 
@@ -109,36 +142,21 @@ molecules_single_cpm <- cpm(molecules_single_collision, log = TRUE)
 
 Prepare ERCC data
 ```{r}
-gene_rows_single <- grep("ERCC", 
-                         rownames(molecules_single), invert = TRUE)
+gene_rows_single <- grep("ERCC", rownames(molecules_single), invert = TRUE)
 dim(molecules_single_cpm[gene_rows_single, ])
+
+gene_rows_ercc <- grep("ERCC", rownames(molecules_single))
+dim(molecules_single_cpm[gene_rows_ercc, ])
 ```
 
 
-## Mixed model for batch-effect correction
-
-### Crossed Model
-
-For every single gene, we will fit a mixed model assuming
-differences between batches are not individual-specific as follows
-
-$$ y_{ijk} = \mu + \alpha_i + b_j + \epsilon_{ijk} $$,
-
-where $y_{ijk}$ is the log2 counts-per-million (cpm) for any gene 
-in individual $i$, batch $j$, and cell $k$, $\mu$ is the gene-specific
-expression level across all cells, $\alpha_i$ is the expression level
-specific to individual $i$, $b_j$ is batch $j$'s deviation of expression
-level from gene-specific expression levels, and $\epsilon_{ijk}$ is 
-the models' residual error. 
-
-We assume that $b_j$ follows a normal distribution with $b_j \sim N(0, \sigma^2_b)$ for $j = 1, \dots, 9$, and $\epsilon_{ijk} \sim N(0, \sigma^2_\epsilon)$ for $i = 1, 2, 3; j = 1, \dots, 9; and k = 1, \dots, n_{ij}$, where $n_ij$ denotes the number of cells in individual $i$, batch $j$. 
+## Remove unwanted variation 
 
 
 First, we create a unique identifying ID for the 9 batches.
 
 ```{r}
-batch_unique <- 
-  with(anno_single, paste(individual, "_", batch, sep = "") )
+batch_unique <- with(anno_single, paste(individual, "_", batch, sep = "") )
 table(batch_unique)
 ```
 
@@ -152,14 +170,16 @@ if (!require(Humanzee, quietly = TRUE)) {
 }
 ```
 
-Create design matrix and compute a consensu correlation coefficient using
+
+### Endogeneous genes
+
+Create design matrix and compute a consensus correlation coefficient using
 limma's duplicateCorrelation function.
 
 ```{r}
 block <- batch_unique
 design <- model.matrix(~ 1 + individual, data = anno_single)
-dup_corrs <- 
-    duplicateCorrelation(molecules_single_cpm[gene_rows_single, ],
+dup_corrs <- duplicateCorrelation(molecules_single_cpm[gene_rows_single, ],
                          design = design, block = block)
 ```
 
@@ -191,16 +211,51 @@ plot_pca(pca_single_mixed_correction$PCs,
 ```
 
 
-### Nested Model
 
-For every single gene, we will fit a mixed model assuming
-differences between batches as homogeneous within individuals as follows
 
-$$ y_{ijk} = \mu + \alpha_i + b_{ij} + \epsilon_{ijk} $$,
 
-where the only difference from the Cross model is the batch random effect $b_{ij}$, with $i = 1, 2, 3$ and $j = 1, 2, 3$. Hence $\hat{b}_{i.}$ estimates for individual $i$ the random variation of expression levels from the entire population as a function of the variation across the three batches. Note that as before, $b_{ij}$ follows a normal distribution $N(0, \sigma^2_{b})$. 
+### ERCC genes
 
-Note that limma does not accommodate fitting of nested random effect. We will use other algorithms to remove unwanted variation under the nested model framework.
+Create design matrix and compute a consensus correlation coefficient using
+limma's duplicateCorrelation function.
+
+```{r}
+block <- batch_unique
+design <- model.matrix(~ 1 + individual, data = anno_single)
+dup_corrs <- duplicateCorrelation(molecules_single_cpm[gene_rows_ercc, ],
+                         design = design, block = block)
+
+# Consensu correlation between batches
+dup_corrs$consensus.correlation
+```
+
+Fit a mixed model with the 9 batches being the random effect.
+
+```{r}
+if (file.exists("../data/limma-crossed-ercc.rda")) {
+  load("../data/limma-crossed-ercc.rda")
+} else {
+  gls_fit <-
+      Humanzee::ruv_mixed_model(molecules_single_cpm[gene_rows_ercc, ],
+                      ndups = 1,
+                      design = design, block = block,
+                      correlation = dup_corrs$cons)
+  save(gls_fit, file = "../data/limma-crossed-ercc.rda")
+}
+```
+
+Compute expression levels after removing variation due to random effects.
+
+```{r}
+molecule_ercc_removed <- t( design %*% t(gls_fit$coef) ) + gls_fit$resid
+
+pca_single_mixed_correction_ercc <- run_pca(molecule_ercc_removed)
+plot_pca(pca_single_mixed_correction_ercc$PCs, 
+         explained = pca_single_mixed_correction_ercc$explained,
+         metadata = anno_single, color = "individual",
+         shape = "batch", factors = c("individual", "batch"))
+```
+
 
 
 
