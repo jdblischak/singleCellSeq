@@ -12,13 +12,11 @@ date: 2015-09-09
 source("chunk-options.R")
 ```
 
-## All genes, cells
+## ERCC genes
 
 We investigated potential ordering effect of wells on each place on gene
 expression across the 9 plates (batches). [Leng](http://dx.doi.org/10.1038/nmeth.3549) et al. discussed ordering effect 
 in single-cell RNA-seq experiments using Fluidigm C1 and implemented an algorithm that detects ordering effect of wells on gene expression in [OEFinder](http://dx.doi.org/10.1101/025437).
-
-Note that OEFinder relies on a series of permutations. We had to run OEFinder on a cluster-based computing system.
 
 
 ## Setup
@@ -58,6 +56,7 @@ Input molecule counts
 molecules <- read.table("../data/molecules.txt", header = TRUE, stringsAsFactors = FALSE)
 ```
 
+
 Remove bulk samples
 
 ```{r}
@@ -69,20 +68,27 @@ stopifnot(ncol(molecules_single) == nrow(anno_single),
           colnames(molecules_single) == anno_single$sample_id)
 ```
 
+Prepare ERCC data
+
+```{r}
+gene_rows_ercc <- grep("ERCC", rownames(molecules_single))
+dim(molecules_single[gene_rows_ercc, ])
+```
+
 
 Output single cell samples to txt files.
 
 ```{r, eval = FALSE}
-if (!file.exists("../data/molecules-single.txt")) {
-  write.table(molecules_single, 
-              file = "../data/molecules-single.txt",
+if (!file.exists("../data/molecules-single-ercc.txt")) {
+  write.table(molecules_single[gene_rows_ercc,], 
+              file = "../data/molecules-single-ercc.txt",
               quote = FALSE,
               col.names = TRUE, row.names = TRUE)
 }
 
-if (!file.exists("../data/reads-single.txt")) {
-  write.table(reads_single, 
-              file = "../data/reads-single.txt",
+if (!file.exists("../data/reads-single-ercc.txt")) {
+  write.table(reads_single[gene_rows_ercc,], 
+              file = "../data/reads-single-ercc.txt",
               quote = FALSE,
               col.names = TRUE, row.names = TRUE)
 }
@@ -101,9 +107,9 @@ table(capture_site)
 Save capture_site to a txt file.
 
 ```{r, eval = FALSE}
-if (!file.exists("../data/capture-site.txt")) {
+if (!file.exists("../data/capture-site-ercc.txt")) {
 write.table(data.frame(site = capture_site), 
-            file = "../data/capture-site.txt",
+            file = "../data/capture-site-ercc.txt",
             quote = FALSE,
             col.names = FALSE, row.names = FALSE)
 }
@@ -114,7 +120,7 @@ write.table(data.frame(site = capture_site),
 
 For unnormalized data, OEFinder defaults the DESeq normalization method. 
 
-Upload *molecules.txt* and *capture-site.txt* to OEFinder Shiny GUI interface.
+Upload *molecules-single-ercc.txt* and *capture-site-single-ercc.txt* to OEFinder Shiny GUI interface.
 
 Output to *singleCellSeq/data/OEFinder*.
 
@@ -122,44 +128,11 @@ Output to *singleCellSeq/data/OEFinder*.
 ```{r}
 # runGitHub("OEFinder", "lengning")
 
-OE_raw <- read.csv("../data/OEFinder/all-genes-OEgenes.csv",
+OE_ercc <- read.csv("../data/OEFinder/ercc-OEgenes.csv",
                      stringsAsFactors = FALSE,
                      quote = "\"", sep = ",", header = TRUE)
-colnames(OE_raw) <- c("genes", "pvalue")
-head(OE_raw)
-str(OE_raw)
+colnames(OE_ercc) <- c("genes", "pvalue")
+head(OE_ercc)
+str(OE_ercc)
 ```
 
-
-2 ERCC genes in the Overexpressed genes
-
-```{r}
-grep("ERCC", OE_raw$genes)
-```
-
-
-Create an indicator variable for the OE genes
-
-```{r}
-oefinder_raw <- rownames(molecules_single) %in% as.character(OE_raw$genes)
-table(oefinder_raw)
-```
-
-Summarize individual, well, and batch information for the OE genes.
-
-```{r}
-anno_single_oe_raw <- anno_single[which(oefinder_raw), ]
-
-with(anno_single_oe_raw, table(well, batch, individual))
-```
-
-
-
-
-
-
-## Session information
-
-```{r info}
-sessionInfo()
-```
