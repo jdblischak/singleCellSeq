@@ -53,6 +53,19 @@ quality_single_cells <- scan("../data/quality-single-cells.txt",
                              what = "character")
 ```
 
+Input ERCC concentration
+```{r input-ERCC-conc}
+ercc <- read.table("../data/ercc-info.txt", header = TRUE, sep = "\t",
+                   stringsAsFactors = FALSE)
+colnames(ercc) <- c("num", "id", "subgroup", "conc_mix1", "conc_mix2",
+                    "expected_fc", "log2_mix1_mix2")
+head(ercc)
+stopifnot(nrow(ercc) == 92)
+
+ercc <- ercc[order(ercc$id), ]
+```
+
+
 ## Prepare single cell molecule data
 
 Keep only the single cells that passed the [QC filters](qc-cell-ipsc.html) and the bulk samples.
@@ -183,7 +196,7 @@ ggplot(pca_ERCC_anno, aes(x = PC1, y = total_molecules, col = as.factor(individu
 ggplot(pca_ERCC_anno, aes(x = PC1, y = total_reads, col = as.factor(individual), shape = as.factor(batch))) +geom_point() + labs(title="ERCC spike-in (no-cpm)")
 ```
 
-## cpm transformation based on total molecule counts
+## cpm transformation based on total molecule counts (WRONG!)
 
 After cpm, total ERCC molecule number is no longer independent on total molecule counts. 
 
@@ -194,23 +207,74 @@ anno_single$total_ERCC_molecule_cpm <- apply(molecules_single_cpm[grep("ERCC", r
 anno_single$total_gene_molecule_cpm <- apply(molecules_single_cpm[grep("ENSG", rownames(molecules_single)), ],2,sum)
 
 ## before and after cpm
-ggplot(anno_single, aes(x= total_ERCC_molecule_cpm, y= total_ERCC_molecule, col=as.factor(individual), shape=as.factor(batch))) + geom_point() + labs(x = "total ERCC molecule cpm (no log)", y = "total ERCC molecule")
+ggplot(anno_single, aes(x= total_ERCC_molecule_cpm, y= total_ERCC_molecule, col=as.factor(individual), shape=as.factor(batch))) + geom_point() + labs(x = "total ERCC molecule cpm (no log)", y = "total ERCC molecule", title ="wrong cpm")
 
-ggplot(anno_single, aes(x= total_molecules, y= total_ERCC_molecule_cpm, col=as.factor(individual), shape=as.factor(batch))) + geom_point() + labs(x = "total molecule counts", y = "total ERCC molecule cpm")
+ggplot(anno_single, aes(x= total_molecules, y= total_ERCC_molecule_cpm, col=as.factor(individual), shape=as.factor(batch))) + geom_point() + labs(x = "total molecule counts", y = "total ERCC molecule cpm", title ="wrong cpm")
 ```
 
-## cpm transformation based on ERCC reads
+## cpm transformation based on ERCC (CORRECT!)
+
+cpm of ERCC should be perfomed seperated. 
+
 ```{r ercc-cpm-reads}
-## read counts and molecule counts of ERCC
+## read counts of ERCC
 reads_single_ERCC <- reads_single[grep("ERCC", rownames(reads_single)), ]
 
 ## sum of ERCC readds per cell
-molecules_single_ERCC <- rbind(molecules_single_ERCC, apply (reads_single_ERCC, 2, sum))
+anno_single$total_ERCC_reads <- apply (reads_single_ERCC, 2, sum)
 
-## cpm of total ERCC reads per cell
+ggplot(anno_single, aes(x= total_ERCC_reads, y= total_ERCC_molecule, col=as.factor(individual), shape=as.factor(batch))) + geom_point() + labs(x = "total ERCC molecule reads (counts)", y = "total ERCC molecule (counts)")
 
+## cpm of ERCC (seperate from endogenous genes)
+molecules_single_ERCC_cpm <- cpm(molecules_single_ERCC, log = TRUE)
 
+## pca
+pca_ERCC_cpm <- run_pca(molecules_single_ERCC_cpm)
+pca_ERCC_plot_cpm <- plot_pca(pca_ERCC_cpm$PCs, explained = pca_ERCC_cpm$explained,
+         metadata = anno_single, color = "individual",
+         shape = "batch", factors = c("individual", "batch"))
+
+pca_ERCC_plot_cpm + labs(title="ERCC spike-in (cpm ERCC)")
+
+# compared the two different kinds of cpm
+anno_single$total_ERCC_cpm <- apply(molecules_single_ERCC_cpm, 2, sum)
+
+ggplot(anno_single, aes(x= total_ERCC_molecule_cpm, y= total_ERCC_cpm, col=as.factor(individual), shape=as.factor(batch))) + geom_point() + labs(x = "total ERCC molecule cpm all molecules (no log)", y = "total ERCC cpm (log)", title ="correct cpm")
+
+ggplot(anno_single, aes(x= total_molecules, y= total_ERCC_cpm, col=as.factor(individual), shape=as.factor(batch))) + geom_point() + labs(x = "total molecule counts", y = "total ERCC cpm (log)", title ="correct cpm")
 ```
+
+## Linear Shift Normalization
+
+Try the linear shift normalization after cpm ERCC separately and then use the method
+[linear shift normalization](ercc-normalization.html#linear-shift-normalization).
+
+```{r ercc-norm}
+## prepare ERCC concentration information 
+ercc_single <- ercc[ercc$id %in% rownames(molecules_single), ]
+stopifnot(rownames(molecules_single_ERCC_cpm) == ercc_single$id)
+
+## cpm log transformed endogenous genes
+molecules_single_genes <- molecules_single_collision[grep("ENSG", rownames(molecules_single)), ]
+molecules_single_genes_cpm <- cpm(molecules_single_genes, log = TRUE)
+
+## linear shift 
+single_norm <- molecules_single_genes_cpm
+single_norm[, ] <- NA
+for (i in 1:ncol(single_norm)) {
+  single_fit <- lm(molecules_single_ERCC_cpm[, i] ~ log2(ercc_single$conc_mix1))
+  # Y = mX + b -> X = (Y + b) / m
+  single_norm[, i] <- (molecules_single_genes_cpm[, i] + single_fit$coefficients[1]) /
+                       single_fit$coefficients[2]
+}
+stopifnot(!is.na(single_norm))
+
+pca_single_norm <- run_pca(single_norm)
+plot_pca(pca_single_norm$PCs, explained = pca_single_norm$explained,
+         metadata = anno_single, color = "individual",
+         shape = "batch", factors = c("individual", "batch")) + labs(title = "Linear shift normalization")
+```
+
 
 ## Session information
 
