@@ -135,8 +135,8 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-09-04</p>
-<p><strong>Code version:</strong> 2ceea9387c87573d9a83285ea3beeb7e13e4c13a</p>
+<p><strong>Last updated:</strong> 2015-09-10</p>
+<p><strong>Code version:</strong> e1c7de23b7d323b4ad7620051f93ce06b17077d5</p>
 <div id="setup" class="section level2">
 <h2>Setup</h2>
 <pre class="r"><code>source(&quot;functions.R&quot;)
@@ -156,10 +156,13 @@ library(ggplot2)</code></pre>
 <pre class="r"><code>reads &lt;- read.table(&quot;../data/reads.txt&quot;, header = TRUE,
                     stringsAsFactors = FALSE)</code></pre>
 <p>Remove batch 2 of individual 19098.</p>
-<pre class="r"><code>molecules_single &lt;- molecules[, !(anno$individual == 19098 &amp; anno$batch == 2)]
+<pre class="r"><code>molecules_no &lt;- molecules[, !(anno$individual == 19098 &amp; anno$batch == 2)]
 reads_single &lt;- reads[, !(anno$individual == 19098 &amp; anno$batch == 2)]
-
-anno_single &lt;- anno[!(anno$individual == 19098 &amp; anno$batch == 2), ]
+anno_no &lt;- anno[!(anno$individual == 19098 &amp; anno$batch == 2), ]
+stopifnot(ncol(molecules_no) == nrow(anno_no))</code></pre>
+<p>Remove bulk samples.</p>
+<pre class="r"><code>molecules_single &lt;- molecules_no[, anno_no$well != &quot;bulk&quot;]
+anno_single &lt;- anno_no[anno_no$well != &quot;bulk&quot;, ]
 stopifnot(ncol(molecules_single) == nrow(anno_single))</code></pre>
 <p>Remove genes with zero count in the single cells</p>
 <pre class="r"><code>expressed_single &lt;- rowSums(molecules_single) &gt; 0
@@ -185,7 +188,7 @@ ggplot(molecules_prop_genes_detected,
   labs(x = &quot;Individual.batch ID&quot;, 
        y = &quot;Proportion of detected genes&quot;,
        title = &quot;Proportion of detected genes&quot;)</code></pre>
-<p><img src="figure/pca-correlation-rafa.Rmd/unnamed-chunk-7-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="figure/pca-correlation-rafa.Rmd/unnamed-chunk-8-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <p>Principal component analysis on log2 transformed values. We avoid log of 0’s by add 1’s. In addition, our PCA analysis requires that every gene needs to be present in at least one of the cells.</p>
 <pre class="r"><code>molecules_single_log2_pca &lt;- run_pca( log2( molecules_single + 1 ) )
 
@@ -195,14 +198,14 @@ qplot(y = molecules_single_log2_pca$PCs[,1],
       colour = as.factor(anno_single$individual),
       xlab = &quot;Proportion of genes detected&quot;,
       ylab = &quot;First principal component score&quot;) </code></pre>
-<p><img src="figure/pca-correlation-rafa.Rmd/unnamed-chunk-8-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="figure/pca-correlation-rafa.Rmd/unnamed-chunk-9-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>qplot(y = molecules_single_log2_pca$PCs[,2],
       x = molecules_prop_genes_detected$prop,
       shape = as.factor(anno_single$batch),
       colour = as.factor(anno_single$individual),
       xlab = &quot;Proportion of genes detected&quot;,
       ylab = &quot;Second principal component score&quot;) </code></pre>
-<p><img src="figure/pca-correlation-rafa.Rmd/unnamed-chunk-8-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="figure/pca-correlation-rafa.Rmd/unnamed-chunk-9-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <p>Compute median of gene expression of non-zero measurements.</p>
 <pre class="r"><code>require(matrixStats)
 molecules_single_log2_cpm &lt;- molecules_single
@@ -227,7 +230,7 @@ ggplot(molecules_df, aes(y = medians, x = prop) ) +
   stat_smooth(method = &quot;loess&quot;) +
   labs( xlab = &quot;Proportion of genes detected&quot;,
         ylab = &quot;Median expression of non-zero cells (log2 CPM)&quot;)</code></pre>
-<p><img src="figure/pca-correlation-rafa.Rmd/unnamed-chunk-10-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="figure/pca-correlation-rafa.Rmd/unnamed-chunk-11-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
 <div id="molecule-count-data-of-quality-single-cells" class="section level2">
 <h2>Molecule count data of quality single cells</h2>
@@ -262,7 +265,7 @@ ggplot(molecules_prop_genes_detected,
   labs(x = &quot;Individual.batch ID&quot;, 
        y = &quot;Proportion of detected genes&quot;,
        title = &quot;Proportion of detected genes&quot;)</code></pre>
-<p><img src="figure/pca-correlation-rafa.Rmd/unnamed-chunk-15-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="figure/pca-correlation-rafa.Rmd/unnamed-chunk-16-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <p>Principal component analysis on log2 transformed values. We avoid log of 0’s by add 1’s. In addition, our PCA analysis requires that every gene needs to be present in at least one of the cells.</p>
 <pre class="r"><code>molecules_single_log2_pca &lt;- run_pca( log2( molecules_single + 1 ) )
 
@@ -272,14 +275,14 @@ qplot(y = molecules_single_log2_pca$PCs[,1],
       colour = as.factor(anno_single$individual),
       xlab = &quot;Proportion of genes detected&quot;,
       ylab = &quot;First principal component score&quot;) </code></pre>
-<p><img src="figure/pca-correlation-rafa.Rmd/unnamed-chunk-16-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="figure/pca-correlation-rafa.Rmd/unnamed-chunk-17-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>qplot(y = molecules_single_log2_pca$PCs[,2],
       x = molecules_prop_genes_detected$prop,
       shape = as.factor(anno_single$batch),
       colour = as.factor(anno_single$individual),
       xlab = &quot;Proportion of genes detected&quot;,
       ylab = &quot;Second principal component score&quot;) </code></pre>
-<p><img src="figure/pca-correlation-rafa.Rmd/unnamed-chunk-16-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="figure/pca-correlation-rafa.Rmd/unnamed-chunk-17-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <p>Compute median of gene expression of non-zero measurements.</p>
 <pre class="r"><code>require(matrixStats)
 molecules_single_log2_cpm &lt;- molecules_single
@@ -304,7 +307,7 @@ ggplot(molecules_df, aes(y = medians, x = prop) ) +
   stat_smooth(method = &quot;loess&quot;) +
   labs( xlab = &quot;Proportion of genes detected&quot;,
           ylab = &quot;Median expression of non-zero cells (log2 CPM)&quot;)</code></pre>
-<p><img src="figure/pca-correlation-rafa.Rmd/unnamed-chunk-18-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="figure/pca-correlation-rafa.Rmd/unnamed-chunk-19-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
 <div id="read-count-data-of-quality-single-cells" class="section level2">
 <h2>Read count data of quality single cells</h2>
@@ -323,7 +326,7 @@ ggplot(reads_prop_genes_detected,
   labs(x = &quot;Individual.batch ID&quot;, 
        y = &quot;Proportion of detected genes&quot;,
        title = &quot;Proportion of detected genes in read count data&quot;)</code></pre>
-<p><img src="figure/pca-correlation-rafa.Rmd/unnamed-chunk-19-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="figure/pca-correlation-rafa.Rmd/unnamed-chunk-20-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <p>Principal component analysis on log2 transformed values. We avoid log of 0’s by add 1’s. In addition, our PCA analysis requires that every gene needs to be present in at least one of the cells.</p>
 <pre class="r"><code>reads_log2_pca &lt;- run_pca( log2( reads_single + 1 ) )
 
@@ -333,14 +336,14 @@ qplot(y = reads_log2_pca$PCs[,1],
       colour = as.factor(anno_single$individual),
       xlab = &quot;Proportion of genes detected&quot;,
       ylab = &quot;First principal component score&quot;) </code></pre>
-<p><img src="figure/pca-correlation-rafa.Rmd/unnamed-chunk-20-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="figure/pca-correlation-rafa.Rmd/unnamed-chunk-21-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>qplot(y = reads_log2_pca$PCs[,2],
       x = reads_prop_genes_detected$prop,
       shape = as.factor(anno_single$batch),
       colour = as.factor(anno_single$individual),
       xlab = &quot;Proportion of genes detected&quot;,
       ylab = &quot;Second principal component score&quot;) </code></pre>
-<p><img src="figure/pca-correlation-rafa.Rmd/unnamed-chunk-20-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="figure/pca-correlation-rafa.Rmd/unnamed-chunk-21-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <p>Compute median of gene expression of non-zero measurements.</p>
 <pre class="r"><code>require(matrixStats)
 reads_single[reads_single==0] &lt;- NA
@@ -364,7 +367,7 @@ ggplot(reads_df, aes(y = medians, x = prop) ) +
   stat_smooth(method = &quot;loess&quot;) +
   labs( xlab = &quot;Proportion of genes detected&quot;,
           ylab = &quot;Median expression of non-zero cells (log2 CPM)&quot;)</code></pre>
-<p><img src="figure/pca-correlation-rafa.Rmd/unnamed-chunk-22-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="figure/pca-correlation-rafa.Rmd/unnamed-chunk-23-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
 <div id="session-information" class="section level2">
 <h2>Session information</h2>

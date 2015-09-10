@@ -134,8 +134,8 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-09-08</p>
-<p><strong>Code version:</strong> 8638af6fb413594e38dd74661e4e85d05c29cf00</p>
+<p><strong>Last updated:</strong> 2015-09-10</p>
+<p><strong>Code version:</strong> e1c7de23b7d323b4ad7620051f93ce06b17077d5</p>
 <p>We standardize the molecule counts to account for differences in sequencing depth. This is necessary because the <a href="compare-reads-v-molecules.html#effect-of-sequencing-depth-on-molecule-count">sequencing depth affects the total molecule counts</a>.</p>
 <p>However, according to our study design. Each cell within the same C1 patch, independent of total number of transcripts, should have equal amount of ERCC molecule. As a result, cpm (no log transforamtion) will introduce bias to ERCC, where cells with more molecules will end up with fewer ERCC molecules. Therefore, cpm should not be performed on ERCC genes, but only on endogenous genes.</p>
 <div id="input" class="section level2">
@@ -231,27 +231,23 @@ ggplot(anno_single, aes(x= total_reads, y= total_ERCC_molecule, col=as.factor(in
 <pre class="r"><code>## without cpm standardization
 molecules_single_ERCC &lt;- molecules_single_collision[grep(&quot;ERCC&quot;, rownames(molecules_single_collision)), ]
 
-pca_ERCC &lt;- prcomp(t(molecules_single_ERCC), retx = TRUE, scale. = TRUE, center = TRUE)
-plot(pca_ERCC)</code></pre>
-<p><img src="figure/ercc-cpm.Rmd/ERCC-pca-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>pca_ERCC$perc_explained &lt;- pca_ERCC$sdev^2 / sum(pca_ERCC$sdev^2) * 100
-plot(pca_ERCC$perc_explained)</code></pre>
-<p><img src="figure/ercc-cpm.Rmd/ERCC-pca-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>stopifnot(colnames(pca_ERCC) == 
-            paste(paste0(&quot;NA&quot;, anno_single$individual),
-                   anno_single$batch,
-                   anno_single$well, sep = &quot;.&quot;))
+pca_ERCC &lt;- run_pca(molecules_single_ERCC)
+pca_ERCC_plot &lt;- plot_pca(pca_ERCC$PCs, explained = pca_ERCC$explained,
+         metadata = anno_single, color = &quot;individual&quot;,
+         shape = &quot;batch&quot;, factors = c(&quot;individual&quot;, &quot;batch&quot;))
 
+pca_ERCC_plot + labs(title=&quot;ERCC spike-in (no-cpm)&quot;)</code></pre>
+<p><img src="figure/ercc-cpm.Rmd/ERCC-pca-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>## PC1 of ERCC expression is explained by total ERCC molecule number
+pca_ERCC &lt;- prcomp(t(molecules_single_ERCC), retx = TRUE, scale. = TRUE, center = TRUE)
 pca_ERCC_anno &lt;- cbind(anno_single, pca_ERCC$x)
-ggplot(pca_ERCC_anno, aes(x = PC1, y = PC2, col = as.factor(individual), shape = as.factor(batch))) +geom_point() + labs(title=&quot;ERCC spike-in (no-cpm)&quot;)</code></pre>
-<p><img src="figure/ercc-cpm.Rmd/ERCC-pca-3.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>## PC1 of ERCC expression is explained by total ERCC molecule number 
+
 ggplot(pca_ERCC_anno, aes(x = PC1, y = total_ERCC_molecule, col = as.factor(individual), shape = as.factor(batch))) +geom_point() + labs(title=&quot;ERCC spike-in (no-cpm)&quot;)</code></pre>
-<p><img src="figure/ercc-cpm.Rmd/ERCC-pca-4.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="figure/ercc-cpm.Rmd/ERCC-pca-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>ggplot(pca_ERCC_anno, aes(x = PC1, y = total_molecules, col = as.factor(individual), shape = as.factor(batch))) +geom_point() + labs(title=&quot;ERCC spike-in (no-cpm)&quot;)</code></pre>
-<p><img src="figure/ercc-cpm.Rmd/ERCC-pca-5.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="figure/ercc-cpm.Rmd/ERCC-pca-3.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>ggplot(pca_ERCC_anno, aes(x = PC1, y = total_reads, col = as.factor(individual), shape = as.factor(batch))) +geom_point() + labs(title=&quot;ERCC spike-in (no-cpm)&quot;)</code></pre>
-<p><img src="figure/ercc-cpm.Rmd/ERCC-pca-6.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="figure/ercc-cpm.Rmd/ERCC-pca-4.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
 <div id="cpm-transformation" class="section level2">
 <h2>cpm transformation</h2>
@@ -285,7 +281,7 @@ attached base packages:
 [1] stats     graphics  grDevices utils     datasets  methods   base     
 
 other attached packages:
-[1] ggplot2_1.0.1 edgeR_3.10.2  limma_3.24.9  knitr_1.10.5 
+[1] testit_0.4    ggplot2_1.0.1 edgeR_3.10.2  limma_3.24.9  knitr_1.10.5 
 
 loaded via a namespace (and not attached):
  [1] Rcpp_0.12.0      digest_0.6.8     MASS_7.3-40      grid_3.2.0      
