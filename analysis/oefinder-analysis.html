@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+<meta name="author" content="Joyce Hsiao" />
+
+<meta name="date" content="2015-09-09" />
+
+<title>Ordering effect of the capture sites</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Ordering effect of the capture sites</h1>
+<h4 class="author"><em>Joyce Hsiao</em></h4>
+<h4 class="date"><em>2015-09-09</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#all-genes-cells">All genes, cells</a></li>
+<li><a href="#setup">Setup</a></li>
+<li><a href="#prepare-single-cell-data-before-filtering">Prepare single cell data before filtering</a><ul>
+<li><a href="#molecule-count-data">Molecule count data</a></li>
+</ul></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2015-09-11</p>
+<p><strong>Code version:</strong> 37f57b1c3b81f30e213726dfcc3da532197ac224</p>
+<div id="all-genes-cells" class="section level2">
+<h2>All genes, cells</h2>
+<p>We investigated potential ordering effect of wells on each place on gene expression across the 9 plates (batches). <a href="http://dx.doi.org/10.1038/nmeth.3549">Leng</a> et al. discussed ordering effect in single-cell RNA-seq experiments using Fluidigm C1 and implemented an algorithm that detects ordering effect of wells on gene expression in <a href="http://dx.doi.org/10.1101/025437">OEFinder</a>.</p>
+<p>Note that OEFinder relies on a series of permutations. We had to run OEFinder on a cluster-based computing system.</p>
+</div>
+<div id="setup" class="section level2">
+<h2>Setup</h2>
+<pre class="r"><code>source(&quot;functions.R&quot;)
+library(edgeR)</code></pre>
+<pre><code>Loading required package: limma</code></pre>
+<pre class="r"><code># Packages required to start OEFinder
+# library(shiny)
+# library(gdata)
+# library(shinyFiles)
+# library(EBSeq)</code></pre>
+</div>
+<div id="prepare-single-cell-data-before-filtering" class="section level2">
+<h2>Prepare single cell data before filtering</h2>
+<p>Input annotation</p>
+<pre class="r"><code>anno &lt;- read.table(&quot;../data/annotation.txt&quot;, header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno)</code></pre>
+<pre><code>  individual batch well     sample_id
+1      19098     1  A01 NA19098.1.A01
+2      19098     1  A02 NA19098.1.A02
+3      19098     1  A03 NA19098.1.A03
+4      19098     1  A04 NA19098.1.A04
+5      19098     1  A05 NA19098.1.A05
+6      19098     1  A06 NA19098.1.A06</code></pre>
+<p>Input read counts.</p>
+<pre class="r"><code>reads &lt;- read.table(&quot;../data/reads.txt&quot;, header = TRUE,
+                    stringsAsFactors = FALSE)</code></pre>
+<p>Input molecule counts</p>
+<pre class="r"><code>molecules &lt;- read.table(&quot;../data/molecules.txt&quot;, header = TRUE, stringsAsFactors = FALSE)</code></pre>
+<p>Remove bulk samples</p>
+<pre class="r"><code>single_samples &lt;- anno$well != &quot;bulk&quot;
+anno_single &lt;- anno[ which(single_samples), ]
+molecules_single &lt;- molecules[ , which(single_samples)]
+reads_single &lt;- reads[ , which(single_samples)]
+stopifnot(ncol(molecules_single) == nrow(anno_single),
+          colnames(molecules_single) == anno_single$sample_id)</code></pre>
+<p>Output single cell samples to txt files.</p>
+<pre class="r"><code>if (!file.exists(&quot;../data/molecules-single.txt&quot;)) {
+  write.table(molecules_single, 
+              file = &quot;../data/molecules-single.txt&quot;,
+              quote = FALSE,
+              col.names = TRUE, row.names = TRUE)
+}
+
+if (!file.exists(&quot;../data/reads-single.txt&quot;)) {
+  write.table(reads_single, 
+              file = &quot;../data/reads-single.txt&quot;,
+              quote = FALSE,
+              col.names = TRUE, row.names = TRUE)
+}</code></pre>
+<p>Prepare capture site identification file. A txt file with one column of capture site ID (A, B, C, …, H).</p>
+<pre class="r"><code>require(stringr)</code></pre>
+<pre><code>Loading required package: stringr</code></pre>
+<pre class="r"><code>capture_site &lt;- str_extract(anno_single$well, &quot;[aA-zZ]+&quot;)
+table(capture_site)</code></pre>
+<pre><code>capture_site
+  A   B   C   D   E   F   G   H 
+108 108 108 108 108 108 108 108 </code></pre>
+<p>Save capture_site to a txt file.</p>
+<pre class="r"><code>if (!file.exists(&quot;../data/capture-site.txt&quot;)) {
+write.table(data.frame(site = capture_site), 
+            file = &quot;../data/capture-site.txt&quot;,
+            quote = FALSE,
+            col.names = FALSE, row.names = FALSE)
+}</code></pre>
+<div id="molecule-count-data" class="section level3">
+<h3>Molecule count data</h3>
+<p>For unnormalized data, OEFinder defaults the DESeq normalization method.</p>
+<p>Upload <em>molecules.txt</em> and <em>capture-site.txt</em> to OEFinder Shiny GUI interface.</p>
+<p>Output to <em>singleCellSeq/data/OEFinder</em>.</p>
+<pre class="r"><code># runGitHub(&quot;OEFinder&quot;, &quot;lengning&quot;)
+
+OE_raw &lt;- read.csv(&quot;../data/OEFinder/all-genes-OEgenes.csv&quot;,
+                     stringsAsFactors = FALSE,
+                     quote = &quot;\&quot;&quot;, sep = &quot;,&quot;, header = TRUE)
+colnames(OE_raw) &lt;- c(&quot;genes&quot;, &quot;pvalue&quot;)
+head(OE_raw)</code></pre>
+<pre><code>            genes pvalue
+1 ENSG00000160087      0
+2 ENSG00000175756      0
+3 ENSG00000160072      0
+4 ENSG00000162585      0
+5 ENSG00000116670      0
+6 ENSG00000117122      0</code></pre>
+<pre class="r"><code>str(OE_raw)</code></pre>
+<pre><code>&#39;data.frame&#39;:   549 obs. of  2 variables:
+ $ genes : chr  &quot;ENSG00000160087&quot; &quot;ENSG00000175756&quot; &quot;ENSG00000160072&quot; &quot;ENSG00000162585&quot; ...
+ $ pvalue: num  0 0 0 0 0 0 0 0 0 0 ...</code></pre>
+<p>2 ERCC genes in the Overexpressed genes</p>
+<pre class="r"><code>grep(&quot;ERCC&quot;, OE_raw$genes)</code></pre>
+<pre><code>[1] 302 458</code></pre>
+<p>Create an indicator variable for the OE genes</p>
+<pre class="r"><code>oefinder_raw &lt;- rownames(molecules_single) %in% as.character(OE_raw$genes)
+table(oefinder_raw)</code></pre>
+<pre><code>oefinder_raw
+FALSE  TRUE 
+19870   549 </code></pre>
+<p>Summarize individual, well, and batch information for the OE genes.</p>
+<pre class="r"><code>anno_single_oe_raw &lt;- anno_single[which(oefinder_raw), ]
+
+with(anno_single_oe_raw, table(well, batch, individual))</code></pre>
+<pre><code>, , individual = 19098
+
+     batch
+well  1 2 3
+  A04 0 0 0
+  A06 0 0 0
+  B02 0 1 0
+  B10 0 1 0
+  B12 1 0 0
+  C03 0 0 0
+  C06 0 0 0
+  C07 0 1 0
+  C09 1 0 0
+  C10 1 1 0
+  C11 0 0 0
+  D05 1 0 0
+  D07 0 0 0
+  D08 1 0 0
+  D11 0 0 1
+  D12 0 0 1
+  E01 1 0 0
+  E03 1 0 0
+  E12 1 1 0
+  F01 0 1 0
+  F06 1 0 0
+  G02 0 0 0
+  G09 0 0 0
+  H09 0 0 0
+
+, , individual = 19101
+
+     batch
+well  1 2 3
+  A04 1 0 0
+  A06 1 0 0
+  B02 0 0 0
+  B10 0 0 0
+  B12 0 0 0
+  C03 0 1 0
+  C06 1 0 0
+  C07 0 0 0
+  C09 0 0 0
+  C10 0 0 0
+  C11 1 0 0
+  D05 0 0 0
+  D07 0 0 0
+  D08 0 0 0
+  D11 0 0 0
+  D12 0 0 0
+  E01 0 0 0
+  E03 0 0 0
+  E12 0 0 0
+  F01 0 0 0
+  F06 0 0 0
+  G02 1 0 0
+  G09 0 0 1
+  H09 1 0 0
+
+, , individual = 19239
+
+     batch
+well  1 2 3
+  A04 0 0 0
+  A06 0 0 0
+  B02 0 0 0
+  B10 0 0 0
+  B12 0 0 0
+  C03 0 0 0
+  C06 0 0 0
+  C07 0 0 0
+  C09 0 0 0
+  C10 0 0 0
+  C11 0 0 0
+  D05 0 0 0
+  D07 1 0 0
+  D08 0 0 0
+  D11 0 0 0
+  D12 0 0 0
+  E01 0 0 0
+  E03 0 0 0
+  E12 0 0 0
+  F01 0 0 0
+  F06 0 0 0
+  G02 0 0 0
+  G09 0 0 0
+  H09 0 0 0</code></pre>
+</div>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] stringr_1.0.0 edgeR_3.10.2  limma_3.24.9  knitr_1.10.5 
+
+loaded via a namespace (and not attached):
+[1] magrittr_1.5    formatR_1.2     tools_3.2.0     htmltools_0.2.6
+[5] yaml_2.1.13     stringi_0.4-1   rmarkdown_0.6.1 digest_0.6.8   
+[9] evaluate_0.7   </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+
+</body>
+</html>

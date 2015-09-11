@@ -129,13 +129,15 @@ img {
 <li><a href="#input">Input</a></li>
 <li><a href="#prepare-single-cell-molecule-data">Prepare single cell molecule data</a></li>
 <li><a href="#total-ercc-vs-total-molecule-and-total-reads-counts">total ERCC vs total molecule and total reads (counts)</a></li>
-<li><a href="#cpm-transformation">cpm transformation</a></li>
+<li><a href="#cpm-transformation-based-on-total-molecule-counts-wrong">cpm transformation based on total molecule counts (WRONG!)</a></li>
+<li><a href="#cpm-transformation-based-on-ercc-correct">cpm transformation based on ERCC (CORRECT!)</a></li>
+<li><a href="#linear-shift-normalization">Linear Shift Normalization</a></li>
 <li><a href="#session-information">Session information</a></li>
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-09-10</p>
-<p><strong>Code version:</strong> e1c7de23b7d323b4ad7620051f93ce06b17077d5</p>
+<p><strong>Last updated:</strong> 2015-09-11</p>
+<p><strong>Code version:</strong> 37f57b1c3b81f30e213726dfcc3da532197ac224</p>
 <p>We standardize the molecule counts to account for differences in sequencing depth. This is necessary because the <a href="compare-reads-v-molecules.html#effect-of-sequencing-depth-on-molecule-count">sequencing depth affects the total molecule counts</a>.</p>
 <p>However, according to our study design. Each cell within the same C1 patch, independent of total number of transcripts, should have equal amount of ERCC molecule. As a result, cpm (no log transforamtion) will introduce bias to ERCC, where cells with more molecules will end up with fewer ERCC molecules. Therefore, cpm should not be performed on ERCC genes, but only on endogenous genes.</p>
 <div id="input" class="section level2">
@@ -160,6 +162,22 @@ head(anno)</code></pre>
 <p>Input list of quality single cells.</p>
 <pre class="r"><code>quality_single_cells &lt;- scan(&quot;../data/quality-single-cells.txt&quot;,
                              what = &quot;character&quot;)</code></pre>
+<p>Input ERCC concentration</p>
+<pre class="r"><code>ercc &lt;- read.table(&quot;../data/ercc-info.txt&quot;, header = TRUE, sep = &quot;\t&quot;,
+                   stringsAsFactors = FALSE)
+colnames(ercc) &lt;- c(&quot;num&quot;, &quot;id&quot;, &quot;subgroup&quot;, &quot;conc_mix1&quot;, &quot;conc_mix2&quot;,
+                    &quot;expected_fc&quot;, &quot;log2_mix1_mix2&quot;)
+head(ercc)</code></pre>
+<pre><code>  num         id subgroup conc_mix1  conc_mix2 expected_fc log2_mix1_mix2
+1   1 ERCC-00130        A 30000.000 7500.00000           4              2
+2   2 ERCC-00004        A  7500.000 1875.00000           4              2
+3   3 ERCC-00136        A  1875.000  468.75000           4              2
+4   4 ERCC-00108        A   937.500  234.37500           4              2
+5   5 ERCC-00116        A   468.750  117.18750           4              2
+6   6 ERCC-00092        A   234.375   58.59375           4              2</code></pre>
+<pre class="r"><code>stopifnot(nrow(ercc) == 92)
+
+ercc &lt;- ercc[order(ercc$id), ]</code></pre>
 </div>
 <div id="prepare-single-cell-molecule-data" class="section level2">
 <h2>Prepare single cell molecule data</h2>
@@ -249,8 +267,8 @@ ggplot(pca_ERCC_anno, aes(x = PC1, y = total_ERCC_molecule, col = as.factor(indi
 <pre class="r"><code>ggplot(pca_ERCC_anno, aes(x = PC1, y = total_reads, col = as.factor(individual), shape = as.factor(batch))) +geom_point() + labs(title=&quot;ERCC spike-in (no-cpm)&quot;)</code></pre>
 <p><img src="figure/ercc-cpm.Rmd/ERCC-pca-4.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
-<div id="cpm-transformation" class="section level2">
-<h2>cpm transformation</h2>
+<div id="cpm-transformation-based-on-total-molecule-counts-wrong" class="section level2">
+<h2>cpm transformation based on total molecule counts (WRONG!)</h2>
 <p>After cpm, total ERCC molecule number is no longer independent on total molecule counts.</p>
 <pre class="r"><code>anno_single$total_molecules_cpm &lt;- apply(molecules_single_cpm, 2, sum)
 anno_single$total_ERCC_molecule_cpm &lt;- apply(molecules_single_cpm[grep(&quot;ERCC&quot;, rownames(molecules_single)), ],2,sum)
@@ -258,10 +276,76 @@ anno_single$total_ERCC_molecule_cpm &lt;- apply(molecules_single_cpm[grep(&quot;
 anno_single$total_gene_molecule_cpm &lt;- apply(molecules_single_cpm[grep(&quot;ENSG&quot;, rownames(molecules_single)), ],2,sum)
 
 ## before and after cpm
-ggplot(anno_single, aes(x= total_ERCC_molecule_cpm, y= total_ERCC_molecule, col=as.factor(individual), shape=as.factor(batch))) + geom_point() + labs(x = &quot;total ERCC molecule cpm (no log)&quot;, y = &quot;total ERCC molecule&quot;)</code></pre>
-<p><img src="figure/ercc-cpm.Rmd/ercc-cpm-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>ggplot(anno_single, aes(x= total_molecules, y= total_ERCC_molecule_cpm, col=as.factor(individual), shape=as.factor(batch))) + geom_point() + labs(x = &quot;total molecule counts&quot;, y = &quot;total ERCC molecule cpm&quot;)</code></pre>
-<p><img src="figure/ercc-cpm.Rmd/ercc-cpm-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+ggplot(anno_single, aes(x= total_ERCC_molecule_cpm, y= total_ERCC_molecule, col=as.factor(individual), shape=as.factor(batch))) + geom_point() + labs(x = &quot;total ERCC molecule cpm (no log)&quot;, y = &quot;total ERCC molecule&quot;, title =&quot;wrong cpm&quot;)</code></pre>
+<p><img src="figure/ercc-cpm.Rmd/ercc-cpm-total-molecule-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(anno_single, aes(x= total_molecules, y= total_ERCC_molecule_cpm, col=as.factor(individual), shape=as.factor(batch))) + geom_point() + labs(x = &quot;total molecule counts&quot;, y = &quot;total ERCC molecule cpm&quot;, title =&quot;wrong cpm&quot;)</code></pre>
+<p><img src="figure/ercc-cpm.Rmd/ercc-cpm-total-molecule-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="cpm-transformation-based-on-ercc-correct" class="section level2">
+<h2>cpm transformation based on ERCC (CORRECT!)</h2>
+<p>cpm of ERCC should be perfomed seperated.</p>
+<pre class="r"><code>## read counts of ERCC
+reads_single_ERCC &lt;- reads_single[grep(&quot;ERCC&quot;, rownames(reads_single)), ]
+
+## sum of ERCC readds per cell
+anno_single$total_ERCC_reads &lt;- apply (reads_single_ERCC, 2, sum)
+
+ggplot(anno_single, aes(x= total_ERCC_reads, y= total_ERCC_molecule, col=as.factor(individual), shape=as.factor(batch))) + geom_point() + labs(x = &quot;total ERCC molecule reads (counts)&quot;, y = &quot;total ERCC molecule (counts)&quot;)</code></pre>
+<p><img src="figure/ercc-cpm.Rmd/ercc-cpm-reads-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>## cpm of ERCC (seperate from endogenous genes)
+molecules_single_ERCC_cpm &lt;- cpm(molecules_single_ERCC, log = TRUE)
+
+## pca
+pca_ERCC_cpm &lt;- run_pca(molecules_single_ERCC_cpm)
+pca_ERCC_plot_cpm &lt;- plot_pca(pca_ERCC_cpm$PCs, explained = pca_ERCC_cpm$explained,
+         metadata = anno_single, color = &quot;individual&quot;,
+         shape = &quot;batch&quot;, factors = c(&quot;individual&quot;, &quot;batch&quot;))
+
+pca_ERCC_plot_cpm + labs(title=&quot;ERCC spike-in (cpm ERCC)&quot;)</code></pre>
+<p><img src="figure/ercc-cpm.Rmd/ercc-cpm-reads-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code># compared the two different kinds of cpm
+anno_single$total_ERCC_cpm &lt;- apply(molecules_single_ERCC_cpm, 2, sum)
+
+ggplot(anno_single, aes(x= total_ERCC_molecule_cpm, y= total_ERCC_cpm, col=as.factor(individual), shape=as.factor(batch))) + geom_point() + labs(x = &quot;total ERCC molecule cpm all molecules (no log)&quot;, y = &quot;total ERCC cpm (log)&quot;, title =&quot;correct cpm&quot;)</code></pre>
+<p><img src="figure/ercc-cpm.Rmd/ercc-cpm-reads-3.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(anno_single, aes(x= total_molecules, y= total_ERCC_cpm, col=as.factor(individual), shape=as.factor(batch))) + geom_point() + labs(x = &quot;total molecule counts&quot;, y = &quot;total ERCC cpm (log)&quot;, title =&quot;correct cpm&quot;)</code></pre>
+<p><img src="figure/ercc-cpm.Rmd/ercc-cpm-reads-4.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="linear-shift-normalization" class="section level2">
+<h2>Linear Shift Normalization</h2>
+<p>Try the linear shift normalization after cpm ERCC separately and then use the method <a href="ercc-normalization.html#linear-shift-normalization">linear shift normalization</a>. There is error in the original r code. It shoud be Y = mX + b -&gt; X = (Y - b) / m instead of Y = mX + b -&gt; X = (Y + b) / m. After the shift, take exponential to get non log transformed value.</p>
+<pre class="r"><code>## prepare ERCC concentration information 
+ercc_single &lt;- ercc[ercc$id %in% rownames(molecules_single), ]
+stopifnot(rownames(molecules_single_ERCC_cpm) == ercc_single$id)
+
+## cpm log transformed endogenous genes
+molecules_single_genes &lt;- molecules_single_collision[grep(&quot;ENSG&quot;, rownames(molecules_single)), ]
+molecules_single_genes_cpm &lt;- cpm(molecules_single_genes, log = TRUE)
+
+## linear shift 
+single_norm &lt;- molecules_single_genes_cpm
+single_norm[, ] &lt;- NA
+for (i in 1:ncol(single_norm)) {
+  single_fit &lt;- lm(molecules_single_ERCC_cpm[, i] ~ log2(ercc_single$conc_mix1))
+  # Y = mX + b -&gt; X = (Y - b) / m
+  single_norm[, i] &lt;- (molecules_single_genes_cpm[, i] - single_fit$coefficients[1]) /
+                       single_fit$coefficients[2]
+}
+stopifnot(!is.na(single_norm))
+
+
+pca_single_norm &lt;- run_pca(single_norm)
+plot_pca(pca_single_norm$PCs, explained = pca_single_norm$explained,
+         metadata = anno_single, color = &quot;individual&quot;,
+         shape = &quot;batch&quot;, factors = c(&quot;individual&quot;, &quot;batch&quot;)) + labs(title = &quot;Linear shift normalization (log2 cpm)&quot;)</code></pre>
+<p><img src="figure/ercc-cpm.Rmd/ercc-norm-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>## exponential
+single_norm_expt &lt;- 2^(single_norm)
+pca_single_norm_expt &lt;- run_pca(single_norm_expt)
+plot_pca(pca_single_norm_expt$PCs, explained = pca_single_norm_expt$explained,
+         metadata = anno_single, color = &quot;individual&quot;,
+         shape = &quot;batch&quot;, factors = c(&quot;individual&quot;, &quot;batch&quot;)) + labs(title = &quot;Linear shift normalization (expt cpm)&quot;)</code></pre>
+<p><img src="figure/ercc-cpm.Rmd/ercc-norm-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
 <div id="session-information" class="section level2">
 <h2>Session information</h2>
