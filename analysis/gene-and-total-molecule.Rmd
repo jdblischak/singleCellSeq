@@ -1,0 +1,124 @@
+---
+title: "Deteced genes and total molecule counts per cell"
+author: "Po-Yuan Tung"
+date: 2015-02-25
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+```
+
+```{r}
+source("functions.R")
+library("limma")
+library("edgeR")
+library(ggplot2)
+theme_set(theme_bw(base_size = 16))
+```
+
+From previous analysis, we found that [19098 has fewer reads but more molecules](compare-reads-v-molecules.html#effect-of-sequencing-depth-on-molecule-count). One of the possible cause is that there are more lowly expressed genes being detected in 19098.
+
+## Prepare single cell molecule data
+
+Input annotation
+```{r}
+anno <- read.table("../data/annotation.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+```
+
+Input molecule counts
+```{r}
+molecules <- read.table("../data/molecules.txt", header = TRUE,
+           stringsAsFactors = FALSE)
+```
+
+Input read count
+```{r}
+reads <- read.table("../data/reads.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+```
+
+Input list of quality single cells.
+
+```{r input-quality-single-cells}
+quality_single_cells <- scan("../data/quality-single-cells.txt",
+                             what = "character")
+```
+
+Keep only the single cells that passed the [QC filters](qc-cell-ipsc.html) and the bulk samples.
+
+```{r}
+reads <- reads[, grepl("bulk", colnames(reads)) |
+                 colnames(reads) %in% quality_single_cells]
+molecules <- molecules[, grepl("bulk", colnames(molecules)) |
+                         colnames(molecules) %in% quality_single_cells]
+anno <- anno[anno$well == "bulk" | anno$sample_id %in% quality_single_cells, ]
+stopifnot(dim(reads) == dim(molecules),
+          nrow(anno) == ncol(molecules))
+```
+
+Remove batch 2 of individual 19098.
+```{r}
+molecules_no <- molecules[, !(anno$individual == 19098 & anno$batch == 2)]
+reads_single <- reads[, !(anno$individual == 19098 & anno$batch == 2)]
+anno_no <- anno[!(anno$individual == 19098 & anno$batch == 2), ]
+stopifnot(ncol(molecules_no) == nrow(anno_no))
+```
+
+Remove bulk samples.
+```{r}
+molecules_single <- molecules_no[, anno_no$well != "bulk"]
+anno_single <- anno_no[anno_no$well != "bulk", ]
+stopifnot(ncol(molecules_single) == nrow(anno_single))
+```
+
+Remove genes with zero count in the single cells
+```{r}
+expressed_single <- rowSums(molecules_single) > 0
+molecules_single <- molecules_single[which(expressed_single), ]
+reads_single <- reads_single[expressed_single, ]
+```
+
+remove gene with molecule count larger than 1024 (15 if them)
+```{r}
+overexpressed_genes <- rownames(molecules_single)[apply(molecules_single, 1,
+                                                        function(x) any(x >= 1024))]
+molecules_single <- molecules_single[!(rownames(molecules_single) %in% overexpressed_genes), ]
+```
+
+collision probability and cpm molecule counts
+```{r}
+molecules_single_collision <- -1024 * log(1 - molecules_single / 1024)
+molecules_single_cpm <- cpm(molecules_single_collision, log = TRUE)
+```
+
+## Distribution of molecule counts per gene in each individual
+```{r}
+## 19098 (total 142 cells)
+molecules_single_cpm_19098 <- molecules_single_cpm[,grep("19098", colnames(molecules_single_cpm))]
+hist(molecules_single_cpm_19098, breaks=100)
+plot(density(molecules_single_cpm_19098, na.rm = TRUE))
+
+## 19101 (total 197 cells)
+molecules_single_cpm_19101 <- molecules_single_cpm[,grep("19101", colnames(molecules_single_cpm))]
+hist(molecules_single_cpm_19101, breaks=100)
+plot(density(molecules_single_cpm_19101, na.rm = TRUE))
+
+## 19239 (total 197 cells)
+molecules_single_cpm_19239 <- molecules_single_cpm[,grep("19239", colnames(molecules_single_cpm))]
+hist(molecules_single_cpm_19239, breaks=100)
+plot(density(molecules_single_cpm_19239, na.rm = TRUE))
+
+## plot all together
+qplot(mpg, data = mtcars)
+```
+
+## Session information
+
+```{r info}
+sessionInfo()
+```
