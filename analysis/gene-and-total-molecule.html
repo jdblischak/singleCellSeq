@@ -127,19 +127,34 @@ img {
 <div id="TOC">
 <ul>
 <li><a href="#prepare-single-cell-molecule-data">Prepare single cell molecule data</a></li>
-<li><a href="#distribution-of-molecule-counts-per-gene-in-each-individual">Distribution of molecule counts per gene in each individual</a></li>
-<li><a href="#total-molecule-counts-per-gene-of-the-same-individual">total molecule counts per gene of the same individual</a></li>
-<li><a href="#number-of-genes-detected-and-total-molecule-counts">number of genes detected and total molecule counts</a></li>
+<li><a href="#number-of-genes-detected-and-total-molecule-counts-in-single-cells">Number of genes detected and total molecule counts in single cells</a></li>
+<li><a href="#distribution-of-molecule-counts-per-gene-in-each-individual">Distribution of molecule counts per gene in each individual</a><ul>
+<li><a href="#all-endogenous-genes">All endogenous genes</a></li>
+<li><a href="#top-5000-genes">Top 5000 genes</a></li>
+<li><a href="#bottom-5000-genes">Bottom 5000 genes</a></li>
+</ul></li>
+<li><a href="#median-molecule-counts-per-gene-of-the-same-individual">Median molecule counts per gene of the same individual</a></li>
 <li><a href="#session-information">Session information</a></li>
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-09-17</p>
-<p><strong>Code version:</strong> 936004610ac6f6e418d0b7e3f0da76378b29d647</p>
+<p><strong>Last updated:</strong> 2015-09-21</p>
+<p><strong>Code version:</strong> 5ebd0cb11c559b6dd5b271dff713c64be62ac63b</p>
 <pre class="r"><code>source(&quot;functions.R&quot;)
 library(&quot;limma&quot;)
 library(&quot;edgeR&quot;)
-library(ggplot2)
+library(&quot;dplyr&quot;)</code></pre>
+<pre><code>
+Attaching package: &#39;dplyr&#39;
+
+The following objects are masked from &#39;package:stats&#39;:
+
+    filter, lag
+
+The following objects are masked from &#39;package:base&#39;:
+
+    intersect, setdiff, setequal, union</code></pre>
+<pre class="r"><code>library(ggplot2)
 theme_set(theme_bw(base_size = 16))</code></pre>
 <p>From previous analysis, we found that <a href="compare-reads-v-molecules.html#effect-of-sequencing-depth-on-molecule-count">19098 has fewer reads but more molecules</a>. One of the possible cause is that there are more lowly expressed genes being detected in 19098.</p>
 <div id="prepare-single-cell-molecule-data" class="section level2">
@@ -166,7 +181,6 @@ stopifnot(dim(reads) == dim(molecules),
           nrow(anno) == ncol(molecules))</code></pre>
 <p>Remove batch 2 of individual 19098.</p>
 <pre class="r"><code>molecules_no &lt;- molecules[, !(anno$individual == 19098 &amp; anno$batch == 2)]
-reads_single &lt;- reads[, !(anno$individual == 19098 &amp; anno$batch == 2)]
 anno_no &lt;- anno[!(anno$individual == 19098 &amp; anno$batch == 2), ]
 stopifnot(ncol(molecules_no) == nrow(anno_no))</code></pre>
 <p>Remove bulk samples.</p>
@@ -175,26 +189,65 @@ anno_single &lt;- anno_no[anno_no$well != &quot;bulk&quot;, ]
 stopifnot(ncol(molecules_single) == nrow(anno_single))</code></pre>
 <p>Remove genes with zero count in the single cells</p>
 <pre class="r"><code>expressed_single &lt;- rowSums(molecules_single) &gt; 0
-molecules_single &lt;- molecules_single[which(expressed_single), ]
-reads_single &lt;- reads_single[expressed_single, ]</code></pre>
-<p>remove gene with molecule count larger than 1024 (15 if them)</p>
+molecules_single &lt;- molecules_single[which(expressed_single), ]</code></pre>
+<p>Remove gene with molecule count larger than 1024 (15 of them) for correction of collision probability</p>
 <pre class="r"><code>overexpressed_genes &lt;- rownames(molecules_single)[apply(molecules_single, 1,
                                                         function(x) any(x &gt;= 1024))]
-molecules_single &lt;- molecules_single[!(rownames(molecules_single) %in% overexpressed_genes), ]</code></pre>
-<p>collision probability and cpm molecule counts</p>
-<pre class="r"><code>molecules_single_collision &lt;- -1024 * log(1 - molecules_single / 1024)
-molecules_single_cpm &lt;- cpm(molecules_single_collision, log = TRUE)</code></pre>
+molecules_single &lt;- molecules_single[!(rownames(molecules_single) %in% overexpressed_genes), ]
+molecules_single_collision &lt;- -1024 * log(1 - molecules_single / 1024)</code></pre>
+<p>Remove ERCC, keep only the endogenous genes</p>
+<pre class="r"><code>molecules_single_ENSG &lt;- molecules_single[grep(&quot;ENSG&quot;, rownames(molecules_single)),]
+molecules_single_ERCC &lt;- molecules_single[grep(&quot;ERCC&quot;, rownames(molecules_single)),]
+stopifnot(dim(molecules_single_ERCC)[1] + dim(molecules_single_ENSG)[1] == dim(molecules_single)[1])</code></pre>
+<p>standardization by cpm molecule counts</p>
+<pre class="r"><code>molecules_single_ENSG_cpm &lt;- cpm(molecules_single_ENSG, log = TRUE)
+molecules_single_ERCC_cpm &lt;- cpm(molecules_single_ERCC, log = TRUE)</code></pre>
+</div>
+<div id="number-of-genes-detected-and-total-molecule-counts-in-single-cells" class="section level2">
+<h2>Number of genes detected and total molecule counts in single cells</h2>
+<p>The number of genes (both endogenous genes and ERCC genes) per cell corelated with the the total molecule numbers. More total molecules, more genes. However, interestingly, 19098 have not only more total gene molecules and more detected genes but also more ERCC total molecules and more ERCC genes detected.</p>
+<pre class="r"><code>## number of genes detected in each cell
+anno_single$number_gene &lt;- colSums(molecules_single_ENSG &gt; 0)
+anno_single$number_ERCC &lt;- colSums(molecules_single_ERCC &gt; 0)
+
+## number of total molecule counts in each cell
+anno_single$total_gene_molecule &lt;- colSums(molecules_single_ENSG) 
+anno_single$total_ERCC_molecule &lt;- colSums(molecules_single_ERCC) 
+
+## plot 
+ggplot(anno_single, aes(x = total_gene_molecule, y = number_gene, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) </code></pre>
+<p><img src="figure/gene-and-total-molecule.Rmd/gene-detected-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(anno_single, aes(x = as.factor(individual), y = total_gene_molecule, fill = as.factor(batch))) + geom_violin(alpha = 0.5) + geom_boxplot(alpha = 0.01, width = 0.1, position = position_dodge(width = 0.9)) + labs( title = &quot;total number of gene molecule counts&quot;)</code></pre>
+<p><img src="figure/gene-and-total-molecule.Rmd/gene-detected-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(anno_single, aes(x = as.factor(individual), y = total_ERCC_molecule, fill = as.factor(batch))) + geom_violin(alpha = 0.5) + geom_boxplot(alpha = 0.01, width = 0.1, position = position_dodge(width = 0.9)) + labs( title = &quot;total numer of ERCC molecule counts&quot;)</code></pre>
+<p><img src="figure/gene-and-total-molecule.Rmd/gene-detected-3.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(anno_single, aes(x = as.factor(individual), y = number_gene, fill = as.factor(batch))) + geom_violin(alpha = 0.5) + geom_boxplot(alpha = 0.1, width = 0.1, position = position_dodge(width = 0.9)) + labs( title = &quot;number of endogenous genes detected&quot;)</code></pre>
+<p><img src="figure/gene-and-total-molecule.Rmd/gene-detected-4.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(anno_single, aes(x = as.factor(individual), y = number_ERCC, fill = as.factor(batch))) + geom_violin(alpha = 0.5) + geom_boxplot(alpha = 0.1, width = 0.1, position = position_dodge(width = 0.9)) + labs( title = &quot;number of ERCC genes detected&quot;)</code></pre>
+<p><img src="figure/gene-and-total-molecule.Rmd/gene-detected-5.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>To standardized within each cell, cpm was done separately for endogenous genes and ERCCs. cpm does not seem to affect the endogenous genes, whereas cpm make the ERCC more similar across batch and also across individual, suggesting that the distribution of ERCC gene expression is similar across batch and across indiviual.</p>
+<pre class="r"><code>## number of total molecule counts in each cell AFTER cpm
+anno_single$total_gene_molecule_cpm &lt;- colSums(molecules_single_ENSG_cpm) 
+anno_single$total_ERCC_molecule_cpm &lt;- colSums(molecules_single_ERCC_cpm)
+
+ggplot(anno_single, aes(x = as.factor(individual), y = total_gene_molecule_cpm, fill = as.factor(batch))) + geom_violin(alpha = 0.5) + geom_boxplot(alpha = 0.01, width = 0.1, position = position_dodge(width = 0.9)) + labs( title = &quot;total gene molecule (cpm log)&quot;)</code></pre>
+<p><img src="figure/gene-and-total-molecule.Rmd/gene-detected-cpm-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(anno_single, aes(x = as.factor(individual), y = total_ERCC_molecule_cpm, fill = as.factor(batch))) + geom_violin(alpha = 0.5) + geom_boxplot(alpha = 0.01, width = 0.1, position = position_dodge(width = 0.9)) + labs( title = &quot;total ERCC molecule (cpm log)&quot;)</code></pre>
+<p><img src="figure/gene-and-total-molecule.Rmd/gene-detected-cpm-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
 <div id="distribution-of-molecule-counts-per-gene-in-each-individual" class="section level2">
 <h2>Distribution of molecule counts per gene in each individual</h2>
+<div id="all-endogenous-genes" class="section level3">
+<h3>All endogenous genes</h3>
+<p>Do a density plot of molecule counts per gene per cell to see if 19098 have more lowly expressed genes. However, it’s very hard to visualize it.</p>
 <pre class="r"><code>## 19098 (total 142 cells)
-molecules_single_cpm_19098 &lt;- molecules_single_cpm[,grep(&quot;19098&quot;, colnames(molecules_single_cpm))]
+molecules_single_ENSG_19098 &lt;- as.matrix(log(molecules_single_ENSG[,grep(&quot;19098&quot;, colnames(molecules_single_ENSG))]))
 
 ## 19101 (total 197 cells)
-molecules_single_cpm_19101 &lt;- molecules_single_cpm[,grep(&quot;19101&quot;, colnames(molecules_single_cpm))]
+molecules_single_ENSG_19101 &lt;- as.matrix(log(molecules_single_ENSG[,grep(&quot;19101&quot;, colnames(molecules_single_ENSG))]))
 
 ## 19239 (total 197 cells)
-molecules_single_cpm_19239 &lt;- molecules_single_cpm[,grep(&quot;19239&quot;, colnames(molecules_single_cpm))]
+molecules_single_ENSG_19239 &lt;- as.matrix(log(molecules_single_ENSG[,grep(&quot;19239&quot;, colnames(molecules_single_ENSG))]))
 
 ## plot all together
 plot_multi_dens &lt;- function(s)
@@ -213,43 +266,124 @@ plot_multi_dens &lt;- function(s)
     }
 }
 
-## the input of the following function MUST be a numeric list
-plot_multi_dens(list(molecules_single_cpm_19098, molecules_single_cpm_19101, molecules_single_cpm_19239))
-legend(12,1.8, c(&quot;19098&quot;,&quot;19101&quot;, &quot;19239&quot;), lwd=c(2.5,2.5),col=c(&quot;black&quot;, &quot;red&quot;, &quot;green&quot;))</code></pre>
-<p><img src="figure/gene-and-total-molecule.Rmd/unnamed-chunk-11-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-</div>
-<div id="total-molecule-counts-per-gene-of-the-same-individual" class="section level2">
-<h2>total molecule counts per gene of the same individual</h2>
-<pre class="r"><code>## without cpm standardization
-molecules_counts_per_gene_19098 &lt;- log(rowSums(molecules_single[,grep(&quot;19098&quot;, colnames(molecules_single))])+1)
-molecules_counts_per_gene_19101 &lt;- log(rowSums(molecules_single[,grep(&quot;19101&quot;, colnames(molecules_single))])+1)
-molecules_counts_per_gene_19239 &lt;- log(rowSums(molecules_single[,grep(&quot;19239&quot;, colnames(molecules_single))])+1)
+plot_multi_dens(list(molecules_single_ENSG_19098, molecules_single_ENSG_19101, molecules_single_ENSG_19239))
+legend(5, 0.7, c(&quot;19098&quot;,&quot;19101&quot;, &quot;19239&quot;), lwd=c(2.5,2.5),col=c(&quot;black&quot;, &quot;red&quot;, &quot;green&quot;))</code></pre>
+<p><img src="figure/gene-and-total-molecule.Rmd/distribution-all-gene-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>## ggplot
+function(x){v_19098 &lt;- as.vector(molecules_single_cpm_19098)
+v_19239 &lt;- as.vector(molecules_single_cpm_19239)
+v_19101 &lt;- as.vector(molecules_single_cpm_19101)
 
-## plot
-plot_multi_dens(list(molecules_counts_per_gene_19098, molecules_counts_per_gene_19101, molecules_counts_per_gene_19239))
-legend(10, 0.15, c(&quot;19098&quot;,&quot;19101&quot;, &quot;19239&quot;), lwd=c(2.5,2.5),col=c(&quot;black&quot;, &quot;red&quot;, &quot;green&quot;))</code></pre>
-<p><img src="figure/gene-and-total-molecule.Rmd/unnamed-chunk-12-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+data_cpm &lt;- as.data.frame(cbind(counts=c(v_19098,v_19239,v_19101),individual=rep(c(&quot;19098&quot;,&quot;19239&quot;,&quot;19101&quot;),c(length(v_19098),length(v_19239),length(v_19101)))))
+
+data_cpm$counts &lt;- as.numeric(as.character(data_cpm$counts))
+
+ggplot(data_cpm, aes(x = counts,  col = individual)) + geom_density() + labs(title=&quot;molecule per gene per cell&quot;)}</code></pre>
+<pre><code>function(x){v_19098 &lt;- as.vector(molecules_single_cpm_19098)
+v_19239 &lt;- as.vector(molecules_single_cpm_19239)
+v_19101 &lt;- as.vector(molecules_single_cpm_19101)
+
+data_cpm &lt;- as.data.frame(cbind(counts=c(v_19098,v_19239,v_19101),individual=rep(c(&quot;19098&quot;,&quot;19239&quot;,&quot;19101&quot;),c(length(v_19098),length(v_19239),length(v_19101)))))
+
+data_cpm$counts &lt;- as.numeric(as.character(data_cpm$counts))
+
+ggplot(data_cpm, aes(x = counts,  col = individual)) + geom_density() + labs(title=&quot;molecule per gene per cell&quot;)}</code></pre>
+</div>
+<div id="top-5000-genes" class="section level3">
+<h3>Top 5000 genes</h3>
+<p>There is some difference before cpm, but the distribution matched perfectly after cpm. However, surprisingly, not all top 5000 genes are expressed in cells.</p>
+<pre class="r"><code>## calculate total and select the top 5000
+molecules_single_ENSG$total &lt;- apply(molecules_single_ENSG[1:563], 1, sum)
+molecules_single_ENSG_top &lt;- molecules_single_ENSG %&gt;% arrange(desc(total)) %&gt;% slice(1:5000)
+
+## number of gene detected 
+anno_single$number_gene_top &lt;- colSums(molecules_single_ENSG_top[,1:563] &gt; 0)
+
+ggplot(anno_single, aes(x = as.factor(individual), y = number_gene_top, fill = as.factor(batch))) + geom_violin(alpha = 0.5) + geom_boxplot(alpha = 0.01, width = 0.1, position = position_dodge(width = 0.9)) + labs( title = &quot;number of gene detected (top 5000)&quot;)</code></pre>
+<p><img src="figure/gene-and-total-molecule.Rmd/top-5000-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>## divided by individual
+molecules_single_ENSG_top_19098 &lt;- as.matrix(log(molecules_single_ENSG_top[,grep(&quot;19098&quot;, colnames(molecules_single_ENSG_top))]))
+molecules_single_ENSG_top_19101 &lt;- as.matrix(log(molecules_single_ENSG_top[,grep(&quot;19101&quot;, colnames(molecules_single_ENSG_top))]))
+molecules_single_ENSG_top_19239 &lt;- as.matrix(log(molecules_single_ENSG_top[,grep(&quot;19239&quot;, colnames(molecules_single_ENSG_top))]))
+
+plot_multi_dens(list(molecules_single_ENSG_top_19098, molecules_single_ENSG_top_19101, molecules_single_ENSG_top_19239))
+legend(5.5 ,0.4, c(&quot;19098&quot;,&quot;19101&quot;, &quot;19239&quot;), lwd=c(2.5,2.5),col=c(&quot;black&quot;, &quot;red&quot;, &quot;green&quot;))
+title(&quot;molecule per gene top 5000 genes (counts)&quot;)</code></pre>
+<p><img src="figure/gene-and-total-molecule.Rmd/top-5000-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>## calculate total and select the top 5000 with cpm
+molecules_single_ENSG_cpm &lt;- as.data.frame(molecules_single_ENSG_cpm)
+molecules_single_ENSG_cpm$total &lt;- apply(molecules_single_ENSG_cpm[1:563], 1, sum)
+molecules_single_ENSG_cpm_top &lt;- molecules_single_ENSG_cpm %&gt;% arrange(desc(total)) %&gt;% slice(1:5000)
+stopifnot(rownames(molecules_single_ENSG_top) == rownames(molecules_single_ENSG_cpm_top))
+
+## divided by individual
+molecules_single_ENSG_cpm_top_19098 &lt;- as.matrix(molecules_single_ENSG_cpm_top[,grep(&quot;19098&quot;, colnames(molecules_single_ENSG_cpm_top))])
+molecules_single_ENSG_cpm_top_19101 &lt;- as.matrix(molecules_single_ENSG_cpm_top[,grep(&quot;19101&quot;, colnames(molecules_single_ENSG_cpm_top))])
+molecules_single_ENSG_cpm_top_19239 &lt;- as.matrix(molecules_single_ENSG_cpm_top[,grep(&quot;19239&quot;, colnames(molecules_single_ENSG_cpm_top))])
+
+plot_multi_dens(list(molecules_single_ENSG_cpm_top_19098, molecules_single_ENSG_cpm_top_19098, molecules_single_ENSG_cpm_top_19098))
+legend(9, 0.25, c(&quot;19098&quot;,&quot;19101&quot;, &quot;19239&quot;), lwd=c(2.5,2.5),col=c(&quot;black&quot;, &quot;red&quot;, &quot;green&quot;))
+title(&quot;molecule per gene top 5000 genes (cpm log)&quot;)</code></pre>
+<p><img src="figure/gene-and-total-molecule.Rmd/top-5000-3.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>## total molecule number
+anno_single$total_gene_molecule_top &lt;- colSums(molecules_single_ENSG_top[1:563]) 
+ggplot(anno_single, aes(x = as.factor(individual), y = total_gene_molecule_top, fill = as.factor(batch))) + geom_violin(alpha = 0.5) + geom_boxplot(alpha = 0.01, width = 0.1, position = position_dodge(width = 0.9)) + labs( title = &quot;total gene molecule top 5000&quot;)</code></pre>
+<p><img src="figure/gene-and-total-molecule.Rmd/top-5000-4.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>anno_single$total_gene_molecule_cpm_top &lt;- colSums(molecules_single_ENSG_cpm_top[1:563]) 
+ggplot(anno_single, aes(x = as.factor(individual), y = total_gene_molecule_cpm_top, fill = as.factor(batch))) + geom_violin(alpha = 0.5) + geom_boxplot(alpha = 0.01, width = 0.1, position = position_dodge(width = 0.9)) + labs( title = &quot;total gene molecule top 5000 (cpm log)&quot;)</code></pre>
+<p><img src="figure/gene-and-total-molecule.Rmd/top-5000-5.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="bottom-5000-genes" class="section level3">
+<h3>Bottom 5000 genes</h3>
+<p>As exprected, more genes have only 1 molecule in 19098 than the other 2 individuals.</p>
+<pre class="r"><code>## select the bottom 5000
+molecules_single_ENSG_bottom &lt;- molecules_single_ENSG %&gt;% arrange(total) %&gt;% slice(1:5000)
+
+## number of gene detected 
+anno_single$number_gene_bottom &lt;- colSums(molecules_single_ENSG_bottom[,1:563] &gt; 0)
+
+ggplot(anno_single, aes(x = as.factor(individual), y = number_gene_bottom, fill = as.factor(batch))) + geom_violin(alpha = 0.5) + geom_boxplot(alpha = 0.01, width = 0.1, position = position_dodge(width = 0.9)) + labs( title = &quot;number of gene detected (bottom 5000)&quot;)</code></pre>
+<p><img src="figure/gene-and-total-molecule.Rmd/bottom-5000-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>## divided by individual
+molecules_single_ENSG_bottom_19098 &lt;- as.matrix(log(molecules_single_ENSG_bottom[,grep(&quot;19098&quot;, colnames(molecules_single_ENSG_bottom))]))
+molecules_single_ENSG_bottom_19101 &lt;- as.matrix(log(molecules_single_ENSG_bottom[,grep(&quot;19101&quot;, colnames(molecules_single_ENSG_bottom))]))
+molecules_single_ENSG_bottom_19239 &lt;- as.matrix(log(molecules_single_ENSG_bottom[,grep(&quot;19239&quot;, colnames(molecules_single_ENSG_bottom))]))
+
+plot_multi_dens(list(molecules_single_ENSG_bottom_19098, molecules_single_ENSG_bottom_19101, molecules_single_ENSG_bottom_19239))
+legend(2.5, 0.2, c(&quot;19098&quot;,&quot;19101&quot;, &quot;19239&quot;), lwd=c(2.5,2.5),col=c(&quot;black&quot;, &quot;red&quot;, &quot;green&quot;))
+title(&quot;molecule counts per gene&quot;)</code></pre>
+<p><img src="figure/gene-and-total-molecule.Rmd/bottom-5000-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>## the bottom 5000 with cpm
+molecules_single_ENSG_cpm_bottom &lt;- molecules_single_ENSG_cpm %&gt;% arrange(total) %&gt;% slice(1:5000)
+stopifnot(rownames(molecules_single_ENSG_bottom) == rownames(molecules_single_ENSG_cpm_bottom))
+
+## divided by individual
+molecules_single_ENSG_cpm_bottom_19098 &lt;- as.matrix(molecules_single_ENSG_cpm_bottom[,grep(&quot;19098&quot;, colnames(molecules_single_ENSG_cpm_bottom))])
+molecules_single_ENSG_cpm_bottom_19101 &lt;- as.matrix(molecules_single_ENSG_cpm_bottom[,grep(&quot;19101&quot;, colnames(molecules_single_ENSG_cpm_bottom))])
+molecules_single_ENSG_cpm_bottom_19239 &lt;- as.matrix(molecules_single_ENSG_cpm_bottom[,grep(&quot;19239&quot;, colnames(molecules_single_ENSG_cpm_bottom))])
+
+plot_multi_dens(list(molecules_single_ENSG_cpm_bottom_19098, molecules_single_ENSG_cpm_bottom_19098, molecules_single_ENSG_cpm_bottom_19098))</code></pre>
+<p><img src="figure/gene-and-total-molecule.Rmd/bottom-5000-3.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>## total molecule number
+anno_single$total_gene_molecule_bottom &lt;- colSums(molecules_single_ENSG_bottom[1:563]) 
+ggplot(anno_single, aes(x = as.factor(individual), y = total_gene_molecule_bottom, fill = as.factor(batch))) + geom_violin(alpha = 0.5) + geom_boxplot(alpha = 0.01, width = 0.1, position = position_dodge(width = 0.9)) + labs( title = &quot;total gene molecule bottom 5000&quot;)</code></pre>
+<p><img src="figure/gene-and-total-molecule.Rmd/bottom-5000-4.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>anno_single$total_gene_molecule_cpm_bottom &lt;- colSums(molecules_single_ENSG_cpm_bottom[1:563]) 
+ggplot(anno_single, aes(x = as.factor(individual), y = total_gene_molecule_cpm_bottom, fill = as.factor(batch))) + geom_violin(alpha = 0.5) + geom_boxplot(alpha = 0.01, width = 0.1, position = position_dodge(width = 0.9)) + labs( title = &quot;total gene molecule bottom 5000 (cpm log)&quot;)</code></pre>
+<p><img src="figure/gene-and-total-molecule.Rmd/bottom-5000-5.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+</div>
+<div id="median-molecule-counts-per-gene-of-the-same-individual" class="section level2">
+<h2>Median molecule counts per gene of the same individual</h2>
 <pre class="r"><code>## with cpm 
-molecules_counts_per_gene_19098_cpm &lt;- rowSums(molecules_single_cpm_19098)
-molecules_counts_per_gene_19101_cpm &lt;- rowSums(molecules_single_cpm_19101)
-molecules_counts_per_gene_19239_cpm &lt;- rowSums(molecules_single_cpm_19239)
+molecules_counts_per_gene_19098_cpm &lt;- apply(molecules_single_ENSG_19098, 1, median)
+molecules_counts_per_gene_19101_cpm &lt;- apply(molecules_single_ENSG_19101, 1, median)
+molecules_counts_per_gene_19239_cpm &lt;- apply(molecules_single_ENSG_19239, 1, median)
 
 ## plot
 plot_multi_dens(list(molecules_counts_per_gene_19098_cpm, molecules_counts_per_gene_19101_cpm, molecules_counts_per_gene_19239_cpm))
-legend(2500, 0.003 , c(&quot;19098&quot;,&quot;19101&quot;, &quot;19239&quot;), lwd=c(2.5,2.5),col=c(&quot;black&quot;, &quot;red&quot;, &quot;green&quot;))</code></pre>
-<p><img src="figure/gene-and-total-molecule.Rmd/unnamed-chunk-12-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-</div>
-<div id="number-of-genes-detected-and-total-molecule-counts" class="section level2">
-<h2>number of genes detected and total molecule counts</h2>
-<pre class="r"><code>## number of genes detected in each cell
-anno_single$number_genes &lt;- colSums(molecules_single &gt; 0)
-
-## number of total molecule counts in each cell
-anno_single$total_molecule &lt;- colSums(molecules_single) 
-
-## plot 
-ggplot(anno_single, aes(x = total_molecule, y = number_genes, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5)</code></pre>
-<p><img src="figure/gene-and-total-molecule.Rmd/unnamed-chunk-13-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+legend(5, 0.25 , c(&quot;19098&quot;,&quot;19101&quot;, &quot;19239&quot;), lwd=c(2.5,2.5),col=c(&quot;black&quot;, &quot;red&quot;, &quot;green&quot;))</code></pre>
+<p><img src="figure/gene-and-total-molecule.Rmd/total-per-individual-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
 <div id="session-information" class="section level2">
 <h2>Session information</h2>
@@ -269,15 +403,16 @@ attached base packages:
 [1] stats     graphics  grDevices utils     datasets  methods   base     
 
 other attached packages:
-[1] ggplot2_1.0.1 edgeR_3.10.2  limma_3.24.9  knitr_1.10.5 
+[1] ggplot2_1.0.1 dplyr_0.4.2   edgeR_3.10.2  limma_3.24.9  knitr_1.10.5 
 
 loaded via a namespace (and not attached):
- [1] Rcpp_0.12.0      digest_0.6.8     MASS_7.3-40      grid_3.2.0      
- [5] plyr_1.8.3       gtable_0.1.2     formatR_1.2      magrittr_1.5    
- [9] scales_0.2.4     evaluate_0.7     stringi_0.4-1    reshape2_1.4.1  
-[13] rmarkdown_0.6.1  labeling_0.3     proto_0.3-10     tools_3.2.0     
-[17] stringr_1.0.0    munsell_0.4.2    yaml_2.1.13      colorspace_1.2-6
-[21] htmltools_0.2.6 </code></pre>
+ [1] Rcpp_0.12.0      magrittr_1.5     MASS_7.3-40      munsell_0.4.2   
+ [5] colorspace_1.2-6 R6_2.1.1         stringr_1.0.0    plyr_1.8.3      
+ [9] tools_3.2.0      parallel_3.2.0   grid_3.2.0       gtable_0.1.2    
+[13] DBI_0.3.1        htmltools_0.2.6  lazyeval_0.1.10  yaml_2.1.13     
+[17] assertthat_0.1   digest_0.6.8     reshape2_1.4.1   formatR_1.2     
+[21] evaluate_0.7     rmarkdown_0.6.1  labeling_0.3     stringi_0.4-1   
+[25] scales_0.2.4     proto_0.3-10    </code></pre>
 </div>
 
 
