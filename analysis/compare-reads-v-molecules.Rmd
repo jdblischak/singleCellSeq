@@ -9,6 +9,7 @@ date: 2015-06-11
 
 ```{r chunk-options, include=FALSE}
 source("chunk-options.R")
+# opts_chunk$set(cache = TRUE)
 ```
 
 First, compared counts via three methods:
@@ -200,7 +201,7 @@ Let's check this assumption.
 Does the total number of molecules per sample vary with the total number of reads?
 If it is not necessary to standardize the molecule counts, the molecule counts should be consistent across varying read depths.
 
-```{r total-mol-v-reads-single}
+```{r total-mol-v-reads-single, fig.width=8, fig.height=8}
 total_counts_data <- data.frame(total_reads = colSums(reads) / 10^6,
                                 total_molecules = colSums(molecules) / 10^3,
                                 anno)
@@ -247,6 +248,36 @@ total_reads_ind <- total_molecules_ind %+% aes(y = total_reads) +
   labs(y = "Reads (x10^6)",
        title = "Total read counts vary across individuals")
 total_reads_ind
+```
+
+There is a clear difference between individuals.
+Is there a difference between the full 9 batches?
+
+```{r total-mol-v-reads-single-9-batches, fig.width=8, fig.height=8}
+total_counts_single_batch <- ggplot(total_counts_data[total_counts_data$well != "bulk", ],
+                              aes(x = total_reads, y = total_molecules,
+                                  col = paste(individual, batch, sep = "."))) +
+  geom_point() +
+  scale_color_brewer(palette = "Set1", name = "9 batches") +
+  labs(x = "Total number of reads (x10^6)",
+       y = "Total number of molecules (x10^3)",
+       title = "Effect of read depth on single cells")
+total_counts_single_batch
+```
+
+It is diffcult to see when all 9 are plotted at once.
+Here are the batches split by individual.
+
+```{r total-mol-v-reads-single-per-ind, fig.width=8, fig.height=24}
+total_counts_single_ind <- ggplot(total_counts_data[total_counts_data$well != "bulk", ],
+                              aes(x = total_reads, y = total_molecules)) +
+  geom_point(aes(color = as.factor(batch))) +
+  facet_wrap(~individual, nrow = 3) +
+  scale_color_brewer(palette = "Dark2", name = "batch") +
+  labs(x = "Total number of reads (x10^6)",
+       y = "Total number of molecules (x10^3)",
+       title = "Effect of read depth on single cells")
+total_counts_single_ind
 ```
 
 What effect does this difference in total molecule count have in PCA?
