@@ -1,0 +1,560 @@
+---
+title: "Compare read and molecule counts in single cells per batch"
+author: "PoYuan Tung & Joyce Hsiao"
+date: 2015-09-22
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+opts_chunk$set(cache = FALSE)
+```
+
+Comparing the conversion of reads to molecules for each cell.
+Used three different metrics:
+
+*  Raw counts
+*  Log2 counts (pseudocount of 1)
+*  cpm counts (no log transformation)
+*  Log2 TMM-normalized counts per million (pseudocount of 0.25)
+
+## Input
+
+```{r packages, message=FALSE, cache=FALSE}
+library("dplyr")
+library("ggplot2")
+theme_set(theme_bw(base_size = 16))
+library("edgeR")
+source("functions.R")
+library("tidyr")
+```
+
+Input annotation.
+
+```{r input-annotation}
+anno <- read.table("../data/annotation.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno)
+```
+
+Input read counts.
+
+```{r input-read-counts}
+reads <- read.table("../data/reads.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+```
+
+Input molecule counts.
+
+```{r input-molecule-counts}
+molecules <- read.table("../data/molecules.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+```
+
+Input list of quality single cells.
+
+```{r input-quality-single-cells}
+quality_single_cells <- scan("../data/quality-single-cells.txt",
+                             what = "character")
+```
+
+Keep only the single cells that passed the [QC filters](qc-cell-ipsc.html).
+
+```{r filter-cells}
+reads <- reads[, colnames(reads) %in% quality_single_cells]
+molecules <- molecules[, colnames(molecules) %in% quality_single_cells]
+anno <- anno[anno$sample_id %in% quality_single_cells, ]
+stopifnot(dim(reads) == dim(molecules),
+          nrow(anno) == ncol(reads))
+```
+
+## Distribution of fold change to mean
+Look at the distribution of fold change to mean. As being reported by others, the lowly expressed genes show divergent read and molecule counts
+
+```{r distribution}
+## calculate mean
+reads_mean     <- apply(reads, 1, mean)
+molecules_mean <- apply(molecules, 1, mean)
+distribution <- data.frame(reads_mean, molecules_mean)
+
+## calculate fold change to mean
+distribution$fold_change_read     <- log2(reads_mean/mean(reads_mean))
+distribution$fold_change_molecule <- log2(molecules_mean/mean(molecules_mean))
+
+## select ERCC
+distribution$ERCC <- grepl("ERCC", rownames(distribution))
+
+## color palette
+cbPalette <- c("#999999", "#0000FF", "#990033", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#009E73")
+
+ggplot(distribution, aes(x = fold_change_molecule, y = fold_change_read, col = ERCC)) + geom_point(size = 3, alpha = 0.5) + scale_colour_manual(values=cbPalette) + stat_function(fun= function(x) {x}, col= "#56B4E9") + labs(x = "log2 fold change to mean (molecule)", y =  "log2 fold change to mean (reads)")
+```
+
+## Transformation
+
+In addition to comparing the raw counts of reads and molecules, we compare the log2 counts and the log counts per million.
+
+For the log counts, I add a pseudocount of 1.
+
+```{r log-counts}
+reads_log <- log2(reads + 1)
+molecules_log <- log2(molecules + 1)
+```
+
+standardized by cmp and log-transform
+```{r cmp-counts}
+reads_cpm <- cpm(reads, log = FALSE)
+molecules_cpm <- cpm(molecules, log = FALSE)
+```
+
+Calculate cpm for the reads data using TMM-normalization.
+
+```{r calc-cpm-reads}
+norm_factors_reads <- calcNormFactors(reads, method = "TMM")
+reads_tmm <- cpm(reads, lib.size = colSums(reads) * norm_factors_reads,
+                 log = TRUE)
+```
+
+And for the molecules.
+
+```{r calc-cpm-molecules}
+norm_factors_mol <- calcNormFactors(molecules, method = "TMM")
+molecules_tmm <- cpm(molecules, lib.size = colSums(molecules) * norm_factors_mol,
+                     log = TRUE)
+```
+
+## conversion in each single cell
+
+### Counts
+
+Compare the counts. (1) all genes. (2) only ERCC. (3) without ERCC, only endogenous genes
+
+#### All genes
+
+```{r conversion-in-cell, fig.width=9, fig.height=9, cache=FALSE}
+## linear regression per cell and make a table with intercept, slope, and r-squared
+regression_table <- as.data.frame(do.call(rbind,lapply(names(reads),function(x){
+  fit.temp <- lm(molecules[,x]~reads[,x])
+    c(x,fit.temp$coefficients,summary(fit.temp)$adj.r.squared)
+})))
+names(regression_table) <- c("sample_id","Intercept","slope","r2")
+regression_table$Intercept <- as.numeric(as.character(regression_table$Intercept))
+regression_table$slope <- as.numeric(as.character(regression_table$slope))
+regression_table$r2 <- as.numeric(as.character(regression_table$r2))
+plot(regression_table$r2)
+
+anno_regression <- merge(anno,regression_table,by="sample_id")
+
+ggplot(anno_regression,aes(x=Intercept,y=slope,col=as.factor(individual),shape=as.factor(batch))) + geom_point() + labs(x = "intercept", y = "slope", title = "read-molecule conversion (counts)")
+
+ggplot(anno_regression,aes(x=Intercept,y=slope,col=as.factor(individual),shape=as.factor(batch))) + geom_point() + labs(x = "intercept", y = "slope", title = "read-molecule conversion (counts)") + facet_grid(individual ~ batch)
+
+## plot all the lines
+anno_regression$reads_mean <- apply(reads, 2, mean)
+anno_regression$molecules_mean <- apply(molecules, 2, mean)
+
+ggplot(anno_regression, aes(x= reads_mean, y= molecules_mean)) + geom_point() + geom_abline(aes(intercept=Intercept, slope=slope, col=as.factor(individual), alpha= 0.5), data=anno_regression) + facet_grid(individual ~ batch)
+```
+
+Pairwise distance in (intercept, slope) between batches or individuals.
+
+* Compute pairwise Euclidean distance between cells.
+
+```{r}
+anno_regression_dist <- as.matrix( dist(anno_regression[ , c("Intercept", "slope")]) )
+rownames(anno_regression_dist) <- with(anno_regression,
+                                       paste(individual, batch, sep = "_"))
+colnames(anno_regression_dist) <- rownames(anno_regression_dist)
+anno_regression_dist[1:2, 1:2]
+```
+
+* Cell-to-cell Euclidean distance within each individiaual, batch
+
+```{r}
+## All cells
+dist_mean <- data.frame(dist = rowSums(anno_regression_dist)/(ncol(anno_regression_dist) - 1))
+ggplot(dist_mean, aes(y = dist, x = 1)) + geom_violin(alpha = .5) + 
+  geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+  labs(title = "Mean cell-to-cell distance in (intercept, slope)", x = "") +
+  theme(axis.text.x = element_text(hjust=1, angle = 45))
+
+
+## Within batch 
+batch_unique <- with(anno_regression, paste(individual, batch, sep = "_"))
+dist_vec <- lapply(1:length(unique(batch_unique)), function(per_batch) {
+  dist_foo <- anno_regression_dist[batch_unique == unique(batch_unique)[per_batch],
+                             batch_unique == unique(batch_unique)[per_batch] ]
+  data.frame(dist = c(rowSums(dist_foo)/(ncol(dist_foo) - 1) ),
+             batch_unique = unique(batch_unique)[per_batch]  )
+})
+dist_vec <- do.call(rbind, dist_vec)
+str(dist_vec)
+
+ggplot(dist_vec, aes(x= factor(batch_unique), y = dist, fill = factor(batch_unique)) ) +
+  geom_violin(alpha = .5) + geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+  labs(title = "Mean cell-to-cell distance within batch \n
+                in (intercept, slope)") +
+  theme(axis.text.x = element_text(hjust=1, angle = 45))
+
+## Within individual
+individual <- anno_regression$individual
+dist_vec <- lapply(1:length(unique(individual)), function(per_individual) {
+  dist_foo <- anno_regression_dist[individual == unique(individual)[per_individual],
+                             individual == unique(individual)[per_individual] ]
+  data.frame(dist = c(rowSums(dist_foo)/(ncol(dist_foo) - 1)),
+             individual = unique(individual)[per_individual]  )
+})
+dist_vec <- do.call(rbind, dist_vec)
+str(dist_vec)
+ggplot(dist_vec, aes(x= factor(individual), y = dist, fill = factor(individual)),
+       height = 600, width = 2000) +
+  geom_violin(alpha = .5) + geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+  labs(title = "Mean cell-to-cell distance within individual \n
+                in (intercept, slope)") +
+  theme(axis.text.x = element_text(hjust=1, angle = 45))
+```
+
+
+#### Only ERCC genes
+
+```{r conversion-in-cell-ERCC, fig.width=9, fig.height=9, cache=FALSE}
+## grep ERCC
+reads_ERCC <- reads[grep("ERCC", rownames(reads)), ]
+molecules_ERCC <- molecules[grep("ERCC", rownames(molecules)), ]
+
+## linear regression per cell and make a table with intercept, slope, and r-squared
+regression_table_ERCC <- as.data.frame(do.call(rbind,lapply(names(reads_ERCC),function(x){
+  fit.temp <- lm(molecules_ERCC[,x]~reads_ERCC[,x])
+    c(x,fit.temp$coefficients,summary(fit.temp)$adj.r.squared)
+})))
+names(regression_table_ERCC) <- c("sample_id","Intercept","slope","r2")
+regression_table_ERCC$Intercept <- as.numeric(as.character(regression_table_ERCC$Intercept))
+regression_table_ERCC$slope <- as.numeric(as.character(regression_table_ERCC$slope))
+regression_table_ERCC$r2 <- as.numeric(as.character(regression_table_ERCC$r2))
+plot(regression_table_ERCC$r2)
+
+anno_regression_ERCC <- merge(anno,regression_table_ERCC,by="sample_id")
+ggplot(anno_regression_ERCC,aes(x=Intercept,y=slope,col=as.factor(individual),shape=as.factor(batch))) + geom_point() + labs(x = "intercept", y = "slope", title = "read-molecule conversion ERCC genes (counts)") + facet_grid(individual ~ batch)
+
+## plot all the lines
+anno_regression_ERCC$reads_mean <- apply(reads_ERCC, 2, mean)
+anno_regression_ERCC$molecules_mean <- apply(molecules_ERCC, 2, mean)
+
+ggplot(anno_regression_ERCC, aes(x= reads_mean, y= molecules_mean)) + geom_point() + geom_abline(aes(intercept=Intercept, slope=slope, col=as.factor(individual), alpha= 0.5), data=anno_regression) + facet_grid(individual ~ batch)
+```
+
+
+Pairwise distance in (intercept, slope) between batches or individuals.
+
+* Compute pairwise Euclidean distance between cells.
+
+```{r}
+anno_regression_ERCC_dist <- as.matrix( dist(anno_regression_ERCC[ , c("Intercept", "slope")]) )
+rownames(anno_regression_ERCC_dist) <- with(anno_regression_ERCC,
+                                            paste(individual, batch, sep = "_"))
+colnames(anno_regression_ERCC_dist) <- rownames(anno_regression_ERCC_dist)
+anno_regression_ERCC_dist[1:2, 1:2]
+```
+
+* Cell-to-cell Euclidean distance within each individiaual, batch
+
+```{r}
+## All cells
+dist_mean <- data.frame(dist = rowSums(anno_regression_ERCC_dist)/(ncol(anno_regression_ERCC_dist) - 1))
+ggplot(dist_mean, aes(y = dist, x = 1)) + geom_violin(alpha = .5) + 
+  geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+  labs(title = "Mean cell-to-cell distance in (intercept, slope)", x = "") +
+  theme(axis.text.x = element_text(hjust=1, angle = 45))
+
+
+## Within batch 
+batch_unique <- with(anno_regression, paste(individual, batch, sep = "_"))
+dist_vec <- lapply(1:length(unique(batch_unique)), function(per_batch) {
+  dist_foo <- anno_regression_ERCC_dist[batch_unique == unique(batch_unique)[per_batch],
+                             batch_unique == unique(batch_unique)[per_batch] ]
+  data.frame(dist = c(rowSums(dist_foo)/(ncol(dist_foo) - 1)),
+             batch_unique = unique(batch_unique)[per_batch]  )
+})
+dist_vec <- as.data.frame(do.call(rbind, dist_vec))
+str(dist_vec)
+
+ggplot(dist_vec, aes(x= factor(batch_unique), y = dist, fill = factor(batch_unique)),
+       height = 600, width = 2000) +
+  geom_violin(alpha = .5) + geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+  labs(title = "Mean cell-to-cell distance within batch \n
+                in (intercept, slope)") +
+  theme(axis.text.x = element_text(hjust=1, angle = 45))
+
+## Within individual
+individual <- anno_regression_ERCC$individual
+dist_vec <- lapply(1:length(unique(individual)), function(per_individual) {
+  dist_foo <- anno_regression_ERCC_dist[individual == unique(individual)[per_individual],
+                             individual == unique(individual)[per_individual] ]
+  data.frame(dist = c(rowSums(dist_foo)/(ncol(dist_foo) - 1)),
+             individual = unique(individual)[per_individual]  ) 
+})
+dist_vec <- as.data.frame(do.call(rbind, dist_vec))
+str(dist_vec)
+
+ggplot(dist_vec, aes(x= factor(individual), y = dist, fill = factor(individual)),
+       height = 600, width = 2000) +
+  geom_violin(alpha = .5) + geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+  labs(title = "Mean cell-to-cell distance within individual \n
+                in (intercept, slope)") +
+  theme(axis.text.x = element_text(hjust=1, angle = 45))
+```
+
+
+
+#### Without ERCC genes, only endogenous genes
+
+```{r conversion-in-cell-gene, fig.width=9, fig.height=9, cache=FALSE}
+## grep ENSG
+reads_ENSG <- reads[grep("ENSG", rownames(reads)), ]
+molecules_ENSG <- molecules[grep("ENSG", rownames(molecules)), ]
+
+## linear regression per cell and make a table with intercept, slope, and r-squared
+regression_table_ENSG <- as.data.frame(do.call(rbind,lapply(names(reads_ENSG),function(x){
+  fit.temp <- lm(molecules_ENSG[,x]~reads_ENSG[,x])
+    c(x,fit.temp$coefficients,summary(fit.temp)$adj.r.squared)
+})))
+names(regression_table_ENSG) <- c("sample_id","Intercept","slope","r2")
+regression_table_ENSG$Intercept <- as.numeric(as.character(regression_table_ENSG$Intercept))
+regression_table_ENSG$slope <- as.numeric(as.character(regression_table_ENSG$slope))
+regression_table_ENSG$r2 <- as.numeric(as.character(regression_table_ENSG$r2))
+plot(regression_table_ENSG$r2)
+
+anno_regression_ENSG <- merge(anno,regression_table_ENSG,by="sample_id")
+
+ggplot(anno_regression_ENSG,aes(x=Intercept,y=slope,col=as.factor(individual),shape=as.factor(batch))) + geom_point() + labs(x = "intercept", y = "slope", title = "lm of read-molecule conversion endogenous genes in each cell (counts)")
+
+ggplot(anno_regression_ENSG,aes(x=Intercept,y=slope,col=as.factor(individual),shape=as.factor(batch))) + geom_point() + labs(x = "intercept", y = "slope", title = "lm of read-molecule conversion endogenous genes in each cell (counts)") + facet_grid(individual ~ batch)
+
+## plot all the lines
+anno_regression_ENSG$reads_mean <- apply(reads_ENSG, 2, mean)
+anno_regression_ENSG$molecules_mean <- apply(molecules_ENSG, 2, mean)
+
+ggplot(anno_regression_ENSG, aes(x= reads_mean, y= molecules_mean)) + geom_point() + geom_abline(aes(intercept=Intercept, slope=slope, col=as.factor(individual), alpha= 0.5), data=anno_regression_ENSG)
+
+ggplot(anno_regression_ENSG, aes(x= reads_mean, y= molecules_mean)) + geom_point() + geom_abline(aes(intercept=Intercept, slope=slope, col=as.factor(individual), alpha= 0.5), data=anno_regression_ENSG) + facet_grid(individual ~ batch)
+```
+
+<<<<<<< HEAD
+=======
+
+>>>>>>> 14d0989e55f9dfcadd5d5d57c863395babaac991
+Pairwise distance in (intercept, slope) between batches or individuals.
+
+* Compute pairwise Euclidean distance between cells.
+
+```{r}
+anno_regression_ENSG_dist <- as.matrix( dist(anno_regression_ENSG[ , c("Intercept", "slope")]) )
+rownames(anno_regression_ENSG_dist) <- with(anno_regression_ENSG,
+                                            paste(individual, batch, sep = "_"))
+colnames(anno_regression_ENSG_dist) <- rownames(anno_regression_ENSG_dist)
+anno_regression_ENSG_dist[1:2, 1:2]
+```
+
+* Cell-to-cell Euclidean distance within each individiaual, batch
+
+```{r}
+## All cells
+dist_mean <- data.frame(dist = rowSums(anno_regression_ENSG_dist)/(ncol(anno_regression_ENSG_dist) - 1))
+ggplot(dist_mean, aes(y = dist, x = 1)) + geom_violin(alpha = .5) + 
+  geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+  labs(title = "Mean cell-to-cell distance in (intercept, slope)", x = "") +
+  theme(axis.text.x = element_text(hjust=1, angle = 45))
+
+
+## Within batch 
+batch_unique <- with(anno_regression_ENSG, paste(individual, batch, sep = "_"))
+dist_vec_b <- lapply(1:length(unique(batch_unique)), function(per_batch) {
+  dist_foo <- anno_regression_ENSG_dist[batch_unique == unique(batch_unique)[per_batch],
+                             batch_unique == unique(batch_unique)[per_batch] ]
+  data.frame(dist = c(rowSums(dist_foo)/(ncol(dist_foo) - 1)),
+             batch_unique = unique(batch_unique)[per_batch]  )
+})
+<<<<<<< HEAD
+dist_vec <- as.data.frame(do.call(rbind, dist_vec))
+str(dist_vec)
+=======
+dist_vec_b <- as.data.frame(do.call(rbind, dist_vec_b))
+colnames(dist_vec_b) <- c("dist", "batch_unique")
+dist_vec_b$dist <- as.numeric(dist_vec_b$dist)
+str(dist_vec_b)
+>>>>>>> 14d0989e55f9dfcadd5d5d57c863395babaac991
+
+ggplot(dist_vec, aes(x= factor(batch_unique), y = dist, fill = factor(batch_unique)),
+       height = 600, width = 2000) +
+  geom_violin(alpha = .5) + geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+  labs(title = "Mean cell-to-cell distance within batch \n
+                in (intercept, slope)") +
+  theme(axis.text.x = element_text(hjust=1, angle = 45))
+
+## Within individual
+individual <- anno_regression_ENSG$individual
+dist_vec <- lapply(1:length(unique(individual)), function(per_individual) {
+  dist_foo <- anno_regression_ENSG_dist[individual == unique(individual)[per_individual],
+                             individual == unique(individual)[per_individual] ]
+  data.frame(dist = c(rowSums(dist_foo)/(ncol(dist_foo) - 1)),
+             individual = unique(individual)[per_individual]  )
+})
+dist_vec <- as.data.frame(do.call(rbind, dist_vec))
+str(dist_vec)
+
+ggplot(dist_vec, aes(x= factor(individual), y = dist, fill = factor(individual)),
+       height = 600, width = 2000) +
+  geom_violin(alpha = .5) + geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+  labs(title = "Mean cell-to-cell distance within individual \n
+                in (intercept, slope)") +
+  theme(axis.text.x = element_text(hjust=1, angle = 45))
+```
+
+
+There is a clear difference between individuals. How about difference between batches? Use 9 different colors to visualize [the 9 batches](compare-reads-v-molecules.html#effect-of-sequencing-depth-on-molecule-count) 
+
+```{r mol-v-reads-single-9-batches, fig.width=8, fig.height=8}
+ggplot(anno_regression_ENSG, aes(x = Intercept, y = slope, col = paste(individual, batch, sep = "."))) +
+  geom_point() +
+  scale_color_brewer(palette = "Set1", name = "9 batches") +
+  labs(title = "lm of read-molecule conversion endogenous genes in each cell (counts)")
+```
+
+Here are the batches split by individual.
+
+```{r mol-v-reads-single-per-ind, fig.width=8, fig.height=24}
+by_batch <- ggplot(anno_regression_ENSG, aes(x = Intercept, y = slope)) +
+            geom_point(aes(color = as.factor(batch))) +
+            facet_wrap(~individual, nrow = 3) +
+            scale_color_brewer(palette = "Dark2", name = "batch") +
+            labs(title = "lm of read-molecule conversion endogenous genes in each cell (counts)")
+by_batch
+by_batch + geom_smooth(aes(group=batch, color = as.factor(batch)), method="lm") 
+```
+
+19098 have more total endogenous gene molecules and more ERCC molecule
+
+```{r total-molecule, fig.width=9, fig.height=9, cache=FALSE}
+anno_regression$total_molecule_ERCC <- apply(molecules_ERCC, 2, sum)
+anno_regression$total_molecule_ENSG <- apply(molecules_ENSG, 2, sum)
+anno_regression$total_molecule <- apply(molecules, 2, sum) 
+ggplot(anno_regression, aes(x= total_molecule_ERCC, y= total_molecule,col=as.factor(individual),shape=as.factor(batch))) + geom_point()
+ggplot(anno_regression, aes(x = as.factor(individual), y = total_molecule_ENSG)) + geom_boxplot(aes(fill = as.factor(batch)))
+ggplot(anno_regression, aes(x = as.factor(individual), y = total_molecule_ERCC)) + geom_boxplot(aes(fill = as.factor(batch)))
+```
+
+### Log2 counts
+
+Compare the log counts. The r squared values of lm are relativiely low (around 0.85). 
+
+```{r conversion-in-cell-log, fig.width=9, fig.height=9, cache=FALSE}
+regression_table_log <- as.data.frame(do.call(rbind,lapply(names(reads_log),function(x){
+  fit.temp <- lm(molecules_log[,x]~reads_log[,x])
+    c(x,fit.temp$coefficients,summary(fit.temp)$adj.r.squared)
+})))
+names(regression_table_log) <- c("sample_id","Intercept","slope","r2")
+regression_table_log$Intercept <- as.numeric(as.character(regression_table_log$Intercept))
+regression_table_log$slope <- as.numeric(as.character(regression_table_log$slope))
+regression_table_log$r2 <- as.numeric(as.character(regression_table_log$r2))
+plot(regression_table_log$r2)
+
+anno_regression_log <- merge(anno,regression_table_log,by="sample_id")
+ggplot(anno_regression_log,aes(x=Intercept,y=slope,col=as.factor(individual),shape=as.factor(batch))) + geom_point() + labs(x = "intercept", y = "slope", title = "read-molecule conversion (log2)")
+```
+
+### counts per million
+
+Compare the counts per million. 
+
+```{r conversion-in-cell-cpm, fig.width=9, fig.height=9, cache=FALSE}
+regression_table_cpm <- as.data.frame(do.call(rbind,lapply(colnames(reads_cpm),function(x){
+  fit.temp <- lm(molecules_cpm[,x]~reads_cpm[,x])
+    c(x,fit.temp$coefficients,summary(fit.temp)$adj.r.squared)
+})))
+names(regression_table_cpm) <- c("sample_id","Intercept","slope","r2")
+regression_table_cpm$Intercept <- as.numeric(as.character(regression_table_cpm$Intercept))
+regression_table_cpm$slope <- as.numeric(as.character(regression_table_cpm$slope))
+regression_table_cpm$r2 <- as.numeric(as.character(regression_table_cpm$r2))
+plot(regression_table_cpm$r2)
+
+anno_regression_cpm <- merge(anno,regression_table_cpm,by="sample_id")
+
+ggplot(anno_regression_cpm,aes(x=Intercept,y=slope,col=as.factor(individual),shape=as.factor(batch))) + geom_point() + labs(x = "intercept", y = "slope", title = "read-molecule conversion (cpm no log)")
+
+ggplot(anno_regression_cpm,aes(x=Intercept,y=slope,col=as.factor(individual),shape=as.factor(batch))) + geom_point() + labs(x = "intercept", y = "slope", title = "read-molecule conversion (cpm no log)") + facet_grid(individual ~ batch) 
+
+## plot all the lines
+anno_regression_cpm$reads_mean <- apply(reads_cpm, 2, mean)
+anno_regression_cpm$molecules_mean <- apply(molecules_cpm, 2, mean)
+
+ggplot(anno_regression_cpm, aes(x= reads_mean, y= molecules_mean)) + geom_point() + geom_abline(aes(intercept=Intercept, slope=slope, col=as.factor(individual), alpha = 0.01), data=anno_regression_cpm) + facet_grid(individual ~ batch) 
+
+## look at just the slope using total raw molecule counts (total cpm molecule counts are all the same across cells)
+anno_regression_cpm$total_molecule <- apply(molecules, 2, sum)
+ggplot(anno_regression_cpm, aes(x= total_molecule, y= slope,col=as.factor(individual),shape=as.factor(batch))) + geom_point()
+```
+
+Only ERCC genes
+```{r conversion-in-cell-cpm-ERCC, fig.width=9, fig.height=9, cache=FALSE}
+## grep ERCC
+reads_cpm_ERCC <- as.data.frame(reads_cpm[grep("ERCC", rownames(reads_cpm)), ])
+molecules_cpm_ERCC <- as.data.frame(molecules_cpm[grep("ERCC", rownames(molecules_cpm)), ])
+
+## linear regression per cell and make a table with intercept, slope, and r-squared
+regression_table_cpm_ERCC <- as.data.frame(do.call(rbind,lapply(names(reads_cpm_ERCC),function(x){
+  fit.temp <- lm(molecules_cpm_ERCC[,x]~reads_cpm_ERCC[,x])
+    c(x,fit.temp$coefficients,summary(fit.temp)$adj.r.squared)
+})))
+names(regression_table_cpm_ERCC) <- c("sample_id","Intercept","slope","r2")
+regression_table_cpm_ERCC$Intercept <- as.numeric(as.character(regression_table_cpm_ERCC$Intercept))
+regression_table_cpm_ERCC$slope <- as.numeric(as.character(regression_table_cpm_ERCC$slope))
+regression_table_cpm_ERCC$r2 <- as.numeric(as.character(regression_table_cpm_ERCC$r2))
+plot(regression_table_cpm_ERCC$r2)
+
+anno_regression_cpm_ERCC <- merge(anno,regression_table_cpm_ERCC,by="sample_id")
+
+ggplot(anno_regression_cpm_ERCC,aes(x=Intercept,y=slope,col=as.factor(individual),shape=as.factor(batch))) + geom_point() + labs(x = "intercept", y = "slope", title = "read-molecule conversion ERCC genes (cpm no log)") 
+
+## plot all the lines
+anno_regression_cpm_ERCC$reads_mean <- apply(reads_cpm_ERCC, 2, mean)
+anno_regression_cpm_ERCC$molecules_mean <- apply(molecules_cpm_ERCC, 2, mean)
+
+ggplot(anno_regression_cpm_ERCC, aes(x= reads_mean, y= molecules_mean)) + geom_point() + geom_abline(aes(intercept=Intercept, slope=slope, col=as.factor(individual), alpha= 0.5), data=anno_regression_cpm_ERCC) + facet_grid(individual ~ batch)
+```
+
+### TMM-normalized counts per million
+
+Compare TMM-normalized log2-transformed cpm . 
+
+```{r conversion-in-cell-tmm, fig.width=9, fig.height=9, cache=FALSE}
+regression_table_tmm <- as.data.frame(do.call(rbind,lapply(colnames(reads_tmm),function(x){
+  fit.temp <- lm(molecules_tmm[,x]~reads_tmm[,x])
+    c(x,fit.temp$coefficients,summary(fit.temp)$adj.r.squared)
+})))
+names(regression_table_tmm) <- c("sample_id","Intercept","slope","r2")
+regression_table_tmm$Intercept <- as.numeric(as.character(regression_table_tmm$Intercept))
+regression_table_tmm$slope <- as.numeric(as.character(regression_table_tmm$slope))
+regression_table_tmm$r2 <- as.numeric(as.character(regression_table_tmm$r2))
+plot(regression_table_tmm$r2)
+
+anno_regression_tmm <- merge(anno,regression_table_tmm,by="sample_id")
+
+ggplot(anno_regression_tmm,aes(x=Intercept,y=slope,col=as.factor(individual),shape=as.factor(batch))) + geom_point() + labs(x = "intercept", y = "slope", title = "read-molecule conversion (tmm cpm log)")
+
+ggplot(anno_regression_tmm,aes(x=Intercept,y=slope,col=as.factor(individual),shape=as.factor(batch))) + geom_point() + labs(x = "intercept", y = "slope", title = "read-molecule conversion (tmm cpm log)") + facet_grid(individual ~ batch) 
+
+## plot all the lines
+anno_regression_tmm$reads_mean <- apply(reads_tmm, 2, mean)
+anno_regression_tmm$molecules_mean <- apply(molecules_tmm, 2, mean)
+
+ggplot(anno_regression_tmm, aes(x= reads_mean, y= molecules_mean)) + geom_point() + geom_abline(aes(intercept=Intercept, slope=slope, col=as.factor(individual), alpha = 0.01), data=anno_regression_tmm) + facet_grid(individual ~ batch) 
+```
+
+## Session information
+
+```{r info}
+sessionInfo()
+```

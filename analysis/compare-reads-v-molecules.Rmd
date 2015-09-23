@@ -33,7 +33,6 @@ library("ggplot2")
 theme_set(theme_bw(base_size = 16))
 library("edgeR")
 source("functions.R")
-library("tidyr")
 ```
 
 Input annotation.
@@ -101,12 +100,14 @@ molecules_per_lane <- molecules_per_lane[expressed, ]
 ```
 
 ## Sequencing depth 
+
+Calculate the number of reads per molecule of each gene in each cell.
+
 ```{r seq-depth}
 reads_per_molecule <- as.matrix(reads/molecules)
 hist(reads_per_molecule, breaks=100)
 plot(density(reads_per_molecule, na.rm = TRUE))
 ```
-
 
 ## Calculate counts per million (cpm)
 
@@ -200,7 +201,7 @@ Let's check this assumption.
 Does the total number of molecules per sample vary with the total number of reads?
 If it is not necessary to standardize the molecule counts, the molecule counts should be consistent across varying read depths.
 
-```{r total-mol-v-reads-single}
+```{r total-mol-v-reads-single, fig.width=8, fig.height=8}
 total_counts_data <- data.frame(total_reads = colSums(reads) / 10^6,
                                 total_molecules = colSums(molecules) / 10^3,
                                 anno)
@@ -247,6 +248,36 @@ total_reads_ind <- total_molecules_ind %+% aes(y = total_reads) +
   labs(y = "Reads (x10^6)",
        title = "Total read counts vary across individuals")
 total_reads_ind
+```
+
+There is a clear difference between individuals.
+Is there a difference between the full 9 batches?
+
+```{r total-mol-v-reads-single-9-batches, fig.width=8, fig.height=8}
+total_counts_single_batch <- ggplot(total_counts_data[total_counts_data$well != "bulk", ],
+                              aes(x = total_reads, y = total_molecules,
+                                  col = paste(individual, batch, sep = "."))) +
+  geom_point() +
+  scale_color_brewer(palette = "Set1", name = "9 batches") +
+  labs(x = "Total number of reads (x10^6)",
+       y = "Total number of molecules (x10^3)",
+       title = "Effect of read depth on single cells")
+total_counts_single_batch
+```
+
+It is diffcult to see when all 9 are plotted at once.
+Here are the batches split by individual.
+
+```{r total-mol-v-reads-single-per-ind, fig.width=8, fig.height=24}
+total_counts_single_ind <- ggplot(total_counts_data[total_counts_data$well != "bulk", ],
+                              aes(x = total_reads, y = total_molecules)) +
+  geom_point(aes(color = as.factor(batch))) +
+  facet_wrap(~individual, nrow = 3) +
+  scale_color_brewer(palette = "Dark2", name = "batch") +
+  labs(x = "Total number of reads (x10^6)",
+       y = "Total number of molecules (x10^3)",
+       title = "Effect of read depth on single cells")
+total_counts_single_ind
 ```
 
 What effect does this difference in total molecule count have in PCA?
@@ -313,43 +344,6 @@ pc2_v_total_mol_corrected
 ```
 
 PC1 is no longer associated with sequencing depth!
-
-## Differences in conversion of reads to molecules
-
-As seen above with the total counts, the conversion of reads to molecules varies between each of the 9 batches.
-Below I fit a loess transformation to each individually.
-It would be ideal if we could somehow we could correct for these differences and have them all follow a similar transformation from reads to molecules.
-
-In order to be able to make this plot, I have to subsample to fewer genes.
-
-```{r gather-cols-to-rows}
-set.seed(12345)
-sub_indices <- sample(1:nrow(reads), 250)
-reads_sub <- reads[sub_indices, ]
-reads_long <- gather(reads_sub, key = "id", value = "reads")
-molecules_sub <- molecules[sub_indices, ]
-molecules_long <- gather(molecules_sub, key = "id", value = "molecules")
-reads_long <- separate(reads_long, col = "id",  sep = "\\.", remove = FALSE,
-                       into = c("individual", "batch", "well"))
-stopifnot(reads_long$id == molecules_long$id)
-conversion <- cbind(reads_long, molecules_long)
-stopifnot(nrow(conversion) == nrow(molecules_long))
-dim(conversion)
-head(conversion)
-```
-
-```{r convert-reads-molecules-per-batch, fig.width=9, fig.height=9}
-ggplot(conversion[conversion$well != "bulk", ],
-       aes(x = reads, y = molecules, col = individual,
-           shape = as.factor(batch))) +
-  geom_point() +
-  geom_smooth(method = "loess", color = "black") +
-  facet_grid(batch ~ individual) +
-  theme(legend.position = "none") +
-  labs(x = "Total number of reads",
-       y = "Total number of molecules",
-       title = "Conversion per batch (subsample of 250 genes)")
-```
 
 ## Compare reads and standardized molecules
 

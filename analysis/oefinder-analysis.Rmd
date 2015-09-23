@@ -1,0 +1,194 @@
+---
+title: "Ordering effect of the capture sites"
+author: "Joyce Hsiao"
+date: 2015-09-09
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+```
+
+## All genes, cells
+
+We investigated potential ordering effect of wells on each place on gene
+expression across the 9 plates (batches). [Leng](http://dx.doi.org/10.1038/nmeth.3549) et al. discussed ordering effect 
+in single-cell RNA-seq experiments using Fluidigm C1 and implemented an algorithm that detects ordering effect of wells on gene expression in [OEFinder](http://dx.doi.org/10.1101/025437).
+
+Note that OEFinder relies on a series of permutations. We had to run OEFinder on a cluster-based computing system.
+
+The results indicated that there are 549 OE genes (out of 20419 genes). GO analysis (DAVID) of these 549 showed that their functions related to membrane lumen (organelle lumen), ribosomal protein, and RNA processing (splicesome), suggesting that they might be all highly expressed genes. 
+
+
+## Setup
+```{r}
+source("functions.R")
+library(edgeR)
+library(ggplot2)
+theme_set(theme_bw(base_size = 16))
+
+# Packages required to start OEFinder
+# library(shiny)
+# library(gdata)
+# library(shinyFiles)
+# library(EBSeq)
+```
+
+
+
+## Prepare single cell data before filtering
+
+Input annotation
+
+```{r}
+anno <- read.table("../data/annotation.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno)
+```
+
+Input read counts.
+
+```{r}
+reads <- read.table("../data/reads.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+```
+
+Input molecule counts
+
+```{r}
+molecules <- read.table("../data/molecules.txt", header = TRUE, stringsAsFactors = FALSE)
+```
+
+Remove bulk samples
+
+```{r}
+single_samples <- anno$well != "bulk"
+anno_single <- anno[ which(single_samples), ]
+molecules_single <- molecules[ , which(single_samples)]
+reads_single <- reads[ , which(single_samples)]
+stopifnot(ncol(molecules_single) == nrow(anno_single),
+          colnames(molecules_single) == anno_single$sample_id)
+```
+
+
+Output single cell samples to txt files.
+
+```{r, eval = FALSE}
+if (!file.exists("../data/molecules-single.txt")) {
+  write.table(molecules_single, 
+              file = "../data/molecules-single.txt",
+              quote = FALSE,
+              col.names = TRUE, row.names = TRUE)
+}
+
+if (!file.exists("../data/reads-single.txt")) {
+  write.table(reads_single, 
+              file = "../data/reads-single.txt",
+              quote = FALSE,
+              col.names = TRUE, row.names = TRUE)
+}
+```
+
+
+Prepare capture site identification file. A txt file with one column of capture site ID (A, B, C, ..., H).
+
+```{r}
+require(stringr)
+capture_site <- str_extract(anno_single$well, "[aA-zZ]+")
+table(capture_site)
+```
+
+
+Save capture_site to a txt file.
+
+```{r, eval = FALSE}
+if (!file.exists("../data/capture-site.txt")) {
+write.table(data.frame(site = capture_site), 
+            file = "../data/capture-site.txt",
+            quote = FALSE,
+            col.names = FALSE, row.names = FALSE)
+}
+```
+
+
+### Molecule count data
+
+For unnormalized data, OEFinder defaults the DESeq normalization method. 
+
+Upload *molecules.txt* and *capture-site.txt* to OEFinder Shiny GUI interface.
+
+Output to *singleCellSeq/data/OEFinder*.
+
+
+```{r}
+# runGitHub("OEFinder", "lengning")
+
+OE_raw <- read.csv("../data/OEFinder/all-genes-OEgenes.csv",
+                     stringsAsFactors = FALSE,
+                     quote = "\"", sep = ",", header = TRUE)
+colnames(OE_raw) <- c("genes", "pvalue")
+head(OE_raw)
+str(OE_raw)
+```
+
+
+2 ERCC genes in the Overexpressed genes
+
+```{r}
+grep("ERCC", OE_raw$genes)
+```
+
+
+Create an indicator variable for the OE genes
+
+```{r}
+oefinder_raw <- rownames(molecules_single) %in% as.character(OE_raw$genes)
+table(oefinder_raw)
+```
+
+Summarize individual, well, and batch information for the OE genes.
+
+```{r}
+anno_single_oe_raw <- anno_single[which(oefinder_raw), ]
+
+with(anno_single_oe_raw, table(well, batch, individual))
+```
+
+## Expression level of OE genes
+
+To answer the question if OE genes are more highly expressed, the average molecule cmp of OE genes or of all genes in each cells were plotted. If the OE genes are highly expressed, it is possible that this position effect is present in all genes but can only be observed with certain amount of expressing level.
+
+```{r}
+## remove gene with 0 counts
+expressed_single <- rowSums(molecules_single) > 0
+molecules_single <- molecules_single[expressed_single, ]
+dim(molecules_single)
+
+## remove gene with molecule count larger than 1024 (15 if them)
+overexpressed_genes <- rownames(molecules_single)[apply(molecules_single, 1,
+                                                        function(x) any(x >= 1024))]
+molecules_single <- molecules_single[!(rownames(molecules_single) %in% overexpressed_genes), ]
+
+## collision probability and cpm molecule counts
+molecules_single_collision <- -1024 * log(1 - molecules_single / 1024)
+molecules_single_cpm <- cpm(molecules_single_collision, log = TRUE)
+
+## select for OE genes 
+molecules_single_OE <- molecules_single_cpm[rownames(molecules_single_cpm) %in% as.character(OE_raw$genes),]
+
+## boxplot
+anno_single$OE_ave <- apply(molecules_single_OE, 2, mean)
+anno_single$all_gene_ave <- apply(molecules_single_cpm, 2, mean)
+
+ggplot(anno_single, aes(x = as.factor(individual))) + geom_boxplot(aes( y = OE_ave, fill = as.factor(batch), alpha = 0.25)) + geom_boxplot(aes( y = all_gene_ave, fill = as.factor(batch))) +  labs (x = "individual", y = "avarage molecule cpm", alpha = "OE", fill = "batch")
+```
+
+
+## Session information
+
+```{r info}
+sessionInfo()
+```

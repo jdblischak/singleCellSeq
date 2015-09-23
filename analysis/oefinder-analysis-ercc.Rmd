@@ -1,0 +1,138 @@
+---
+title: "Ordering effect of the capture sites"
+author: "Joyce Hsiao"
+date: 2015-09-09
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+```
+
+## ERCC genes
+
+We investigated potential ordering effect of wells on each place on gene
+expression across the 9 plates (batches). [Leng](http://dx.doi.org/10.1038/nmeth.3549) et al. discussed ordering effect 
+in single-cell RNA-seq experiments using Fluidigm C1 and implemented an algorithm that detects ordering effect of wells on gene expression in [OEFinder](http://dx.doi.org/10.1101/025437).
+
+
+## Setup
+```{r}
+source("functions.R")
+library(edgeR)
+
+# Packages required to start OEFinder
+# library(shiny)
+# library(gdata)
+# library(shinyFiles)
+# library(EBSeq)
+```
+
+
+
+## Prepare single cell data before filtering
+
+Input annotation
+
+```{r}
+anno <- read.table("../data/annotation.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno)
+```
+
+Input read counts.
+
+```{r}
+reads <- read.table("../data/reads.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+```
+
+Input molecule counts
+
+```{r}
+molecules <- read.table("../data/molecules.txt", header = TRUE, stringsAsFactors = FALSE)
+```
+
+
+Remove bulk samples
+
+```{r}
+single_samples <- anno$well != "bulk"
+anno_single <- anno[ which(single_samples), ]
+molecules_single <- molecules[ , which(single_samples)]
+reads_single <- reads[ , which(single_samples)]
+stopifnot(ncol(molecules_single) == nrow(anno_single),
+          colnames(molecules_single) == anno_single$sample_id)
+```
+
+Prepare ERCC data
+
+```{r}
+gene_rows_ercc <- grep("ERCC", rownames(molecules_single))
+dim(molecules_single[gene_rows_ercc, ])
+```
+
+
+Output single cell samples to txt files.
+
+```{r, eval = FALSE}
+if (!file.exists("../data/molecules-single-ercc.txt")) {
+  write.table(molecules_single[gene_rows_ercc,], 
+              file = "../data/molecules-single-ercc.txt",
+              quote = FALSE,
+              col.names = TRUE, row.names = TRUE)
+}
+
+if (!file.exists("../data/reads-single-ercc.txt")) {
+  write.table(reads_single[gene_rows_ercc,], 
+              file = "../data/reads-single-ercc.txt",
+              quote = FALSE,
+              col.names = TRUE, row.names = TRUE)
+}
+```
+
+
+Prepare capture site identification file. A txt file with one column of capture site ID (A, B, C, ..., H).
+
+```{r}
+require(stringr)
+capture_site <- str_extract(anno_single$well, "[aA-zZ]+")
+table(capture_site)
+```
+
+
+Save capture_site to a txt file.
+
+```{r, eval = FALSE}
+if (!file.exists("../data/capture-site-ercc.txt")) {
+write.table(data.frame(site = capture_site), 
+            file = "../data/capture-site-ercc.txt",
+            quote = FALSE,
+            col.names = FALSE, row.names = FALSE)
+}
+```
+
+
+### Molecule count data
+
+For unnormalized data, OEFinder defaults the DESeq normalization method. 
+
+Upload *molecules-single-ercc.txt* and *capture-site-single-ercc.txt* to OEFinder Shiny GUI interface.
+
+Output to *singleCellSeq/data/OEFinder*.
+
+
+```{r}
+# runGitHub("OEFinder", "lengning")
+
+OE_ercc <- read.csv("../data/OEFinder/ercc-OEgenes.csv",
+                     stringsAsFactors = FALSE,
+                     quote = "\"", sep = ",", header = TRUE)
+colnames(OE_ercc) <- c("genes", "pvalue")
+head(OE_ercc)
+str(OE_ercc)
+```
+

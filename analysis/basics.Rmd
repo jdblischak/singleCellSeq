@@ -1,5 +1,5 @@
 ---
-title: "BASiCS"
+title: "BASiCS - 40,000 iterations"
 date: 2015-08-10
 ---
 
@@ -11,9 +11,32 @@ date: 2015-08-10
 source("chunk-options.R")
 ```
 
-This was run on Ubuntu.
-A dependency, RccpArmadillo, cannot be installed on the cluster.
-Our systems admin has not been able to figure out the reason.
+We analyzed our single cell data with [BASiCS][] developed by [Vallejos et al., 2015][vallejos2015].
+The results shown here are from a model fit with 40,000 iterations.
+
+Conclusions:
+
+*  The parameter Phi captures differences in sequencing depth. It changes quantitatively with increasing iterations, but not qualitatively
+*  The parameter s measures capture efficiency, but requires a large number of iterations to agree with our estimates
+*  The normalization provided by BASiCS does not change the PCA result much compared to non-normalized log2 counts per million data, and this does not change based on the number of iterations
+
+Here are all the different versions of the results based on different number of iterations:
+
+*  [40,000](basics.html)
+*  [20,000](basics-20000.html)
+*  [4,000](basics-4000.html)
+
+
+[basics]: https://github.com/catavallejos/BASiCS
+[vallejos2015]: http://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1004333
+
+BASiCS and its dependency, RcppArmadillo, were able to be installed on the cluster using a new version of gcc.
+Since this took a long time to run, it was submitted via the following:
+
+```bash
+echo "Rscript -e 'library(rmarkdown); render(\"basics.Rmd\")'" | \
+  qsub -l h_vmem=32g -cwd -V -j y -o ~/log/ -N basics
+```
 
 ```{r packages}
 library("BASiCS")
@@ -122,23 +145,33 @@ filter_data = newBASiCS_Data(basics_filter$Counts, basics_filter$Tech,
 ## Fit the model
 
 ```{r fit-model}
-if (file.exists("../data/chain_phi_mcmc.txt")) {
-  chain_mu = as.matrix(fread("../data/chain_mu_mcmc.txt"))
-  chain_delta = as.matrix(fread("../data/chain_delta_mcmc.txt"))
-  chain_phi = as.matrix(fread("../data/chain_phi_mcmc.txt"))
-  chain_s = as.matrix(fread("../data/chain_s_mcmc.txt"))
-  chain_nu = as.matrix(fread("../data/chain_nu_mcmc.txt"))#
-  chain_theta = as.matrix(fread("../data/chain_theta_mcmc.txt")[, 1, with = FALSE])
+store_dir <- "../data"
+run_name <- "40000"
+if (file.exists(paste0(store_dir, "/chain_phi_", run_name, ".txt"))) {
+  chain_mu = as.matrix(fread(paste0(store_dir, "/chain_mu_", run_name, ".txt")))
+  chain_delta = as.matrix(fread(paste0(store_dir, "/chain_delta_", run_name, ".txt")))
+  chain_phi = as.matrix(fread(paste0(store_dir, "/chain_phi_", run_name, ".txt")))
+  chain_s = as.matrix(fread(paste0(store_dir, "/chain_s_", run_name, ".txt")))
+  chain_nu = as.matrix(fread(paste0(store_dir, "/chain_nu_", run_name, ".txt")))
+  chain_theta = as.matrix(fread(paste0(store_dir, "/chain_mu_", run_name, ".txt"))[, 1, with = FALSE])
 
   mcmc_output <- newBASiCS_Chain(mu = chain_mu, delta = chain_delta,
                                  phi = chain_phi, s = chain_s,
                                  nu = chain_nu, theta = chain_theta)
+
+  time_total <- readRDS(paste0(store_dir, "/time_total_", run_name, ".rds"))
 } else {
-  mcmc_output <- BASiCS_MCMC(filter_data, N = 4000, Thin = 10, Burn = 2000,
+  time_start <- Sys.time()
+  mcmc_output <- BASiCS_MCMC(filter_data, N = 40000, Thin = 10, Burn = 20000,
                              PrintProgress = TRUE, StoreChains = TRUE,
-                             StoreDir = "../data", RunName = "mcmc")
+                             StoreDir = store_dir, RunName = run_name)
+  time_end <- Sys.time()
+  time_total <- difftime(time_end, time_start, units = "hours")
+  saveRDS(time_total, paste0(store_dir, "/time_total_", run_name, ".rds"))
 }
 ```
+
+Fitting the model took `r round(as.numeric(time_total), 2)` hours.
 
 Summarize the results.
 
@@ -173,8 +206,10 @@ phi$total_count <- colSums(counts(filter_data))
 ```{r phi-versus-molecule-count}
 phi_molecule_plot <- ggplot(phi, aes(x = total_count, y = Phi)) +
   geom_point() +
+  geom_smooth(method = "lm") +
   labs(x = "Total molecule count",
-       title = "Phi measures total molecule count differences")
+       title = paste0("Phi measures total molecule count differences\nr = ",
+                      round(cor(phi$total_count, phi$Phi), 2)))
 phi_molecule_plot
 ```
 
@@ -201,15 +236,16 @@ While the fit is not as good, it is still clearly driving the pattern.
 
 ```{r phi-versus-read-count}
 phi_read_plot <- phi_molecule_plot %+% phi %+% aes(x = total_read_count) +
-  geom_smooth() +
+  geom_smooth(method = "lm") +
   labs(x = "Total read count (x10^6)",
-       title = "Phi measure total read count differences")
+       title = paste0("Phi measures total read count differences\nr = ",
+                      round(cor(phi$total_read_count, phi$Phi), 2)))
 phi_read_plot
 ```
 
 ## Capture efficiency
 
-S is supposed to measure the capture efficiency.
+S measures the capture efficiency.
 
 ```{r s-capture-efficiency}
 plot(mcmc_summary, Param = "s")
@@ -231,16 +267,24 @@ s <- cbind(s, anno_single)
 s$efficiency <- efficiency
 ```
 
-This does not appear to be estimated very well.
-It may need more iterations, but it already takes ~5 hours to run the 4000 iterations.
+This takes lots of iterations to estimate well.
+With just a few thousand iterations, the correlation with the capture efficiency is low.
+Once the iterations are in the tens of thousands, the correlation with the capture efficiency is better.
 
 ```{r s-v-capture-efficiency}
-ggplot(s, aes(x = efficiency, y = S)) +
+s_plot <- ggplot(s, aes(x = efficiency, y = S)) +
   geom_point() +
-  geom_errorbar(aes(ymin = lower, ymax = upper), alpha = 0.5) +
-  geom_smooth() +
+  geom_smooth(method = "lm") +
   labs(x = "ERCC capture efficiency",
-       title = "S poorly models differences in capture efficiency")
+       title = paste0("S measures capture efficiency\nr = ",
+                      round(cor(s$efficiency, s$S), 2)))
+s_plot
+```
+
+The correlation is harder to see when the the 95% posterior density intervals are added the posterior medians.
+
+```{r s-v-capture-efficiency-prob-density}
+s_plot + geom_errorbar(aes(ymin = lower, ymax = upper), alpha = 0.5)
 ```
 
 ## Denoised data
@@ -254,6 +298,7 @@ denoised = BASiCS_DenoisedCounts(Data = filter_data, Chain = mcmc_output)
 ### PCA - BASiCS Denoised
 
 Both the raw and the cpm versions of the BASiCS denoised data appear similar to the result with the [non-normalized cpm data](#pca-non-normalized-cpm).
+This does not change substantially when increasing the iterations from a few thousands to a few tens of thousands.
 
 ```{r pca-basics}
 pca_basics <- run_pca(denoised)
