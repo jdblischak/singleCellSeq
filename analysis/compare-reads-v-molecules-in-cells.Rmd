@@ -71,8 +71,8 @@ stopifnot(dim(reads) == dim(molecules),
           nrow(anno) == ncol(reads))
 ```
 
-## Distribution 
-Look at the distribution of fold change to mean.  
+## Distribution of fold change to mean
+Look at the distribution of fold change to mean. As being reported by others, the lowly expressed genes show divergent read and molecule counts
 
 ```{r distribution}
 ## calculate mean
@@ -91,35 +91,6 @@ distribution$ERCC <- grepl("ERCC", rownames(distribution))
 cbPalette <- c("#999999", "#0000FF", "#990033", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#009E73")
 
 ggplot(distribution, aes(x = fold_change_molecule, y = fold_change_read, col = ERCC)) + geom_point(size = 3, alpha = 0.5) + scale_colour_manual(values=cbPalette) + stat_function(fun= function(x) {x}, col= "#56B4E9") + labs(x = "log2 fold change to mean (molecule)", y =  "log2 fold change to mean (reads)")
-```
-
-## Filter
-
-Only keep the following genes:
-
-*  ERCC genes with at least one molecule observed in at least one single cell
-
-```{r keep-ercc}
-ercc_keep <- rownames(molecules)[grepl("ERCC", rownames(molecules)) &
-                                 rowSums(molecules) > 1]
-```
-
-*  The top expressed endogenous genes in terms of mean molecule counts per million
-
-```{r top-expressed-genes}
-num_genes <- 12000
-mean_cpm <- molecules %>%
-  filter(!grepl("ERCC", rownames(molecules))) %>%
-  cpm %>%
-  rowMeans
-gene_keep <- rownames(molecules)[!grepl("ERCC", rownames(molecules))][order(mean_cpm, decreasing = TRUE)][1:num_genes]
-```
-
-Filter the genes:
-
-```{r filter-genes}
-reads <- reads[rownames(reads) %in% c(gene_keep, ercc_keep), ]
-molecules <- molecules[rownames(molecules) %in% c(gene_keep, ercc_keep), ]
 ```
 
 ## Transformation
@@ -183,8 +154,6 @@ ggplot(anno_regression,aes(x=Intercept,y=slope,col=as.factor(individual),shape=a
 anno_regression$reads_mean <- apply(reads, 2, mean)
 anno_regression$molecules_mean <- apply(molecules, 2, mean)
 
-ggplot(anno_regression, aes(x= reads_mean, y= molecules_mean)) + geom_point() + geom_abline(aes(intercept=Intercept, slope=slope, col=as.factor(individual), alpha= 0.5), data=anno_regression) 
-
 ggplot(anno_regression, aes(x= reads_mean, y= molecules_mean)) + geom_point() + geom_abline(aes(intercept=Intercept, slope=slope, col=as.factor(individual), alpha= 0.5), data=anno_regression) + facet_grid(individual ~ batch)
 ```
 
@@ -212,8 +181,6 @@ ggplot(anno_regression_ERCC,aes(x=Intercept,y=slope,col=as.factor(individual),sh
 anno_regression_ERCC$reads_mean <- apply(reads_ERCC, 2, mean)
 anno_regression_ERCC$molecules_mean <- apply(molecules_ERCC, 2, mean)
 
-ggplot(anno_regression_ERCC, aes(x= reads_mean, y= molecules_mean)) + geom_point() + geom_abline(aes(intercept=Intercept, slope=slope, col=as.factor(individual), alpha= 0.5), data=anno_regression_ERCC) 
-
 ggplot(anno_regression_ERCC, aes(x= reads_mean, y= molecules_mean)) + geom_point() + geom_abline(aes(intercept=Intercept, slope=slope, col=as.factor(individual), alpha= 0.5), data=anno_regression) + facet_grid(individual ~ batch)
 ```
 
@@ -235,21 +202,42 @@ regression_table_ENSG$r2 <- as.numeric(as.character(regression_table_ENSG$r2))
 plot(regression_table_ENSG$r2)
 
 anno_regression_ENSG <- merge(anno,regression_table_ENSG,by="sample_id")
-ggplot(anno_regression_ENSG,aes(x=Intercept,y=slope,col=as.factor(individual),shape=as.factor(batch))) + geom_point() + labs(x = "intercept", y = "slope", title = "read-molecule conversion endogenous genes (counts)")
 
-ggplot(anno_regression_ENSG,aes(x=Intercept,y=slope,col=as.factor(individual),shape=as.factor(batch))) + geom_point() + labs(x = "intercept", y = "slope", title = "read-molecule conversion endogenous genes (counts)") + facet_grid(individual ~ batch)
+ggplot(anno_regression_ENSG,aes(x=Intercept,y=slope,col=as.factor(individual),shape=as.factor(batch))) + geom_point() + labs(x = "intercept", y = "slope", title = "lm of read-molecule conversion endogenous genes in each cell (counts)")
+
+ggplot(anno_regression_ENSG,aes(x=Intercept,y=slope,col=as.factor(individual),shape=as.factor(batch))) + geom_point() + labs(x = "intercept", y = "slope", title = "lm of read-molecule conversion endogenous genes in each cell (counts)") + facet_grid(individual ~ batch)
 
 ## plot all the lines
 anno_regression_ENSG$reads_mean <- apply(reads_ENSG, 2, mean)
 anno_regression_ENSG$molecules_mean <- apply(molecules_ENSG, 2, mean)
 
-ggplot(anno_regression_ENSG, aes(x= reads_mean, y= molecules_mean)) + geom_point() + geom_abline(aes(intercept=Intercept, slope=slope, col=as.factor(individual), alpha= 0.5), data=anno_regression_ENSG) 
+ggplot(anno_regression_ENSG, aes(x= reads_mean, y= molecules_mean)) + geom_point() + geom_abline(aes(intercept=Intercept, slope=slope, col=as.factor(individual), alpha= 0.5), data=anno_regression_ENSG)
 
 ggplot(anno_regression_ENSG, aes(x= reads_mean, y= molecules_mean)) + geom_point() + geom_abline(aes(intercept=Intercept, slope=slope, col=as.factor(individual), alpha= 0.5), data=anno_regression_ENSG) + facet_grid(individual ~ batch)
 ```
 
+There is a clear difference between individuals. How about difference between batches? Use 9 different colors to visualize [the 9 batches](compare-reads-v-molecules.html#effect-of-sequencing-depth-on-molecule-count) 
+
+```{r mol-v-reads-single-9-batches, fig.width=8, fig.height=8}
+ggplot(anno_regression_ENSG, aes(x = Intercept, y = slope, col = paste(individual, batch, sep = "."))) +
+  geom_point() +
+  scale_color_brewer(palette = "Set1", name = "9 batches") +
+  labs(title = "lm of read-molecule conversion endogenous genes in each cell (counts)")
+```
+
+Here are the batches split by individual.
+
+```{r mol-v-reads-single-per-ind, fig.width=8, fig.height=24}
+ggplot(anno_regression_ENSG, aes(x = Intercept, y = slope)) +
+  geom_point(aes(color = as.factor(batch))) +
+  facet_wrap(~individual, nrow = 3) +
+  scale_color_brewer(palette = "Dark2", name = "batch") +
+  labs(title = "lm of read-molecule conversion endogenous genes in each cell (counts)")
+```
+
+19098 have more total endogenous gene molecules and more ERCC molecule
+
 ```{r total-molecule, fig.width=9, fig.height=9, cache=FALSE}
-## 19098 have more total endogenous gene molecules and more ERCC molecule
 anno_regression$total_molecule_ERCC <- apply(molecules_ERCC, 2, sum)
 anno_regression$total_molecule_ENSG <- apply(molecules_ENSG, 2, sum)
 anno_regression$total_molecule <- apply(molecules, 2, sum) 
@@ -327,13 +315,12 @@ regression_table_cpm_ERCC$r2 <- as.numeric(as.character(regression_table_cpm_ERC
 plot(regression_table_cpm_ERCC$r2)
 
 anno_regression_cpm_ERCC <- merge(anno,regression_table_cpm_ERCC,by="sample_id")
+
 ggplot(anno_regression_cpm_ERCC,aes(x=Intercept,y=slope,col=as.factor(individual),shape=as.factor(batch))) + geom_point() + labs(x = "intercept", y = "slope", title = "read-molecule conversion ERCC genes (cpm no log)") 
 
 ## plot all the lines
 anno_regression_cpm_ERCC$reads_mean <- apply(reads_cpm_ERCC, 2, mean)
 anno_regression_cpm_ERCC$molecules_mean <- apply(molecules_cpm_ERCC, 2, mean)
-
-ggplot(anno_regression_cpm_ERCC, aes(x= reads_mean, y= molecules_mean)) + geom_point() + geom_abline(aes(intercept=Intercept, slope=slope, col=as.factor(individual), alpha= 0.5), data=anno_regression_cpm_ERCC) 
 
 ggplot(anno_regression_cpm_ERCC, aes(x= reads_mean, y= molecules_mean)) + geom_point() + geom_abline(aes(intercept=Intercept, slope=slope, col=as.factor(individual), alpha= 0.5), data=anno_regression_cpm_ERCC) + facet_grid(individual ~ batch)
 ```
@@ -362,8 +349,6 @@ ggplot(anno_regression_tmm,aes(x=Intercept,y=slope,col=as.factor(individual),sha
 ## plot all the lines
 anno_regression_tmm$reads_mean <- apply(reads_tmm, 2, mean)
 anno_regression_tmm$molecules_mean <- apply(molecules_tmm, 2, mean)
-
-ggplot(anno_regression_tmm, aes(x= reads_mean, y= molecules_mean)) + geom_point() + geom_abline(aes(intercept=Intercept, slope=slope, col=as.factor(individual), alpha = 0.01), data=anno_regression_tmm) 
 
 ggplot(anno_regression_tmm, aes(x= reads_mean, y= molecules_mean)) + geom_point() + geom_abline(aes(intercept=Intercept, slope=slope, col=as.factor(individual), alpha = 0.01), data=anno_regression_tmm) + facet_grid(individual ~ batch) 
 ```
