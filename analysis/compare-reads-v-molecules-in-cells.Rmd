@@ -1,7 +1,7 @@
 ---
 title: "Compare read and molecule counts in single cells per batch"
-author: "PoYuan Tung"
-date: 2015-08-24
+author: "PoYuan Tung & Joyce Hsiao"
+date: 2015-09-22
 ---
 
 **Last updated:** `r Sys.Date()`
@@ -132,6 +132,8 @@ molecules_tmm <- cpm(molecules, lib.size = colSums(molecules) * norm_factors_mol
 
 Compare the counts. (1) all genes. (2) only ERCC. (3) without ERCC, only endogenous genes
 
+#### All genes
+
 ```{r conversion-in-cell, fig.width=9, fig.height=9, cache=FALSE}
 ## linear regression per cell and make a table with intercept, slope, and r-squared
 regression_table <- as.data.frame(do.call(rbind,lapply(names(reads),function(x){
@@ -157,7 +159,72 @@ anno_regression$molecules_mean <- apply(molecules, 2, mean)
 ggplot(anno_regression, aes(x= reads_mean, y= molecules_mean)) + geom_point() + geom_abline(aes(intercept=Intercept, slope=slope, col=as.factor(individual), alpha= 0.5), data=anno_regression) + facet_grid(individual ~ batch)
 ```
 
-Only ERCC genes
+Pairwise distance in (intercept, slope) between batches or individuals.
+
+* Compute pairwise Euclidean distance between cells.
+
+```{r}
+anno_regression_dist <- as.matrix( dist(anno_regression[ , c("Intercept", "slope")]) )
+rownames(anno_regression_dist) <- with(anno_regression,
+                                       paste(individual, batch, sep = "_"))
+colnames(anno_regression_dist) <- rownames(anno_regression_dist)
+anno_regression_dist[1:2, 1:2]
+```
+
+* Cell-to-cell Euclidean distance within each individiaual, batch
+
+```{r}
+## All cells
+dist_mean <- data.frame(dist = rowSums(anno_regression_dist)/(ncol(anno_regression_dist) - 1))
+ggplot(dist_mean, aes(y = dist, x = 1)) + geom_violin(alpha = .5) + 
+  geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+  labs(title = "Mean cell-to-cell distance in (intercept, slope)", x = "") +
+  theme(axis.text.x = element_text(hjust=1, angle = 45))
+
+
+## Within batch 
+batch_unique <- with(anno_regression, paste(individual, batch, sep = "_"))
+dist_vec <- lapply(1:length(unique(batch_unique)), function(per_batch) {
+  dist_foo <- anno_regression_dist[batch_unique == unique(batch_unique)[per_batch],
+                             batch_unique == unique(batch_unique)[per_batch] ]
+  cbind(c(rowSums(dist_foo)/(ncol(dist_foo) - 1)),
+       unique(batch_unique)[per_batch]  )
+})
+dist_vec <- as.data.frame(do.call(rbind, dist_vec))
+colnames(dist_vec) <- c("dist", "batch_unique")
+dist_vec$dist <- as.numeric(dist_vec$dist)
+str(dist_vec)
+
+ggplot(dist_vec, aes(x= factor(batch_unique), y = dist, fill = factor(batch_unique)),
+       height = 600, width = 2000) +
+  geom_violin(alpha = .5) + geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+  labs(title = "Mean cell-to-cell distance within batch \n
+                in (intercept, slope)") +
+  theme(axis.text.x = element_text(hjust=1, angle = 45))
+
+## Within individual
+individual <- anno_regression$individual
+dist_vec <- lapply(1:length(unique(individual)), function(per_individual) {
+  dist_foo <- anno_regression_dist[individual == unique(individual)[per_individual],
+                             individual == unique(individual)[per_individual] ]
+  cbind(c(rowSums(dist_foo)/(ncol(dist_foo) - 1)),
+       unique(individual)[per_individual]  )
+})
+dist_vec <- as.data.frame(do.call(rbind, dist_vec))
+colnames(dist_vec) <- c("dist", "individual")
+dist_vec$dist <- as.numeric(dist_vec$dist)
+str(dist_vec)
+ggplot(dist_vec, aes(x= factor(individual), y = dist, fill = factor(individual)),
+       height = 600, width = 2000) +
+  geom_violin(alpha = .5) + geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+  labs(title = "Mean cell-to-cell distance within individual \n
+                in (intercept, slope)") +
+  theme(axis.text.x = element_text(hjust=1, angle = 45))
+```
+
+
+#### Only ERCC genes
+
 ```{r conversion-in-cell-ERCC, fig.width=9, fig.height=9, cache=FALSE}
 ## grep ERCC
 reads_ERCC <- reads[grep("ERCC", rownames(reads)), ]
@@ -184,7 +251,74 @@ anno_regression_ERCC$molecules_mean <- apply(molecules_ERCC, 2, mean)
 ggplot(anno_regression_ERCC, aes(x= reads_mean, y= molecules_mean)) + geom_point() + geom_abline(aes(intercept=Intercept, slope=slope, col=as.factor(individual), alpha= 0.5), data=anno_regression) + facet_grid(individual ~ batch)
 ```
 
-without ERCC genes, only endogenous genes
+
+Pairwise distance in (intercept, slope) between batches or individuals.
+
+* Compute pairwise Euclidean distance between cells.
+
+```{r}
+anno_regression_ERCC_dist <- as.matrix( dist(anno_regression_ERCC[ , c("Intercept", "slope")]) )
+rownames(anno_regression_ERCC_dist) <- with(anno_regression_ERCC,
+                                            paste(individual, batch, sep = "_"))
+colnames(anno_regression_ERCC_dist) <- rownames(anno_regression_ERCC_dist)
+anno_regression_ERCC_dist[1:2, 1:2]
+```
+
+* Cell-to-cell Euclidean distance within each individiaual, batch
+
+```{r}
+## All cells
+dist_mean <- data.frame(dist = rowSums(anno_regression_ERCC_dist)/(ncol(anno_regression_ERCC_dist) - 1))
+ggplot(dist_mean, aes(y = dist, x = 1)) + geom_violin(alpha = .5) + 
+  geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+  labs(title = "Mean cell-to-cell distance in (intercept, slope)", x = "") +
+  theme(axis.text.x = element_text(hjust=1, angle = 45))
+
+
+## Within batch 
+batch_unique <- with(anno_regression, paste(individual, batch, sep = "_"))
+dist_vec <- lapply(1:length(unique(batch_unique)), function(per_batch) {
+  dist_foo <- anno_regression_ERCC_dist[batch_unique == unique(batch_unique)[per_batch],
+                             batch_unique == unique(batch_unique)[per_batch] ]
+  cbind(c(rowSums(dist_foo)/(ncol(dist_foo) - 1)),
+       unique(batch_unique)[per_batch]  )
+})
+dist_vec <- as.data.frame(do.call(rbind, dist_vec))
+colnames(dist_vec) <- c("dist", "batch_unique")
+dist_vec$dist <- as.numeric(dist_vec$dist)
+str(dist_vec)
+
+ggplot(dist_vec, aes(x= factor(batch_unique), y = dist, fill = factor(batch_unique)),
+       height = 600, width = 2000) +
+  geom_violin(alpha = .5) + geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+  labs(title = "Mean cell-to-cell distance within batch \n
+                in (intercept, slope)") +
+  theme(axis.text.x = element_text(hjust=1, angle = 45))
+
+## Within individual
+individual <- anno_regression_ERCC$individual
+dist_vec <- lapply(1:length(unique(individual)), function(per_individual) {
+  dist_foo <- anno_regression_ERCC_dist[individual == unique(individual)[per_individual],
+                             individual == unique(individual)[per_individual] ]
+  cbind(c(rowSums(dist_foo)/(ncol(dist_foo) - 1)),
+       unique(individual)[per_individual]  )
+})
+dist_vec <- as.data.frame(do.call(rbind, dist_vec))
+colnames(dist_vec) <- c("dist", "individual")
+dist_vec$dist <- as.numeric(dist_vec$dist)
+str(dist_vec)
+ggplot(dist_vec, aes(x= factor(individual), y = dist, fill = factor(individual)),
+       height = 600, width = 2000) +
+  geom_violin(alpha = .5) + geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+  labs(title = "Mean cell-to-cell distance within individual \n
+                in (intercept, slope)") +
+  theme(axis.text.x = element_text(hjust=1, angle = 45))
+```
+
+
+
+#### Without ERCC genes, only endogenous genes
+
 ```{r conversion-in-cell-gene, fig.width=9, fig.height=9, cache=FALSE}
 ## grep ENSG
 reads_ENSG <- reads[grep("ENSG", rownames(reads)), ]
@@ -216,6 +350,72 @@ ggplot(anno_regression_ENSG, aes(x= reads_mean, y= molecules_mean)) + geom_point
 ggplot(anno_regression_ENSG, aes(x= reads_mean, y= molecules_mean)) + geom_point() + geom_abline(aes(intercept=Intercept, slope=slope, col=as.factor(individual), alpha= 0.5), data=anno_regression_ENSG) + facet_grid(individual ~ batch)
 ```
 
+<<<<<<< HEAD
+Pairwise distance in (intercept, slope) between batches or individuals.
+
+* Compute pairwise Euclidean distance between cells.
+
+```{r}
+anno_regression_ENSG_dist <- as.matrix( dist(anno_regression_ENSG[ , c("Intercept", "slope")]) )
+rownames(anno_regression_ENSG_dist) <- with(anno_regression_ENSG,
+                                            paste(individual, batch, sep = "_"))
+colnames(anno_regression_ENSG_dist) <- rownames(anno_regression_ENSG_dist)
+anno_regression_ENSG_dist[1:2, 1:2]
+```
+
+* Cell-to-cell Euclidean distance within each individiaual, batch
+
+```{r}
+## All cells
+dist_mean <- data.frame(dist = rowSums(anno_regression_ENSG_dist)/(ncol(anno_regression_ENSG_dist) - 1))
+ggplot(dist_mean, aes(y = dist, x = 1)) + geom_violin(alpha = .5) + 
+  geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+  labs(title = "Mean cell-to-cell distance in (intercept, slope)", x = "") +
+  theme(axis.text.x = element_text(hjust=1, angle = 45))
+
+
+## Within batch 
+batch_unique <- with(anno_regression_ENSG, paste(individual, batch, sep = "_"))
+dist_vec <- lapply(1:length(unique(batch_unique)), function(per_batch) {
+  dist_foo <- anno_regression_ENSG_dist[batch_unique == unique(batch_unique)[per_batch],
+                             batch_unique == unique(batch_unique)[per_batch] ]
+  cbind(c(rowSums(dist_foo)/(ncol(dist_foo) - 1)),
+       unique(batch_unique)[per_batch]  )
+})
+dist_vec <- as.data.frame(do.call(rbind, dist_vec))
+colnames(dist_vec) <- c("dist", "batch_unique")
+dist_vec$dist <- as.numeric(dist_vec$dist)
+str(dist_vec)
+
+ggplot(dist_vec, aes(x= factor(batch_unique), y = dist, fill = factor(batch_unique)),
+       height = 600, width = 2000) +
+  geom_violin(alpha = .5) + geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+  labs(title = "Mean cell-to-cell distance within batch \n
+                in (intercept, slope)") +
+  theme(axis.text.x = element_text(hjust=1, angle = 45))
+
+## Within individual
+individual <- anno_regression_ENSG$individual
+dist_vec <- lapply(1:length(unique(individual)), function(per_individual) {
+  dist_foo <- anno_regression_ENSG_dist[individual == unique(individual)[per_individual],
+                             individual == unique(individual)[per_individual] ]
+  cbind(c(rowSums(dist_foo)/(ncol(dist_foo) - 1)),
+       unique(individual)[per_individual]  )
+})
+dist_vec <- as.data.frame(do.call(rbind, dist_vec))
+colnames(dist_vec) <- c("dist", "individual")
+dist_vec$dist <- as.numeric(dist_vec$dist)
+str(dist_vec)
+ggplot(dist_vec, aes(x= factor(individual), y = dist, fill = factor(individual)),
+       height = 600, width = 2000) +
+  geom_violin(alpha = .5) + geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+  labs(title = "Mean cell-to-cell distance within individual \n
+                in (intercept, slope)") +
+  theme(axis.text.x = element_text(hjust=1, angle = 45))
+```
+
+
+=======
 There is a clear difference between individuals. How about difference between batches? Use 9 different colors to visualize [the 9 batches](compare-reads-v-molecules.html#effect-of-sequencing-depth-on-molecule-count) 
 
 ```{r mol-v-reads-single-9-batches, fig.width=8, fig.height=8}
@@ -238,6 +438,7 @@ by_batch + geom_smooth(aes(group=batch, color = as.factor(batch)), method="lm")
 ```
 
 19098 have more total endogenous gene molecules and more ERCC molecule
+>>>>>>> b923e0d47d8f1c5a84281e062e61cb83ebe29a6f
 
 ```{r total-molecule, fig.width=9, fig.height=9, cache=FALSE}
 anno_regression$total_molecule_ERCC <- apply(molecules_ERCC, 2, sum)
