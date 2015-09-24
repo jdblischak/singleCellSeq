@@ -1,5 +1,5 @@
 
-TARGETS := introduction.md methods.md results.md
+TARGETS := title.yaml introduction.md methods.md results.md
 NAME := paper
 
 all: html word
