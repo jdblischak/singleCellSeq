@@ -8,9 +8,9 @@
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
 <meta name="generator" content="pandoc" />
 
-<meta name="author" content="PoYuan Tung" />
+<meta name="author" content="PoYuan Tung &amp; Joyce Hsiao" />
 
-<meta name="date" content="2015-08-24" />
+<meta name="date" content="2015-09-22" />
 
 <title>Compare read and molecule counts in single cells per batch</title>
 
@@ -120,8 +120,8 @@ img {
 
 <div id="header">
 <h1 class="title">Compare read and molecule counts in single cells per batch</h1>
-<h4 class="author"><em>PoYuan Tung</em></h4>
-<h4 class="date"><em>2015-08-24</em></h4>
+<h4 class="author"><em>PoYuan Tung &amp; Joyce Hsiao</em></h4>
+<h4 class="date"><em>2015-09-22</em></h4>
 </div>
 
 <div id="TOC">
@@ -139,8 +139,8 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-09-23</p>
-<p><strong>Code version:</strong> cba34556cb2d873894d4dbcc431453af64d3e413</p>
+<p><strong>Last updated:</strong> 2015-09-24</p>
+<p><strong>Code version:</strong> 9d87919cfee4ceb697409c1ff079d1ed897d8e73</p>
 <p>Comparing the conversion of reads to molecules for each cell. Used three different metrics:</p>
 <ul>
 <li>Raw counts</li>
@@ -226,31 +226,9 @@ molecules_tmm &lt;- cpm(molecules, lib.size = colSums(molecules) * norm_factors_
 <h2>conversion in each single cell</h2>
 <div id="counts" class="section level3">
 <h3>Counts</h3>
-<p>Compare the counts. (1) all genes. (2) only ERCC. (3) without ERCC, only endogenous genes</p>
-<pre class="r"><code>## linear regression per cell and make a table with intercept, slope, and r-squared
-regression_table &lt;- as.data.frame(do.call(rbind,lapply(names(reads),function(x){
-  fit.temp &lt;- lm(molecules[,x]~reads[,x])
-    c(x,fit.temp$coefficients,summary(fit.temp)$adj.r.squared)
-})))
-names(regression_table) &lt;- c(&quot;sample_id&quot;,&quot;Intercept&quot;,&quot;slope&quot;,&quot;r2&quot;)
-regression_table$Intercept &lt;- as.numeric(as.character(regression_table$Intercept))
-regression_table$slope &lt;- as.numeric(as.character(regression_table$slope))
-regression_table$r2 &lt;- as.numeric(as.character(regression_table$r2))
-plot(regression_table$r2)</code></pre>
-<p><img src="figure/compare-reads-v-molecules-in-cells.Rmd/conversion-in-cell-1.png" title="" alt="" width="864" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>anno_regression &lt;- merge(anno,regression_table,by=&quot;sample_id&quot;)
-
-ggplot(anno_regression,aes(x=Intercept,y=slope,col=as.factor(individual),shape=as.factor(batch))) + geom_point() + labs(x = &quot;intercept&quot;, y = &quot;slope&quot;, title = &quot;read-molecule conversion (counts)&quot;)</code></pre>
-<p><img src="figure/compare-reads-v-molecules-in-cells.Rmd/conversion-in-cell-2.png" title="" alt="" width="864" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>ggplot(anno_regression,aes(x=Intercept,y=slope,col=as.factor(individual),shape=as.factor(batch))) + geom_point() + labs(x = &quot;intercept&quot;, y = &quot;slope&quot;, title = &quot;read-molecule conversion (counts)&quot;) + facet_grid(individual ~ batch)</code></pre>
-<p><img src="figure/compare-reads-v-molecules-in-cells.Rmd/conversion-in-cell-3.png" title="" alt="" width="864" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>## plot all the lines
-anno_regression$reads_mean &lt;- apply(reads, 2, mean)
-anno_regression$molecules_mean &lt;- apply(molecules, 2, mean)
-
-ggplot(anno_regression, aes(x= reads_mean, y= molecules_mean)) + geom_point() + geom_abline(aes(intercept=Intercept, slope=slope, col=as.factor(individual), alpha= 0.5), data=anno_regression) + facet_grid(individual ~ batch)</code></pre>
-<p><img src="figure/compare-reads-v-molecules-in-cells.Rmd/conversion-in-cell-4.png" title="" alt="" width="864" style="display: block; margin: auto;" /></p>
-<p>Only ERCC genes</p>
+<p>Compare the counts. (1) ERCC genes. (2) without ERCC, only endogenous genes</p>
+<div id="ercc-genes" class="section level4">
+<h4>ERCC genes</h4>
 <pre class="r"><code>## grep ERCC
 reads_ERCC &lt;- reads[grep(&quot;ERCC&quot;, rownames(reads)), ]
 molecules_ERCC &lt;- molecules[grep(&quot;ERCC&quot;, rownames(molecules)), ]
@@ -273,9 +251,130 @@ ggplot(anno_regression_ERCC,aes(x=Intercept,y=slope,col=as.factor(individual),sh
 anno_regression_ERCC$reads_mean &lt;- apply(reads_ERCC, 2, mean)
 anno_regression_ERCC$molecules_mean &lt;- apply(molecules_ERCC, 2, mean)
 
-ggplot(anno_regression_ERCC, aes(x= reads_mean, y= molecules_mean)) + geom_point() + geom_abline(aes(intercept=Intercept, slope=slope, col=as.factor(individual), alpha= 0.5), data=anno_regression) + facet_grid(individual ~ batch)</code></pre>
+ggplot(anno_regression_ERCC, aes(x= reads_mean, y= molecules_mean)) + geom_point() + geom_abline(aes(intercept=Intercept, slope=slope, col=as.factor(individual), alpha= 0.5), data=anno_regression_ERCC) + facet_grid(individual ~ batch)</code></pre>
 <p><img src="figure/compare-reads-v-molecules-in-cells.Rmd/conversion-in-cell-ERCC-3.png" title="" alt="" width="864" style="display: block; margin: auto;" /></p>
-<p>without ERCC genes, only endogenous genes</p>
+<p>Pairwise distance in (intercept, slope) between batches or individuals.</p>
+<ul>
+<li>Compute pairwise Euclidean distance between cells.</li>
+</ul>
+<pre class="r"><code>anno_regression_ERCC_dist &lt;- as.matrix( dist(anno_regression_ERCC[ , c(&quot;Intercept&quot;, &quot;slope&quot;)]) )
+rownames(anno_regression_ERCC_dist) &lt;- with(anno_regression_ERCC,
+                                            paste(individual, batch, sep = &quot;_&quot;))
+colnames(anno_regression_ERCC_dist) &lt;- rownames(anno_regression_ERCC_dist)
+anno_regression_ERCC_dist[1:2, 1:2]</code></pre>
+<pre><code>          19098_1   19098_1
+19098_1 0.0000000 0.6214327
+19098_1 0.6214327 0.0000000</code></pre>
+<ul>
+<li>Cell-to-cell Euclidean distance within each individiaual, batch</li>
+</ul>
+<pre class="r"><code>## All cells
+dist_mean &lt;- data.frame(dist = rowSums(anno_regression_ERCC_dist)/(ncol(anno_regression_ERCC_dist) - 1))
+ggplot(dist_mean, aes(y = dist, x = 1)) + geom_violin(alpha = .5) + 
+  geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+  labs(title = &quot;Mean cell-to-cell distance in (intercept, slope)&quot;, x = &quot;&quot;) +
+  theme(axis.text.x = element_text(hjust=1, angle = 45))</code></pre>
+<p><img src="figure/compare-reads-v-molecules-in-cells.Rmd/unnamed-chunk-2-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>## Within batch 
+batch_unique &lt;- with(anno_regression_ERCC, paste(individual, batch, sep = &quot;_&quot;))
+dist_vec &lt;- lapply(1:length(unique(batch_unique)), function(per_batch) {
+  dist_foo &lt;- anno_regression_ERCC_dist[batch_unique == unique(batch_unique)[per_batch],
+                             batch_unique == unique(batch_unique)[per_batch] ]
+  data.frame(dist = c(rowSums(dist_foo)/(ncol(dist_foo) - 1)),
+             batch_unique = rep(unique(batch_unique)[per_batch], ncol(dist_foo) )  )
+})
+dist_vec &lt;- do.call(rbind, dist_vec)
+str(dist_vec)</code></pre>
+<pre><code>&#39;data.frame&#39;:   578 obs. of  2 variables:
+ $ dist        : num  0.442 0.606 0.608 0.436 0.441 ...
+ $ batch_unique: Factor w/ 9 levels &quot;19098_1&quot;,&quot;19098_2&quot;,..: 1 1 1 1 1 1 1 1 1 1 ...</code></pre>
+<pre class="r"><code>ggplot(dist_vec, aes(x= factor(batch_unique), y = dist, fill = factor(batch_unique)),
+       height = 600, width = 2000) +
+  geom_violin(alpha = .5) + geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+  labs(title = &quot;Mean cell-to-cell distance within batch \n
+                in (intercept, slope)&quot;) +
+  theme(axis.text.x = element_text(hjust=1, angle = 45))</code></pre>
+<p><img src="figure/compare-reads-v-molecules-in-cells.Rmd/unnamed-chunk-2-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>## Within individual
+individual &lt;- anno_regression_ERCC$individual
+dist_vec &lt;- lapply(1:length(unique(individual)), function(per_individual) {
+  dist_foo &lt;- anno_regression_ERCC_dist[individual == unique(individual)[per_individual],
+                             individual == unique(individual)[per_individual] ]
+  data.frame(dist = c(rowSums(dist_foo)/(ncol(dist_foo) - 1)),
+             individual = rep(unique(individual)[per_individual], ncol(dist_foo) )  ) 
+})
+dist_vec &lt;- do.call(rbind, dist_vec)
+str(dist_vec)</code></pre>
+<pre><code>&#39;data.frame&#39;:   578 obs. of  2 variables:
+ $ dist      : num  0.514 0.729 0.732 0.515 0.535 ...
+ $ individual: int  19098 19098 19098 19098 19098 19098 19098 19098 19098 19098 ...</code></pre>
+<pre class="r"><code>ggplot(dist_vec, aes(x= factor(individual), y = dist, fill = factor(individual)),
+       height = 600, width = 2000) +
+  geom_violin(alpha = .5) + geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+  labs(title = &quot;Mean cell-to-cell distance within individual \n
+                in (intercept, slope)&quot;) +
+  theme(axis.text.x = element_text(hjust=1, angle = 45))</code></pre>
+<p><img src="figure/compare-reads-v-molecules-in-cells.Rmd/unnamed-chunk-2-3.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<ul>
+<li>compare the distance of two cells (1) within batch, (2) between batch of same individual, and (3) between individual</li>
+</ul>
+<pre class="r"><code>ind_index &lt;- (anno_regression_ERCC$individual)
+ind_batch_index &lt;- with(anno_regression_ERCC,paste(individual, batch, sep = &quot;_&quot;))
+
+same_ind_index &lt;- outer(ind_index,ind_index,function(x,y) x==y)
+same_batch_index &lt;- outer(ind_batch_index,ind_batch_index,function(x,y) x==y)
+
+dim_temp &lt;- dim(anno_regression_ERCC_dist)
+dist_index_matrix &lt;- matrix(&quot;diff_ind&quot;,nrow=dim_temp[1],ncol=dim_temp[2])
+
+dist_index_matrix[same_ind_index &amp; !same_batch_index] &lt;- &quot;same_ind_diff_batch&quot;
+dist_index_matrix[same_batch_index] &lt;- &quot;same_batch&quot;
+
+ans_ERCC &lt;- lapply(unique(c(dist_index_matrix)),function(x){
+  temp &lt;- c(anno_regression_ERCC_dist[(dist_index_matrix==x)&amp;(upper.tri(dist_index_matrix,diag=FALSE))])
+  data.frame(dist=temp,type=rep(x,length(temp)))
+})
+ans1_ERCC &lt;- do.call(rbind,ans_ERCC)
+
+boxplot(dist~type,data=ans1_ERCC)</code></pre>
+<p><img src="figure/compare-reads-v-molecules-in-cells.Rmd/three-groups-ercc-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>plot(density(ans1_ERCC$dist[ans1_ERCC$type==&quot;same_batch&quot;]))
+lines(density(ans1_ERCC$dist[ans1_ERCC$type==&quot;same_ind_diff_batch&quot;]),col=2)
+lines(density(ans1_ERCC$dist[ans1_ERCC$type==&quot;diff_ind&quot;]),col=3)</code></pre>
+<p><img src="figure/compare-reads-v-molecules-in-cells.Rmd/three-groups-ercc-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(ans1_ERCC, aes(x= factor(type), y = dist, col = factor(type)), height = 600, width = 2000) +
+geom_boxplot(outlier.shape = NA, alpha = .01, width = .2, position = position_dodge(width = .9)) +
+ylim(0,1.5) +
+labs(title = &quot;cell-cell distance (slope and intercept of lm) ERCC&quot;) +
+theme(axis.text.x = element_text(hjust=1, angle = 45))</code></pre>
+<pre><code>Warning: Removed 5336 rows containing non-finite values (stat_boxplot).</code></pre>
+<pre><code>Warning: Removed 254 rows containing missing values (geom_point).</code></pre>
+<pre><code>Warning: Removed 612 rows containing missing values (geom_point).</code></pre>
+<pre><code>Warning: Removed 1150 rows containing missing values (geom_point).</code></pre>
+<p><img src="figure/compare-reads-v-molecules-in-cells.Rmd/three-groups-ercc-3.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>summary(lm(dist~type,data=ans1_ERCC))</code></pre>
+<pre><code>
+Call:
+lm(formula = dist ~ type, data = ans1_ERCC)
+
+Residuals:
+    Min      1Q  Median      3Q     Max 
+-0.5171 -0.3175 -0.1125  0.1798  5.2540 
+
+Coefficients:
+                        Estimate Std. Error t value Pr(&gt;|t|)    
+(Intercept)             0.458805   0.003349 136.990  &lt; 2e-16 ***
+typesame_ind_diff_batch 0.023554   0.004172   5.646 1.65e-08 ***
+typediff_ind            0.058664   0.003642  16.109  &lt; 2e-16 ***
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
+
+Residual standard error: 0.4748 on 166750 degrees of freedom
+Multiple R-squared:  0.002066,  Adjusted R-squared:  0.002055 
+F-statistic: 172.7 on 2 and 166750 DF,  p-value: &lt; 2.2e-16</code></pre>
+</div>
+<div id="endogenous-genes" class="section level4">
+<h4>Endogenous genes</h4>
 <pre class="r"><code>## grep ENSG
 reads_ENSG &lt;- reads[grep(&quot;ENSG&quot;, rownames(reads)), ]
 molecules_ENSG &lt;- molecules[grep(&quot;ENSG&quot;, rownames(molecules)), ]
@@ -313,21 +412,141 @@ ggplot(anno_regression_ENSG, aes(x= reads_mean, y= molecules_mean)) + geom_point
 <p><img src="figure/compare-reads-v-molecules-in-cells.Rmd/mol-v-reads-single-9-batches-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <p>Here are the batches split by individual.</p>
 <pre class="r"><code>ggplot(anno_regression_ENSG, aes(x = Intercept, y = slope)) +
-  geom_point(aes(color = as.factor(batch))) +
-  facet_wrap(~individual, nrow = 3) +
-  scale_color_brewer(palette = &quot;Dark2&quot;, name = &quot;batch&quot;) +
-  labs(title = &quot;lm of read-molecule conversion endogenous genes in each cell (counts)&quot;)</code></pre>
+geom_point(aes(color = as.factor(batch))) +
+facet_wrap(~individual, nrow = 3) +
+scale_color_brewer(palette = &quot;Dark2&quot;, name = &quot;batch&quot;) +
+labs(title = &quot;lm of read-molecule conversion endogenous genes in each cell (counts)&quot;)</code></pre>
 <p><img src="figure/compare-reads-v-molecules-in-cells.Rmd/mol-v-reads-single-per-ind-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p>Pairwise distance in (intercept, slope) between batches or individuals.</p>
+<ul>
+<li>Compute pairwise Euclidean distance between cells.</li>
+</ul>
+<pre class="r"><code>anno_regression_ENSG_dist &lt;- as.matrix( dist(anno_regression_ENSG[ , c(&quot;Intercept&quot;, &quot;slope&quot;)]) )
+rownames(anno_regression_ENSG_dist) &lt;- with(anno_regression_ENSG,
+                                            paste(individual, batch, sep = &quot;_&quot;))
+colnames(anno_regression_ENSG_dist) &lt;- rownames(anno_regression_ENSG_dist)
+anno_regression_ENSG_dist[1:2, 1:2]</code></pre>
+<pre><code>          19098_1   19098_1
+19098_1 0.0000000 0.4931873
+19098_1 0.4931873 0.0000000</code></pre>
+<ul>
+<li>Cell-to-cell Euclidean distance within each individiaual, batch</li>
+</ul>
+<pre class="r"><code>## All cells
+dist_mean &lt;- data.frame(dist = rowSums(anno_regression_ENSG_dist)/(ncol(anno_regression_ENSG_dist) - 1))
+ggplot(dist_mean, aes(y = dist, x = 1)) + geom_violin(alpha = .5) + 
+  geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+  labs(title = &quot;Mean cell-to-cell distance in (intercept, slope)&quot;, x = &quot;&quot;) +
+  theme(axis.text.x = element_text(hjust=1, angle = 45))</code></pre>
+<p><img src="figure/compare-reads-v-molecules-in-cells.Rmd/unnamed-chunk-4-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>## Within batch 
+batch_unique &lt;- with(anno_regression_ENSG, paste(individual, batch, sep = &quot;_&quot;))
+dist_vec &lt;- lapply(1:length(unique(batch_unique)), function(per_batch) {
+  dist_foo &lt;- anno_regression_ENSG_dist[batch_unique == unique(batch_unique)[per_batch],
+                             batch_unique == unique(batch_unique)[per_batch] ]
+  data.frame(dist = c(rowSums(dist_foo)/(ncol(dist_foo) - 1)),
+             batch_unique = rep(unique(batch_unique)[per_batch], ncol(dist_foo) )  )
+})
+dist_vec &lt;- do.call(rbind, dist_vec)
+str(dist_vec)</code></pre>
+<pre><code>&#39;data.frame&#39;:   578 obs. of  2 variables:
+ $ dist        : num  0.404 0.344 0.363 0.332 0.629 ...
+ $ batch_unique: Factor w/ 9 levels &quot;19098_1&quot;,&quot;19098_2&quot;,..: 1 1 1 1 1 1 1 1 1 1 ...</code></pre>
+<pre class="r"><code>ggplot(dist_vec, aes(x= factor(batch_unique), y = dist, fill = factor(batch_unique)),
+       height = 600, width = 2000) +
+  geom_violin(alpha = .5) + geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+  labs(title = &quot;Mean cell-to-cell distance within batch \n
+                in (intercept, slope)&quot;) +
+  theme(axis.text.x = element_text(hjust=1, angle = 45))</code></pre>
+<p><img src="figure/compare-reads-v-molecules-in-cells.Rmd/unnamed-chunk-4-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>## Within individual
+individual &lt;- anno_regression_ENSG$individual
+dist_vec &lt;- lapply(1:length(unique(individual)), function(per_individual) {
+  dist_foo &lt;- anno_regression_ENSG_dist[individual == unique(individual)[per_individual],
+                             individual == unique(individual)[per_individual] ]
+  data.frame(dist = c(rowSums(dist_foo)/(ncol(dist_foo) - 1)),
+             individual = rep(unique(individual)[per_individual], ncol(dist_foo) )  )
+})
+dist_vec &lt;- do.call(rbind, dist_vec)
+str(dist_vec)</code></pre>
+<pre><code>&#39;data.frame&#39;:   578 obs. of  2 variables:
+ $ dist      : num  0.457 0.429 0.446 0.404 0.699 ...
+ $ individual: int  19098 19098 19098 19098 19098 19098 19098 19098 19098 19098 ...</code></pre>
+<pre class="r"><code>ggplot(dist_vec, aes(x= factor(individual), y = dist, fill = factor(individual)),
+       height = 600, width = 2000) +
+  geom_violin(alpha = .5) + geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+  labs(title = &quot;Mean cell-to-cell distance within individual \n
+                in (intercept, slope)&quot;) +
+  theme(axis.text.x = element_text(hjust=1, angle = 45))</code></pre>
+<p><img src="figure/compare-reads-v-molecules-in-cells.Rmd/unnamed-chunk-4-3.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<ul>
+<li>compare the distance of two cells (1) within batch, (2) between batch of same individual, and (3) between individual</li>
+</ul>
+<pre class="r"><code>ind_index &lt;- (anno_regression_ENSG$individual)
+ind_batch_index &lt;- with(anno_regression_ENSG,paste(individual, batch, sep = &quot;_&quot;))
+
+same_ind_index &lt;- outer(ind_index,ind_index,function(x,y) x==y)
+same_batch_index &lt;- outer(ind_batch_index,ind_batch_index,function(x,y) x==y)
+
+dim_temp &lt;- dim(anno_regression_ENSG_dist)
+dist_index_matrix &lt;- matrix(&quot;diff_ind&quot;,nrow=dim_temp[1],ncol=dim_temp[2])
+
+dist_index_matrix[same_ind_index &amp; !same_batch_index] &lt;- &quot;same_ind_diff_batch&quot;
+dist_index_matrix[same_batch_index] &lt;- &quot;same_batch&quot;
+
+ans &lt;- lapply(unique(c(dist_index_matrix)),function(x){
+  temp &lt;- c(anno_regression_ENSG_dist[(dist_index_matrix==x)&amp;(upper.tri(dist_index_matrix,diag=FALSE))])
+  data.frame(dist=temp,type=rep(x,length(temp)))
+})
+ans1 &lt;- do.call(rbind,ans)
+
+boxplot(dist~type,data=ans1)</code></pre>
+<p><img src="figure/compare-reads-v-molecules-in-cells.Rmd/three-groups-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>plot(density(ans1$dist[ans1$type==&quot;same_batch&quot;]))
+lines(density(ans1$dist[ans1$type==&quot;same_ind_diff_batch&quot;]),col=2)
+lines(density(ans1$dist[ans1$type==&quot;diff_ind&quot;]),col=3)</code></pre>
+<p><img src="figure/compare-reads-v-molecules-in-cells.Rmd/three-groups-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(ans1, aes(x= factor(type), y = dist, col = factor(type)), height = 600, width = 2000) +
+geom_boxplot(outlier.shape = NA, alpha = .01, width = .2, position = position_dodge(width = .9)) +
+ylim(0,1.5) +
+labs(title = &quot;cell-cell distance (slope and intercept of lm)&quot;) +
+theme(axis.text.x = element_text(hjust=1, angle = 45))</code></pre>
+<pre><code>Warning: Removed 6712 rows containing non-finite values (stat_boxplot).</code></pre>
+<pre><code>Warning: Removed 300 rows containing missing values (geom_point).</code></pre>
+<pre><code>Warning: Removed 413 rows containing missing values (geom_point).</code></pre>
+<pre><code>Warning: Removed 660 rows containing missing values (geom_point).</code></pre>
+<p><img src="figure/compare-reads-v-molecules-in-cells.Rmd/three-groups-3.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>summary(lm(dist~type,data=ans1))</code></pre>
+<pre><code>
+Call:
+lm(formula = dist ~ type, data = ans1)
+
+Residuals:
+    Min      1Q  Median      3Q     Max 
+-0.5457 -0.3339 -0.1172  0.1769  3.5505 
+
+Coefficients:
+                        Estimate Std. Error t value Pr(&gt;|t|)    
+(Intercept)             0.468258   0.003516  133.18   &lt;2e-16 ***
+typesame_ind_diff_batch 0.036000   0.004380    8.22   &lt;2e-16 ***
+typediff_ind            0.077562   0.003823   20.29   &lt;2e-16 ***
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
+
+Residual standard error: 0.4984 on 166750 degrees of freedom
+Multiple R-squared:  0.003061,  Adjusted R-squared:  0.003049 
+F-statistic:   256 on 2 and 166750 DF,  p-value: &lt; 2.2e-16</code></pre>
 <p>19098 have more total endogenous gene molecules and more ERCC molecule</p>
-<pre class="r"><code>anno_regression$total_molecule_ERCC &lt;- apply(molecules_ERCC, 2, sum)
-anno_regression$total_molecule_ENSG &lt;- apply(molecules_ENSG, 2, sum)
-anno_regression$total_molecule &lt;- apply(molecules, 2, sum) 
-ggplot(anno_regression, aes(x= total_molecule_ERCC, y= total_molecule,col=as.factor(individual),shape=as.factor(batch))) + geom_point()</code></pre>
+<pre class="r"><code>anno_regression_ENSG$total_molecule_ERCC &lt;- apply(molecules_ERCC, 2, sum)
+anno_regression_ENSG$total_molecule_ENSG &lt;- apply(molecules_ENSG, 2, sum)
+anno_regression_ENSG$total_molecule &lt;- apply(molecules, 2, sum) 
+ggplot(anno_regression_ENSG, aes(x= total_molecule_ERCC, y= total_molecule,col=as.factor(individual),shape=as.factor(batch))) + geom_point()</code></pre>
 <p><img src="figure/compare-reads-v-molecules-in-cells.Rmd/total-molecule-1.png" title="" alt="" width="864" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>ggplot(anno_regression, aes(x = as.factor(individual), y = total_molecule_ENSG)) + geom_boxplot(aes(fill = as.factor(batch)))</code></pre>
+<pre class="r"><code>ggplot(anno_regression_ENSG, aes(x = as.factor(individual), y = total_molecule_ENSG)) + geom_boxplot(aes(fill = as.factor(batch)))</code></pre>
 <p><img src="figure/compare-reads-v-molecules-in-cells.Rmd/total-molecule-2.png" title="" alt="" width="864" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>ggplot(anno_regression, aes(x = as.factor(individual), y = total_molecule_ERCC)) + geom_boxplot(aes(fill = as.factor(batch)))</code></pre>
+<pre class="r"><code>ggplot(anno_regression_ENSG, aes(x = as.factor(individual), y = total_molecule_ERCC)) + geom_boxplot(aes(fill = as.factor(batch)))</code></pre>
 <p><img src="figure/compare-reads-v-molecules-in-cells.Rmd/total-molecule-3.png" title="" alt="" width="864" style="display: block; margin: auto;" /></p>
+</div>
 </div>
 <div id="log2-counts" class="section level3">
 <h3>Log2 counts</h3>
