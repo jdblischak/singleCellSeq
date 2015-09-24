@@ -280,6 +280,55 @@ total_counts_single_ind <- ggplot(total_counts_data[total_counts_data$well != "b
 total_counts_single_ind
 ```
 
+### Pairwise distance between cells
+
+Pairwise distance in (total reads, total molecules) between batches or individuals.
+
+* Compute pairwise Euclidean distance between cells.
+
+```{r distance}
+total_counts_single <- total_counts_data[total_counts_data$well != "bulk", ]
+total_counts_single_dist <- as.matrix( dist(total_counts_single[ , c("total_reads", "total_molecules")]) )
+rownames(total_counts_single_dist) <- with(total_counts_single,
+                                            paste(individual, batch, sep = "_"))
+colnames(total_counts_single_dist) <- rownames(total_counts_single_dist)
+total_counts_single[1:2, 1:2]
+```
+
+```{r three-groups}
+ind_index <- (total_counts_single$individual)
+ind_batch_index <- with(total_counts_single,paste(individual, batch, sep = "_"))
+
+same_ind_index <- outer(ind_index,ind_index,function(x,y) x==y)
+same_batch_index <- outer(ind_batch_index,ind_batch_index,function(x,y) x==y)
+
+dim_temp <- dim(total_counts_single_dist)
+dist_index_matrix <- matrix("diff_ind",nrow=dim_temp[1],ncol=dim_temp[2])
+
+dist_index_matrix[same_ind_index & !same_batch_index] <- "same_ind_diff_batch"
+dist_index_matrix[same_batch_index] <- "same_batch"
+
+ans <- lapply(unique(c(dist_index_matrix)),function(x){
+  temp <- c(total_counts_single_dist[(dist_index_matrix==x)&(upper.tri(dist_index_matrix,diag=FALSE))])
+  data.frame(dist=temp,type=rep(x,length(temp)))
+})
+ans1 <- do.call(rbind,ans)
+
+boxplot(dist~type,data=ans1)
+
+plot(density(ans1$dist[ans1$type=="same_batch"]))
+lines(density(ans1$dist[ans1$type=="same_ind_diff_batch"]),col=2)
+lines(density(ans1$dist[ans1$type=="diff_ind"]),col=3)
+
+ggplot(ans1, aes(x= factor(type), y = dist, col = factor(type)), height = 600, width = 2000) +
+geom_boxplot(outlier.shape = NA, alpha = .01, width = .2, position = position_dodge(width = .9)) +
+ylim(0, 100) +
+labs(title = "cell-cell distance (total molecule and total reads)") +
+theme(axis.text.x = element_text(hjust=1, angle = 45))
+
+summary(lm(dist~type,data=ans1))
+```
+
 What effect does this difference in total molecule count have in PCA?
 
 ```{r pca-single}
