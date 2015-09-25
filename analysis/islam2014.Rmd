@@ -1,0 +1,133 @@
+---
+title: "Download Islam et al. 2014"
+date: 2015-09-24
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+opts_chunk$set(cache = FALSE)
+```
+
+```{r}
+library("dplyr")
+library("ggplot2")
+theme_set(theme_bw(base_size = 12))
+```
+
+
+## Download molecule counts file
+
+```{r}
+islam_file <- "../data/GSE46980_CombinedMoleculeCounts.tab.gz"
+if (!file.exists(islam_file)) {
+  download.file(url = "https://www.ncbi.nlm.nih.gov/geo/download/?acc=GSE46980&format=file&file=GSE46980%5FCombinedMoleculeCounts%2Etab%2Egz",
+  destfile = islam_file, method = "wget")
+}
+islam_data <- read.delim(islam_file, skip = 6)
+islam_meta <- islam_data %>% select(Feature:ExonHits)
+islam_counts <- islam_data %>% select(X:X.95)
+colnames(islam_counts) <- paste0("ESCell_", 1:96)
+```
+
+## Download fastq files
+
+First obtain the mapping between each sample in GEO to the sample ID in the Sequence Read Archive (SRA) (strategy from this [Biostars comment](https://www.biostars.org/p/93494/#131604)).
+
+```{r}
+library("GEOquery")
+gse <- getGEO("GSE46980")
+gse <- as.data.frame(gse[[1]], stringsAsFactors = FALSE)
+sra_info <- gse %>% filter(grepl("single", title)) %>% # Only keep the data without extra amplication
+  select(title, supplementary_file_1) %>%
+  mutate(srx = substr(supplementary_file_1, start = 77, stop = 85))
+```
+
+Download the SRA meta-information.
+
+```{r}
+library("SRAdb")
+sqlfile <- "/mnt/gluster/home/jdblischak/SRAmetadb.sqlite"
+if(!file.exists(sqlfile)) {
+  sqlfile <- getSRAdbFile(destdir = "/mnt/gluster/home/jdblischak/", method = "wget")
+}
+sra_con <- dbConnect(SQLite(), sqlfile)
+```
+
+For each sample, download the associated fastq files and give them a meaningful name.
+
+```{r}
+# directory to save Islam et al. data
+islam_dir <- "/mnt/gluster/data/internal_supp/singleCellSeq/islam"
+dir.create(islam_dir, showWarnings = FALSE)
+for (srx_index in 1:nrow(sra_info)) {
+  srr <- sraConvert(sra_info$srx[srx_index], "run", sra_con)$run
+  for (srr_index in 1:length(srr)) {
+    original_name <- sprintf("%s/%s.fastq.gz", islam_dir, srr[srr_index])
+    new_name <- sprintf("%s/%s_%d.fastq.gz", islam_dir, sra_info$title[srx_index], srr_index)
+    cat(sprintf("%s\t%s\n", original_name, new_name))
+    if (!file.exists(new_name)) {
+      getSRAfile(srr[srr_index], sra_con, destDir = islam_dir, fileType = "fastq", method = "wget")
+      stopifnot(file.exists(original_name))
+      file.rename(original_name, new_name)
+    }
+  }
+}
+```
+
+Count the number of raw reads in each file.
+
+```{r}
+islam_total_reads_file <- "../data/islam-2014-total-reads.txt"
+if (!file.exists(islam_total_reads_file)) {
+  total_reads <- numeric(length = ncol(islam_counts))
+  names(total_reads) <- colnames(islam_counts)
+  total_reads <- total_reads[c(1:32, 36:96)]
+  for (cell in names(total_reads)) {
+    cmd <- sprintf("zcat %s/%s_* | grep '@SRR' | wc -l",
+                   islam_dir, cell)
+    print(cmd)
+    total_reads[cell] <- as.numeric(system(cmd, intern = TRUE))
+  }
+  write.table(total_reads, file = islam_total_reads_file, quote = FALSE,
+              sep = "\t", col.names = FALSE)
+} else {
+  total_reads_df <- read.table(islam_total_reads_file, stringsAsFactors = FALSE)
+  colnames(total_reads_df) <- c("cell", "total_reads")
+  total_reads <- total_reads_df$total_reads
+  names(total_reads) <- total_reads_df$cell
+}
+```
+
+## Relationship between total reads and total molecules
+
+```{r}
+total_molecules <- colSums(islam_counts)
+names(total_molecules) <- colnames(islam_counts)
+summary(total_molecules)
+```
+
+Merge the two.
+
+```{r}
+total_molecules <- total_molecules[names(total_molecules) %in% names(total_reads)]
+stopifnot(names(total_molecules) == names(total_reads),
+          length(total_molecules) == length(total_reads))
+total_counts <- data.frame(cell = names(total_reads), total_reads, total_molecules,
+                           stringsAsFactors = FALSE)
+```
+
+```{r}
+ggplot(total_counts, aes(x = total_reads, y = total_molecules)) +
+  geom_point() +
+  labs(title = "Islam et al., 2014")
+```
+
+## Session information
+
+```{r info}
+sessionInfo()
+```
