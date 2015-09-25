@@ -334,23 +334,22 @@ summary(lm(dist~type,data=ans1))
 ```{r conversion-rate}
 ## calculate conversion rate
 total_counts_single$conversion_rate <- total_counts_single$total_reads/ total_counts_single$total_molecules
-
 plot(total_counts_single$conversion_rate,col=total_counts_single$batch)
 
-## standardization within individual
+## create 9 batches
+total_counts_single$batch_num <- paste(total_counts_single$individual,total_counts_single$batch,sep="_")
+
+## calculate individual mean for standardization
 avg_conversion_rate <- do.call(rbind,
 lapply(unique(total_counts_single$individual),function(x){
   c(individual=x,avg_conv_rate=mean(total_counts_single$conversion_rate[total_counts_single$individual==x]))
 }))
 
-## merge with avg
 total_counts_single <-merge(total_counts_single,avg_conversion_rate,by="individual")
 
-## create std_conv_rate
+## create std_conv_rate within individual to remove individual effect
 total_counts_single$std_conv_rate <- total_counts_single$conversion_rate - total_counts_single$avg_conv_rate
 plot(total_counts_single$std_conv_rate,col=total_counts_single$batch)
-
-total_counts_single$batch_num <- paste(total_counts_single$individual,total_counts_single$batch,sep="_")
 
 summary(lm(std_conv_rate~batch_num,data=total_counts_single))
 
@@ -368,7 +367,7 @@ labs(x = "batch", y = "std conversion rate", title = "batch effect of conversion
 theme(axis.text.x = element_text(hjust=1, angle = 45))
 ```
 
-
+### PCA
 What effect does this difference in total molecule count have in PCA?
 
 ```{r pca-single}
