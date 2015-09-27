@@ -1,5 +1,5 @@
 ---
-title: "Ordering effect of the capture sites, all genes CPM normalized"
+title: "Potential batch effect in the ordering effect of the capture sites"
 author: "Joyce Hsiao"
 date: 2015-09-26
 ---
@@ -15,14 +15,10 @@ source("chunk-options.R")
 ## Goal
 
 We investigated potential ordering effect of wells on each place on gene
-expression across the 9 plates (batches). [Leng](http://dx.doi.org/10.1038/nmeth.3549) et al. discussed ordering effect 
-in single-cell RNA-seq experiments using Fluidigm C1 and implemented an algorithm that detects ordering effect of wells on gene expression in [OEFinder](http://dx.doi.org/10.1101/025437).
+expression for each plate. [Leng](http://dx.doi.org/10.1038/nmeth.3549) et al. discussed ordering effect in single-cell RNA-seq experiments using Fluidigm C1 and implemented an algorithm that detects ordering effect of wells on gene expression in [OEFinder](http://dx.doi.org/10.1101/025437).
 
-OEFinder defaults DESeq normalization. Here we attempt to use CPM normalized data
-for OEFinder. 
+We inputted CPM-normalized data to OEFinder for one batch at a time.
 
-Even after CPM normalization, we still found that the genes identified as over-expressed by OEFinder to distribute across all levels of per gene expression (average across cells). 273 genes were identified as overexpressed after the
-data was CPM normalized. 
 
 
 ## Setup
@@ -45,6 +41,7 @@ anno <- read.table("../data/annotation.txt", header = TRUE,
                    stringsAsFactors = FALSE)
 head(anno)
 ```
+
 
 Input read counts.
 
@@ -84,7 +81,7 @@ Remove genes with no counts and also overly expressed genes.
 ```{r}
 ## remove gene with 0 counts
 expressed_single_ENSG <- rowSums(molecules_single_ENSG) > 0
-molecules_single_ENSG <- molecules_single_ENSG[expressed_single_ENSG, ]
+molecules_single_ENSG <- molecules_single[expressed_single_ENSG, ]
 dim(molecules_single_ENSG)
 
 ## remove gene with molecule count larger than 1024 (15 if them)
@@ -162,6 +159,11 @@ str(OE_cpm)
 ```
 
 
+7 ERCC genes in the Overexpressed genes
+
+```{r}
+grep("ERCC", OE_cpm$genes)
+```
 
 
 ## Distribution of OE genes
@@ -192,8 +194,9 @@ OE genes at all levels of gene expression (averaged acrosss cells).
 
 ```{r}
 library(mygene)
+ii_nonERCC <- grep("ERCC", OE_cpm$genes, invert = TRUE)
 
-gene_query <- queryMany(OE_cpm$genes, scopes="ensembl.gene", 
+gene_query <- queryMany(OE_cpm$genes[ii_nonERCC], scopes="ensembl.gene", 
                  fields=c("name", "summary"), species="human")
 
 kable(as.data.frame(gene_query)[ , 1:4])
