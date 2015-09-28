@@ -1,0 +1,115 @@
+---
+title: "Untitled"
+author: "Joyce Hsiao"
+date: 2015-09-26
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+```
+
+
+## Objectives
+
+
+## Set up
+
+```{r}
+install.packages(c("qtl", "htmlwidgets", "devtools"))
+library(devtools)
+install_github("kbroman/qtlcharts", build_vignettes=TRUE)
+require(qtlcharts)
+```
+
+
+## Prepare data
+
+Input annotation
+
+```{r}
+anno <- read.table("../data/annotation.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno)
+```
+
+
+Input molecule counts
+
+```{r}
+molecules <- read.table("../data/molecules.txt", header = TRUE, stringsAsFactors = FALSE)
+```
+
+Remove bulk samples
+
+```{r}
+single_samples <- anno$well != "bulk"
+anno_single <- anno[ which(single_samples), ]
+molecules_single <- molecules[ , which(single_samples)]
+stopifnot(ncol(molecules_single) == nrow(anno_single),
+          colnames(molecules_single) == anno_single$sample_id)
+```
+
+
+
+Remove genes with no counts and also overly expressed genes.
+
+```{r}
+## remove gene with 0 counts
+expressed_single <- rowSums(molecules_single) > 0
+molecules_single <- molecules_single[expressed_single, ]
+dim(molecules_single)
+
+## remove gene with molecule count larger than 1024 (15 if them)
+overexpressed_genes <- rownames(molecules_single)[apply(molecules_single, 1,
+                                                        function(x) any(x >= 1024))]
+molecules_single <- molecules_single[!(rownames(molecules_single) %in% overexpressed_genes), ]
+
+## collision probability and cpm molecule counts
+molecules_single_collision <- -1024 * log(1 - molecules_single / 1024)
+molecules_single_cpm <- cpm(molecules_single_collision, log = TRUE)
+```
+
+
+
+## Compute coefficient of variation
+
+Note that coefficient of variation here is computed on log-transformed data.
+
+```{r}
+molecules_cv <- 
+  lapply(1:length(unique(anno_single$individual)), function(per_person) {
+    molecules_per_person <- molecules_single_collision[ , anno_single$individual == unique(anno_single$individual)]
+    cv_foo <- data.frame(mean = apply(molecules_per_person, 1, mean, na.rm = TRUE),
+           cv = apply(molecules_per_person, 1, sd, na.rm = TRUE) / 
+                apply(molecules_per_person, 1, mean, na.rm = TRUE) )
+    rownames(cv_foo) <- rownames(molecules_single_collision)
+    
+    cv_foo <- cv_foo[rowSums(is.na(cv_foo)) == 0, ]
+    return(cv_foo)
+    }) 
+names(molecules_cv) <- unique(anno_single$individual)
+
+library(qtlcharts)
+ggplot(data = molecules_cv[[1]], aes(x = mean, y = cv)) + geom_point() +
+  scale_x_log10()
+
+
+iplot(log10(molecules_cv[[1]]$mean), molecules_cv[[1]]$cv,
+      indID = rownames(molecules_cv))
+
+ggplot(data.in, aes(x = mean, y = CV, col = ERCC))  + geom_point(size = 2, alpha = 0.5) +  stat_function(fun= poisson.c, col= "#CC79A7") + stat_function(fun= four.sd, col= "#F0E442") + stat_function(fun= lossy.posson, col= "#56B4E9") + scale_x_log10() + ylim(0, max(data.in$CV)*1.1) + scale_colour_manual(values=cbPalette) + xlab("Average number of molecules") + ylab ("coefficient of variation (CV)")
+
+
+```
+
+
+
+## Session information
+
+```{r info}
+sessionInfo()
+```
