@@ -1,0 +1,227 @@
+---
+title: "Effect of sequencing depth on UMI counts from Islam et al., 2014"
+date: 2015-09-24
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+opts_chunk$set(cache = FALSE)
+```
+
+Does the sequencing depth of a given single cell affect the total number of UMIs observed in the data from [Islam et al., 2014][islam2014]?
+
+[islam2014]: http://www.nature.com/nmeth/journal/v11/n2/full/nmeth.2772.html
+
+```{r message=FALSE}
+library("dplyr")
+library("ggplot2")
+theme_set(theme_bw(base_size = 12))
+```
+
+## Download molecule counts file
+
+The GEO entry for the study [GSE46980][geo] contains a tab-delimted file with the molecule counts for all the samples.
+The samples are labeled by their well, e.g. "A01", and their barcode, e.g. "ATTAGAC".
+I label them from `ESCell_1` to `ESCell_2` to correspond to the naming scheme of their fastq files.
+The fastq files only contain the barcode and not the well, e.g. "ESCell_1_ATTAGAC_single".
+I did a few spot checks, and it appears that the order of the columns in the molecule counts file corresponds to the 1 through 96 numbering of the fastq files.
+
+[geo]: https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE46980
+
+Here is the description of the file (you can see this description by clicking on any of the individual samples):
+
+> Supplementary_files_format_and_content: Tab-delimited text file containing counts of detected cDNA molecules for each transcript model in each of the 96 cells, using data from all three sequencing lanes.
+
+```{r}
+islam_file <- "../data/GSE46980_CombinedMoleculeCounts.tab.gz"
+if (!file.exists(islam_file)) {
+  download.file(url = "https://www.ncbi.nlm.nih.gov/geo/download/?acc=GSE46980&format=file&file=GSE46980%5FCombinedMoleculeCounts%2Etab%2Egz",
+  destfile = islam_file, method = "wget")
+}
+islam_data <- read.delim(islam_file, skip = 6)
+islam_meta <- islam_data %>% select(Feature:ExonHits)
+islam_counts <- islam_data %>% select(X:X.95)
+colnames(islam_counts) <- paste0("ESCell_", 1:96)
+```
+
+## Download fastq files
+
+Next I needed the raw fastq files to obtain the sequencing depth.
+These have to be downloaded from the Sequence Read Archive (SRA).
+Unfortunately by design the SRA assigns samples arbitrary IDs making it very difficult to figure out which sample is what.
+In other words, this is not the fault of the others because this happens to all data posted to SRA.
+The informative names that are viewable in GEO are stripped in the SRA.
+
+Luckily I found a strategy from this [Biostars comment](https://www.biostars.org/p/93494/#131604) to obtain the mapping between each sample in GEO to the sample ID in the SRA.
+I am only keeping the samples with the label "single".
+This corresponds to two fastq files per sample.
+The other samples labeled "amplified" were PCR-amplifed for an additional 9 cycles.
+I initially excluded these amplified samples, but now realize that the fastq file was included in the molecule counts (see description above).
+I doubt one additional fastq file per sample will change the result much, but I can incorporate these additional data files later (it takes ~12 minutes per fastq download).
+
+```{r}
+library("GEOquery")
+gse <- getGEO("GSE46980")
+gse <- as.data.frame(gse[[1]], stringsAsFactors = FALSE)
+sra_info <- gse %>% filter(grepl("single", title)) %>% # Only keep the data without extra amplication
+  select(title, supplementary_file_1) %>%
+  mutate(srx = substr(supplementary_file_1, start = 77, stop = 85))
+head(sra_info)
+```
+
+The information obtained via GEO maps each sample to its SRA sample ID (SRX).
+To convert from SRX to the fastq files (SRR), I downloaded the meta-information from SRA.
+This takes a long time but only has to be done once.
+
+```{r}
+library("SRAdb")
+sqlfile <- "/mnt/gluster/home/jdblischak/SRAmetadb.sqlite"
+if(!file.exists(sqlfile)) {
+  sqlfile <- getSRAdbFile(destdir = "/mnt/gluster/home/jdblischak/", method = "wget")
+}
+sra_con <- dbConnect(SQLite(), sqlfile)
+```
+
+For each sample, I download the associated fastq files and give them a meaningful name.
+
+```{r}
+# directory to save Islam et al. data
+islam_dir <- "/mnt/gluster/data/internal_supp/singleCellSeq/islam"
+dir.create(islam_dir, showWarnings = FALSE)
+for (srx_index in 1:nrow(sra_info)) {
+  srr <- sraConvert(sra_info$srx[srx_index], "run", sra_con)$run
+  for (srr_index in 1:length(srr)) {
+    original_name <- sprintf("%s/%s.fastq.gz", islam_dir, srr[srr_index])
+    new_name <- sprintf("%s/%s_%d.fastq.gz", islam_dir, sra_info$title[srx_index], srr_index)
+    # cat(sprintf("%s\t%s\n", original_name, new_name))
+    if (!file.exists(new_name)) {
+      getSRAfile(srr[srr_index], sra_con, destDir = islam_dir, fileType = "fastq", method = "wget")
+      stopifnot(file.exists(original_name))
+      file.rename(original_name, new_name)
+    }
+  }
+}
+```
+
+I obtain the sequencing depth by counting the number of raw reads in each file.
+
+```{r}
+islam_total_reads_file <- "../data/islam-2014-total-reads.txt"
+if (!file.exists(islam_total_reads_file)) {
+  total_reads <- numeric(length = ncol(islam_counts))
+  names(total_reads) <- colnames(islam_counts)
+  for (cell in names(total_reads)) {
+    cmd <- sprintf("zcat %s/%s_* | grep '@SRR' | wc -l",
+                   islam_dir, cell)
+    print(cmd)
+    total_reads[cell] <- as.numeric(system(cmd, intern = TRUE))
+  }
+  write.table(total_reads, file = islam_total_reads_file, quote = FALSE,
+              sep = "\t", col.names = FALSE)
+} else {
+  total_reads_df <- read.table(islam_total_reads_file, stringsAsFactors = FALSE)
+  colnames(total_reads_df) <- c("cell", "total_reads")
+  total_reads <- total_reads_df$total_reads
+  names(total_reads) <- total_reads_df$cell
+}
+```
+
+## Relationship between total reads and total molecules
+
+I obtain the total molecule counts per sample by summing the columns.
+
+```{r}
+total_molecules <- colSums(islam_counts)
+names(total_molecules) <- colnames(islam_counts)
+summary(total_molecules)
+```
+
+I then merge the total molecules with the total reads, confirming that the sample names are concordant.
+
+```{r}
+total_molecules <- total_molecules[names(total_molecules) %in% names(total_reads)]
+stopifnot(names(total_molecules) == names(total_reads),
+          length(total_molecules) == length(total_reads))
+total_counts <- data.frame(cell = names(total_reads), total_reads, total_molecules,
+                           stringsAsFactors = FALSE)
+```
+
+To make the plots more easily interpretable, I scale the total number of molecules by 10^3^
+and the total number of reads by 10^6^.
+
+```{r}
+total_counts$total_reads <- total_counts$total_reads / 10^6
+total_counts$total_molecules <- total_counts$total_molecules / 10^3
+```
+
+Plotting the sequencing depth versus the total number of molecules per sample.
+
+```{r reads-to-molecules}
+p_conv <- ggplot(total_counts, aes(x = total_reads, y = total_molecules)) +
+  geom_point() +
+  labs(x = "Sequencing depth (millions)",
+       y = "Total molecules (thousands)",
+       title = "Effect of sequencing depth on molecule count")
+p_conv
+```
+
+There are two clear outliers: cells 19 and 24.
+I'm not sure why these two cells are so different.
+Maybe they received a disporportionate amount of sequencing in the 3rd amplified run?
+
+```{r reads-to-molecules-outliers}
+p_conv + geom_text(aes(label = cell))
+```
+
+But focusing on the majority of cells, there is a clear increase in the total number of molecules with increasing sequencing depth.
+
+```{r reads-to-molecules-trend}
+p_conv + ylim(0, 400) + geom_smooth(method = "lm")
+```
+
+Maybe this effect is only seen when considering all genes (since with more sequencing, you are more likely to sequence rare molecules).
+Below I limit the analysis to only the 10,000 most highly expressed genes.
+
+```{r}
+mean_counts <- rowMeans(islam_counts)
+total_counts$total_molecules_high <- colSums(islam_counts[order(mean_counts,
+                                                   decreasing = TRUE)[1:10000], ])
+summary(total_counts$total_molecules_high)
+total_counts$total_molecules_high <- total_counts$total_molecules_high / 10^3
+```
+
+The trend appears the same when only using the top expressed genes.
+
+```{r reads-to-molecules-high}
+p_conv %+% total_counts %+% aes(y = total_molecules_high) +
+  labs(y = "Total molecules (thousands) for highly expressed genes")
+```
+
+Another possibility is that this difference in largely driven by the ERCC spike-in genes.
+
+```{r}
+total_counts$total_molecules_ercc <- colSums(islam_counts[islam_meta$Chr == "CTRL", ]) / 10^3
+total_counts$total_molecules_endo <- colSums(islam_counts[islam_meta$Chr != "CTRL", ]) / 10^3
+```
+
+```{r reads-to-molecules-ercc}
+p_conv %+% total_counts %+% aes(y = total_molecules_ercc) +
+  labs(y = "Total molecules (thousands) for ERCC genes")
+```
+
+```{r reads-to-molecules-endo}
+p_conv %+% total_counts %+% aes(y = total_molecules_endo) +
+  labs(y = "Total molecules (thousands) without ERCC genes")
+```
+
+But these also look similar to the overall trend.
+
+## Session information
+
+```{r info}
+sessionInfo()
+```

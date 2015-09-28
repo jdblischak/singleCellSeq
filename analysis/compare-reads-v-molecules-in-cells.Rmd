@@ -404,6 +404,38 @@ theme(axis.text.x = element_text(hjust=1, angle = 45))
 summary(lm(dist~type,data=ans1))
 ```
 
+```{r mean}
+#### used dist_index_matrix
+compute_avg_dist <- function(dist_type){
+  temp <- anno_regression_ENSG_dist
+  temp[dist_index_matrix!=dist_type] <- NA
+  diag(temp) <- NA
+  data.frame(dist=apply(temp,1,function(x){median(x,na.rm=TRUE)}),dist_type=dist_type)
+}
+
+new_avg_cell_dist <- do.call(rbind,lapply(unique(c(dist_index_matrix)),compute_avg_dist))
+
+
+plot(density(new_avg_cell_dist$dist[new_avg_cell_dist$dist_type=="same_batch"]-new_avg_cell_dist$dist[new_avg_cell_dist$dist_type=="same_ind_diff_batch"]))
+abline(h=0)
+
+
+t.test(new_avg_cell_dist$dist[new_avg_cell_dist$dist_type=="same_batch"]-new_avg_cell_dist$dist[new_avg_cell_dist$dist_type=="same_ind_diff_batch"])
+
+
+t.test(new_avg_cell_dist$dist[new_avg_cell_dist$dist_type=="same_batch"]-new_avg_cell_dist$dist[new_avg_cell_dist$dist_type=="diff_ind"])
+
+t.test(new_avg_cell_dist$dist[new_avg_cell_dist$dist_type=="same_ind_diff_batch"]-new_avg_cell_dist$dist[new_avg_cell_dist$dist_type=="diff_ind"])
+
+
+
+boxplot(dist~dist_type,data=new_avg_cell_dist)
+summary(lm(dist~dist_type,data=new_avg_cell_dist))
+
+ggplot(new_avg_cell_dist, aes(x= dist_type, y = dist, col = factor(dist_type)), height = 600, width = 2000) +
+geom_boxplot(outlier.shape = NA, alpha = .01, width = .2, position = position_dodge(width = .9))
+```
+
 19098 have more total endogenous gene molecules and more ERCC molecule
 
 ```{r total-molecule, fig.width=9, fig.height=9, cache=FALSE}
