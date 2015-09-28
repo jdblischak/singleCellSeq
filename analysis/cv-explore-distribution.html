@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+<meta name="author" content="Joyce Hsiao" />
+
+<meta name="date" content="2015-09-26" />
+
+<title>Coefficient of variation</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Coefficient of variation</h1>
+<h4 class="author"><em>Joyce Hsiao</em></h4>
+<h4 class="date"><em>2015-09-26</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#objectives">Objectives</a></li>
+<li><a href="#set-up">Set up</a></li>
+<li><a href="#prepare-data">Prepare data</a></li>
+<li><a href="#compute-coefficient-of-variation">Compute coefficient of variation</a></li>
+<li><a href="#kruskal-wallis-test">Kruskal-Wallis test</a></li>
+<li><a href="#top-9-in-kruskal-wallis">Top 9 in Kruskal-Wallis</a></li>
+<li><a href="#bottom-9-in-kruskal-wallis">Bottom 9 in Kruskal-Wallis</a></li>
+<li><a href="#explore-quantiles">Explore quantiles</a></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2015-09-28</p>
+<p><strong>Code version:</strong> 3f442a23f405d3564d9ab3197ec337df22fe9383</p>
+<div id="objectives" class="section level2">
+<h2>Objectives</h2>
+<p>We used Kruskal-Wallis test to compare coefficient of variation between individual (3 coefficient of variations from the batches for per individual). The p-value distribution of the per gene Kruskal-Wallis test does not resemeble p-value distribution of the commonly know per gene tests of differential gene expression.</p>
+<p>Visulization of the count distributions of the top 9 and bottom 9 genes that are different in coefficient of variation between individuals using the Kruskal-Wallis test did not reveal systematic different between the count distributions.</p>
+<p>We then applied Kwame Okrah’s HTShape package to compute skewness and kurtoss estimtes of each gene with each unique batches, and also across the three individuals. The SO-plot shows that there are a good proportion of the genes that are skewed in their count distribution.</p>
+</div>
+<div id="set-up" class="section level2">
+<h2>Set up</h2>
+<pre class="r"><code>library(ggplot2)
+library(edgeR)
+library(limma)</code></pre>
+</div>
+<div id="prepare-data" class="section level2">
+<h2>Prepare data</h2>
+<p>Input annotation</p>
+<pre class="r"><code>anno &lt;- read.table(&quot;../data/annotation.txt&quot;, header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno)</code></pre>
+<pre><code>  individual batch well     sample_id
+1      19098     1  A01 NA19098.1.A01
+2      19098     1  A02 NA19098.1.A02
+3      19098     1  A03 NA19098.1.A03
+4      19098     1  A04 NA19098.1.A04
+5      19098     1  A05 NA19098.1.A05
+6      19098     1  A06 NA19098.1.A06</code></pre>
+<p>Input molecule counts</p>
+<pre class="r"><code>molecules &lt;- read.table(&quot;../data/molecules.txt&quot;, header = TRUE, stringsAsFactors = FALSE)</code></pre>
+<p>Remove bulk samples</p>
+<pre class="r"><code>single_samples &lt;- anno$well != &quot;bulk&quot;
+anno_single &lt;- anno[ which(single_samples), ]
+molecules_single &lt;- molecules[ , which(single_samples)]
+stopifnot(ncol(molecules_single) == nrow(anno_single),
+          colnames(molecules_single) == anno_single$sample_id)</code></pre>
+<p>Remove ERCC genes.</p>
+<pre class="r"><code>nonERCC &lt;- grep(&quot;ERCC&quot;, rownames(molecules_single), invert = TRUE)
+molecules_single &lt;- molecules_single[nonERCC, ]</code></pre>
+<p>Remove genes with no counts and also overly expressed genes.</p>
+<pre class="r"><code>## remove gene with 0 counts
+expressed_single &lt;- rowSums(molecules_single) &gt; 0
+molecules_single &lt;- molecules_single[expressed_single, ]
+dim(molecules_single)</code></pre>
+<pre><code>[1] 17687   864</code></pre>
+<pre class="r"><code>## remove gene with molecule count larger than 1024 (15 if them)
+overexpressed_genes &lt;- rownames(molecules_single)[apply(molecules_single, 1,
+                                                        function(x) any(x &gt;= 1024))]
+molecules_single &lt;- molecules_single[!(rownames(molecules_single) %in% overexpressed_genes), ]
+
+## collision probability and cpm molecule counts
+molecules_single_collision &lt;- -1024 * log(1 - molecules_single / 1024)
+molecules_single_cpm &lt;- cpm(molecules_single_collision, log = TRUE)</code></pre>
+</div>
+<div id="compute-coefficient-of-variation" class="section level2">
+<h2>Compute coefficient of variation</h2>
+<p>Per individual coefficient of variation.</p>
+<pre class="r"><code>molecules_cv &lt;- 
+  lapply(1:length(unique(anno_single$individual)), function(per_person) {
+    molecules_per_person &lt;- molecules_single_collision[ , anno_single$individual == unique(anno_single$individual)]
+    cv_foo &lt;- data.frame(mean = apply(molecules_per_person, 1, mean, na.rm = TRUE),
+           cv = apply(molecules_per_person, 1, sd, na.rm = TRUE) / 
+                apply(molecules_per_person, 1, mean, na.rm = TRUE) )
+    rownames(cv_foo) &lt;- rownames(molecules_single_collision)
+    
+    cv_foo &lt;- cv_foo[rowSums(is.na(cv_foo)) == 0, ]
+    cv_foo$individual &lt;- unique(anno_single$individual)[per_person]
+      
+    return(cv_foo)
+    }) 
+names(molecules_cv) &lt;- unique(anno_single$individual)</code></pre>
+<p>Per batch coefficient of variation.</p>
+<pre class="r"><code>unique_batch &lt;- with(anno_single, paste(individual, batch, sep = &quot;_&quot;))
+
+molecules_cv_batch &lt;- 
+  lapply(1:length(unique(unique_batch)), function(per_batch) {
+    molecules_per_batch &lt;- molecules_single_collision[ , unique_batch == unique(unique_batch)[per_batch]]
+    cv_foo &lt;- data.frame(mean = apply(molecules_per_batch, 1, mean, na.rm = TRUE),
+           cv = apply(molecules_per_batch, 1, sd, na.rm = TRUE) / 
+                apply(molecules_per_batch, 1, mean, na.rm = TRUE) )
+    rownames(cv_foo) &lt;- rownames(molecules_single_collision)
+    
+    cv_foo &lt;- cv_foo[rowSums(is.na(cv_foo)) == 0, ]
+    cv_foo$batch &lt;- unique(unique_batch)[per_batch]
+      
+    return(cv_foo)
+    }) 
+names(molecules_cv_batch) &lt;- unique(unique_batch)</code></pre>
+<p>Subset CV data to include only genes that have data across all batches.</p>
+<pre class="r"><code>all_genes &lt;- lapply(1:3, function(ii) {
+                intersect(intersect(rownames(molecules_cv_batch[[ 1+ (ii-1)*3]]),
+                                    rownames(molecules_cv_batch[[ 2+ (ii-1)*3]]) ),
+                          rownames(molecules_cv_batch[[3 + (ii-1)*3]]) ) })
+all_genes &lt;- intersect(intersect(all_genes[[1]], all_genes[[2]]), all_genes[[3]])
+str(all_genes)</code></pre>
+<pre><code> chr [1:13115] &quot;ENSG00000237683&quot; &quot;ENSG00000188976&quot; ...</code></pre>
+<pre class="r"><code>molecules_cv_batch &lt;- 
+  lapply(1: length(molecules_cv_batch), function(per_batch) {
+          ii_include &lt;- which(rownames(molecules_cv_batch[[per_batch]]) %in% all_genes)
+          molecules_cv_batch[[per_batch]][ ii_include, ]
+  })
+
+stopifnot(all.equal(rownames(molecules_cv_batch[[9]]), rownames(molecules_cv_batch[[8]]) ) )
+
+nrow(molecules_cv_batch[[1]])</code></pre>
+<pre><code>[1] 13115</code></pre>
+</div>
+<div id="kruskal-wallis-test" class="section level2">
+<h2>Kruskal-Wallis test</h2>
+<p>A nonparametric test commonly used for comparison of multiple groups that have a very small sample size.</p>
+<pre class="r"><code>df_cv &lt;- lapply(1:nrow(molecules_cv_batch[[1]]), function(per_gene) {
+  do.call(rbind, lapply(1: length(molecules_cv_batch), function(per_batch) {
+                    molecules_cv_batch[[per_batch]][per_gene, ] })
+                  )
+})
+
+# Create a factor variable of individual
+individual &lt;- rep(unique(anno_single$individual), times = 3)
+
+# Kruskal walls
+kw_pval &lt;- lapply(1:nrow(molecules_cv_batch[[1]]), function(per_gene) {
+  result &lt;- kruskal.test(cv ~ factor(individual), data = df_cv[[per_gene]])
+  data.frame(pval = result$p.value, 
+             gene = rownames(molecules_cv_batch[[1]])[per_gene])
+})
+kw_pval &lt;- do.call(rbind, kw_pval)
+
+
+summary(kw_pval$pval)</code></pre>
+<pre><code>   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+0.02651 0.28810 0.56110 0.51490 0.73260 1.00000 </code></pre>
+<pre class="r"><code>ggplot(data = kw_pval, aes(x = pval)) + geom_histogram() +
+  ggtitle(&quot;Kruskal-Wallis p-value&quot;)</code></pre>
+<pre><code>stat_bin: binwidth defaulted to range/30. Use &#39;binwidth = x&#39; to adjust this.</code></pre>
+<p><img src="figure/cv-explore-distribution.Rmd/unnamed-chunk-10-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code># library(ggplot2)
+# ggplot(data = molecules_cv[[1]], aes(x = mean, y = cv)) +
+#   geom_point(size = 2, alpha = .5) + scale_x_log10() +
+#   geom_point(data = data.frame(mean = molecules_cv[[1]]$mean,
+#                                cv_adj = cv_adj), aes(x = mean, y = cv_adj), 
+#              size = 2, alpha = .5, col = &quot;blue&quot;)</code></pre>
+</div>
+<div id="top-9-in-kruskal-wallis" class="section level2">
+<h2>Top 9 in Kruskal-Wallis</h2>
+<pre class="r"><code>ii_diff &lt;- order(kw_pval$pval)[1:9]
+gene_subset &lt;- df_cv[ii_diff]
+
+df_cv_merge &lt;- lapply(1:9, function(per_gene) {
+          data.frame(gene_subset[[per_gene]], 
+                     individual = rep(c(&quot;19098&quot;, &quot;19101&quot;, &quot;19239&quot;), 3),
+                     gene = kw_pval$gene[ii_diff[per_gene]])
+})
+df_cv_merge &lt;- do.call(rbind, df_cv_merge)
+
+ggplot(df_cv_merge, aes( x = factor(individual), y = cv)) +
+  geom_point(aes(col = factor(individual))) + facet_grid(. ~ gene)</code></pre>
+<p><img src="figure/cv-explore-distribution.Rmd/unnamed-chunk-11-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>unique_batch &lt;- with(anno_single, paste(individual, batch, sep = &quot;_&quot;))
+count_cell &lt;- lapply(1:9, function(per_batch) {
+    ii_batch &lt;- which(unique_batch %in% unique(unique_batch)[per_batch])
+    ii_gene &lt;- which( rownames(molecules_single_collision) %in% kw_pval$gene[ii_diff] )
+    df_foo &lt;- molecules_single_collision[ii_gene, ii_batch]
+    colnames(df_foo) &lt;- &quot;&quot;
+
+    df_meta &lt;- data.frame(df_foo, 
+                         individual = anno_single$individual[ii_batch][1],
+                         batch = anno_single$batch[ii_batch][1],
+                         genes = rownames(df_foo))
+    df_meta
+})
+names(count_cell) &lt;- unique(unique_batch)
+
+count_cell_merge &lt;- do.call(rbind, count_cell)
+
+table(count_cell_merge$individual)</code></pre>
+<pre><code>
+19098 19101 19239 
+   27    27    27 </code></pre>
+<pre class="r"><code>count_cell_merge &lt;- reshape(count_cell_merge, direction = &quot;long&quot;,
+                            timevar = &quot;gene&quot;, varying = list(1:96) )
+
+ggplot(count_cell_merge, 
+        aes( x = Var.1, group = factor(paste(individual, batch, &quot;_&quot;))) ) +
+        geom_density(aes(x = Var.1, col = factor(individual)) ) + 
+        facet_wrap( ~ genes, scales = &quot;free&quot;)</code></pre>
+<p><img src="figure/cv-explore-distribution.Rmd/unnamed-chunk-12-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="bottom-9-in-kruskal-wallis" class="section level2">
+<h2>Bottom 9 in Kruskal-Wallis</h2>
+<pre class="r"><code>ii_diff &lt;- order(kw_pval$pval, decreasing = TRUE)[1:9]
+gene_subset &lt;- df_cv[ii_diff]
+
+df_cv_merge &lt;- lapply(1:9, function(per_gene) {
+          data.frame(gene_subset[[per_gene]], 
+                     individual = rep(c(&quot;19098&quot;, &quot;19101&quot;, &quot;19239&quot;), 3),
+                     gene = kw_pval$gene[ii_diff[per_gene]])
+})
+df_cv_merge &lt;- do.call(rbind, df_cv_merge)
+
+ggplot(df_cv_merge, aes( x = factor(individual), y = cv)) +
+  geom_point(aes(col = factor(individual))) + facet_grid(. ~ gene)</code></pre>
+<p><img src="figure/cv-explore-distribution.Rmd/unnamed-chunk-13-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>unique_batch &lt;- with(anno_single, paste(individual, batch, sep = &quot;_&quot;))
+count_cell &lt;- lapply(1:9, function(per_batch) {
+    ii_batch &lt;- which(unique_batch %in% unique(unique_batch)[per_batch])
+    ii_gene &lt;- which( rownames(molecules_single_collision) %in% kw_pval$gene[ii_diff] )
+    df_foo &lt;- molecules_single_collision[ii_gene, ii_batch]
+    colnames(df_foo) &lt;- &quot;&quot;
+
+    df_meta &lt;- data.frame(df_foo, 
+                         individual = anno_single$individual[ii_batch][1],
+                         batch = anno_single$batch[ii_batch][1],
+                         genes = rownames(df_foo))
+    df_meta
+})
+names(count_cell) &lt;- unique(unique_batch)
+
+count_cell_merge &lt;- do.call(rbind, count_cell)
+
+count_cell_merge &lt;- reshape(count_cell_merge, direction = &quot;long&quot;,
+                            timevar = &quot;gene&quot;, varying = list(1:96) )
+
+ggplot(count_cell_merge, 
+        aes( x = Var.1, group = factor(paste(individual, batch, &quot;_&quot;))) ) +
+        geom_density(aes(x = Var.1, col = factor(individual)) ) + 
+        facet_wrap( ~ genes, scales = &quot;free&quot;)</code></pre>
+<p><img src="figure/cv-explore-distribution.Rmd/unnamed-chunk-14-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="explore-quantiles" class="section level2">
+<h2>Explore quantiles</h2>
+<p>Use Kwame’s package to compare shapes of distributions.</p>
+<pre class="r"><code>require(devtools)</code></pre>
+<pre><code>Loading required package: devtools</code></pre>
+<pre class="r"><code>install_github(&quot;kokrah/HTshape&quot;)</code></pre>
+<pre><code>Downloading github repo kokrah/HTshape@master
+Installing HTShape
+&#39;/mnt/lustre/home/jdblischak/lib64/R/bin/R&#39; --no-site-file --no-environ  \
+  --no-save --no-restore CMD INSTALL  \
+  &#39;/tmp/RtmpOKdbXR/devtools45d033c14b23/kokrah-HTShape-35aa8e1&#39;  \
+  --library=&#39;/mnt/lustre/home/jdblischak/lib64/R/library&#39;  \
+  --install-tests </code></pre>
+<pre class="r"><code>require(HTShape)</code></pre>
+<pre><code>Loading required package: HTShape</code></pre>
+<pre class="r"><code>vignette(&quot;HTShape&quot;)</code></pre>
+<p>Select genes that have valid CV measures in all batches.</p>
+<p>SO-plot for one batch…</p>
+<pre class="r"><code>ii_genes &lt;- which(rownames(molecules_single_collision) %in% all_genes )
+unique_batch &lt;- with(anno_single, paste(individual, batch, sep = &quot;_&quot;))
+
+fit_shape &lt;- lapply(1:9, function(per_batch) {
+                    ii_batch &lt;- which(unique_batch == unique(unique_batch)[per_batch])
+                    count_foo &lt;- as.matrix(molecules_single_collision[ii_genes, ii_batch])
+                    shape_results &lt;- fitShape( log(count_foo + 1) )
+                    list(L3 = shape_results$lrats[ &quot;LR3&quot;, ],
+                         L4 = shape_results$lrats[ &quot;LR4&quot;, ] )
+                })
+plotSO(fit_shape[[1]]$L3, fit_shape[[1]]$L4)</code></pre>
+<p><img src="figure/cv-explore-distribution.Rmd/unnamed-chunk-16-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>SO-plot for the entire data set.</p>
+<pre class="r"><code>ii_genes &lt;- which(rownames(molecules_single_collision) %in% all_genes )
+
+fit_shape &lt;- fitShape( log(molecules_single_collision[ii_genes, ] + 1) )
+
+plotSO(fit_shape$lrats[1, ], fit_shape$lrats[2, ])</code></pre>
+<p><img src="figure/cv-explore-distribution.Rmd/unnamed-chunk-17-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] HTShape_1.0.0  devtools_1.8.0 edgeR_3.10.2   limma_3.24.9  
+[5] ggplot2_1.0.1  knitr_1.10.5  
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.12.0        xml2_0.1.1         magrittr_1.5      
+ [4] MASS_7.3-40        munsell_0.4.2      colorspace_1.2-6  
+ [7] stringr_1.0.0      httr_0.6.1         plyr_1.8.3        
+[10] tools_3.2.0        grid_3.2.0         gtable_0.1.2      
+[13] KernSmooth_2.23-14 git2r_0.10.1       rversions_1.0.2   
+[16] htmltools_0.2.6    yaml_2.1.13        digest_0.6.8      
+[19] reshape2_1.4.1     formatR_1.2        bitops_1.0-6      
+[22] curl_0.9.1         RCurl_1.95-4.6     memoise_0.2.1     
+[25] evaluate_0.7       rmarkdown_0.6.1    labeling_0.3      
+[28] stringi_0.4-1      scales_0.2.4       proto_0.3-10      </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+
+</body>
+</html>

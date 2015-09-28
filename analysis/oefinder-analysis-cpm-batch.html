@@ -8,11 +8,11 @@
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
 <meta name="generator" content="pandoc" />
 
-<meta name="author" content="Joyce Hsiao &amp; Po-Yuang Tung" />
+<meta name="author" content="Joyce Hsiao" />
 
 <meta name="date" content="2015-09-26" />
 
-<title>Ordering effect of the capture sites</title>
+<title>Potential batch effect in the ordering effect of the capture sites</title>
 
 <script src="libs/jquery-1.11.0/jquery.min.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -119,8 +119,8 @@ img {
 </div><!--/.navbar -->
 
 <div id="header">
-<h1 class="title">Ordering effect of the capture sites</h1>
-<h4 class="author"><em>Joyce Hsiao &amp; Po-Yuang Tung</em></h4>
+<h1 class="title">Potential batch effect in the ordering effect of the capture sites</h1>
+<h4 class="author"><em>Joyce Hsiao</em></h4>
 <h4 class="date"><em>2015-09-26</em></h4>
 </div>
 
@@ -129,9 +129,11 @@ img {
 <li><a href="#goal">Goal</a></li>
 <li><a href="#setup">Setup</a></li>
 <li><a href="#prepare-single-cell-data-before-filtering">Prepare single cell data before filtering</a></li>
+<li><a href="#prepare-oefinder-input">Prepare OEFinder input</a><ul>
+<li><a href="#per-batch-per-individual">Per batch, per individual</a></li>
+<li><a href="#per-individual">Per individual</a></li>
+</ul></li>
 <li><a href="#oefinder">OEFinder</a></li>
-<li><a href="#expression-level-of-oe-genes">Expression level of OE genes</a></li>
-<li><a href="#distribution-of-oe-genes">Distribution of OE genes</a></li>
 <li><a href="#session-information">Session information</a></li>
 </ul>
 </div>
@@ -140,9 +142,9 @@ img {
 <p><strong>Code version:</strong> 3f442a23f405d3564d9ab3197ec337df22fe9383</p>
 <div id="goal" class="section level2">
 <h2>Goal</h2>
-<p>We investigated potential ordering effect of wells on each place on gene expression across the 9 plates (batches). <a href="http://dx.doi.org/10.1038/nmeth.3549">Leng</a> et al. discussed ordering effect in single-cell RNA-seq experiments using Fluidigm C1 and implemented an algorithm that detects ordering effect of wells on gene expression in <a href="http://dx.doi.org/10.1101/025437">OEFinder</a>.</p>
-<p>Note that OEFinder relies on a series of permutations. We had to run OEFinder on a cluster-based computing system.</p>
-<p>The results indicated that there are 549 OE genes (out of 20419 genes). GO analysis (DAVID) of these 549 showed that their functions related to membrane lumen (organelle lumen), ribosomal protein, and RNA processing (splicesome), suggesting that they might be all highly expressed genes.</p>
+<p>We investigated potential ordering effect of wells on each place on gene expression for each plate. <a href="http://dx.doi.org/10.1038/nmeth.3549">Leng</a> et al. discussed ordering effect in single-cell RNA-seq experiments using Fluidigm C1 and implemented an algorithm that detects ordering effect of wells on gene expression in <a href="http://dx.doi.org/10.1101/025437">OEFinder</a>.</p>
+<p>First, we applied OEFinder to each batch (within each individual) on the CPM-normalized data. The OEFinder returned a warning saying “essentially perfect fit: summary may be unreliable.”</p>
+<p>We then applied OEFinder to one individual at a time, and the same error message returned…</p>
 </div>
 <div id="setup" class="section level2">
 <h2>Setup</h2>
@@ -177,33 +179,84 @@ molecules_single &lt;- molecules[ , which(single_samples)]
 reads_single &lt;- reads[ , which(single_samples)]
 stopifnot(ncol(molecules_single) == nrow(anno_single),
           colnames(molecules_single) == anno_single$sample_id)</code></pre>
-<p>Output single cell samples to txt files.</p>
-<pre class="r"><code>if (!file.exists(&quot;../data/molecules-single.txt&quot;)) {
-  write.table(molecules_single, 
-              file = &quot;../data/molecules-single.txt&quot;,
+<p>Remove ERCC genes.</p>
+<pre class="r"><code>ii_nonERCC &lt;- grep(&quot;ERCC&quot;, rownames(molecules_single), invert = TRUE)
+
+molecules_single_ENSG &lt;- molecules_single[ii_nonERCC, ]</code></pre>
+<p>Remove genes with no counts and also overly expressed genes.</p>
+<pre class="r"><code>## remove gene with 0 counts
+expressed_single_ENSG &lt;- rowSums(molecules_single_ENSG) &gt; 0
+molecules_single_ENSG &lt;- molecules_single[expressed_single_ENSG, ]
+dim(molecules_single_ENSG)</code></pre>
+<pre><code>[1] 17769   864</code></pre>
+<pre class="r"><code>## remove gene with molecule count larger than 1024 (15 if them)
+overexpressed_genes &lt;- rownames(molecules_single_ENSG)[apply(molecules_single_ENSG, 1,
+                                                        function(x) any(x &gt;= 1024))]
+molecules_single_ENSG &lt;- molecules_single_ENSG[!(rownames(molecules_single_ENSG) %in% overexpressed_genes), ]
+
+## collision probability and cpm molecule counts
+molecules_single_collision &lt;- -1024 * log(1 - molecules_single_ENSG / 1024)
+molecules_single_cpm &lt;- cpm(molecules_single_collision, log = TRUE)</code></pre>
+</div>
+<div id="prepare-oefinder-input" class="section level2">
+<h2>Prepare OEFinder input</h2>
+<div id="per-batch-per-individual" class="section level3">
+<h3>Per batch, per individual</h3>
+<p>Output single cell CPM to txt files.</p>
+<pre class="r"><code>anno_single$unique_batch &lt;- with(anno_single, paste(individual, batch, sep = &quot;_&quot;))
+for (per_batch in 1:length(unique(anno_single$unique_batch))) {
+  ii_batch &lt;- anno_single$unique_batch == unique(anno_single$unique_batch)[per_batch]
+  write.table(molecules_single_cpm[which(ii_batch), ], 
+              file = paste(&quot;../data/molecules-single-cpm&quot;, &quot;-&quot;, 
+                           unique(anno_single$unique_batch)[per_batch], &quot;.txt&quot;, sep = &quot;&quot;),
               quote = FALSE,
               col.names = TRUE, row.names = TRUE)
 }</code></pre>
 <p>Prepare capture site identification file. A txt file with one column of capture site ID (A, B, C, …, H).</p>
-<pre class="r"><code>require(stringr)</code></pre>
-<pre><code>Loading required package: stringr</code></pre>
-<pre class="r"><code>capture_site &lt;- str_extract(anno_single$well, &quot;[aA-zZ]+&quot;)
-table(capture_site)</code></pre>
-<pre><code>capture_site
-  A   B   C   D   E   F   G   H 
-108 108 108 108 108 108 108 108 </code></pre>
-<p>Save capture_site to a txt file.</p>
-<pre class="r"><code>if (!file.exists(&quot;../data/capture-site.txt&quot;)) {
-write.table(data.frame(site = capture_site), 
-            file = &quot;../data/capture-site.txt&quot;,
-            quote = FALSE,
-            col.names = FALSE, row.names = FALSE)
+<pre class="r"><code>require(stringr)
+capture_site &lt;- str_extract(anno_single$well, &quot;[aA-zZ]+&quot;)
+table(capture_site)
+
+# Save capture_site to a txt file.
+for (per_batch in 1:length(unique(anno_single$unique_batch))) {
+  ii_batch &lt;- anno_single$unique_batch == unique(anno_single$unique_batch)[per_batch]
+  write.table(data.frame(site = capture_site[ii_batch]), 
+              file = paste(&quot;../data/capture-site-&quot;,
+                           unique(anno_single$unique_batch)[per_batch], &quot;.txt&quot;, sep = &quot;&quot;),
+              quote = FALSE,
+              col.names = FALSE, row.names = FALSE)
 }</code></pre>
+</div>
+<div id="per-individual" class="section level3">
+<h3>Per individual</h3>
+<p>Output single cell CPM to txt files.</p>
+<pre class="r"><code>for (per_person in 1:length(unique(anno_single$individual))) {
+  ii_person &lt;- anno_single$individual == unique(anno_single$individual)[per_person]
+  write.table(molecules_single_cpm[which(ii_person), ], 
+              file = paste(&quot;../data/molecules-single-cpm&quot;, &quot;-&quot;, 
+                           unique(anno_single$individual)[per_person], &quot;.txt&quot;, sep = &quot;&quot;),
+              quote = FALSE,
+              col.names = TRUE, row.names = TRUE)
+}</code></pre>
+<p>Prepare capture site identification file. A txt file with one column of capture site ID (A, B, C, …, H).</p>
+<pre class="r"><code>require(stringr)
+capture_site &lt;- str_extract(anno_single$well, &quot;[aA-zZ]+&quot;)
+table(capture_site)
+
+# Save capture_site to a txt file.
+for (per_person in 1:length(unique(anno_single$individual))) {
+  ii_person &lt;- anno_single$individual == unique(anno_single$individual)[per_person]
+  write.table(data.frame(site = capture_site[ii_person]), 
+              file = paste(&quot;../data/capture-site-&quot;,
+                           unique(anno_single$individual)[per_person], &quot;.txt&quot;, sep = &quot;&quot;),
+              quote = FALSE,
+              col.names = FALSE, row.names = FALSE)
+}</code></pre>
+</div>
 </div>
 <div id="oefinder" class="section level2">
 <h2>OEFinder</h2>
-<p>For unnormalized data, OEFinder defaults the DESeq normalization method.</p>
-<p>Upload <em>molecules-single-ENSG.txt</em> and <em>capture-site.txt</em> to OEFinder Shiny GUI interface.</p>
+<p>Upload <em>molecules-single-cpm-(batch).txt</em> and <em>capture-site-(batch).txt</em> to OEFinder Shiny GUI interface.</p>
 <p>Output to <em>singleCellSeq/data/OEFinder</em>.</p>
 <ul>
 <li>Run OEFinder</li>
@@ -215,78 +268,6 @@ library(shinyFiles)
 library(EBSeq)
 
 runGitHub(&quot;OEFinder&quot;, &quot;lengning&quot;)</code></pre>
-<p>Load OEFinder outputted genes.</p>
-<pre class="r"><code>OE_raw &lt;- read.csv(&quot;../data/OEFinder/all-genes-OEgenes.csv&quot;,
-                     stringsAsFactors = FALSE,
-                     quote = &quot;\&quot;&quot;, sep = &quot;,&quot;, header = TRUE)
-colnames(OE_raw) &lt;- c(&quot;genes&quot;, &quot;pvalue&quot;)
-head(OE_raw)</code></pre>
-<pre><code>            genes pvalue
-1 ENSG00000160087      0
-2 ENSG00000175756      0
-3 ENSG00000160072      0
-4 ENSG00000162585      0
-5 ENSG00000116670      0
-6 ENSG00000117122      0</code></pre>
-<pre class="r"><code>str(OE_raw)</code></pre>
-<pre><code>&#39;data.frame&#39;:   549 obs. of  2 variables:
- $ genes : chr  &quot;ENSG00000160087&quot; &quot;ENSG00000175756&quot; &quot;ENSG00000160072&quot; &quot;ENSG00000162585&quot; ...
- $ pvalue: num  0 0 0 0 0 0 0 0 0 0 ...</code></pre>
-<p>2 ERCC genes in the Overexpressed genes</p>
-<pre class="r"><code>grep(&quot;ERCC&quot;, OE_raw$genes)</code></pre>
-<pre><code>[1] 302 458</code></pre>
-<p>Create an indicator variable for the OE genes</p>
-<pre class="r"><code>oefinder_raw &lt;- rownames(molecules_single) %in% as.character(OE_raw$genes)
-table(oefinder_raw)</code></pre>
-<pre><code>oefinder_raw
-FALSE  TRUE 
-19870   549 </code></pre>
-</div>
-<div id="expression-level-of-oe-genes" class="section level2">
-<h2>Expression level of OE genes</h2>
-<p>To answer the question if OE genes are more highly expressed, the average molecule CPM of OE genes or of all genes in each cells were plotted. If the OE genes are highly expressed, it is possible that this position effect is present in all genes but can only be observed with certain amount of expressing level.</p>
-<pre class="r"><code>## remove gene with 0 counts
-expressed_single &lt;- rowSums(molecules_single) &gt; 0
-molecules_single &lt;- molecules_single[expressed_single, ]
-dim(molecules_single)</code></pre>
-<pre><code>[1] 17771   864</code></pre>
-<pre class="r"><code>## remove gene with molecule count larger than 1024 (15 if them)
-overexpressed_genes &lt;- rownames(molecules_single)[apply(molecules_single, 1,
-                                                        function(x) any(x &gt;= 1024))]
-molecules_single &lt;- molecules_single[!(rownames(molecules_single) %in% overexpressed_genes), ]
-
-## collision probability and cpm molecule counts
-molecules_single_collision &lt;- -1024 * log(1 - molecules_single / 1024)
-molecules_single_cpm &lt;- cpm(molecules_single_collision, log = TRUE)
-
-## select for OE genes 
-molecules_single_OE &lt;- molecules_single_cpm[rownames(molecules_single_cpm) %in% as.character(OE_raw$genes),]
-
-## boxplot
-anno_single$OE_ave &lt;- apply(molecules_single_OE, 2, mean)
-anno_single$all_gene_ave &lt;- apply(molecules_single_cpm, 2, mean)
-
-ggplot(anno_single, aes(x = as.factor(individual))) + geom_boxplot(aes( y = OE_ave, fill = as.factor(batch), alpha = 0.25)) + geom_boxplot(aes( y = all_gene_ave, fill = as.factor(batch))) +  labs (x = &quot;individual&quot;, y = &quot;avarage molecule cpm&quot;, alpha = &quot;OE&quot;, fill = &quot;batch&quot;)</code></pre>
-<p><img src="figure/oefinder-analysis.Rmd/unnamed-chunk-13-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-</div>
-<div id="distribution-of-oe-genes" class="section level2">
-<h2>Distribution of OE genes</h2>
-<pre class="r"><code>cutoffs &lt;- seq(1001, nrow(molecules_single_cpm), by = 1000)
-cutoffs &lt;- c(cutoffs, nrow(molecules_single_cpm))
-top_genes_count &lt;- lapply(1:length(cutoffs), function(cut) {
-                        per_cutoff &lt;- cutoffs[cut]
-                        cell_across_order &lt;- order(rowSums(molecules_single_cpm), decreasing = TRUE)
-                        top_genes &lt;- rownames(molecules_single_cpm)[cell_across_order &lt; per_cutoff]
-                        sum(OE_raw$genes %in% top_genes)
-                        })
-top_genes_count &lt;- do.call(c, top_genes_count)
-
-ggplot(data.frame(top_count = top_genes_count,
-                  cutoffs = cutoffs), 
-       aes(x = as.factor(cutoffs), y = top_count)) + geom_point() +
-       labs(x = &quot;Top X genes&quot;, y = &quot;Number of OEFinder OE genes&quot;)</code></pre>
-<p><img src="figure/oefinder-analysis.Rmd/unnamed-chunk-14-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<p>OE genes identified by OEFinder were not limited to the top 1000 genes. On the contrary, we found OE genes at all levels of gene expression (averaged acrosss cells).</p>
 </div>
 <div id="session-information" class="section level2">
 <h2>Session information</h2>
@@ -306,14 +287,14 @@ attached base packages:
 [1] stats     graphics  grDevices utils     datasets  methods   base     
 
 other attached packages:
-[1] stringr_1.0.0 ggplot2_1.0.1 edgeR_3.10.2  limma_3.24.9  knitr_1.10.5 
+[1] ggplot2_1.0.1 edgeR_3.10.2  limma_3.24.9  knitr_1.10.5 
 
 loaded via a namespace (and not attached):
  [1] Rcpp_0.12.0      magrittr_1.5     MASS_7.3-40      munsell_0.4.2   
- [5] colorspace_1.2-6 httr_0.6.1       plyr_1.8.3       tools_3.2.0     
- [9] grid_3.2.0       gtable_0.1.2     htmltools_0.2.6  yaml_2.1.13     
-[13] digest_0.6.8     reshape2_1.4.1   formatR_1.2      bitops_1.0-6    
-[17] RCurl_1.95-4.6   evaluate_0.7     rmarkdown_0.6.1  labeling_0.3    
+ [5] colorspace_1.2-6 stringr_1.0.0    httr_0.6.1       plyr_1.8.3      
+ [9] tools_3.2.0      grid_3.2.0       gtable_0.1.2     htmltools_0.2.6 
+[13] yaml_2.1.13      digest_0.6.8     reshape2_1.4.1   formatR_1.2     
+[17] bitops_1.0-6     RCurl_1.95-4.6   evaluate_0.7     rmarkdown_0.6.1 
 [21] stringi_0.4-1    scales_0.2.4     proto_0.3-10    </code></pre>
 </div>
 

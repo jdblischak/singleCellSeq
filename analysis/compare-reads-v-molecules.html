@@ -131,14 +131,16 @@ img {
 <li><a href="#compare-reads-and-molecules">Compare reads and molecules</a></li>
 <li><a href="#effect-of-sequencing-depth-on-molecule-count">Effect of sequencing depth on molecule count</a><ul>
 <li><a href="#pairwise-distance-between-cells">Pairwise distance between cells</a></li>
+<li><a href="#reads-to-molecule-conversion-rate">Reads to molecule conversion rate</a></li>
+<li><a href="#pca">PCA</a></li>
 </ul></li>
 <li><a href="#compare-reads-and-standardized-molecules">Compare reads and standardized molecules</a></li>
 <li><a href="#session-information">Session information</a></li>
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-09-24</p>
-<p><strong>Code version:</strong> 9d87919cfee4ceb697409c1ff079d1ed897d8e73</p>
+<p><strong>Last updated:</strong> 2015-09-28</p>
+<p><strong>Code version:</strong> 3f442a23f405d3564d9ab3197ec337df22fe9383</p>
 <p>First, compared counts via three methods:</p>
 <ul>
 <li><strong>reads_cpm</strong> - standard counts per million</li>
@@ -401,6 +403,70 @@ Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&
 Residual standard error: 21.43 on 166750 degrees of freedom
 Multiple R-squared:  0.006382,  Adjusted R-squared:  0.00637 
 F-statistic: 535.5 on 2 and 166750 DF,  p-value: &lt; 2.2e-16</code></pre>
+</div>
+<div id="reads-to-molecule-conversion-rate" class="section level3">
+<h3>Reads to molecule conversion rate</h3>
+<pre class="r"><code>## calculate conversion rate
+total_counts_single$conversion_rate &lt;- total_counts_single$total_reads/ total_counts_single$total_molecules
+plot(total_counts_single$conversion_rate,col=total_counts_single$batch)</code></pre>
+<p><img src="figure/compare-reads-v-molecules.Rmd/conversion-rate-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>## create 9 batches
+total_counts_single$batch_num &lt;- paste(total_counts_single$individual,total_counts_single$batch,sep=&quot;_&quot;)
+
+## calculate individual mean for standardization
+avg_conversion_rate &lt;- do.call(rbind,
+lapply(unique(total_counts_single$individual),function(x){
+  c(individual=x,avg_conv_rate=mean(total_counts_single$conversion_rate[total_counts_single$individual==x]))
+}))
+
+total_counts_single &lt;-merge(total_counts_single,avg_conversion_rate,by=&quot;individual&quot;)
+
+## create std_conv_rate within individual to remove individual effect
+total_counts_single$std_conv_rate &lt;- total_counts_single$conversion_rate - total_counts_single$avg_conv_rate
+plot(total_counts_single$std_conv_rate,col=total_counts_single$batch)</code></pre>
+<p><img src="figure/compare-reads-v-molecules.Rmd/conversion-rate-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>summary(lm(std_conv_rate~batch_num,data=total_counts_single))</code></pre>
+<pre><code>
+Call:
+lm(formula = std_conv_rate ~ batch_num, data = total_counts_single)
+
+Residuals:
+      Min        1Q    Median        3Q       Max 
+-0.017995 -0.001046  0.000454  0.001550  0.007489 
+
+Coefficients:
+                   Estimate Std. Error t value Pr(&gt;|t|)    
+(Intercept)      -2.439e-04  3.055e-04  -0.798 0.425037    
+batch_num19098_2 -3.580e-03  7.888e-04  -4.539 6.91e-06 ***
+batch_num19098_3  1.614e-03  4.822e-04   3.347 0.000871 ***
+batch_num19101_1  3.796e-05  4.431e-04   0.086 0.931757    
+batch_num19101_2  1.144e-03  4.583e-04   2.496 0.012834 *  
+batch_num19101_3 -6.282e-04  4.959e-04  -1.267 0.205748    
+batch_num19239_1 -1.306e-03  4.416e-04  -2.956 0.003242 ** 
+batch_num19239_2  5.405e-04  4.601e-04   1.175 0.240640    
+batch_num19239_3  1.522e-03  4.402e-04   3.458 0.000584 ***
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
+
+Residual standard error: 0.002817 on 569 degrees of freedom
+Multiple R-squared:  0.1427,    Adjusted R-squared:  0.1307 
+F-statistic: 11.84 on 8 and 569 DF,  p-value: 1.14e-15</code></pre>
+<pre class="r"><code>## violin plots
+ggplot(total_counts_single, aes(x= factor(batch_num), y = conversion_rate, fill = factor(batch_num)), height = 600, width = 2000) +
+geom_violin(alpha = .5) + 
+geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+labs(x = &quot;batch&quot;, y = &quot;conversion rate&quot;, title = &quot;individual batch effect of conversion rate&quot;) +
+theme(axis.text.x = element_text(hjust=1, angle = 45))</code></pre>
+<p><img src="figure/compare-reads-v-molecules.Rmd/conversion-rate-3.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(total_counts_single, aes(x= factor(batch_num), y = std_conv_rate, fill = factor(batch_num)), height = 600, width = 2000) +
+geom_violin(alpha = .5) + 
+geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+labs(x = &quot;batch&quot;, y = &quot;std conversion rate&quot;, title = &quot;batch effect of conversion rate&quot;) +
+theme(axis.text.x = element_text(hjust=1, angle = 45))</code></pre>
+<p><img src="figure/compare-reads-v-molecules.Rmd/conversion-rate-4.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="pca" class="section level3">
+<h3>PCA</h3>
 <p>What effect does this difference in total molecule count have in PCA?</p>
 <pre class="r"><code>pca_single &lt;- run_pca(molecules[, anno$well != &quot;bulk&quot;])</code></pre>
 <pre class="r"><code>plot_pca(pca_single$PCs, explained = pca_single$explained,
@@ -504,13 +570,14 @@ other attached packages:
 loaded via a namespace (and not attached):
  [1] Rcpp_0.12.0        magrittr_1.5       MASS_7.3-40       
  [4] munsell_0.4.2      colorspace_1.2-6   R6_2.1.1          
- [7] stringr_1.0.0      plyr_1.8.3         tools_3.2.0       
-[10] parallel_3.2.0     grid_3.2.0         gtable_0.1.2      
-[13] DBI_0.3.1          htmltools_0.2.6    yaml_2.1.13       
-[16] assertthat_0.1     digest_0.6.8       RColorBrewer_1.1-2
-[19] reshape2_1.4.1     formatR_1.2        evaluate_0.7      
-[22] rmarkdown_0.6.1    labeling_0.3       stringi_0.4-1     
-[25] scales_0.2.4       proto_0.3-10      </code></pre>
+ [7] stringr_1.0.0      httr_0.6.1         plyr_1.8.3        
+[10] tools_3.2.0        parallel_3.2.0     grid_3.2.0        
+[13] gtable_0.1.2       DBI_0.3.1          htmltools_0.2.6   
+[16] yaml_2.1.13        assertthat_0.1     digest_0.6.8      
+[19] RColorBrewer_1.1-2 reshape2_1.4.1     formatR_1.2       
+[22] bitops_1.0-6       RCurl_1.95-4.6     evaluate_0.7      
+[25] rmarkdown_0.6.1    labeling_0.3       stringi_0.4-1     
+[28] scales_0.2.4       proto_0.3-10      </code></pre>
 </div>
 
 
