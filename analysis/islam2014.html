@@ -131,8 +131,8 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-09-28</p>
-<p><strong>Code version:</strong> 3f442a23f405d3564d9ab3197ec337df22fe9383</p>
+<p><strong>Last updated:</strong> 2015-10-01</p>
+<p><strong>Code version:</strong> 0a8ae478de84ce46ed5572c0b2b85e3337f3f71c</p>
 <p>Does the sequencing depth of a given single cell affect the total number of UMIs observed in the data from <a href="http://www.nature.com/nmeth/journal/v11/n2/full/nmeth.2772.html">Islam et al., 2014</a>?</p>
 <pre class="r"><code>library(&quot;dplyr&quot;)
 library(&quot;ggplot2&quot;)
@@ -157,7 +157,7 @@ colnames(islam_counts) &lt;- paste0(&quot;ESCell_&quot;, 1:96)</code></pre>
 <div id="download-fastq-files" class="section level2">
 <h2>Download fastq files</h2>
 <p>Next I needed the raw fastq files to obtain the sequencing depth. These have to be downloaded from the Sequence Read Archive (SRA). Unfortunately by design the SRA assigns samples arbitrary IDs making it very difficult to figure out which sample is what. In other words, this is not the fault of the others because this happens to all data posted to SRA. The informative names that are viewable in GEO are stripped in the SRA.</p>
-<p>Luckily I found a strategy from this <a href="https://www.biostars.org/p/93494/#131604">Biostars comment</a> to obtain the mapping between each sample in GEO to the sample ID in the SRA. I am only keeping the samples with the label “single”. This corresponds to two fastq files per sample. The other samples labeled “amplified” were PCR-amplifed for an additional 9 cycles. I initially excluded these amplified samples, but now realize that the fastq file was included in the molecule counts (see description above). I doubt one additional fastq file per sample will change the result much, but I can incorporate these additional data files later (it takes ~12 minutes per fastq download).</p>
+<p>Luckily I found a strategy from this <a href="https://www.biostars.org/p/93494/#131604">Biostars comment</a> to obtain the mapping between each sample in GEO to the sample ID in the SRA. The samples with the label “single” each have two fastq files. The other samples labeled “amplified” were PCR-amplifed for an additional 9 cycles, and each only have one fastq file. All three fastq files were used to obtain the molecule counts (see the description above).</p>
 <pre class="r"><code>library(&quot;GEOquery&quot;)</code></pre>
 <pre><code>Loading required package: Biobase
 Loading required package: BiocGenerics
@@ -200,9 +200,9 @@ Setting options(&#39;download.file.method.GEOquery&#39;=&#39;curl&#39;)</code></
 Found 1 file(s)
 GSE46980_series_matrix.txt.gz
 File stored at: 
-/tmp/RtmpcIHoUB/GPL13112.soft</code></pre>
+/tmp/Rtmp3CJOyU/GPL13112.soft</code></pre>
 <pre class="r"><code>gse &lt;- as.data.frame(gse[[1]], stringsAsFactors = FALSE)
-sra_info &lt;- gse %&gt;% filter(grepl(&quot;single&quot;, title)) %&gt;% # Only keep the data without extra amplication
+sra_info &lt;- gse %&gt;%
   select(title, supplementary_file_1) %&gt;%
   mutate(srx = substr(supplementary_file_1, start = 77, stop = 85))
 head(sra_info)</code></pre>
@@ -301,14 +301,14 @@ total_counts$total_molecules &lt;- total_counts$total_molecules / 10^3</code></p
        title = &quot;Effect of sequencing depth on molecule count&quot;)
 p_conv</code></pre>
 <p><img src="figure/islam2014.Rmd/reads-to-molecules-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<p>There are two clear outliers: cells 19 and 24. I’m not sure why these two cells are so different. Maybe they received a disporportionate amount of sequencing in the 3rd amplified run?</p>
+<p>There are two clear outliers: cells 19 and 24. I’m not sure why these two cells are so different.</p>
 <pre class="r"><code>p_conv + geom_text(aes(label = cell))</code></pre>
 <p><img src="figure/islam2014.Rmd/reads-to-molecules-outliers-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <p>But focusing on the majority of cells, there is a clear increase in the total number of molecules with increasing sequencing depth.</p>
 <pre class="r"><code>p_conv + ylim(0, 400) + geom_smooth(method = &quot;lm&quot;)</code></pre>
 <pre><code>Warning: Removed 2 rows containing missing values (stat_smooth).</code></pre>
 <pre><code>Warning: Removed 2 rows containing missing values (geom_point).</code></pre>
-<pre><code>Warning: Removed 6 rows containing missing values (geom_path).</code></pre>
+<pre><code>Warning: Removed 2 rows containing missing values (geom_path).</code></pre>
 <p><img src="figure/islam2014.Rmd/reads-to-molecules-trend-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <p>Maybe this effect is only seen when considering all genes (since with more sequencing, you are more likely to sequence rare molecules). Below I limit the analysis to only the 10,000 most highly expressed genes.</p>
 <pre class="r"><code>mean_counts &lt;- rowMeans(islam_counts)
