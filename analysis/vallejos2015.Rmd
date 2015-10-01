@@ -1,0 +1,222 @@
+---
+title: "BASiCS analysis of Mouse ESC dataset"
+date: 2015-09-29
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+opts_chunk$set(cache = FALSE)
+```
+
+The first half of the analysis is the data cleaning steps performed in [Vallejos et al., 2015][vallejos2015] to reproduce the steps performed in [Islam et al., 2014][islam2014].
+In the second half I compare the total molecule counts from this clean data to the sequencing depth per sample to determine if there is still [a relationship between sequencing depth and total molecule count](islam2014.html).
+
+[vallejos2015]: http://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1004333
+[islam2014]: http://www.nature.com/nmeth/journal/v11/n2/full/nmeth.2772.html
+
+## Introduction 
+
+This document shows the code used when illustrating the use of BASiCS by analysing the mouse ESC dataset described in Islam et al (2014)[^footnoteIslam2014]. To start the analysis, the following data must be dowloaded and stored in `data.path` directory. 
+
+- Expression counts. File 'GSE46980_CombinedMoleculeCounts.tab' from [Series GSE46980](http://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE46980). 
+
+- Quality control information. File '187_3lanes_CA.txt' (provided by Sten Linnarson). 
+
+- Input molecules of spike-in genes. File 'SilverBulletCTRLConc.txt' (provided by Sten Linnarson). 
+
+- List of highly variable genes detected by Islam et al (2014). Supplementary Table 1 (noisy genes) in [Islam et al (2014)](http://www.nature.com/nmeth/journal/v11/n2/full/nmeth.2772.html#supplementary-information)
+
+[^footnoteIslam2014]: Islam et al (2014). Quantitative single-cell RNA-seq with unique molecular identifiers. *Nature Methods* 11: 163-166.
+
+```{r wd}
+# Here, we stored the 3 files mentioned above in the current R working directory
+# Change this path as necessary
+
+#setwd("/Users/catalinavallejos/Documents/MRC/Projects/SCE/LaTeX/BASiCS/AnalysisMouseESC/")
+# data.path = getwd()
+data.path = "/mnt/gluster/home/jdblischak/basics/AnalysisMouseESC"
+```
+
+In addition, the following libraries must be loaded before performing the analysis
+
+```{r libraries}
+#################################
+# REQUIRED LIBRARIES ############
+#################################
+library(BASiCS) # To perform BASiCS analysis
+# Please ignore the message 'No methods found in "BiocGenerics" for requests: displayTechIndicator, displaySpikeInput'
+# BASiCS only needs to import the generic functions, not the associated methods. 
+
+#################################
+# OPTIONAL LIBRARIES ############
+#################################
+library(data.table) # For fast pre-processing of large datasets. Can be replaced by standard 'data.frame' objects
+```
+
+***
+
+## Data pre-processing
+
+#### Loading the expression counts
+
+```{r LoadCounts}
+# Matrix of expression counts (ignoring metadata)
+Counts <- fread(paste0(data.path,"/GSE46980_CombinedMoleculeCounts.tab"),skip=6,drop=c("Chr","Pos","Strand","TrLen","MinExonHits","ExonHits"))
+Cells <- as.vector(t(read.table(paste0(data.path,"/GSE46980_CombinedMoleculeCounts.tab"),skip=5, nrows = 1, header = F)[-1]))
+SpikesInfo <- fread(paste0(data.path,"/SilverBulletCTRLConc.txt"), select=c("ERCC_ID","Name","molecules_in_each_chamber"))
+```
+
+- `Counts` is the matrix of expression counts. The first column in `Counts` contains the identifiers for each of the `r nrow(Counts)` transcripts and the remaining columns contain the observed expression counts for each of the `r ncol(Counts) - 1` cells in the sample. 
+
+- `Cells` contains cell identifiers for each of the `r ncol(Counts) - 1` cells in the sample. These identifiers are required in order to combine the quality control information. 
+
+- `SpikesInfo` contains the input molecules that were added to the cell's lysis (for each of the `r nrow(SpikesInfo)` spike-in genes)
+
+
+The first step is to fix the format of genes and cells' identifiers:
+```{r FormatIDs}
+# Cell identifiers
+setnames(Counts,names(Counts),c("Name",Cells)) 
+
+# Gene identifiers 
+# ERCC identifiers must start with 'ERCC' (required to combine with the information about input molecules)
+setkey(Counts,Name); setkey(SpikesInfo,Name)
+Counts <- merge(Counts,SpikesInfo,all=TRUE)
+# Creating a variable containing gene names (including ERCC names)
+Counts$Name <- ifelse(is.na(Counts$ERCC_ID),Counts$Name,Counts$ERCC_ID) 
+# Excluding 4 spike-in genes that are not part of the ERCC molecules.
+Counts <- Counts[-grep("SPIKE",Counts$Name)] 
+
+# Removing a column which is no longer required
+Counts=Counts[,ERCC_ID:=NULL] 
+```
+
+**Current processed data contains `r dim(Counts)[1]` genes and `r dim(Counts)[2] - 2` cells.** The next step is to remove those cells that did not pass the quality control criteria employed by Islam et al (2014). 
+
+```{r QC}
+QC_Info <- fread(paste0(data.path,"/187_3lanes_CA.txt"))
+GoodCells=QC_Info$Well[QC_Info$GoodCell==1]
+# 9 other cells deleted as possible MEF (information provided by Sten Linnarson)
+MEF=c("D02", "E02", "A06", "H07", "D08", "A09", "G10", "F12", "G12") 
+GoodCells=GoodCells[!(GoodCells %in% MEF)]
+Counts <- subset(Counts, select = c("Name",GoodCells,"molecules_in_each_chamber"))
+```
+
+**Current processed data contains `r dim(Counts)[1]` genes and `r dim(Counts)[2] - 2` cells.** The next step is to remove those transcrips that are very lowly expressed. 
+
+```{r Filter}
+GenesIDs <- Counts$Name
+# Fixing a gene name that was missinterpreted by excel... 
+GenesIDs[GenesIDs=="1-Sep"]="Sept1" 
+SpikesInput <- Counts$molecules_in_each_chamber
+Counts = Counts[, Name := NULL]
+Counts = Counts[, molecules_in_each_chamber := NULL]
+
+SumByGene = rowSums(Counts)
+GenesInclude = I(SumByGene>=41)
+CountsQC = as.matrix(Counts[GenesInclude,]) 
+GenesQC.IDs = GenesIDs[GenesInclude]
+SpikesInputQC = SpikesInput[GenesInclude]
+# Fixing a gene name that was missinterpreted by excel...
+GenesQC.IDs[GenesQC.IDs=="1-Sep"]="Sept1" 
+# Creating and identifier of spike-in genes
+TechQC=ifelse(1:nrow(CountsQC) %in% grep("ERCC",GenesQC.IDs),T,F)
+```
+
+**Current processed data contains `r dim(CountsQC)[1]` genes and `r dim(CountsQC)[2]` cells.** Finally, we need to re-arrange the data such that the expression counts are at the bottom of the table. 
+
+```{r Order}
+CountsQC=rbind(CountsQC[!TechQC,],CountsQC[TechQC,])
+GenesQC.IDs=c(GenesQC.IDs[!TechQC],GenesQC.IDs[TechQC])
+SpikesInputQC = c(SpikesInputQC[!TechQC],SpikesInputQC[TechQC]) 
+TechQC=c(TechQC[!TechQC],TechQC[TechQC]) 
+SpikesInputQC = SpikesInputQC[TechQC]
+
+n = ncol(CountsQC) # Number of cells
+q = nrow(CountsQC) # Total number of genes
+q.bio = q - sum(TechQC) # Number of intrinsic genes
+```
+**Final processed data contains `r q` genes (`r q.bio` biological and `r q-q.bio` spike-in) and `r n` cells.**
+
+***
+
+## Effect of sequencing depth on total molecule counts
+
+Is there still an effect of sequencing depth on total molecule counts using the cleaned data?
+Import the total reads that were [previously counted](islam2014.html) from the raw fastq files.
+
+```{r}
+islam_total_reads_file <- "../data/islam-2014-total-reads.txt"
+total_reads_df <- read.table(islam_total_reads_file, stringsAsFactors = FALSE)
+colnames(total_reads_df) <- c("cell", "total_reads")
+total_reads <- total_reads_df$total_reads
+# names(total_reads) <- total_reads_df$cell
+```
+
+They used the well as the identifiers.
+Luckily since the columns were organized by well, I can easily add them.
+The counting iterates by column first (numbers) and the row (letters), e.g. "A01, B01, C01,..., F12, G12, H12".
+
+```{r}
+names(total_reads) <- sprintf("%s%02d", LETTERS[1:8], rep(1:12, each = 8))
+```
+
+Calculate the total molecules counts.
+
+```{r}
+total_molecules <- colSums(CountsQC)
+```
+
+Filter the total reads using the well ID.
+
+```{r}
+total_reads <- total_reads[names(total_reads) %in% names(total_molecules)]
+stopifnot(names(total_molecules) == names(total_reads),
+          length(total_molecules) == length(total_reads))
+total_counts <- data.frame(cell = names(total_reads), total_reads, total_molecules,
+                           stringsAsFactors = FALSE)
+```
+
+To make the plots more easily interpretable, I scale the total number of molecules by 10^3^
+and the total number of reads by 10^6^.
+
+```{r}
+total_counts$total_reads <- total_counts$total_reads / 10^6
+total_counts$total_molecules <- total_counts$total_molecules / 10^3
+```
+
+Plotting the sequencing depth versus the total number of molecules per sample.
+
+```{r reads-to-molecules}
+library("ggplot2")
+theme_set(theme_bw(base_size = 12))
+p_conv <- ggplot(total_counts, aes(x = total_reads, y = total_molecules)) +
+  geom_point() +
+  labs(x = "Sequencing depth (millions)",
+       y = "Total molecules (thousands)",
+       title = "Effect of sequencing depth on molecule count")
+p_conv
+```
+
+There is still a trend of more total molecules with increasing sequencing depth.
+
+```{r reads-to-molecules-trend}
+p_conv + geom_smooth(method = "lm")
+```
+
+```{r}
+model_conv <- lm(total_molecules ~ total_reads, data = total_counts)
+summary(model_conv)
+```
+
+For every additional 1 million raw reads, a sample has ~`r round(coefficients(model_conv)[2], 2)` thousand more molecules.
+
+## Session information
+
+```{r info}
+sessionInfo()
+```

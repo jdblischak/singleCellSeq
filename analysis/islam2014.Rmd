@@ -57,17 +57,15 @@ In other words, this is not the fault of the others because this happens to all 
 The informative names that are viewable in GEO are stripped in the SRA.
 
 Luckily I found a strategy from this [Biostars comment](https://www.biostars.org/p/93494/#131604) to obtain the mapping between each sample in GEO to the sample ID in the SRA.
-I am only keeping the samples with the label "single".
-This corresponds to two fastq files per sample.
-The other samples labeled "amplified" were PCR-amplifed for an additional 9 cycles.
-I initially excluded these amplified samples, but now realize that the fastq file was included in the molecule counts (see description above).
-I doubt one additional fastq file per sample will change the result much, but I can incorporate these additional data files later (it takes ~12 minutes per fastq download).
+The samples with the label "single" each have two fastq files.
+The other samples labeled "amplified" were PCR-amplifed for an additional 9 cycles, and each only have one fastq file.
+All three fastq files were used to obtain the molecule counts (see the description above).
 
 ```{r}
 library("GEOquery")
 gse <- getGEO("GSE46980")
 gse <- as.data.frame(gse[[1]], stringsAsFactors = FALSE)
-sra_info <- gse %>% filter(grepl("single", title)) %>% # Only keep the data without extra amplication
+sra_info <- gse %>%
   select(title, supplementary_file_1) %>%
   mutate(srx = substr(supplementary_file_1, start = 77, stop = 85))
 head(sra_info)
@@ -171,7 +169,6 @@ p_conv
 
 There are two clear outliers: cells 19 and 24.
 I'm not sure why these two cells are so different.
-Maybe they received a disporportionate amount of sequencing in the 3rd amplified run?
 
 ```{r reads-to-molecules-outliers}
 p_conv + geom_text(aes(label = cell))
