@@ -87,8 +87,21 @@ anno <- counts_by_sample %>%
   filter(rmdup == "molecules") %>%
   select(individual:well) %>%
   as.data.frame
-anno$sample_id <- paste(paste0("NA", anno$individual), anno$batch, anno$well,
-                        sep = ".")
+```
+
+Reformat the annotation file:
+
+*  Add the string "NA" in front of the individual ID's so that they are not interpreted as numeric
+*  The column denoting the 3 replicates is now named `replicate`
+*  Add the string "r" in front of the replciate numbers so that they are not interpreted as numeric
+*  Create new column called `batch` which corresponds to the 9 batches (3 individuals x 3 reps)
+
+```{r reformat-annotation}
+anno <- anno %>% rename(replicate = batch) %>%
+  mutate(individual = paste0("NA", individual),
+         replicate = paste0("r", replicate),
+         batch = paste(individual, replicate, sep = "."),
+         sample_id = paste(batch, well, sep = "."))
 head(anno)
 ```
 
@@ -182,8 +195,8 @@ counts_combined <- counts %>%
   filter(is.na(lane), sickle == "quality-trimmed") %>%
   select(individual, batch, well, rmdup, starts_with("ENSG"), starts_with("ERCC")) %>%
   arrange(individual, batch, well, rmdup)
-stopifnot(counts_combined$individual[c(TRUE, FALSE)] == anno$individual,
-          counts_combined$batch[c(TRUE, FALSE)] == anno$batch,
+stopifnot(counts_combined$individual[c(TRUE, FALSE)] == substr(anno$individual, 3, 8),
+          counts_combined$batch[c(TRUE, FALSE)] == substr(anno$replicate, 2, 2),
           counts_combined$well[c(TRUE, FALSE)] == anno$well)
 ```
 
@@ -233,6 +246,13 @@ quality_single_cells <- scan("../data/quality-single-cells.txt",
                              what = "character")
 ```
 
+**Note:** Have to perform the following hack until the QC analysis is run with the new annotation file.
+
+```{r quality-cells-name-hack}
+quality_single_cells <- paste0(substr(quality_single_cells, 1, 8), "r",
+                               substr(quality_single_cells, 9, 15))
+```
+
 We filter the annotation, reads, and molecules data to only include quality single cells.
 Note that this means the filtered annotation file no longer contains information of the bulk samples.
 
@@ -249,7 +269,7 @@ stopifnot(nrow(anno_filter) == ncol(reads_filter),
 The number of good quality cells is not even across batches.
 
 ```{r good-cells-per-batch}
-table(anno_filter$individual, anno_filter$batch)
+table(anno_filter$individual, anno_filter$replicate)
 ```
 
 ### Filter genes
@@ -320,7 +340,7 @@ write.table(reads_bulk_filter, "../data/reads-bulk-filter.txt", quote = FALSE,
 pca_reads_filter <- run_pca(reads_filter)
 plot_pca(pca_reads_filter$PCs, explained = pca_reads_filter$explained,
          metadata = anno_filter, color = "individual",
-         shape = "batch", factors = c("individual", "batch")) +
+         shape = "replicate") +
   labs(title = "Filtered raw reads for single cells")
 ```
 
@@ -328,7 +348,7 @@ plot_pca(pca_reads_filter$PCs, explained = pca_reads_filter$explained,
 pca_molecules_filter <- run_pca(molecules_filter)
 plot_pca(pca_molecules_filter$PCs, explained = pca_molecules_filter$explained,
          metadata = anno_filter, color = "individual",
-         shape = "batch", factors = c("individual", "batch")) +
+         shape = "replicate") +
   labs(title = "Filtered raw molecules for single cells")
 ```
 
@@ -336,7 +356,7 @@ plot_pca(pca_molecules_filter$PCs, explained = pca_molecules_filter$explained,
 pca_reads_bulk_filter <- run_pca(reads_bulk_filter)
 plot_pca(pca_reads_bulk_filter$PCs, explained = pca_reads_bulk_filter$explained,
          metadata = anno[anno$well == "bulk", ], color = "individual",
-         shape = "batch", factors = c("individual", "batch")) +
+         shape = "replicate") +
   labs(title = "Filtered raw reads for bulk samples")
 ```
 
@@ -355,7 +375,7 @@ molecules_collision <- -1024 * log(1 - molecules_filter / 1024)
 pca_molecules_collision <- run_pca(molecules_collision)
 plot_pca(pca_molecules_collision$PCs, explained = pca_molecules_collision$explained,
          metadata = anno_filter, color = "individual",
-         shape = "batch", factors = c("individual", "batch")) +
+         shape = "replicate") +
   labs(title = "Collision probability corrected molecules for single cells")
 ```
 
@@ -379,7 +399,7 @@ write.table(reads_bulk_cpm, "../data/reads-bulk-cpm.txt", quote = FALSE,
 pca_reads_bulk_cpm <- run_pca(reads_bulk_cpm)
 plot_pca(pca_reads_bulk_cpm$PCs, explained = pca_reads_bulk_cpm$explained,
          metadata = anno[anno$well == "bulk", ], color = "individual",
-         shape = "batch", factors = c("individual", "batch")) +
+         shape = "replicate") +
   labs(title = "Reads (log2 cpm) for bulk samples")
 ```
 
@@ -403,7 +423,7 @@ write.table(molecules_cpm, "../data/molecules-cpm.txt", quote = FALSE,
 pca_molecules_cpm <- run_pca(molecules_cpm)
 plot_pca(pca_molecules_cpm$PCs, explained = pca_molecules_cpm$explained,
          metadata = anno_filter, color = "individual",
-         shape = "batch", factors = c("individual", "batch")) +
+         shape = "replicate") +
   labs(title = "Molecules (log2 cpm) for single cells")
 ```
 
@@ -473,14 +493,14 @@ points(molecules_cpm_trans[, 1], molecules_cpm[, 1], col = "red")
 The distribution of the slope and intercept across the batches was similar, with the exception of the outlier 19098 batch 2.
 
 ```{r linear-transformation-intercept}
-boxplot(intercept ~ anno_filter$individual + anno_filter$batch,
-        xlab = "Batch", ylab = "Intercept",
+boxplot(intercept ~ anno_filter$batch,
+        xlab = "", ylab = "Intercept", las = 3,
         main = "Variation in intercept from linear transformation")
 ```
 
 ```{r linear-transformation-slope}
-boxplot(slope ~ anno_filter$individual + anno_filter$batch,
-        xlab = "Batch", ylab = "Slope",
+boxplot(slope ~ anno_filter$batch,
+        xlab = "", ylab = "Slope", las = 3,
         main = "Variation in slope from linear transformation")
 ```
 
@@ -497,7 +517,7 @@ PCA of linearly transformed data.
 pca_molecules_cpm_trans <- run_pca(molecules_cpm_trans)
 plot_pca(pca_molecules_cpm_trans$PCs, explained = pca_molecules_cpm_trans$explained,
          metadata = anno_filter, color = "individual",
-         shape = "batch", factors = c("individual", "batch")) +
+         shape = "replicate") +
   labs(title = "Molecules (linearly transformed with ERCC) for single cells")
 ```
 
@@ -528,13 +548,6 @@ We assume that $b_j$ follows a normal distribution with $b_j \sim N(0, \sigma^2_
 
 ### Remove unwanted variation 
 
-First, we create a unique identifying ID for the 9 batches.
-
-```{r unique-batch}
-batch_unique <- with(anno_filter, paste(individual, "_", batch, sep = "") )
-table(batch_unique)
-```
-
 Load the [Humanzee][] package.
 
 [Humanzee]: https://github.com/jhsiao999/Humanzee
@@ -547,8 +560,8 @@ Create design matrix and compute a consensus correlation coefficient using
 limma's duplicateCorrelation function.
 
 ```{r design-matrix}
-block <- batch_unique
-design <- model.matrix(~ 1 + as.factor(individual), data = anno_filter)
+block <- anno_filter$batch
+design <- model.matrix(~ 1 + individual, data = anno_filter)
 ```
 
 ```{r duplicate-correlation}
@@ -594,7 +607,7 @@ write.table(molecules_final, "../data/molecules-final.txt", quote = FALSE,
 pca_final <- run_pca(molecules_final)
 plot_pca(pca_final$PCs, explained = pca_final$explained,
          metadata = anno_filter, color = "individual",
-         shape = "batch", factors = c("individual", "batch")) +
+         shape = "replicate") +
   labs(title = "Molecules (batch corrected) for single cells")
 ```
 
