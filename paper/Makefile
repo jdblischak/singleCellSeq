@@ -1,7 +1,8 @@
 
-MARKDOWN := introduction.md methods.md results.md
+MARKDOWN := introduction.md methods.md results.md references.md
 TARGETS := title.yaml $(MARKDOWN)
 NAME := paper
+PANDOC_OPTS := "--bibliography=refs.bib"
 
 all: html word pdf
 
@@ -12,13 +13,13 @@ word: $(NAME).docx
 pdf: $(NAME).pdf
 
 $(NAME).html: $(TARGETS)
-	pandoc $^ --to html --output $(NAME).html --self-contained --standalone --section-divs --toc
+	pandoc $^ --to html --output $(NAME).html --self-contained --standalone --section-divs --toc $(PANDOC_OPTS)
 
 $(NAME).docx: $(TARGETS)
-	pandoc $^ --to docx --output $(NAME).docx
+	pandoc $^ --to docx --output $(NAME).docx $(PANDOC_OPTS)
 
 $(NAME).pdf: $(TARGETS)
-	pandoc $^ --to latex --output $(NAME).pdf --toc
+	pandoc $^ --to latex --output $(NAME).pdf --toc $(PANDOC_OPTS)
 
 %.md: %.Rmd
 	R --slave -e "set.seed(100);knitr::knit('$<')"
