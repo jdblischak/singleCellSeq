@@ -18,6 +18,8 @@ library("dplyr")
 library("limma")
 library("edgeR")
 library("ggplot2")
+library("grid")
+library("cowplot")
 theme_set(theme_bw(base_size = 12))
 source("functions.R")
 ```
@@ -338,26 +340,29 @@ write.table(reads_bulk_filter, "../data/reads-bulk-filter.txt", quote = FALSE,
 
 ```{r pca-reads-filter}
 pca_reads_filter <- run_pca(reads_filter)
-plot_pca(pca_reads_filter$PCs, explained = pca_reads_filter$explained,
+pca_reads_filter_plot <- plot_pca(pca_reads_filter$PCs, explained = pca_reads_filter$explained,
          metadata = anno_filter, color = "individual",
          shape = "replicate") +
   labs(title = "Filtered raw reads for single cells")
+pca_reads_filter_plot
 ```
 
 ```{r pca-molecules-filter}
 pca_molecules_filter <- run_pca(molecules_filter)
-plot_pca(pca_molecules_filter$PCs, explained = pca_molecules_filter$explained,
+pca_molecules_filter_plot <- plot_pca(pca_molecules_filter$PCs, explained = pca_molecules_filter$explained,
          metadata = anno_filter, color = "individual",
          shape = "replicate") +
   labs(title = "Filtered raw molecules for single cells")
+pca_molecules_filter_plot
 ```
 
 ```{r pca-reads-bulk-filter}
 pca_reads_bulk_filter <- run_pca(reads_bulk_filter)
-plot_pca(pca_reads_bulk_filter$PCs, explained = pca_reads_bulk_filter$explained,
+pca_reads_bulk_filter_plot <- plot_pca(pca_reads_bulk_filter$PCs, explained = pca_reads_bulk_filter$explained,
          metadata = anno[anno$well == "bulk", ], color = "individual",
          shape = "replicate") +
   labs(title = "Filtered raw reads for bulk samples")
+pca_reads_bulk_filter_plot
 ```
 
 ## Correct for collision probability
@@ -373,10 +378,11 @@ molecules_collision <- -1024 * log(1 - molecules_filter / 1024)
 
 ```{r pca-molecules-collision}
 pca_molecules_collision <- run_pca(molecules_collision)
-plot_pca(pca_molecules_collision$PCs, explained = pca_molecules_collision$explained,
+pca_molecules_collision_plot <- plot_pca(pca_molecules_collision$PCs, explained = pca_molecules_collision$explained,
          metadata = anno_filter, color = "individual",
          shape = "replicate") +
   labs(title = "Collision probability corrected molecules for single cells")
+pca_molecules_collision_plot
 ```
 
 ## Calculating counts per million
@@ -397,10 +403,11 @@ write.table(reads_bulk_cpm, "../data/reads-bulk-cpm.txt", quote = FALSE,
 
 ```{r pca-reads-cpm}
 pca_reads_bulk_cpm <- run_pca(reads_bulk_cpm)
-plot_pca(pca_reads_bulk_cpm$PCs, explained = pca_reads_bulk_cpm$explained,
+pca_reads_bulk_cpm_plot <- plot_pca(pca_reads_bulk_cpm$PCs, explained = pca_reads_bulk_cpm$explained,
          metadata = anno[anno$well == "bulk", ], color = "individual",
          shape = "replicate") +
   labs(title = "Reads (log2 cpm) for bulk samples")
+pca_reads_bulk_cpm_plot
 ```
 
 ### Reads bulk ERCC
@@ -421,10 +428,11 @@ write.table(molecules_cpm, "../data/molecules-cpm.txt", quote = FALSE,
 
 ```{r pca-molecules-cpm}
 pca_molecules_cpm <- run_pca(molecules_cpm)
-plot_pca(pca_molecules_cpm$PCs, explained = pca_molecules_cpm$explained,
+pca_molecules_cpm_plot <- plot_pca(pca_molecules_cpm$PCs, explained = pca_molecules_cpm$explained,
          metadata = anno_filter, color = "individual",
          shape = "replicate") +
   labs(title = "Molecules (log2 cpm) for single cells")
+pca_molecules_cpm_plot
 ```
 
 ### Molecules single cell ERCC
@@ -515,10 +523,11 @@ PCA of linearly transformed data.
 
 ```{r pca-molecules-cpm-trans}
 pca_molecules_cpm_trans <- run_pca(molecules_cpm_trans)
-plot_pca(pca_molecules_cpm_trans$PCs, explained = pca_molecules_cpm_trans$explained,
+pca_molecules_cpm_trans_plot <- plot_pca(pca_molecules_cpm_trans$PCs, explained = pca_molecules_cpm_trans$explained,
          metadata = anno_filter, color = "individual",
          shape = "replicate") +
   labs(title = "Molecules (linearly transformed with ERCC) for single cells")
+pca_molecules_cpm_trans_plot
 ```
 
 ## Mixed model for batch-effect correction
@@ -605,10 +614,22 @@ write.table(molecules_final, "../data/molecules-final.txt", quote = FALSE,
 
 ```{r pca-molecules-final}
 pca_final <- run_pca(molecules_final)
-plot_pca(pca_final$PCs, explained = pca_final$explained,
+pca_final_plot <- plot_pca(pca_final$PCs, explained = pca_final$explained,
          metadata = anno_filter, color = "individual",
          shape = "replicate") +
   labs(title = "Molecules (batch corrected) for single cells")
+pca_final_plot
+```
+
+## Data transformation figure
+
+```{r data-transformation, fig.width=8, fig.height=8}
+theme_set(theme_bw(base_size = 8))
+plot_grid(pca_molecules_filter_plot + theme(legend.position = "none"),
+          pca_molecules_cpm_plot + theme(legend.position = "none"),
+          pca_molecules_cpm_trans_plot + theme(legend.position = "none"),
+          pca_final_plot + theme(legend.position = "none"),
+          labels = LETTERS[1:4])
 ```
 
 ## Session information
