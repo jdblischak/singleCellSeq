@@ -7,6 +7,7 @@
 *  [Style guide](#style-guide)
 *  [Adding figures](#adding-figures)
 *  [Building the site](#building-the-site)
+*  [Adding citations](#adding-citations)
 
 ## Running RStudio Server
 
@@ -148,3 +149,40 @@ git add -f *html figure/*
 git commit -m "Build site."
 git push origin gh-pages
 ```
+
+## Adding citations
+
+We manage citations using [BibTeX][].
+To start, select the references you wish to cite in your reference manager and export them in [BibTeX format][bibfile].
+For example, in Mendeley, choose "File" -> "Export...", making sure the file type is BibTeX.
+Each entry should have an ID, which by convention is the surname of the first author followed by the year of publication, e.g. "Santander2015".
+Unfortunately, if you are using EndNote to manage your reference library, you will have to [manually add the ID for each entry][EndNote-problem].
+Using the example above, the first line of each entry should look like the following: `@article{Santander2015,`.
+
+[BibTex]: http://www.bibtex.org/
+[bibfile]: http://www.bibtex.org/Format/
+[EndNote-problem]: https://www.utwente.nl/ub/en/services/MAIN/endnote/export/
+
+In the R Markdown file, cite the reference using the ID:
+
+```
+X does Y [@Santander2015].
+```
+
+If you need to cite multiple references at once, separate the citations with semicolons:
+
+```
+X does Y and Z [@Santander2015; @Zhang2014].
+```
+
+The file that contains all the references cited in the paper is [refs.bib][].
+Copy-paste your exported references into this file.
+Next from within the `paper` subdirectory, run the command `make bibtex`.
+This runs the Python script [format-bibtex.py][], which alphabetizes your new references and removes unneeded fields.
+
+[refs.bib]: https://github.com/jdblischak/singleCellSeq/blob/master/paper/refs.bib
+[format-bibtex.py]: https://github.com/jdblischak/singleCellSeq/blob/master/paper/format-bibtex.py
+
+One problem that could occur is if more than one reference has the same ID.
+In this case, manually edit the IDs to make them unique.
+Using the example above, if [refs.bib][] already contained a reference with the ID "Santander2015", you would need to change one to "Santander2015a" and the other to "Santander2015b" (preferably the lettering will be ordered based on publication date, but this is not critical).
