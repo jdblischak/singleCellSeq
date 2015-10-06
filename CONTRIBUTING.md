@@ -7,6 +7,7 @@
 *  [Style guide](#style-guide)
 *  [Adding figures](#adding-figures)
 *  [Building the site](#building-the-site)
+*  [Building the paper](#building-the-paper)
 *  [Adding citations](#adding-citations)
 
 ## Running RStudio Server
@@ -149,6 +150,31 @@ git add -f *html figure/*
 git commit -m "Build site."
 git push origin gh-pages
 ```
+
+## Building the paper
+
+We write the paper in [R Markdown][rmd].
+We run the R Markdown files using [knitr][] and then convert to various formats (HTML, PDF, Word) using [pandoc][].
+These are essentially the steps performed by the function `render` from the R package [rmarkdown][].
+By performing these steps manually, we have more control.
+As the main example, we can write each section in its own separate file and combine these into one document.
+
+In order to make these convenient, we have written a [Makefile][] to automate the process.
+The Makefile commands must be run in the `paper` subdirectory.
+Below is a description of the available options:
+
+*  `make` or `make all`: Build HTML, PDF, and Word versions of paper
+*  `make html`: Build HTML version of paper
+*  `make pdf`: Build PDF version of paper
+*  `make word`: Build Word version of paper
+*  `make clean`: Delete all intermediate Markdown files and rendered HTML, PDF, and Word documents
+*  `make bibtex`: Format reference file (see next section for details)
+
+[rmd]: http://rmarkdown.rstudio.com
+[knitr]: http://yihui.name/knitr
+[pandoc]: http://pandoc.org
+[rmarkdown]: https://cran.r-project.org/web/packages/rmarkdown/index.html
+[Makefile]: https://github.com/jdblischak/singleCellSeq/blob/master/paper/Makefile
 
 ## Adding citations
 
