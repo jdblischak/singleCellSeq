@@ -1,7 +1,7 @@
 ---
 title: "Ordering effect of the capture sites, all genes CPM normalized"
 author: "Joyce Hsiao"
-date: 2015-09-26
+date: 2015-10-02
 ---
 
 **Last updated:** `r Sys.Date()`
@@ -164,7 +164,7 @@ str(OE_cpm)
 
 
 
-## Distribution of OE genes
+## OE genes and mean expression
 
 ```{r}
 cutoffs <- seq(1001, nrow(molecules_single_cpm), by = 1000)
@@ -180,7 +180,8 @@ top_genes_count <- do.call(c, top_genes_count)
 ggplot(data.frame(top_count = top_genes_count,
                   cutoffs = cutoffs), 
        aes(x = as.factor(cutoffs), y = top_count)) + geom_point() +
-       labs(x = "Top X genes", y = "Number of OEFinder OE genes")
+       labs(x = "Top X genes as in per gene mean expression", 
+            y = "Number of OEFinder OE genes")
 ```
 
 OE genes identified by OEFinder were not limited to the top 1000 genes. On the contrary, we found
@@ -188,9 +189,117 @@ OE genes at all levels of gene expression (averaged acrosss cells).
 
 
 
-## Gene annotation
+
+
+## OE genes and variability of expression
 
 ```{r}
+cutoffs <- seq(1001, nrow(molecules_single_cpm), by = 1000)
+cutoffs <- c(cutoffs, nrow(molecules_single_cpm))
+top_genes_cv <- 
+  lapply(1:length(cutoffs), function(cut) {
+        per_cutoff <- cutoffs[cut]
+        per_gene_cv <- apply(molecules_single_cpm, 1, sd)/apply(molecules_single_cpm, 1, mean)
+        cell_across_order <- order(per_gene_cv, decreasing = TRUE)
+        top_genes <- rownames(molecules_single_cpm)[cell_across_order < per_cutoff]
+        sum(OE_cpm$genes %in% top_genes)
+        })
+top_genes_cv <- do.call(c, top_genes_cv)
+
+ggplot(data.frame(top_cv = top_genes_cv,
+                  cutoffs = cutoffs), 
+       aes(x = as.factor(cutoffs), y = top_cv)) + geom_point() +
+       labs(x = "Top X genes as in per gene CV", 
+            y = "Number of OEFinder OE genes")
+```
+
+
+## OE genes by individual
+
+Extract OE gene information.
+
+```{r}
+is_OE <- which(rownames(molecules_single_cpm) %in% OE_cpm$genes)
+
+OE_cpm <- molecules_single_cpm[ is_OE , ]
+
+# OE_cpm <- molecules_single_cpm[ is_OE , anno_single$individual == "19098"]
+# capture_site_ind <- capture_site[anno_single$individual == "19098"]
+# batch_ind <- anno_single$batch[anno_single$individual == "19098"]
+```
+
+
+Compute CV of OE genes. 
+
+* Top 5 CV
+
+```{r, fig.width=8, fig.height=12}
+OE_cv <- apply(OE_cpm, 1, sd)/apply(OE_cpm, 1, mean)
+is_top5_cv <- order(OE_cv, decreasing = TRUE)[1:5]
+
+df_plot <- data.frame(cpm = c(t( OE_cpm[is_top5_cv, ]  )),
+                  site = as.numeric(as.factor(capture_site)),
+                  batch = as.factor(anno_single$batch),
+                  individual = as.factor(anno_single$individual),
+                  gene = rep(rownames(OE_cpm[is_top5_cv, ]), each = ncol(OE_cpm) ) )
+
+#df_plot <- df_plot[df_plot$batch == 1, ]
+ggplot(df_plot,
+       aes(x = site, y = cpm)) + 
+  geom_point() +
+  facet_grid(gene ~ individual) +
+  stat_smooth(method = loess, formula = y ~ x ) + 
+  ggtitle("Top 5 CV among the OE genes")
+```
+
+
+* Bottom 5 CV
+
+```{r, fig.width=8, fig.height=12}
+OE_cv <- apply(OE_cpm, 1, sd)/apply(OE_cpm, 1, mean)
+is_bottom5_cv <- order(OE_cv)[1:5]
+
+df_plot <- data.frame(cpm = c(t( OE_cpm[is_bottom5_cv, ]  )),
+                  site = as.numeric(as.factor(capture_site)),
+                  batch = as.factor(anno_single$batch),
+                  individual = as.factor(anno_single$individual),
+                  gene = rep(rownames(OE_cpm[is_bottom5_cv, ]), each = ncol(OE_cpm) ) )
+
+#df_plot <- df_plot[df_plot$batch == 1, ]
+ggplot(df_plot,
+       aes(x = site, y = cpm)) + 
+  geom_point() +
+  facet_grid(gene ~ individual) +
+  stat_smooth(method = loess, formula = y ~ x ) + 
+  ggtitle("Bottom 5 CV among the OE genes")
+```
+
+
+Coefficient of variation by individual.
+
+```{r, fig.width=8, fig.height=12}
+OE_cv <- apply(OE_cpm, 1, sd)/apply(OE_cpm, 1, mean)
+is_bottom5_cv <- order(OE_cv)[1:5]
+
+df_plot <- data.frame(cpm = c(t( OE_cpm[is_bottom5_cv, ]  )),
+                  site = as.numeric(as.factor(capture_site)),
+                  batch = as.factor(anno_single$batch),
+                  individual = as.factor(anno_single$individual),
+                  gene = rep(rownames(OE_cpm[is_bottom5_cv, ]), each = ncol(OE_cpm) ) )
+
+#df_plot <- df_plot[df_plot$batch == 1, ]
+ggplot(df_plot,
+       aes(x = site, y = cpm)) + 
+  geom_point() +
+  facet_grid(gene ~ individual) +
+  stat_smooth(method = loess, formula = y ~ x ) + 
+  ggtitle("Bottom 5 CV among the OE genes")
+```
+
+
+## Gene annotation
+
+```{r, eval = FALSE}
 library(mygene)
 
 gene_query <- queryMany(OE_cpm$genes, scopes="ensembl.gene", 
