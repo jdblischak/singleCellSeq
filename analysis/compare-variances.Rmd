@@ -1,5 +1,5 @@
 ---
-title: "Random effect model to compare variations"
+title: "Levene's test and CV"
 author: "Joyce Hsiao"
 date: 2015-10-07
 ---
@@ -18,7 +18,7 @@ source("chunk-options.R")
 
 ## Set up
 
-```{r}
+```{r, message=FALSE, warning=FALSE}
 library("data.table")
 library("dplyr")
 library("limma")
@@ -65,6 +65,7 @@ molecules_cv_batch <-
         mean_per_gene <- apply(molecules_per_batch, 1, mean, na.rm = TRUE)
         sd_per_gene <- apply(molecules_per_batch, 1, sd, na.rm = TRUE)
         cv_per_gene <- data.frame(mean = mean_per_gene,
+                                  sd = sd_per_gene,
                                   cv = sd_per_gene/mean_per_gene)
         rownames(cv_per_gene) <- rownames(molecules_qc)
     
@@ -104,23 +105,128 @@ p-value distribution
 
 ```{r}
 par(mfrow = c(2,2))
-hist(var_Ftest[ ,1], main = colnames(var_Ftest)[1], breaks = 100)
-hist(var_Ftest[ ,2], main = colnames(var_Ftest)[2], breaks = 100)
-hist(var_Ftest[ ,3], main = colnames(var_Ftest)[3], breaks = 100)
+hist(var_Ftest[ ,1], main = colnames(var_Ftest)[1], 
+     breaks = 100, xlab = "p-value of the F statistic")
+hist(var_Ftest[ ,2], main = colnames(var_Ftest)[2], 
+     breaks = 100, xlab = "p-value of the F statistic")
+hist(var_Ftest[ ,3], main = colnames(var_Ftest)[3], 
+     breaks = 100, xlab = "p-value of the F statistic")
+title(main = "Levene's test (based on normality)", outer = TRUE)
 ```
 
 
-Does p-value ranking track with CV difference?
+## F-test versus indiviudal CVs
+
+Compute individual CVs by taking the average of batch CVs.
 
 ```{r}
+molecules_cv_indiviudal <-
+  data.frame(NA19098 = rowMeans(cbind(molecules_cv_batch[[1]]$cv,
+                                      molecules_cv_batch[[2]]$cv,
+                                      molecules_cv_batch[[3]]$cv) ),
+             NA19101 = rowMeans(cbind(molecules_cv_batch[[4]]$cv,
+                                      molecules_cv_batch[[5]]$cv,
+                                      molecules_cv_batch[[6]]$cv) ),
+             NA19239 = rowMeans(cbind(molecules_cv_batch[[7]]$cv,
+                                      molecules_cv_batch[[8]]$cv,
+                                      molecules_cv_batch[[9]]$cv) ) )
+```
+
+Plot CVs.
+
+
+```{r}
+require(scales)
+require(broman)
+crayons <- brocolors("crayons")
+
+par(mfrow = c(2,2))
+df_xy <- data.frame(x = molecules_cv_indiviudal$NA19098,
+                    y = molecules_cv_indiviudal$NA19101)
+plot(df_xy,
+     xlab = "NA19098 CV", ylab = "NA19101 CV", pch = 1)
+select_pts <- var_Ftest$NA19098_19101 < quantile(var_Ftest$NA19098_19101, prob = .01)
+points(df_xy[ select_pts, ], cex = .6, 
+     pch = 16, col = alpha(crayons["Orange Red"], 1) )
+
+df_xy <- data.frame(x = molecules_cv_indiviudal$NA19239,
+                    y = molecules_cv_indiviudal$NA19101)
+plot(df_xy,
+     xlab = "NA19239 CV", ylab = "NA19101 CV", pch = 1)
+select_pts <- var_Ftest$NA19239_19101 < quantile(var_Ftest$NA19239_19101, prob = .01)
+points(df_xy[ select_pts, ], cex = .6,
+     pch = 16, col = alpha(crayons["Orange Red"], 1) )
+
+plot(0, axes = F, ann = F, pch = "")
+
+df_xy <- data.frame(x = molecules_cv_indiviudal$NA19098,
+                    y = molecules_cv_indiviudal$NA19239)
+plot(df_xy,
+     xlab = "NA19098 CV", ylab = "NA19239 CV", pch = 1)
+select_pts <- var_Ftest$NA19098_19239 < quantile(var_Ftest$NA19098_19239, prob = .01)
+points(df_xy[ select_pts, ], cex = .6,
+     pch = 16, col = alpha(crayons["Orange Red"], 1) )
+
+title(main = "Top 1000 sig. genes", outer = TRUE, line = -1)
 
 ```
 
 
-## Brown-Forsythe test
+## F-test versus indiviudal SDs
+
+Compute individual SDs by taking the average of batch SDs.
+
+```{r}
+molecules_sd_indiviudal <-
+  data.frame(NA19098 = rowMeans(cbind(molecules_cv_batch[[1]]$sd,
+                                      molecules_cv_batch[[2]]$sd,
+                                      molecules_cv_batch[[3]]$sd) ),
+             NA19101 = rowMeans(cbind(molecules_cv_batch[[4]]$sd,
+                                      molecules_cv_batch[[5]]$sd,
+                                      molecules_cv_batch[[6]]$sd) ),
+             NA19239 = rowMeans(cbind(molecules_cv_batch[[7]]$sd,
+                                      molecules_cv_batch[[8]]$sd,
+                                      molecules_cv_batch[[9]]$sd) ) )
+```
+
+Plot standard deviations.
+
+```{r}
+require(scales)
+require(broman)
+crayons <- brocolors("crayons")
+
+par(mfrow = c(2,2))
+df_xy <- data.frame(x = molecules_sd_indiviudal$NA19098,
+                    y = molecules_sd_indiviudal$NA19101)
+plot(df_xy,
+     xlab = "NA19098 SD", ylab = "NA19101 SD", pch = 1)
+select_pts <- var_Ftest$NA19098_19101 < quantile(var_Ftest$NA19098_19101, prob = .01)
+points(df_xy[ select_pts, ], cex = .6, 
+     pch = 16, col = alpha(crayons["Orange Red"], 1) )
 
 
-## Leven's test
+df_xy <- data.frame(x = molecules_sd_indiviudal$NA19239,
+                    y = molecules_sd_indiviudal$NA19101)
+plot(df_xy,
+     xlab = "NA19239 SD", ylab = "NA19101 SD", pch = 1)
+select_pts <- var_Ftest$NA19239_19101 < quantile(var_Ftest$NA19239_19101, prob = .01)
+points(df_xy[ select_pts, ], cex = .6,
+     pch = 16, col = alpha(crayons["Orange Red"], 1) )
+
+plot(0, axes = F, ann = F, pch = "")
+
+df_xy <- data.frame(x = molecules_sd_indiviudal$NA19098,
+                    y = molecules_sd_indiviudal$NA19239)
+plot(df_xy,
+     xlab = "NA19098 SD", ylab = "NA19239 SD", pch = 1)
+select_pts <- var_Ftest$NA19098_19239 < quantile(var_Ftest$NA19098_19239, prob = .01)
+points(df_xy[ select_pts, ], cex = .6,
+     pch = 16, col = alpha(crayons["Orange Red"], 1) )
+
+title(main = "Top 1000 sig. genes", outer = TRUE, line = -1)
+
+```
 
 
 
