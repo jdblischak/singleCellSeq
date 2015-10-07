@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+<meta name="author" content="Joyce Hsiao" />
+
+<meta name="date" content="2015-10-07" />
+
+<title>Levene’s test and CV</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Levene’s test and CV</h1>
+<h4 class="author"><em>Joyce Hsiao</em></h4>
+<h4 class="date"><em>2015-10-07</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#objectives">Objectives</a></li>
+<li><a href="#set-up">Set up</a></li>
+<li><a href="#prepare-data">Prepare data</a></li>
+<li><a href="#compute-coefficient-of-variation">Compute coefficient of variation</a></li>
+<li><a href="#f-test">F-test</a></li>
+<li><a href="#f-test-versus-indiviudal-cvs">F-test versus indiviudal CVs</a></li>
+<li><a href="#f-test-versus-indiviudal-sds">F-test versus indiviudal SDs</a></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2015-10-07</p>
+<p><strong>Code version:</strong> 5b866c4e43bd9168cd3f4f4621d63daa0d527c49</p>
+<div id="objectives" class="section level2">
+<h2>Objectives</h2>
+</div>
+<div id="set-up" class="section level2">
+<h2>Set up</h2>
+<pre class="r"><code>library(&quot;data.table&quot;)
+library(&quot;dplyr&quot;)
+library(&quot;limma&quot;)
+library(&quot;edgeR&quot;)
+library(&quot;ggplot2&quot;)
+library(&quot;grid&quot;)
+theme_set(theme_bw(base_size = 12))
+source(&quot;functions.R&quot;)</code></pre>
+</div>
+<div id="prepare-data" class="section level2">
+<h2>Prepare data</h2>
+<p>Input annotation of only QC-filtered single cells</p>
+<pre class="r"><code>anno_qc &lt;- read.table(&quot;../data/annotation-filter.txt&quot;, header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno_qc)</code></pre>
+<pre><code>  individual replicate well      batch      sample_id
+1    NA19098        r1  A01 NA19098.r1 NA19098.r1.A01
+2    NA19098        r1  A02 NA19098.r1 NA19098.r1.A02
+3    NA19098        r1  A04 NA19098.r1 NA19098.r1.A04
+4    NA19098        r1  A05 NA19098.r1 NA19098.r1.A05
+5    NA19098        r1  A06 NA19098.r1 NA19098.r1.A06
+6    NA19098        r1  A07 NA19098.r1 NA19098.r1.A07</code></pre>
+<p>Input molecule counts that are filtered, transformed, and also processed to remove unwanted variation from batch effet. ERCC genes are also removed.</p>
+<pre class="r"><code>molecules_qc &lt;- read.table(&quot;../data/molecules-final.txt&quot;, header = TRUE, stringsAsFactors = FALSE)</code></pre>
+</div>
+<div id="compute-coefficient-of-variation" class="section level2">
+<h2>Compute coefficient of variation</h2>
+<p>Compute per batch coefficient of variation.</p>
+<p>Include only genes with positive coefficient of variation. Some genes in this data may have zero coefficient of variation, because we include gene with more than 0 count across all cells.</p>
+<pre class="r"><code>molecules_cv_batch &lt;- 
+  lapply(1:length(unique(anno_qc$batch)), function(per_batch) {
+        molecules_per_batch &lt;- molecules_qc[ , unique(anno_qc$batch) == unique(anno_qc$batch)[per_batch] ]
+        mean_per_gene &lt;- apply(molecules_per_batch, 1, mean, na.rm = TRUE)
+        sd_per_gene &lt;- apply(molecules_per_batch, 1, sd, na.rm = TRUE)
+        cv_per_gene &lt;- data.frame(mean = mean_per_gene,
+                                  sd = sd_per_gene,
+                                  cv = sd_per_gene/mean_per_gene)
+        rownames(cv_per_gene) &lt;- rownames(molecules_qc)
+    
+        cv_per_gene &lt;- cv_per_gene[rowSums(is.na(cv_per_gene)) == 0, ]
+        cv_per_gene$batch &lt;- unique(anno_qc$batch)[per_batch]
+        return(cv_per_gene)
+      }) 
+names(molecules_cv_batch) &lt;- unique(anno_qc$batch)
+
+dim(molecules_cv_batch[[1]])</code></pre>
+<pre><code>[1] 10483     4</code></pre>
+</div>
+<div id="f-test" class="section level2">
+<h2>F-test</h2>
+<pre class="r"><code>individual &lt;- anno_qc$individual
+
+var_Ftest &lt;- 
+  lapply(1:dim(molecules_qc)[1], function(per_gene) {
+        values &lt;- unlist(molecules_qc[per_gene, ])
+        data.frame(NA19098_19101 = var.test(values[individual == &quot;NA19098&quot;],
+                                            values[individual == &quot;NA19101&quot;])$p.value,
+                   NA19098_19239 = var.test(values[individual == &quot;NA19098&quot;],
+                                            values[individual == &quot;NA19239&quot;])$p.value, 
+                   NA19239_19101 = var.test(values[individual == &quot;NA19239&quot;],
+                                            values[individual == &quot;NA19101&quot;])$p.value )
+  })
+var_Ftest &lt;- do.call(rbind, var_Ftest)
+
+head(var_Ftest)</code></pre>
+<pre><code>  NA19098_19101 NA19098_19239 NA19239_19101
+1    0.07262633     0.7315380    0.10590951
+2    0.02339206     0.6334312    0.04544282
+3    0.00626534     0.2016069    0.09632003
+4    0.04688932     0.1287598    0.57324644
+5    0.80819090     0.9066362    0.69543482
+6    0.43096883     0.7309528    0.21753654</code></pre>
+<p>p-value distribution</p>
+<pre class="r"><code>par(mfrow = c(2,2))
+hist(var_Ftest[ ,1], main = colnames(var_Ftest)[1], 
+     breaks = 100, xlab = &quot;p-value of the F statistic&quot;)
+hist(var_Ftest[ ,2], main = colnames(var_Ftest)[2], 
+     breaks = 100, xlab = &quot;p-value of the F statistic&quot;)
+hist(var_Ftest[ ,3], main = colnames(var_Ftest)[3], 
+     breaks = 100, xlab = &quot;p-value of the F statistic&quot;)
+title(main = &quot;Levene&#39;s test (based on normality)&quot;, outer = TRUE)</code></pre>
+<p><img src="figure/compare-variances.Rmd/unnamed-chunk-6-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="f-test-versus-indiviudal-cvs" class="section level2">
+<h2>F-test versus indiviudal CVs</h2>
+<p>Compute individual CVs by taking the average of batch CVs.</p>
+<pre class="r"><code>molecules_cv_indiviudal &lt;-
+  data.frame(NA19098 = rowMeans(cbind(molecules_cv_batch[[1]]$cv,
+                                      molecules_cv_batch[[2]]$cv,
+                                      molecules_cv_batch[[3]]$cv) ),
+             NA19101 = rowMeans(cbind(molecules_cv_batch[[4]]$cv,
+                                      molecules_cv_batch[[5]]$cv,
+                                      molecules_cv_batch[[6]]$cv) ),
+             NA19239 = rowMeans(cbind(molecules_cv_batch[[7]]$cv,
+                                      molecules_cv_batch[[8]]$cv,
+                                      molecules_cv_batch[[9]]$cv) ) )</code></pre>
+<p>Plot CVs.</p>
+<pre class="r"><code>require(scales)</code></pre>
+<pre><code>Loading required package: scales</code></pre>
+<pre class="r"><code>require(broman)</code></pre>
+<pre><code>Loading required package: broman</code></pre>
+<pre class="r"><code>crayons &lt;- brocolors(&quot;crayons&quot;)
+
+par(mfrow = c(2,2))
+df_xy &lt;- data.frame(x = molecules_cv_indiviudal$NA19098,
+                    y = molecules_cv_indiviudal$NA19101)
+plot(df_xy,
+     xlab = &quot;NA19098 CV&quot;, ylab = &quot;NA19101 CV&quot;, pch = 1)
+select_pts &lt;- var_Ftest$NA19098_19101 &lt; quantile(var_Ftest$NA19098_19101, prob = .01)
+points(df_xy[ select_pts, ], cex = .6, 
+     pch = 16, col = alpha(crayons[&quot;Orange Red&quot;], 1) )
+
+df_xy &lt;- data.frame(x = molecules_cv_indiviudal$NA19239,
+                    y = molecules_cv_indiviudal$NA19101)
+plot(df_xy,
+     xlab = &quot;NA19239 CV&quot;, ylab = &quot;NA19101 CV&quot;, pch = 1)
+select_pts &lt;- var_Ftest$NA19239_19101 &lt; quantile(var_Ftest$NA19239_19101, prob = .01)
+points(df_xy[ select_pts, ], cex = .6,
+     pch = 16, col = alpha(crayons[&quot;Orange Red&quot;], 1) )
+
+plot(0, axes = F, ann = F, pch = &quot;&quot;)
+
+df_xy &lt;- data.frame(x = molecules_cv_indiviudal$NA19098,
+                    y = molecules_cv_indiviudal$NA19239)
+plot(df_xy,
+     xlab = &quot;NA19098 CV&quot;, ylab = &quot;NA19239 CV&quot;, pch = 1)
+select_pts &lt;- var_Ftest$NA19098_19239 &lt; quantile(var_Ftest$NA19098_19239, prob = .01)
+points(df_xy[ select_pts, ], cex = .6,
+     pch = 16, col = alpha(crayons[&quot;Orange Red&quot;], 1) )
+
+title(main = &quot;Top 1000 sig. genes&quot;, outer = TRUE, line = -1)</code></pre>
+<p><img src="figure/compare-variances.Rmd/unnamed-chunk-8-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="f-test-versus-indiviudal-sds" class="section level2">
+<h2>F-test versus indiviudal SDs</h2>
+<p>Compute individual SDs by taking the average of batch SDs.</p>
+<pre class="r"><code>molecules_sd_indiviudal &lt;-
+  data.frame(NA19098 = rowMeans(cbind(molecules_cv_batch[[1]]$sd,
+                                      molecules_cv_batch[[2]]$sd,
+                                      molecules_cv_batch[[3]]$sd) ),
+             NA19101 = rowMeans(cbind(molecules_cv_batch[[4]]$sd,
+                                      molecules_cv_batch[[5]]$sd,
+                                      molecules_cv_batch[[6]]$sd) ),
+             NA19239 = rowMeans(cbind(molecules_cv_batch[[7]]$sd,
+                                      molecules_cv_batch[[8]]$sd,
+                                      molecules_cv_batch[[9]]$sd) ) )</code></pre>
+<p>Plot standard deviations.</p>
+<pre class="r"><code>require(scales)
+require(broman)
+crayons &lt;- brocolors(&quot;crayons&quot;)
+
+par(mfrow = c(2,2))
+df_xy &lt;- data.frame(x = molecules_sd_indiviudal$NA19098,
+                    y = molecules_sd_indiviudal$NA19101)
+plot(df_xy,
+     xlab = &quot;NA19098 SD&quot;, ylab = &quot;NA19101 SD&quot;, pch = 1)
+select_pts &lt;- var_Ftest$NA19098_19101 &lt; quantile(var_Ftest$NA19098_19101, prob = .01)
+points(df_xy[ select_pts, ], cex = .6, 
+     pch = 16, col = alpha(crayons[&quot;Orange Red&quot;], 1) )
+
+
+df_xy &lt;- data.frame(x = molecules_sd_indiviudal$NA19239,
+                    y = molecules_sd_indiviudal$NA19101)
+plot(df_xy,
+     xlab = &quot;NA19239 SD&quot;, ylab = &quot;NA19101 SD&quot;, pch = 1)
+select_pts &lt;- var_Ftest$NA19239_19101 &lt; quantile(var_Ftest$NA19239_19101, prob = .01)
+points(df_xy[ select_pts, ], cex = .6,
+     pch = 16, col = alpha(crayons[&quot;Orange Red&quot;], 1) )
+
+plot(0, axes = F, ann = F, pch = &quot;&quot;)
+
+df_xy &lt;- data.frame(x = molecules_sd_indiviudal$NA19098,
+                    y = molecules_sd_indiviudal$NA19239)
+plot(df_xy,
+     xlab = &quot;NA19098 SD&quot;, ylab = &quot;NA19239 SD&quot;, pch = 1)
+select_pts &lt;- var_Ftest$NA19098_19239 &lt; quantile(var_Ftest$NA19098_19239, prob = .01)
+points(df_xy[ select_pts, ], cex = .6,
+     pch = 16, col = alpha(crayons[&quot;Orange Red&quot;], 1) )
+
+title(main = &quot;Top 1000 sig. genes&quot;, outer = TRUE, line = -1)</code></pre>
+<p><img src="figure/compare-variances.Rmd/unnamed-chunk-10-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] grid      stats     graphics  grDevices utils     datasets  methods  
+[8] base     
+
+other attached packages:
+[1] broman_0.59-5    scales_0.2.4     ggplot2_1.0.1    edgeR_3.10.2    
+[5] limma_3.24.9     dplyr_0.4.2      data.table_1.9.4 knitr_1.10.5    
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.12.0      magrittr_1.5     MASS_7.3-40      munsell_0.4.2   
+ [5] colorspace_1.2-6 R6_2.1.1         stringr_1.0.0    httr_0.6.1      
+ [9] plyr_1.8.3       tools_3.2.0      parallel_3.2.0   gtable_0.1.2    
+[13] DBI_0.3.1        htmltools_0.2.6  yaml_2.1.13      digest_0.6.8    
+[17] assertthat_0.1   reshape2_1.4.1   formatR_1.2      bitops_1.0-6    
+[21] RCurl_1.95-4.6   evaluate_0.7     rmarkdown_0.6.1  stringi_0.4-1   
+[25] chron_2.3-45     proto_0.3-10    </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+
+</body>
+</html>
