@@ -446,6 +446,7 @@ ggplot(pca_reads_cells_anno, aes(x = PC1, y = PC2, col = mt_filter)) +
   geom_point()
 ```
 
+## Filter
 The two cutoffs, total reads and cell number, largely overlap.
 
 ```{r cell-total-filter-overlap}
@@ -454,6 +455,7 @@ table(pca_reads_cells_anno$cell_filter, pca_reads_cells_anno$total_cutoff,
 ```
 
 Add the third cutoff, 6000 genes detected, help a bit.
+
 ```{r filter-total-cell-num}
 pca_reads_cells_anno$qc_filter <- pca_reads_cells_anno$total_cutoff &
                                   pca_reads_cells_anno$gene_filter &
@@ -501,6 +503,23 @@ stopifnot(!grepl("bulk", quality_single_cells$sample_id))
 write.table(quality_single_cells,
             file = "../data/quality-single-cells.txt", quote = FALSE,
             sep = "\t", row.names = FALSE, col.names = FALSE)
+```
+
+### Effect of sample concentration 
+Investigate whether sample concentration can be reflected by total mapped reads or total molecule counts. Maybe in the bad quality cells, but not really in the good quality cells.
+
+```{r keep-cell-concentration-effect}
+summary_per_sample_reads_single_qc$qc_filter_all <- pca_reads_cells_anno$qc_filter_all
+
+ggplot(summary_per_sample_reads_single_qc,
+       aes(x = concentration, y = total.mapped, col = qc_filter_all, label = as.character(cell_number))) +
+  geom_text(fontface=3) +
+  geom_smooth()
+
+ggplot(summary_per_sample_reads_single_qc,
+       aes(x = concentration, y = total_gene_molecule, col = qc_filter_all, label = as.character(cell_number))) +
+  geom_text(fontface=3) +
+  geom_smooth()
 ```
 
 ## Session information
