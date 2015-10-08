@@ -152,8 +152,8 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-10-06</p>
-<p><strong>Code version:</strong> 9d02f9d6cf9544225650eed333f875c299b08944</p>
+<p><strong>Last updated:</strong> 2015-10-08</p>
+<p><strong>Code version:</strong> 1bbbd2621b9eebf02cef69dd34b322c5207f2435</p>
 <pre class="r"><code>library(&quot;data.table&quot;)
 library(&quot;dplyr&quot;)
 library(&quot;limma&quot;)
@@ -367,9 +367,6 @@ stopifnot(ncol(molecules) == 3 * 3 * 96)</code></pre>
 <p>Input list of quality single cells.</p>
 <pre class="r"><code>quality_single_cells &lt;- scan(&quot;../data/quality-single-cells.txt&quot;,
                              what = &quot;character&quot;)</code></pre>
-<p><strong>Note:</strong> Have to perform the following hack until the QC analysis is run with the new annotation file.</p>
-<pre class="r"><code>quality_single_cells &lt;- paste0(substr(quality_single_cells, 1, 8), &quot;r&quot;,
-                               substr(quality_single_cells, 9, 15))</code></pre>
 <p>We filter the annotation, reads, and molecules data to only include quality single cells. Note that this means the filtered annotation file no longer contains information of the bulk samples.</p>
 <pre class="r"><code>anno_filter &lt;- anno %&gt;% filter(sample_id %in% quality_single_cells)
 reads_filter &lt;- reads[, colnames(reads) %in% quality_single_cells]
@@ -473,7 +470,7 @@ pca_molecules_collision_plot</code></pre>
 <div id="reads-bulk-endogenous" class="section level3">
 <h3>Reads bulk endogenous</h3>
 <pre class="r"><code>reads_bulk_cpm &lt;- cpm(reads_bulk_filter[!ercc_rows, ], log = TRUE)
-write.table(reads_bulk_cpm, &quot;../data/reads-bulk-cpm.txt&quot;, quote = FALSE,
+write.table(round(reads_bulk_cpm, digits = 6), &quot;../data/reads-bulk-cpm.txt&quot;, quote = FALSE,
             sep = &quot;\t&quot;, col.names = NA)</code></pre>
 <pre class="r"><code>pca_reads_bulk_cpm &lt;- run_pca(reads_bulk_cpm)
 pca_reads_bulk_cpm_plot &lt;- plot_pca(pca_reads_bulk_cpm$PCs, explained = pca_reads_bulk_cpm$explained,
@@ -486,13 +483,13 @@ pca_reads_bulk_cpm_plot</code></pre>
 <div id="reads-bulk-ercc" class="section level3">
 <h3>Reads bulk ERCC</h3>
 <pre class="r"><code>reads_bulk_cpm_ercc &lt;- cpm(reads_bulk_filter[ercc_rows, ], log = TRUE)
-write.table(reads_bulk_cpm_ercc, &quot;../data/reads-bulk-cpm-ercc.txt&quot;, quote = FALSE,
+write.table(round(reads_bulk_cpm_ercc, digits = 6), &quot;../data/reads-bulk-cpm-ercc.txt&quot;, quote = FALSE,
             sep = &quot;\t&quot;, col.names = NA)</code></pre>
 </div>
 <div id="molecules-single-cell-endogenous" class="section level3">
 <h3>Molecules single cell endogenous</h3>
 <pre class="r"><code>molecules_cpm &lt;- cpm(molecules_collision[!ercc_rows, ], log = TRUE)
-write.table(molecules_cpm, &quot;../data/molecules-cpm.txt&quot;, quote = FALSE,
+write.table(round(molecules_cpm, digits = 6), &quot;../data/molecules-cpm.txt&quot;, quote = FALSE,
             sep = &quot;\t&quot;, col.names = NA)</code></pre>
 <pre class="r"><code>pca_molecules_cpm &lt;- run_pca(molecules_cpm)
 pca_molecules_cpm_plot &lt;- plot_pca(pca_molecules_cpm$PCs, explained = pca_molecules_cpm$explained,
@@ -505,7 +502,7 @@ pca_molecules_cpm_plot</code></pre>
 <div id="molecules-single-cell-ercc" class="section level3">
 <h3>Molecules single cell ERCC</h3>
 <pre class="r"><code>molecules_cpm_ercc &lt;- cpm(molecules_collision[ercc_rows, ], log = TRUE)
-write.table(molecules_cpm_ercc, &quot;../data/molecules-cpm-ercc.txt&quot;, quote = FALSE,
+write.table(round(molecules_cpm_ercc, digits = 6), &quot;../data/molecules-cpm-ercc.txt&quot;, quote = FALSE,
             sep = &quot;\t&quot;, col.names = NA)</code></pre>
 </div>
 </div>
@@ -559,7 +556,7 @@ points(molecules_cpm_trans[, 1], molecules_cpm[, 1], col = &quot;red&quot;)</cod
         main = &quot;Variation in slope from linear transformation&quot;)</code></pre>
 <p><img src="figure/data-transformation.Rmd/linear-transformation-slope-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <p>Output linearly transformed molecules.</p>
-<pre class="r"><code>write.table(molecules_cpm_trans, &quot;../data/molecules-cpm-trans.txt&quot;, quote = FALSE,
+<pre class="r"><code>write.table(round(molecules_cpm_trans, digits = 6), &quot;../data/molecules-cpm-trans.txt&quot;, quote = FALSE,
             sep = &quot;\t&quot;, col.names = NA)</code></pre>
 <p>PCA of linearly transformed data.</p>
 <pre class="r"><code>pca_molecules_cpm_trans &lt;- run_pca(molecules_cpm_trans)
@@ -611,7 +608,7 @@ if (file.exists(dup_corrs_file)) {
 <pre class="r"><code>molecules_final &lt;- t( design %*% t(gls_fit$coef) ) + gls_fit$resid</code></pre>
 <p>Output the cleaned data.</p>
 <pre class="r"><code>colnames(molecules_final) &lt;- colnames(molecules_cpm_trans)
-write.table(molecules_final, &quot;../data/molecules-final.txt&quot;, quote = FALSE,
+write.table(round(molecules_final, digits = 6), &quot;../data/molecules-final.txt&quot;, quote = FALSE,
             sep = &quot;\t&quot;, col.names = NA)</code></pre>
 <pre class="r"><code>pca_final &lt;- run_pca(molecules_final)
 pca_final_plot &lt;- plot_pca(pca_final$PCs, explained = pca_final$explained,
