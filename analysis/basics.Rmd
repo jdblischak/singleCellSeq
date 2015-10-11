@@ -13,19 +13,11 @@ source("chunk-options.R")
 
 We analyzed our single cell data with [BASiCS][] developed by [Vallejos et al., 2015][vallejos2015].
 The results shown here are from a model fit with 40,000 iterations.
+This time we also modeled the unexplained technical noise with a separate parameter (theta) per batch.
 
-Conclusions:
-
-*  The parameter Phi captures differences in sequencing depth. It changes quantitatively with increasing iterations, but not qualitatively
-*  The parameter s measures capture efficiency, but requires a large number of iterations to agree with our estimates
-*  The normalization provided by BASiCS does not change the PCA result much compared to non-normalized log2 counts per million data, and this does not change based on the number of iterations
-
-Here are all the different versions of the results based on different number of iterations:
-
-*  [40,000](basics.html)
-*  [20,000](basics-20000.html)
-*  [4,000](basics-4000.html)
-
+Unfortunately this time we also included some cells from replicate 2 of individual NA19098.
+Because it is such an outlier in its ERCC counts, it breaks the assumptions of the model.
+I'll run it again with all cells from this batch removed (results will be ready in ~60 hours)000.
 
 [basics]: https://github.com/catavallejos/BASiCS
 [vallejos2015]: http://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1004333
@@ -44,6 +36,7 @@ library("data.table")
 source("functions.R")
 library("ggplot2")
 theme_set(theme_bw(base_size = 16))
+library("tidyr")
 library("edgeR")
 ```
 
@@ -107,7 +100,7 @@ basics_data <- newBASiCS_Data(as.matrix(molecules_filter), tech, spike_input)
 
 ```{r fit-model}
 store_dir <- "../data"
-run_name <- "new"
+run_name <- "batch"
 if (file.exists(paste0(store_dir, "/chain_phi_", run_name, ".txt"))) {
   chain_mu = as.matrix(fread(paste0(store_dir, "/chain_mu_", run_name, ".txt")))
   chain_delta = as.matrix(fread(paste0(store_dir, "/chain_delta_", run_name, ".txt")))
@@ -139,6 +132,20 @@ Summarize the results.
 ```{r summary}
 mcmc_summary <- Summary(mcmc_output)
 ```
+
+## Batch information
+
+As expected, batch 19098.r2 is an outlier because its ERCC spike-ins are so much higher than all the other batches.
+
+```{r batch-theta}
+colnames(chain_theta) <- unique(anno_filter$batch)
+theta_long <- gather(as.data.frame(chain_theta), key = "batch", value = "theta")
+ggplot(theta_long, aes(x = batch, y = theta)) +
+  geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 90)) +
+  labs(title = "Modeling of separate technical effects per batch")
+```
+
 
 ## Cellular mRNA content
 
@@ -202,6 +209,12 @@ phi_read_plot <- phi_molecule_plot %+% phi %+% aes(x = total_read_count) +
 phi_read_plot
 ```
 
+The low values are from replicate 2 of individual 19098.
+
+```{r phi-versus-read-count-per-batch}
+phi_read_plot + facet_grid(replicate ~ individual)
+```
+
 ## Capture efficiency
 
 S measures the capture efficiency.
@@ -244,6 +257,13 @@ The correlation is harder to see when the the 95% posterior density intervals ar
 
 ```{r s-v-capture-efficiency-prob-density}
 s_plot + geom_errorbar(aes(ymin = lower, ymax = upper), alpha = 0.5)
+```
+
+The outlier replicate 2 of individual 19098 appears to have adversely affected the modeling of S for the other batches.
+
+```{r s-v-capture-efficiency-per-batch}
+s_plot %+% s[s$batch != "NA19098.r2", ] +
+  facet_grid(replicate ~ individual)
 ```
 
 ## Denoised data
