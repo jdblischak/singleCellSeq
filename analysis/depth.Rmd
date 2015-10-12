@@ -147,112 +147,149 @@ anno_single <- anno_single %>% filter(batch != "NA19098.r1",
                                       batch != "NA19098.r2")
 ```
 
-## Using cell number
+## Can we infer cellular mRNA content from single cell RNA sequencing data?
 
-```{r}
-anno_single_long <- gather(anno_single, key = "metric", value = "value",
-                           total_reads_gene, total_reads_ercc, total_reads,
-                           total_molecules_gene, total_molecules_ercc, total_molecules,
-                           total_mapped, total_unmapped, depth, concentration,
-                           perc_ercc_reads, perc_ercc_molecules, perc_unmapped,
-                           num_genes)
-head(anno_single_long)
+Because we mix an equal volume from each well, we could potentially infer the relative amount of cellular mRNA content based on the number of sequences coming from a given well.
+Furthermore, since the same amount of ERCC spike-ins are added to each well, we do not expect to see a difference in the number of ERCC sequences across wells.
+The Fluidigm C1 chip provides the number of cells in each well.
+Thus we can use this information as an indepdent measurement of cellular mRNA content.
+We will compare it to the following metrics:
+
+**Abbr**  | **Explanation**
+------------- | -------------
+depth  | Number of reads sequenced (i.e. sequencing depth)
+total_mapped  | Number of mapped reads
+total_unmapped | Number of unmapped reads
+total_reads_gene | Number of reads mapped to protein-coding genes
+total_reads_ercc | Number of reads mapped to ERCC spike-ins
+total_molecules_gene | Number of molecules mapped to protein-coding genes
+total_molecules_ercc | Number of molecules mapped to ERCC spike-ins
+num_genes | Number of genes with at least one read observed
+perc_ercc_reads | Percent of reads that map to ERCC spike-ins (out of reads assigned to a feature)
+perc_ercc_molecules | Percent of molecules that map to ERCC spike-ins (out of reads assigned to a feature)
+perc_unampped | Percent of unmapped reads
+
+Because there were so few wells that contained 4 or 5 cells, we remove these first.
+
+```{r number-wells-w-cell-number}
+table(anno_single$cell_number)
+anno_single <- anno_single %>% filter(cell_number <= 3)
 ```
 
-```{r}
-plot_cell_num <- ggplot(anno_single_long[anno_single_long$cell_number %in% 0:3, ],
-                        aes(x = as.factor(cell_number), y = value, fill = individual)) +
+Using data from sequencing reads, i.e. not utitlizing UMI information, we observe no correlation between the number of sequences and the number of cells in a well.
+
+```{r sequencing-depth-num-cells, fig.width=10, fig.height=10}
+plot_cell_depth <- ggplot(anno_single, aes(x = as.factor(cell_number), y = depth / 10^6)) +
   geom_boxplot() +
-  facet_wrap(~metric, scales = "free_y")
-plot_cell_num
+  labs(x = "Observed cells in well", y = "",
+       title = "Sequencing depth (millions)")
+boxplot_base <- plot_cell_depth
+plot_cell_mapped <- boxplot_base %+% aes(y = total_mapped / 10^6) +
+  labs(y = "", title = "Mapped reads (millions)")
+plot_cell_total_reads <- boxplot_base %+% aes(y = total_reads_gene / 10^6) +
+  labs(y = "", title = "Reads mapped to protein-coding genes (millions)")
+plot_grid(plot_cell_depth, plot_cell_mapped, plot_cell_total_reads,
+          labels = LETTERS[1:3], nrow = 3)
 ```
 
-```{r}
-ggplot(anno_single, aes(x = total_reads_gene, y = total_molecules_gene)) +
-  geom_point(aes(color = individual, shape = replicate)) +
-  facet_wrap(~cell_number)
+On the other hand, utilizing the UMIs, we do see a correlation with the number of molecules per well with the number of cells per well.
+Crucially, in accoradance with our expecations, this trend is not present in the ERCC molecules.
+In fact, we observe the opposite trend, which makes sense since the ERCC spike-in molecules are a smaller percentage of the total molecules in wells with more than one cell.
+Furthermore, the increasing trend is also observed with the number of observed genes.
+
+```{r molecules-num-cells, fig.width=10, fig.height=10}
+plot_cell_mol_gene <- boxplot_base %+% aes(y = total_molecules_gene / 10^3) +
+  labs(y = "", title = "Gene molecules (thousands)")
+plot_cell_mol_ercc <- boxplot_base %+% aes(y = total_reads_ercc / 10^3) +
+  labs(y = "", title = "ERCC molecules (thousands)")
+plot_cell_num_genes <- boxplot_base %+% aes(y = num_genes) +
+  labs(y = "", title = "Observed genes")
+plot_grid(plot_cell_mol_gene, plot_cell_mol_ercc, plot_cell_num_genes,
+          labels = LETTERS[1:3], nrow = 3)
 ```
 
-## Is concentration a good proxy for cellular mRNA content?
+Because of the observed increase in the number of gene molecules and decrease in number of ERCC molecules with increasing cell number,
+it is reasonable to expect that the percentage of ERCC molecules is a proxy for cellular mRNA content.
+We do observe this expected trend with the ERCC molecules, and to a lesser extent with the ERCC reads.
+Since the ERCC percentage is also used as a quality control measure, we wanted to confirm that the observed trend was not simply due to quality issues.
+The percentage of unmapped reads, another quality measure, does decrease from one cell to two cells, but does not change much from 2 cells to 3 cells.
+Since the wells with zero cells have much higher percent ERCC and percent unmapped (because they are bad quality), we removed them from the plots below to better observe the relationship with cell number.
 
-```{r cell-number-concentration}
-ggplot(anno_single,
-       aes(x = as.factor(cell_number), y = concentration)) +
-  geom_boxplot()
+```{r perc-ercc-num-cells, fig.width=10, fig.height=10}
+plot_cell_perc_ercc_reads <- boxplot_base %+% aes(y = perc_ercc_reads) %+%
+  anno_single[anno_single$cell_number != 0, ] +
+  labs(y = "", title = "Percentage of reads mapped to ERCC")
+plot_cell_perc_ercc_mol <- boxplot_base %+% aes(y = perc_ercc_molecules) %+%
+  anno_single[anno_single$cell_number != 0, ] +
+  labs(y = "", title = "Percentage of molecules mapped to ERCC")
+plot_cell_perc_unmapped <- boxplot_base %+% aes(y = perc_unmapped) %+%
+  anno_single[anno_single$cell_number != 0, ] +
+  labs(y = "", title = "Percentage of unmapped reads")
+plot_grid(plot_cell_perc_ercc_reads, plot_cell_perc_ercc_mol, plot_cell_perc_unmapped,
+          labels = LETTERS[1:3], nrow = 3)
 ```
 
-## Does concentration affect sequencing depth?
+Now for the confusing part.
+We also have the concentration of each well after it was amplified in the C1 chip, but before undergoing library prepration.
+If this is an accurate measurement, we expect concentration to increase with the number of cells and also correlate with the total number of gene molecules.
+We do observe the latter, but not the former.
+More specifically, for wells that contain one cell, we observe an increase in the number of gene molecules with an increase in concentration.
+However, the concentration decreases with increasing number of cells per well.
 
-```{r concentration-depth}
-ggplot(anno_single,
-       aes(x = concentration, y = depth)) +
-  geom_point()
+```{r concentration-num-cells, fig.width=10, fig.height=10}
+plot_conc_molecules_gene <- ggplot(anno_single, aes(x = concentration, y = total_molecules_gene / 10^3,
+                        color = as.factor(cell_number))) +
+  geom_text(aes(label = cell_number)) +
+  labs(x = "Concentration", y = "", title = "Gene molecules") +
+  scale_color_brewer(palette = "Dark2") +
+  theme(legend.position = "none")
+plot_cell_concentration <- boxplot_base %+% aes(y = concentration) +
+  labs(y = "", title = "Concentration")
+plot_conc_molecules_gene_1cell <- plot_conc_molecules_gene %+%
+  anno_single[anno_single$cell_number == 1, ] +
+  geom_smooth(method = "lm")
+plot_grid(plot_conc_molecules_gene, plot_cell_concentration, plot_conc_molecules_gene_1cell,
+          labels = LETTERS[1:3], nrow = 3)
 ```
 
-```{r concentration-depth-one-cell}
-ggplot(anno_single[anno_single$cell_number == 1, ],
-       aes(x = concentration, y = depth)) +
-  geom_point()
-```
+We also see some wells with one cell that cluster with the multi-cell wells.
+These may be errors in the cell counting.
 
-```{r concentration-total-molecule-gene}
-ggplot(anno_single,
-       aes(x = concentration, y = total_molecules_gene)) +
-  geom_text(aes(label = cell_number))
-```
-
-```{r concentration-total-molecule-gene-one-cell}
-ggplot(anno_single[anno_single$cell_number == 1, ],
-       aes(x = concentration, y = total_molecules_gene)) +
-  geom_text(aes(label = individual))
-```
-
-Investigates suspicious cells.
-
-```{r}
+```{r outliers}
 outliers <- anno_single %>% filter(cell_number == 1, concentration < 1.5,
                                    total_molecules_gene > 140000)
-write.table(outliers, file = "../data/outlier-single-cells.txt",
-            sep = "\t", row.names = FALSE, quote = FALSE)
+outliers %>% select(sample_id)
 ```
 
-```{r}
-plot_cell_num %+% anno_single_long[!(anno_single_long$sample_id %in% outliers$sample_id), ]
-```
+Further complicating the interpretation is the variability both within and between batches.
+While there are clear differences in the mean of the distributions of many of these metrics across wells with differing cell numbers,
+the variability is really high.
+Do we expect that some single cells will have the same celluar mRNA content as a well with 2-3 cells?
+Do we expect the cellular mRNA content from a single cell to vary this much?
+For wells with a single cell observed, the first quartile for the total number of gene molecules is
+`r quantile(anno_single$total_molecules_gene[anno_single$cell_number == 1], probs = 0.25)`,
+and the third quartile is
+`r quantile(anno_single$total_molecules_gene[anno_single$cell_number == 1], probs = 0.25)`.
+(Note: I purposely avoided using the minimum and maximum here since the minimum value is likely from one _dead_ cell,
+and the maximum is potentially from a well with multiple cells).
 
-## Is percentage ERCC a good proxy for RNA content?
+The variability between batches are even more difficult to interpret.
+Strangley, the three individuals are consistently different across their three replicates,
+suggesting these differences come from the actual cells and not the single cell processing.
 
-```{r concentration-perc-ercc-reads}
-ggplot(anno_single,
-       aes(x = concentration, y = perc_ercc_reads)) +
-  geom_point()
-```
-
-```{r cell-number-perc-ercc-reads}
-ggplot(anno_single,
-       aes(x = as.factor(cell_number), y = perc_ercc_reads)) +
-  geom_boxplot()
-```
-
-```{r cell-number-perc-ercc-reads-1-3-cells}
-ggplot(anno_single[anno_single$cell_number %in% 1:3, ],
-       aes(x = as.factor(cell_number), y = perc_ercc_reads)) +
-  geom_boxplot()
-```
-
-```{r cell-number-perc-ercc-barplot}
-perc_ercc_bar <- anno_single %>% 
-  filter(anno_single$batch != "NA19098.r1",
-         anno_single$batch != "NA19098.r2") %>%
-  group_by(cell_number) %>%
-  summarize(mean_perc_ercc = mean(perc_ercc_reads),
-            sem_perc_ercc = sd(perc_ercc_reads) / sqrt(n())) %>%
-  filter(cell_number %in% 1:3)
-ggplot(perc_ercc_bar,
-       aes(x = as.factor(cell_number), y = mean_perc_ercc)) +
-  geom_bar(stat = "identity") +
-  geom_errorbar(aes(ymin = mean_perc_ercc - sem_perc_ercc,
-                    ymax = mean_perc_ercc + sem_perc_ercc))
+```{r molecules-num-cells-batch, fig.width=10, fig.height=10}
+plot_conc_molecules_gene_batch <- ggplot(anno_single[anno_single$cell_number == 1, ],
+                                         aes(x = concentration, y = total_molecules_gene / 10^3,
+                        color = individual)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(x = "Concentration", y = "", title = "Gene molecules (only wells with 1 cell)") +
+  scale_color_brewer(palette = "Dark2") 
+plot_grid(plot_cell_mol_gene %+% aes(fill = batch) + theme(legend.position = "none"),
+          plot_cell_mol_ercc %+% aes(fill = batch) + theme(legend.position = "none"),
+          plot_cell_num_genes %+% aes(fill = batch) + theme(legend.position = "bottom"),
+          plot_conc_molecules_gene_batch,
+          labels = LETTERS[1:4], nrow = 4)
 ```
 
 ## Session information
