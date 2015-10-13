@@ -9,7 +9,7 @@ date: 2015-09-30
 
 ```{r chunk-options, include=FALSE}
 source("chunk-options.R")
-opts_chunk$set(fig.width = 8, fig.height = 8)
+opts_chunk$set(fig.width = 10)
 ```
 
 ## Setup
@@ -207,7 +207,7 @@ anno_single <- anno_single %>% filter(cell_number <= 3)
 
 Using data from sequencing reads, i.e. not utitlizing UMI information, we observe no correlation between the number of sequences and the number of cells in a well.
 
-```{r sequencing-depth-num-cells, fig.width=10, fig.height=10}
+```{r sequencing-depth-num-cells, fig.height=12}
 plot_cell_depth <- ggplot(anno_single, aes(x = as.factor(cell_number), y = depth / 10^6)) +
   geom_boxplot() +
   labs(x = "Observed cells in well", y = "",
@@ -226,7 +226,7 @@ Crucially, in accoradance with our expecations, this trend is not present in the
 In fact, we observe the opposite trend, which makes sense since the ERCC spike-in molecules are a smaller percentage of the total molecules in wells with more than one cell.
 Furthermore, the increasing trend is also observed with the number of observed genes.
 
-```{r molecules-num-cells, fig.width=10, fig.height=10}
+```{r molecules-num-cells, fig.height=12}
 plot_cell_mol_gene <- boxplot_base %+% aes(y = total_molecules_gene / 10^3) +
   labs(y = "", title = "Gene molecules (thousands)")
 plot_cell_mol_ercc <- boxplot_base %+% aes(y = total_reads_ercc / 10^3) +
@@ -244,7 +244,7 @@ Since the ERCC percentage is also used as a quality control measure, we wanted t
 The percentage of unmapped reads, another quality measure, does decrease from one cell to two cells, but does not change much from 2 cells to 3 cells.
 Since the wells with zero cells have much higher percent ERCC and percent unmapped (because they are bad quality), we removed them from the plots below to better observe the relationship with cell number.
 
-```{r perc-ercc-num-cells, fig.width=10, fig.height=10}
+```{r perc-ercc-num-cells, fig.height=12}
 plot_cell_perc_ercc_reads <- boxplot_base %+% aes(y = perc_ercc_reads) %+%
   anno_single[anno_single$cell_number != 0, ] +
   labs(y = "", title = "Percentage of reads mapped to ERCC")
@@ -265,7 +265,7 @@ We do observe the latter, but not the former.
 More specifically, for wells that contain one cell, we observe an increase in the number of gene molecules with an increase in concentration.
 However, the concentration decreases with increasing number of cells per well.
 
-```{r concentration-num-cells, fig.width=10, fig.height=10}
+```{r concentration-num-cells, fig.height=12}
 plot_conc_molecules_gene <- ggplot(anno_single, aes(x = concentration, y = total_molecules_gene / 10^3,
                         color = as.factor(cell_number))) +
   geom_text(aes(label = cell_number)) +
@@ -296,9 +296,9 @@ the variability is really high.
 Do we expect that some single cells will have the same celluar mRNA content as a well with 2-3 cells?
 Do we expect the cellular mRNA content from a single cell to vary this much?
 For wells with a single cell observed, the first quartile for the total number of gene molecules is
-`r quantile(anno_single$total_molecules_gene[anno_single$cell_number == 1], probs = 0.25)`,
+`r format(quantile(anno_single$total_molecules_gene[anno_single$cell_number == 1], probs = 0.25), scientific = FALSE)`,
 and the third quartile is
-`r quantile(anno_single$total_molecules_gene[anno_single$cell_number == 1], probs = 0.25)`.
+`r format(quantile(anno_single$total_molecules_gene[anno_single$cell_number == 1], probs = 0.75), scientific = FALSE)`.
 (Note: I purposely avoided using the minimum and maximum here since the minimum value is likely from one _dead_ cell,
 and the maximum is potentially from a well with multiple cells).
 
@@ -306,7 +306,7 @@ The variability between batches are even more difficult to interpret.
 Strangley, the three individuals are consistently different across their three replicates,
 suggesting these differences come from the actual cells and not the single cell processing.
 
-```{r molecules-num-cells-batch, fig.width=10, fig.height=10}
+```{r molecules-num-cells-batch, fig.height=20}
 plot_conc_molecules_gene_batch <- ggplot(anno_single[anno_single$cell_number == 1, ],
                                          aes(x = concentration, y = total_molecules_gene / 10^3,
                         color = individual)) +
@@ -314,11 +314,16 @@ plot_conc_molecules_gene_batch <- ggplot(anno_single[anno_single$cell_number == 
   geom_smooth(method = "lm", se = FALSE) +
   labs(x = "Concentration", y = "", title = "Gene molecules (only wells with 1 cell)") +
   scale_color_brewer(palette = "Dark2") 
+plot_conc_molecules_ercc_batch <-  plot_conc_molecules_gene_batch %+%
+  aes(y = total_molecules_ercc / 10^3) +
+  labs(y = "", title = "ERCC molecules (only wells with 1 cell)")
+
 plot_grid(plot_cell_mol_gene %+% aes(fill = batch) + theme(legend.position = "none"),
           plot_cell_mol_ercc %+% aes(fill = batch) + theme(legend.position = "none"),
           plot_cell_num_genes %+% aes(fill = batch) + theme(legend.position = "bottom"),
           plot_conc_molecules_gene_batch,
-          labels = LETTERS[1:4], nrow = 4)
+          plot_conc_molecules_ercc_batch,
+          labels = LETTERS[1:5], nrow = 5)
 ```
 
 ## Relationship between ERCC metrics and total gene molecules
@@ -332,7 +337,7 @@ The ERCC spike-ins have multiple purposes:
 But how well can they be used for these three purposes?
 The plots below display the mutliple ERCC metrics for wells that contained only one cell.
 
-```{r ercc-metrics, fig.width=10, fig.height=10}
+```{r ercc-metrics, fig.height=8}
 # Compare ERCC metrics to total gene molecules
 plot_gene_mol_ercc_mol <- ggplot(anno_single[anno_single$cell_number == 1, ],
                                  aes(x = total_molecules_gene,
@@ -380,7 +385,7 @@ And it further highlights the differences between individuals.
 
 Here is the same plot as above, but only inclduding cells with percent ERCC molecules less than 2%.
 
-```{r ercc-metrics-high-quality}
+```{r ercc-metrics-high-quality,  fig.height=8}
 plot_grid(plot_gene_mol_ercc_mol %+% anno_single[anno_single$cell_number == 1 &
                                                  anno_single$perc_ercc_molecules < 2, ],
           plot_gene_mol_perc_ercc %+% anno_single[anno_single$cell_number == 1 &
