@@ -152,9 +152,10 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-10-08</p>
-<p><strong>Code version:</strong> 1bbbd2621b9eebf02cef69dd34b322c5207f2435</p>
-<pre class="r"><code>library(&quot;data.table&quot;)
+<p><strong>Last updated:</strong> 2015-10-13</p>
+<p><strong>Code version:</strong> ddaf29c5a9f87d032017e5eb7b1c388c3b925c39</p>
+<pre class="r"><code>library(&quot;biomaRt&quot;)
+library(&quot;data.table&quot;)
 library(&quot;dplyr&quot;)
 library(&quot;limma&quot;)
 library(&quot;edgeR&quot;)
@@ -406,6 +407,48 @@ overexpressed_genes</code></pre>
 [13] &quot;ENSG00000198886&quot; &quot;ENSG00000198786&quot; &quot;ENSG00000198727&quot;
 [16] &quot;ERCC-00002&quot;      &quot;ERCC-00074&quot;      &quot;ERCC-00096&quot;     
 [19] &quot;ERCC-00130&quot;     </code></pre>
+<pre class="r"><code>ensembl &lt;- useMart(host = &quot;grch37.ensembl.org&quot;,
+                   biomart = &quot;ENSEMBL_MART_ENSEMBL&quot;,
+                   dataset = &quot;hsapiens_gene_ensembl&quot;)
+overexpressed_genes_info &lt;- getBM(attributes = c(&quot;ensembl_gene_id&quot;, &quot;chromosome_name&quot;,
+                                                 &quot;external_gene_name&quot;, &quot;transcript_count&quot;,
+                                                 &quot;description&quot;),
+                                  filters = &quot;ensembl_gene_id&quot;,
+                                  values = overexpressed_genes[grep(&quot;ENSG&quot;, overexpressed_genes)],
+                                  mart = ensembl)
+overexpressed_genes_info</code></pre>
+<pre><code>   ensembl_gene_id chromosome_name external_gene_name transcript_count
+1  ENSG00000105372              19              RPS19                8
+2  ENSG00000111640              12              GAPDH               10
+3  ENSG00000181163               5               NPM1               12
+4  ENSG00000187514               2               PTMA               12
+5  ENSG00000197061               6           HIST1H4C                1
+6  ENSG00000198712              MT             MT-CO2                1
+7  ENSG00000198727              MT             MT-CYB                1
+8  ENSG00000198763              MT             MT-ND2                1
+9  ENSG00000198786              MT             MT-ND5                1
+10 ENSG00000198804              MT             MT-CO1                1
+11 ENSG00000198886              MT             MT-ND4                1
+12 ENSG00000198888              MT             MT-ND1                1
+13 ENSG00000198899              MT            MT-ATP6                1
+14 ENSG00000198938              MT             MT-CO3                1
+15 ENSG00000228253              MT            MT-ATP8                1
+                                                                            description
+1                                  ribosomal protein S19 [Source:HGNC Symbol;Acc:10402]
+2                glyceraldehyde-3-phosphate dehydrogenase [Source:HGNC Symbol;Acc:4141]
+3  nucleophosmin (nucleolar phosphoprotein B23, numatrin) [Source:HGNC Symbol;Acc:7910]
+4                                      prothymosin, alpha [Source:HGNC Symbol;Acc:9623]
+5                                  histone cluster 1, H4c [Source:HGNC Symbol;Acc:4787]
+6         mitochondrially encoded cytochrome c oxidase II [Source:HGNC Symbol;Acc:7421]
+7                    mitochondrially encoded cytochrome b [Source:HGNC Symbol;Acc:7427]
+8            mitochondrially encoded NADH dehydrogenase 2 [Source:HGNC Symbol;Acc:7456]
+9            mitochondrially encoded NADH dehydrogenase 5 [Source:HGNC Symbol;Acc:7461]
+10         mitochondrially encoded cytochrome c oxidase I [Source:HGNC Symbol;Acc:7419]
+11           mitochondrially encoded NADH dehydrogenase 4 [Source:HGNC Symbol;Acc:7459]
+12           mitochondrially encoded NADH dehydrogenase 1 [Source:HGNC Symbol;Acc:7455]
+13                 mitochondrially encoded ATP synthase 6 [Source:HGNC Symbol;Acc:7414]
+14       mitochondrially encoded cytochrome c oxidase III [Source:HGNC Symbol;Acc:7422]
+15                 mitochondrially encoded ATP synthase 8 [Source:HGNC Symbol;Acc:7415]</code></pre>
 <p>19 genes have molecule counts greater than or equal to 1024 in at least one single cell, including 4.</p>
 <p>Update the list of genes passing the filters.</p>
 <pre class="r"><code>genes_pass_filter &lt;- setdiff(genes_pass_filter, overexpressed_genes)</code></pre>
@@ -648,19 +691,25 @@ attached base packages:
 [8] base     
 
 other attached packages:
-[1] Humanzee_0.0.0.9000 testit_0.4          cowplot_0.3.1      
-[4] ggplot2_1.0.1       edgeR_3.10.2        limma_3.24.9       
-[7] dplyr_0.4.2         data.table_1.9.4    knitr_1.10.5       
+ [1] Humanzee_0.0.0.9000 testit_0.4          cowplot_0.3.1      
+ [4] ggplot2_1.0.1       edgeR_3.10.2        limma_3.24.9       
+ [7] dplyr_0.4.2         data.table_1.9.4    biomaRt_2.24.0     
+[10] knitr_1.10.5       
 
 loaded via a namespace (and not attached):
- [1] Rcpp_0.12.0      magrittr_1.5     MASS_7.3-40      munsell_0.4.2   
- [5] colorspace_1.2-6 R6_2.1.1         stringr_1.0.0    httr_0.6.1      
- [9] plyr_1.8.3       tools_3.2.0      parallel_3.2.0   gtable_0.1.2    
-[13] DBI_0.3.1        htmltools_0.2.6  lazyeval_0.1.10  yaml_2.1.13     
-[17] digest_0.6.8     assertthat_0.1   reshape2_1.4.1   formatR_1.2     
-[21] bitops_1.0-6     RCurl_1.95-4.6   evaluate_0.7     rmarkdown_0.6.1 
-[25] labeling_0.3     stringi_0.4-1    scales_0.2.4     chron_2.3-45    
-[29] proto_0.3-10    </code></pre>
+ [1] Rcpp_0.12.0          formatR_1.2          GenomeInfoDb_1.4.0  
+ [4] plyr_1.8.3           bitops_1.0-6         tools_3.2.0         
+ [7] digest_0.6.8         RSQLite_1.0.0        evaluate_0.7        
+[10] gtable_0.1.2         DBI_0.3.1            yaml_2.1.13         
+[13] parallel_3.2.0       proto_0.3-10         httr_0.6.1          
+[16] stringr_1.0.0        S4Vectors_0.6.0      IRanges_2.2.4       
+[19] stats4_3.2.0         Biobase_2.28.0       R6_2.1.1            
+[22] AnnotationDbi_1.30.1 XML_3.98-1.2         rmarkdown_0.6.1     
+[25] reshape2_1.4.1       magrittr_1.5         scales_0.2.4        
+[28] htmltools_0.2.6      BiocGenerics_0.14.0  MASS_7.3-40         
+[31] assertthat_0.1       colorspace_1.2-6     labeling_0.3        
+[34] stringi_0.4-1        lazyeval_0.1.10      RCurl_1.95-4.6      
+[37] munsell_0.4.2        chron_2.3-45        </code></pre>
 </div>
 
 
