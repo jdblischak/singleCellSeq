@@ -13,19 +13,11 @@ source("chunk-options.R")
 
 We analyzed our single cell data with [BASiCS][] developed by [Vallejos et al., 2015][vallejos2015].
 The results shown here are from a model fit with 40,000 iterations.
+This time we also modeled the unexplained technical noise with a separate parameter (theta) per batch.
 
-Conclusions:
-
-*  The parameter Phi captures differences in sequencing depth. It changes quantitatively with increasing iterations, but not qualitatively
-*  The parameter s measures capture efficiency, but requires a large number of iterations to agree with our estimates
-*  The normalization provided by BASiCS does not change the PCA result much compared to non-normalized log2 counts per million data, and this does not change based on the number of iterations
-
-Here are all the different versions of the results based on different number of iterations:
-
-*  [40,000](basics.html)
-*  [20,000](basics-20000.html)
-*  [4,000](basics-4000.html)
-
+Unfortunately this time we also included some cells from replicate 2 of individual NA19098.
+Because it is such an outlier in its ERCC counts, it breaks the assumptions of the model.
+I'll run it again with all cells from this batch removed (results will be ready in ~60 hours)000.
 
 [basics]: https://github.com/catavallejos/BASiCS
 [vallejos2015]: http://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1004333
@@ -44,6 +36,7 @@ library("data.table")
 source("functions.R")
 library("ggplot2")
 theme_set(theme_bw(base_size = 16))
+library("tidyr")
 library("edgeR")
 ```
 
@@ -58,54 +51,24 @@ Below is the description of the data from the BASiCS vignette, interspersed with
 Input annotation.
 
 ```{r input-annotation}
-anno <- read.table("../data/annotation.txt", header = TRUE,
-                   stringsAsFactors = FALSE)
+anno_filter <- read.table("../data/annotation-filter.txt", header = TRUE,
+                          stringsAsFactors = FALSE)
 ```
 
 Input molecule counts.
 
 ```{r input-molecule-counts}
-molecules <- read.table("../data/molecules.txt", header = TRUE,
-                    stringsAsFactors = FALSE)
-```
-
-Input list of quality single cells.
-
-```{r input-quality-single-cells}
-quality_single_cells <- scan("../data/quality-single-cells.txt",
-                             what = "character")
-```
-
-Keep only the single cells that passed the [QC filters](qc-cell-ipsc.html).
-This also removes the bulk samples.
-
-```{r qc-filter}
-molecules_single <- molecules[, colnames(molecules) %in% quality_single_cells]
-anno_single <- anno[anno$sample_id %in% quality_single_cells, ]
-stopifnot(ncol(molecules_single) == nrow(anno_single),
-          colnames(molecules_single) == anno_single$sample_id)
-```
-
-Also remove batch 2 of individual 19098.
-
-```{r remove-19098-batch-2-single}
-molecules_single <- molecules_single[, !(anno_single$individual == 19098 & anno_single$batch == 2)]
-anno_single <- anno_single[!(anno_single$individual == 19098 & anno_single$batch == 2), ]
-stopifnot(ncol(molecules_single) == nrow(anno_single))
-```
-
-Remove genes with zero read counts in the single cells.
-
-```{r remove-non-expressed-genes}
-expressed_single <- rowSums(molecules_single) > 0
-molecules_single <- molecules_single[expressed_single, ]
-dim(molecules_single)
+molecules_filter <- read.table("../data/molecules-filter.txt", header = TRUE,
+                               stringsAsFactors = FALSE)
+stopifnot(nrow(anno_filter) == ncol(molecules_filter),
+          colnames(molecules_filter) == anno_filter$sample_id,
+          anno_filter$well != "bulk")
 ```
 
 > * `Tech`: a vector of `TRUE`/`FALSE` elements with length $q$. If `Tech[i] = FALSE` the gene `i` is biological; otherwise the gene is spike-in.
 
 ```{r tech}
-tech <- grepl("ERCC", rownames(molecules_single))
+tech <- grepl("ERCC", rownames(molecules_filter))
 ```
 
 > * `SpikeInput`: a vector of length $q-q_0$ whose elements contain the input number of molecules for the spike-in genes (amount per cell).
@@ -118,8 +81,11 @@ spike <- read.table("../data/expected-ercc-molecules.txt", header = TRUE,
 Only keep the spike-ins that were observed in at least one cell.
 
 ```{r spike-input}
-spike_input <- spike$ercc_molecules_well[spike$id %in% rownames(molecules_single)]
-stopifnot(sum(tech) == length(spike_input))
+spike_input <- spike$ercc_molecules_well[spike$id %in% rownames(molecules_filter)]
+names(spike_input) <- spike$id[spike$id %in% rownames(molecules_filter)]
+spike_input <- spike_input[order(names(spike_input))]
+stopifnot(sum(tech) == length(spike_input),
+          rownames(molecules_filter)[tech] == names(spike_input))
 ```
 
 `r length(spike_input)` of the ERCC spike-ins were observed in the single cell data.
@@ -127,33 +93,21 @@ stopifnot(sum(tech) == length(spike_input))
 > These elements must be stored into an object of class `BASiCS_Data`.
 
 ```{r create-object}
-basics_data <- newBASiCS_Data(as.matrix(molecules_single), tech, spike_input)
-```
-
-## Filter
-
-```{r filter}
-basics_filter = BASiCS_Filter(as.matrix(molecules_single), tech, spike_input, 
-                              MinTotalCountsPerCell = 2,
-                              MinTotalCountsPerGene = 2, 
-                              MinCellsWithExpression = 2,
-                              MinAvCountsPerCellsWithExpression = 2)
-filter_data = newBASiCS_Data(basics_filter$Counts, basics_filter$Tech,
-                             basics_filter$SpikeInput)
+basics_data <- newBASiCS_Data(as.matrix(molecules_filter), tech, spike_input)
 ```
 
 ## Fit the model
 
 ```{r fit-model}
 store_dir <- "../data"
-run_name <- "40000"
+run_name <- "batch"
 if (file.exists(paste0(store_dir, "/chain_phi_", run_name, ".txt"))) {
   chain_mu = as.matrix(fread(paste0(store_dir, "/chain_mu_", run_name, ".txt")))
   chain_delta = as.matrix(fread(paste0(store_dir, "/chain_delta_", run_name, ".txt")))
   chain_phi = as.matrix(fread(paste0(store_dir, "/chain_phi_", run_name, ".txt")))
   chain_s = as.matrix(fread(paste0(store_dir, "/chain_s_", run_name, ".txt")))
   chain_nu = as.matrix(fread(paste0(store_dir, "/chain_nu_", run_name, ".txt")))
-  chain_theta = as.matrix(fread(paste0(store_dir, "/chain_mu_", run_name, ".txt"))[, 1, with = FALSE])
+  chain_theta = as.matrix(fread(paste0(store_dir, "/chain_theta_", run_name, ".txt")))
 
   mcmc_output <- newBASiCS_Chain(mu = chain_mu, delta = chain_delta,
                                  phi = chain_phi, s = chain_s,
@@ -162,7 +116,7 @@ if (file.exists(paste0(store_dir, "/chain_phi_", run_name, ".txt"))) {
   time_total <- readRDS(paste0(store_dir, "/time_total_", run_name, ".rds"))
 } else {
   time_start <- Sys.time()
-  mcmc_output <- BASiCS_MCMC(filter_data, N = 40000, Thin = 10, Burn = 20000,
+  mcmc_output <- BASiCS_MCMC(basics_data, N = 40000, Thin = 10, Burn = 20000,
                              PrintProgress = TRUE, StoreChains = TRUE,
                              StoreDir = store_dir, RunName = run_name)
   time_end <- Sys.time()
@@ -178,6 +132,20 @@ Summarize the results.
 ```{r summary}
 mcmc_summary <- Summary(mcmc_output)
 ```
+
+## Batch information
+
+As expected, batch 19098.r2 is an outlier because its ERCC spike-ins are so much higher than all the other batches.
+
+```{r batch-theta}
+colnames(chain_theta) <- unique(anno_filter$batch)
+theta_long <- gather(as.data.frame(chain_theta), key = "batch", value = "theta")
+ggplot(theta_long, aes(x = batch, y = theta)) +
+  geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 90)) +
+  labs(title = "Modeling of separate technical effects per batch")
+```
+
 
 ## Cellular mRNA content
 
@@ -199,8 +167,8 @@ But we believe most of these differences are due to sequencing depth and the cou
 
 ```{r extract-phi}
 phi <- displaySummaryBASiCS(mcmc_summary, Param = "phi")
-phi <- cbind(phi, anno_single)
-phi$total_count <- colSums(counts(filter_data))
+phi <- cbind(phi, anno_filter)
+phi$total_count <- colSums(counts(basics_data))
 ```
 
 ```{r phi-versus-molecule-count}
@@ -219,17 +187,15 @@ But it does drive the point home more that we think this is due to sequencing de
 Input read counts.
 
 ```{r input-read-counts}
-reads <- read.table("../data/reads.txt", header = TRUE,
+reads_filter <- read.table("../data/reads-filter.txt", header = TRUE,
                     stringsAsFactors = FALSE)
+stopifnot(dim(reads_filter) == dim(counts(basics_data)))
 ```
 
-Subset to only include the quality single cells and the genes used in the BASiCS analysis.
+Calculate total read counts.
 
-```{r subset-reads}
-reads_sub <- reads[rownames(reads) %in% rownames(counts(filter_data)),
-                   colnames(reads) %in% colnames(counts(filter_data))]
-stopifnot(dim(reads_sub) == dim(counts(filter_data)))
-phi$total_read_count <- colSums(reads_sub) / 10^6
+```{r total-read-counts}
+phi$total_read_count <- colSums(reads_filter) / 10^6
 ```
 
 While the fit is not as good, it is still clearly driving the pattern.
@@ -243,6 +209,12 @@ phi_read_plot <- phi_molecule_plot %+% phi %+% aes(x = total_read_count) +
 phi_read_plot
 ```
 
+The low values are from replicate 2 of individual 19098.
+
+```{r phi-versus-read-count-per-batch}
+phi_read_plot + facet_grid(replicate ~ individual)
+```
+
 ## Capture efficiency
 
 S measures the capture efficiency.
@@ -252,10 +224,10 @@ plot(mcmc_summary, Param = "s")
 ```
 
 ```{r capture-efficiency}
-efficiency <- numeric(length = ncol(counts(filter_data)))
+efficiency <- numeric(length = ncol(counts(basics_data)))
 total_ercc_molecules <- sum(spike$ercc_molecules_well)
-for (i in 1:ncol(counts(filter_data))) {
-  efficiency[i] <- sum(counts(filter_data, type = "technical")[, i]) /
+for (i in 1:ncol(counts(basics_data))) {
+  efficiency[i] <- sum(counts(basics_data, type = "technical")[, i]) /
                    total_ercc_molecules
 }
 summary(efficiency)
@@ -263,7 +235,7 @@ summary(efficiency)
 
 ```{r extract-s}
 s <- displaySummaryBASiCS(mcmc_summary, Param = "s")
-s <- cbind(s, anno_single)
+s <- cbind(s, anno_filter)
 s$efficiency <- efficiency
 ```
 
@@ -287,12 +259,19 @@ The correlation is harder to see when the the 95% posterior density intervals ar
 s_plot + geom_errorbar(aes(ymin = lower, ymax = upper), alpha = 0.5)
 ```
 
+The outlier replicate 2 of individual 19098 appears to have adversely affected the modeling of S for the other batches.
+
+```{r s-v-capture-efficiency-per-batch}
+s_plot %+% s[s$batch != "NA19098.r2", ] +
+  facet_grid(replicate ~ individual)
+```
+
 ## Denoised data
 
 Remove technical noise (i.e. normalize using the ERCC spike-ins).
 
 ```{r denoised-counts}
-denoised = BASiCS_DenoisedCounts(Data = filter_data, Chain = mcmc_output)
+denoised = BASiCS_DenoisedCounts(Data = basics_data, Chain = mcmc_output)
 ```
 
 ### PCA - BASiCS Denoised
@@ -303,8 +282,8 @@ This does not change substantially when increasing the iterations from a few tho
 ```{r pca-basics}
 pca_basics <- run_pca(denoised)
 plot_pca(pca_basics$PCs, explained = pca_basics$explained,
-         metadata = anno_single, color = "individual",
-         shape = "batch", factors = c("individual", "batch"))
+         metadata = anno_filter, color = "individual",
+         shape = "replicate")
 ```
 
 ### PCA - BASiCS Denoised cpm
@@ -315,29 +294,29 @@ denoised_cpm <- cpm(denoised, log = TRUE,
                                calcNormFactors(denoised, method = "TMM"))
 pca_basics_cpm <- run_pca(denoised_cpm)
 plot_pca(pca_basics_cpm$PCs, explained = pca_basics_cpm$explained,
-         metadata = anno_single, color = "individual",
-         shape = "batch", factors = c("individual", "batch"))
+         metadata = anno_filter, color = "individual",
+         shape = "replicate")
 ```
 
 ### PCA - non-normalized
 
 ```{r pca-non-normalized}
-pca_non <- run_pca(counts(filter_data))
+pca_non <- run_pca(counts(basics_data))
 plot_pca(pca_non$PCs, explained = pca_non$explained,
-         metadata = anno_single, color = "individual",
-         shape = "batch", factors = c("individual", "batch"))
+         metadata = anno_filter, color = "individual",
+         shape = "replicate")
 ```
 
 ### PCA - non-normalized cpm
 
 ```{r pca-non-normalized-cpm}
-non_cpm <- cpm(counts(filter_data), log = TRUE,
-               lib.size = colSums(counts(filter_data)) *
-                          calcNormFactors(counts(filter_data), method = "TMM"))
+non_cpm <- cpm(counts(basics_data), log = TRUE,
+               lib.size = colSums(counts(basics_data)) *
+                          calcNormFactors(counts(basics_data), method = "TMM"))
 pca_non_cpm <- run_pca(non_cpm)
 plot_pca(pca_non_cpm$PCs, explained = pca_non_cpm$explained,
-         metadata = anno_single, color = "individual",
-         shape = "batch", factors = c("individual", "batch"))
+         metadata = anno_filter, color = "individual",
+         shape = "replicate")
 ```
 
 ## Session information
