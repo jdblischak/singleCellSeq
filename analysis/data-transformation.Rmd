@@ -13,6 +13,7 @@ opts_chunk$set(fig.width = 8, fig.height = 8)
 ```
 
 ```{r packages, message=FALSE}
+library("biomaRt")
 library("data.table")
 library("dplyr")
 library("limma")
@@ -309,6 +310,17 @@ and thus we cannot correct them for the [collision probability](#collision-proba
 overexpressed_rows <- apply(molecules_filter, 1, function(x) any(x >= 1024))
 overexpressed_genes <- rownames(molecules_filter)[overexpressed_rows]
 overexpressed_genes
+
+ensembl <- useMart(host = "grch37.ensembl.org",
+                   biomart = "ENSEMBL_MART_ENSEMBL",
+                   dataset = "hsapiens_gene_ensembl")
+overexpressed_genes_info <- getBM(attributes = c("ensembl_gene_id", "chromosome_name",
+                                                 "external_gene_name", "transcript_count",
+                                                 "description"),
+                                  filters = "ensembl_gene_id",
+                                  values = overexpressed_genes[grep("ENSG", overexpressed_genes)],
+                                  mart = ensembl)
+overexpressed_genes_info
 ```
 
 `r length(overexpressed_genes)` genes have molecule counts greater than or equal to 1024 in at least one single cell,
