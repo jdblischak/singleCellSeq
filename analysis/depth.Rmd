@@ -136,6 +136,34 @@ anno_single <- anno_single %>%
 anno_single$num_genes = apply(reads[!ercc_index, ], 2, function(x) sum(x > 0))
 ```
 
+Calculate capture efficiency, here defined as the percentage of input ERCC molecules that were observed.
+
+```{r load-spike-input}
+spike <- read.table("../data/expected-ercc-molecules.txt", header = TRUE,
+                    sep = "\t", stringsAsFactors = FALSE)
+```
+
+Only keep the spike-ins that were observed in at least one cell.
+
+```{r spike-input}
+spike_input <- spike$ercc_molecules_well[spike$id %in% rownames(molecules)]
+names(spike_input) <- spike$id[spike$id %in% rownames(molecules)]
+spike_input <- spike_input[order(names(spike_input))]
+stopifnot(rownames(molecules)[ercc_index] == names(spike_input))
+```
+
+This data set has not been subjected to the expression level filter, thus it includes `r length(spike_input)` ERCC spike-ins.
+
+```{r capture-efficiency}
+efficiency_vec <- numeric(length = ncol(molecules))
+total_ercc_molecules <- sum(spike$ercc_molecules_well)
+for (i in 1:ncol(molecules)) {
+  efficiency_vec[i] <- sum(molecules[ercc_index, i]) / total_ercc_molecules * 100
+}
+anno_single$efficiency <- efficiency_vec
+summary(efficiency_vec)
+```
+
 ## Filtering
 
 As we try to understand the general relationships between sequencing results and cellular mRNA content, we remove outlier batches.
@@ -167,6 +195,7 @@ total_molecules_ercc | Number of molecules mapped to ERCC spike-ins
 num_genes | Number of genes with at least one read observed
 perc_ercc_reads | Percent of reads that map to ERCC spike-ins (out of reads assigned to a feature)
 perc_ercc_molecules | Percent of molecules that map to ERCC spike-ins (out of reads assigned to a feature)
+efficiency | Percent of input ERCC molecules that were observed
 perc_unampped | Percent of unmapped reads
 
 Because there were so few wells that contained 4 or 5 cells, we remove these first.
@@ -290,6 +319,75 @@ plot_grid(plot_cell_mol_gene %+% aes(fill = batch) + theme(legend.position = "no
           plot_cell_num_genes %+% aes(fill = batch) + theme(legend.position = "bottom"),
           plot_conc_molecules_gene_batch,
           labels = LETTERS[1:4], nrow = 4)
+```
+
+## Relationship between ERCC metrics and total gene molecules
+
+The ERCC spike-ins have multiple purposes:
+
+*  Identify low-quality single cells, which should have a comparatively high ERCC molecule percentage
+*  Measure cell-cell technical variability introduced as the stages of PCR amplicification, library preparation, and sequencing
+*  Indicate relative cellular mRNA content. Cells with lower ERCC molecule percentage should have more RNA
+
+But how well can they be used for these three purposes?
+The plots below display the mutliple ERCC metrics for wells that contained only one cell.
+
+```{r ercc-metrics, fig.width=10, fig.height=10}
+# Compare ERCC metrics to total gene molecules
+plot_gene_mol_ercc_mol <- ggplot(anno_single[anno_single$cell_number == 1, ],
+                                 aes(x = total_molecules_gene,
+                                     y = total_molecules_ercc)) +
+  geom_point(aes(color = individual), alpha = 0.5) +
+  labs(x = "Gene molecules", y = "ERCC molecules") +
+  theme(legend.position = "none")
+plot_gene_mol_perc_ercc <- plot_gene_mol_ercc_mol %+%
+  aes(y = perc_ercc_molecules)+
+  labs(y = "Percent ERCC molecules")
+plot_gene_mol_efficiency <- plot_gene_mol_ercc_mol %+%
+  aes(y = efficiency) +
+  labs(y = "Capture efficiency")
+# Compare between ERCC metrics
+plot_ercc_mol_perc_ercc <- plot_gene_mol_perc_ercc %+%
+  aes(x = total_molecules_ercc) +
+  labs(x = "ERCC molecules")
+plot_ercc_mol_efficiency <- plot_gene_mol_efficiency %+%
+  aes(x = total_molecules_ercc) +
+  labs(x = "ERCC molecules") +
+  theme(legend.position = "top")
+plot_perc_ercc_efficiency <- plot_ercc_mol_efficiency %+%
+  aes(x = perc_ercc_molecules) +
+  labs(x = "Percent ERCC molecules") +
+  theme(legend.position = "none")
+
+plot_grid(plot_gene_mol_ercc_mol, plot_gene_mol_perc_ercc, plot_gene_mol_efficiency,
+          plot_ercc_mol_perc_ercc, plot_ercc_mol_efficiency, plot_perc_ercc_efficiency,
+          labels = LETTERS[1:6])
+```
+
+For the purpose of quality control, it is difficult to oberve a clear distinction between high and low quality cells using the percent ERCC molecules, as the percentage ERCC molecules continuously decreases with increasing gene molecules (panel B above).
+
+For the purpose of measuing cell-cell technical variability, we observe clear differences between the three different individuals (all panels above).
+However, the replicates of the individuals are consistent.
+Thus this cannot be arising simply from the PCR amplification, library prepration, and sequencing.
+Something inherent to the distribution of gene expression in the single cells from these three individuals is consistently affecting the molecule counts.
+
+For the purpose of measuring cellular mRNA content, there is clearly a relationship between the percent ERCC molecules and the total gene molecules (panel B above; also see plots above showing decrease in percent ERCC molecules with increasing cell number).
+But the confidence in the accuracy of this estimate is decreased based on the above two points.
+If we choose a cutoff of percent ERCC molecules less than 2% (arbitrary but reasonable based on the density of the points),
+a large amout of the variation in the percent ERCC molecules is removed (panel B below).
+But maybe this is a good thing since we do not expect that much variation in cellular mRNA content in a group of homegenous cells?
+And it further highlights the differences between individuals.
+
+Here is the same plot as above, but only inclduding cells with percent ERCC molecules less than 2%.
+
+```{r ercc-metrics-high-quality}
+plot_grid(plot_gene_mol_ercc_mol %+% anno_single[anno_single$cell_number == 1 &
+                                                 anno_single$perc_ercc_molecules < 2, ],
+          plot_gene_mol_perc_ercc %+% anno_single[anno_single$cell_number == 1 &
+                                                 anno_single$perc_ercc_molecules < 2   , ],
+          plot_gene_mol_efficiency,
+          plot_ercc_mol_perc_ercc, plot_ercc_mol_efficiency, plot_perc_ercc_efficiency,
+          labels = LETTERS[1:6])
 ```
 
 ## Session information
