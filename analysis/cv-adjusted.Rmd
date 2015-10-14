@@ -1,0 +1,344 @@
+---
+title: "Compare CVs"
+author: "Joyce Hsiao"
+date: 2015-10-13
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+
+library(knitr)
+opts_chunk$set(message = FALSE, warning = FALSE, eval = TRUE, 
+               echo = TRUE)
+```
+
+
+## Objective
+
+We would like to use per gene coefficient of variation as a metric of heterogeneity comparison between genes and across cells. We know that coefficient of variation at the gene level is dependent on the mean gene expression levels, a well known phenomena in the analysis of seqencing data, not limited to RNA-seq. 
+
+[Kolodziejczyk et al. 2015] surveyed the transcriptome profiles of mESCs cultured in three different conditions and propose DM (distance-to-the-median), a corrected version of CV that is independent of the mean, as a metric of heterogenity comparison. This idea was first proposed in [Kalmar et al. 2009]. 
+
+Here, we will follow their method in removing the dependency of coefficient of variation on the mean gene expression. Then, these "normalized" coefficient of variation will be compared via standard linear regression where individual is treated as a fixed effect.
+
+The results below will show that after this normalization step, the coefficient of variations no longer has a polynomial relationship with mean gene molecule count.
+
+
+[Kolodziejczyk et al. 2015]:http://dx.doi.org/10.1016/j.stem.2015.09.011
+[Kalmar et al. 2009]:
+
+
+## Model
+
+$$log10(CV_{gk}) = log10(\mu_g) + \epislon_{gk}$$
+
+where $\epislon_{gk}$ is independent distributed across genes and samples.
+
+
+## Set up
+
+```{r, message=FALSE, warning=FALSE}
+library("data.table")
+library("dplyr")
+library("limma")
+library("edgeR")
+library("ggplot2")
+library("grid")
+library("zoo")
+theme_set(theme_bw(base_size = 12))
+source("functions.R")
+```
+
+
+
+## Prepare data
+
+
+Input annotation of only QC-filtered single cells
+
+```{r}
+anno_qc <- read.table("../data/annotation-filter.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno_qc)
+```
+
+
+Input molecule counts that are filtered, transformed, and also processed to remove unwanted variation from batch effet. ERCC genes are also removed.
+
+```{r}
+molecules_qc <- read.table("../data/molecules-final.txt", header = TRUE, stringsAsFactors = FALSE)
+```
+
+Input moleclule counts before log2 CPM transformation.
+
+```{r}
+molecules_filter <- read.table("../data/molecules-filter.txt", header = TRUE, stringsAsFactors = FALSE)
+molecules_filter <- molecules_filter[which(rownames(molecules_filter) %in% rownames(molecules_qc)), ]
+
+stopifnot(dim(molecules_filter) == dim(molecules_qc))
+```
+
+
+## Compute coefficient of variation
+
+Compute per batch coefficient of variation.
+
+Include only genes with positive coefficient of variation. Some genes in this data may have zero coefficient of variation, because we include gene with more than 0 count 
+across all cells.
+
+
+```{r}
+molecules_cv_batch <- 
+  lapply(1:length(unique(anno_qc$batch)), function(per_batch) {
+      molecules_per_batch <- 2^molecules_qc[ , unique(anno_qc$batch) == unique(anno_qc$batch)[per_batch] ]
+      mean_per_gene <- apply(molecules_per_batch, 1, mean, na.rm = TRUE)
+      sd_per_gene <- apply(molecules_per_batch, 1, sd, na.rm = TRUE)
+      cv_per_gene <- data.frame(mean = mean_per_gene,
+                                sd = sd_per_gene,
+                                cv = sd_per_gene/mean_per_gene)
+      rownames(cv_per_gene) <- rownames(molecules_qc)
+  
+      cv_per_gene <- cv_per_gene[rowSums(is.na(cv_per_gene)) == 0, ]
+      cv_per_gene$batch <- unique(anno_qc$batch)[per_batch]
+      
+      # Add sparsity percent
+      molecules_count <- molecules_filter[ , unique(anno_qc$batch) == unique(anno_qc$batch)[per_batch]]
+      cv_per_gene$sparse <- rowMeans(as.matrix(molecules_count) == 0)
+        
+      return(cv_per_gene)
+      }) 
+names(molecules_cv_batch) <- unique(anno_qc$batch)
+
+dim(molecules_cv_batch[[1]])
+```
+
+
+
+## Distance-to-the-median
+
+*This method was designed for comparison of variation profile across genes, while we are intersted in
+comparison of heterogeneity profiles on a per-gene basis.
+
+The computation of DM for gene *i* in Kolodziejczyk et al. (2015) involves two steps: 
+
+1. Correct for mean dependency:
+    * log10 (CV^2 / rolling median log10 of squared CV)
+2. Correct for dependency on gene length
+    * Corrected CV - gene length (union of all exons); 
+      equivalently, log10 of CV on count scale divided by gene length
+
+In studies that count reads instead of molecules, gene length is a possible confounder in expression levels. However in our study, UMI is used to count the number of RNA molecules in each cell. Hence, we may not need to adjust coefficient of variation for correlation with gene lenght.
+
+
+Merge summary data.frames.
+
+```{r}
+df_plot <- do.call(rbind, molecules_cv_batch)
+```
+
+Compute rolling medians.
+
+> We take the rolling medians of squared coefficient of variation across samples, along the order of the genes by their mean molecule count. We then substract each gene's corresponding medians from the sample's log10 squared coefficient of variation. 
+
+> As we can see from the scatter plots below, the log10 squared coefficient of variation show a symmetric distribuion 
+
+```{r}
+# Compute a data-wide coefficient of variation on CPM normalized counts.
+data_cv <- apply(2^molecules_qc, 1, sd)/apply(2^molecules_qc, 1, mean)
+
+# Order of genes by mean expression levels
+order_gene <- order(apply(2^molecules_qc, 1, mean))
+
+# Rolling medians of log10 squared CV by mean expression levels
+roll_medians <- rollapply(log10(data_cv^2)[order_gene], width = 50, by = 25,
+                         FUN = median, fill = list("extend", "extend", "NA") )
+ii_na <- which( is.na(roll_medians) )
+roll_medians[ii_na] <- median( log10(data_cv^2)[order_gene][ii_na] )
+
+names(roll_medians) <- rownames(molecules_qc)[order_gene]
+
+# re-order rolling medians
+reorder_gene <- match(rownames(molecules_qc), names(roll_medians) )
+head(reorder_gene)
+roll_medians <- roll_medians[ reorder_gene ]
+
+head(names(roll_medians))
+head(rownames(molecules_qc))
+```
+
+Double-check the computation of rolling median.
+
+```{r}
+ggplot(data.frame(cv2 = log10(data_cv^2), 
+                  roll_medians = roll_medians,
+                  mean = log10(apply(2^molecules_qc, 1, mean) ) ) )+
+  geom_point(aes(x = mean, y = cv2), col = "red") +
+  geom_point(aes(x = mean, y = roll_medians), col = "blue", alpha = .7)
+```
+
+
+Compute adjusted coefficient of variation.
+
+```{r}
+# adjusted coefficient of variation on log10 scale
+log10cv2_adj <- 
+  lapply(1:length(molecules_cv_batch), function(per_batch) {
+    foo <- log10(molecules_cv_batch[[per_batch]]$cv^2) - roll_medians
+    return(foo)
+})
+df_plot$log10cv2_adj <- do.call(c, log10cv2_adj)
+```
+
+
+Adjusted squared coefficient of variation versus log10 mean count (CPM corrected).
+
+```{r}
+ggplot( df_plot, aes(x = log10(mean), y = log10cv2_adj) ) +
+  geom_point( aes(col = as.factor(batch)), cex = .6 ) + 
+  facet_wrap( ~ batch) +
+  labs(x = "log10(Mean CPM)", y = "log10(Adjusted Squared coefficient of variation") 
+```
+
+
+Coefficient of variation before adjustment.
+
+```{r}
+ggplot(df_plot, aes(x= factor(batch), y = log10(cv^2), fill = factor(batch) ) ) +
+  geom_violin(alpha = .5) + 
+  geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+  labs(title = "log10 Squared coefficient of variation") +
+  theme(axis.text.x = element_text(hjust=1, angle = 45))
+```
+
+
+Coefficient of variation after adjustment.
+
+```{r}
+ggplot(df_plot, aes(x= factor(batch), y = log10cv2_adj, fill = factor(batch) ) ) +
+  geom_violin(alpha = .5) + 
+  geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+  labs(title = "log10 adjusted Squared coefficient of variation") +
+  theme(axis.text.x = element_text(hjust=1, angle = 45))
+```
+
+
+
+## Compare adjusted CVs
+
+### limma
+
+
+```{r}
+library(limma)
+
+df_limma <- matrix(df_plot$log10cv2_adj, 
+                      nrow = nrow(molecules_qc), ncol = 9, byrow = FALSE)
+
+design <- data.frame(individual = factor(rep(unique(anno_qc$individual), each = 3) ),
+                     rep = factor(rep(c(1:3), times = 3)) )
+
+colnames(df_limma) <- with(design, paste0(individual, rep))
+
+fit_limma <- lmFit(df_limma, design = model.matrix( ~ individual, data = design))                      
+
+fit_limma <- eBayes(fit_limma)
+```
+
+Voom plot
+
+```{r}
+voom(10^df_limma, design = model.matrix(~individual, data = design),
+     plot = TRUE)
+```
+
+
+limma unmoderated F-test p-value
+
+```{r}
+hist(fit_limma$F.p.value, breaks = 100, main = "F-test p-value")
+```
+
+False discover control adjutment.
+
+```{r}
+F.p.adj <- p.adjust(fit_limma$F.p.value, method = "fdr")
+summary(F.p.adj)
+
+hist(F.p.adj, main = "False discovery rate", xlab = "FDR")
+
+sum(F.p.adj < .05)
+```
+
+P-value before/after false discovery adjustment.
+
+```{r}
+plot(y = F.p.adj, x = fit_limma$F.p.value,
+     xlab = "F-test p-value", ylab = "FDR")
+```
+
+
+
+### CPM density distributions of significant genes
+
+Rank genes by FDR.
+
+*The most different gene by CV
+
+```{r}
+order_limma <- order(F.p.adj)
+
+ggplot(data.frame(values = unlist(molecules_qc[order_limma[1],] ),
+                  individual = factor(anno_qc$individual),
+                  replicate = factor(anno_qc$replicate),
+                  batch = factor(anno_qc$batch), check.rows = F), aes(x = values)) + 
+  geom_density(aes(group = batch, col = individual)) +
+  ggtitle("Most significant gene")
+```
+
+
+
+*The least different gene by CV
+
+```{r}
+order_limma <- order(F.p.adj)
+
+ggplot(data.frame(values = unlist(molecules_qc[ tail(order_limma, 1),] ),
+                  individual = factor(anno_qc$individual),
+                  replicate = factor(anno_qc$replicate),
+                  batch = factor(anno_qc$batch), check.rows = F), aes(x = values)) + 
+  geom_density(aes(group = batch, col = individual)) +
+  ggtitle("Least significant gene")
+```
+
+
+### P-value and sparsity
+
+```{r}
+df_sparse <- rowMeans(matrix(df_plot$sparse, nrow = nrow(molecules_qc), ncol = 9,
+                      byrow = FALSE) )
+
+plot(x = df_sparse, y = log10(fit_limma$F.p.value),
+     xlab = "Average percent of zero-count cells",
+     ylab = "log10(p-value of F-test)",
+     main = "CV and sparsity")
+```
+
+Correlation between mean sparsity rate and p-value.
+
+
+```{r}
+cor(df_sparse, fit_limma$F.p.value, method = "spearman")
+```
+
+
+
+
+## Session information
+
+```{r info}
+sessionInfo()
+```
