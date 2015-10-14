@@ -1,0 +1,349 @@
+---
+title: "Individual differences in CV and mean"
+author: "Joyce Hsiao"
+date: 2015-10-13
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+
+library(knitr)
+opts_chunk$set(message = FALSE, warning = FALSE, eval = TRUE, 
+               echo = TRUE)
+``` 
+
+
+## Objective
+
+Previously, we compared normalized coefficient of variations across individuals. Here, we will also compare the mean gene expression across individuals, using single cell sequencing data and bulk RNA-seq data.
+
+It would be interesting to learn the possible overlap or non-overlap between the genes that we observed significant individual differences in coefficient of variations versus those different in mean gene expression levels across cells.
+
+
+
+## Set up
+
+```{r, message=FALSE, warning=FALSE}
+library("data.table")
+library("dplyr")
+library("limma")
+library("edgeR")
+library("ggplot2")
+library("grid")
+theme_set(theme_bw(base_size = 12))
+source("functions.R")
+```
+
+
+
+## Prepare data
+
+
+Input annotation of only QC-filtered single cells
+
+```{r}
+anno_qc <- read.table("../data/annotation-filter.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno_qc)
+```
+
+
+Input molecule counts that are filtered, transformed, and also processed to remove unwanted variation from batch effet. ERCC genes are also removed.
+
+```{r}
+molecules_qc <- read.table("../data/molecules-final.txt", header = TRUE, stringsAsFactors = FALSE)
+```
+
+
+Input moleclule counts before log2 CPM transformation.
+
+```{r}
+molecules_filter <- read.table("../data/molecules-filter.txt", header = TRUE, stringsAsFactors = FALSE)
+molecules_filter <- molecules_filter[which(rownames(molecules_filter) %in% rownames(molecules_qc)), ]
+
+stopifnot(dim(molecules_filter) == dim(molecules_qc))
+```
+
+
+## Compare coefficient of variation
+
+Compute per batch coefficient of variation.
+
+Include only genes with positive coefficient of variation. Some genes in this data may have zero coefficient of variation, because we include gene with more than 0 count 
+across all cells.
+
+```{r}
+molecules_cv_batch <- 
+  lapply(1:length(unique(anno_qc$batch)), function(per_batch) {
+      molecules_per_batch <- 2^molecules_qc[ , unique(anno_qc$batch) == unique(anno_qc$batch)[per_batch] ]
+      mean_per_gene <- apply(molecules_per_batch, 1, mean, na.rm = TRUE)
+      sd_per_gene <- apply(molecules_per_batch, 1, sd, na.rm = TRUE)
+      cv_per_gene <- data.frame(mean = mean_per_gene,
+                                sd = sd_per_gene,
+                                cv = sd_per_gene/mean_per_gene)
+      rownames(cv_per_gene) <- rownames(molecules_qc)
+  
+      cv_per_gene <- cv_per_gene[rowSums(is.na(cv_per_gene)) == 0, ]
+      cv_per_gene$batch <- unique(anno_qc$batch)[per_batch]
+      
+      # Add sparsity percent
+      molecules_count <- molecules_filter[ , unique(anno_qc$batch) == unique(anno_qc$batch)[per_batch]]
+      cv_per_gene$sparse <- rowMeans(as.matrix(molecules_count) == 0)
+        
+      return(cv_per_gene)
+      }) 
+names(molecules_cv_batch) <- unique(anno_qc$batch)
+
+dim(molecules_cv_batch[[1]])
+```
+
+
+Merge summary data.frames.
+
+```{r}
+df_plot <- do.call(rbind, molecules_cv_batch)
+```
+
+Compute rolling medians.
+
+
+```{r}
+library(zoo)
+# Compute a data-wide coefficient of variation on CPM normalized counts.
+data_cv <- apply(2^molecules_qc, 1, sd)/apply(2^molecules_qc, 1, mean)
+
+# Order of genes by mean expression levels
+order_gene <- order(apply(2^molecules_qc, 1, mean))
+
+# Rolling medians of log10 squared CV by mean expression levels
+roll_medians <- rollapply(log10(data_cv^2)[order_gene], width = 50, by = 25,
+                         FUN = median, fill = list("extend", "extend", "NA") )
+ii_na <- which( is.na(roll_medians) )
+roll_medians[ii_na] <- median( log10(data_cv^2)[order_gene][ii_na] )
+
+names(roll_medians) <- rownames(molecules_qc)[order_gene]
+
+# re-order rolling medians
+reorder_gene <- match(rownames(molecules_qc), names(roll_medians) )
+head(reorder_gene)
+roll_medians <- roll_medians[ reorder_gene ]
+
+head(names(roll_medians))
+head(rownames(molecules_qc))
+```
+
+Compute adjusted coefficient of variation.
+
+```{r}
+# adjusted coefficient of variation on log10 scale
+log10cv2_adj <- 
+  lapply(1:length(molecules_cv_batch), function(per_batch) {
+    foo <- log10(molecules_cv_batch[[per_batch]]$cv^2) - roll_medians
+    return(foo)
+})
+df_plot$log10cv2_adj <- do.call(c, log10cv2_adj)
+```
+
+
+Compare adjusted CVs
+
+```{r}
+library(limma)
+
+df_limma <- matrix(df_plot$log10cv2_adj, 
+                      nrow = nrow(molecules_qc), ncol = 9, byrow = FALSE)
+
+design <- data.frame(individual = factor(rep(unique(anno_qc$individual), each = 3) ),
+                     rep = factor(rep(c(1:3), times = 3)) )
+
+colnames(df_limma) <- with(design, paste0(individual, rep))
+
+fit_limma <- lmFit(df_limma, design = model.matrix( ~ individual, data = design))                      
+fit_limma <- eBayes(fit_limma)
+```
+
+
+False discover control adjustment.
+
+```{r}
+F.p.adj <- p.adjust(fit_limma$F.p.value, method = "fdr")
+```
+
+
+Cutoffs
+
+```{r}
+df_cuts <- data.frame(cuts = c(.001, .01, .05, .1, .15, .2))
+df_cuts$sig_count <- sapply(1:6, function(per_cut) {
+                    sum(F.p.adj < df_cuts$cuts[per_cut] )
+                    })
+df_cuts
+```
+
+## Compare mean expression levels.
+
+### Single-cell sequencing data
+
+Almost all of the genes came out to be statistically significant due the large sample size (about ~70 sample points per replicate, per individual).
+
+
+```{r}
+fit_limma_mean <- lmFit(molecules_qc, 
+                        design = model.matrix(~factor(individual), data = anno_qc) )
+
+fit_limma_mean <- eBayes(fit_limma_mean)
+
+summary(fit_limma_mean$F.p.value)
+```
+
+Histogram of p-values.
+
+```{r}
+hist(-log10(fit_limma_mean$F.p.value), 
+     main = "F-test p-values comparing mean expression", breaks = 100)
+```
+
+FDR 
+
+```{r}
+padj_mean_single <- p.adjust(fit_limma_mean$F.p.value, method = "fdr")
+summary(padj_mean_single)
+```
+
+Mean versus coefficient of variation comparisons
+
+```{r}
+plot(x = -log10(fit_limma_mean$F.p.value), 
+     y = -log10(fit_limma$F.p.value),
+     xlab = "-log10 F-test p-value comparing means",
+     ylab = "-log10 F-test p-value compare adjusted CV",
+     main = "Unadjusted F-test p-values")
+abline( h = -log10(.01), col = "red")
+
+
+plot(x = -log10(padj_mean_single), 
+     y = -log10(F.p.adj),
+     xlab = "-log10 FDR comparing means",
+     ylab = "-log10 FDSR compare adjusted CV",
+     main = "FDR")
+abline( h = -log10(.01), col = "red")
+abline( h = -log10(.05), col = "red")
+```
+
+
+Overlap of the significant genes
+
+*Adjusted p-value cut-offs
+
+```{r}
+cuts <- c(.001, .01, .05, .1, .15, .2)
+both_table <- lapply(1:6, function(per_cut) {
+                  table(F.p.adj < df_cuts$cuts[per_cut],
+                        padj_mean_single < df_cuts$cut[per_cut])
+              })
+names(both_table) <- cuts
+
+both_table
+```
+
+
+*Ranks of adjusted p-values
+
+
+```{r}
+plot(x = rank(-log10(padj_mean_single)), 
+     y = rank(-log10(F.p.adj)),
+     xlab = "rank of -log10 FDR comparing means",
+     ylab = "rank of -log10 FDR compare adjusted CV",
+     main = "FDR")
+```
+
+
+
+```{r}
+df_compare <- 
+  data.frame(mean = rowMeans( as.matrix( 
+                      do.call(cbind, lapply(molecules_cv_batch, "[[", 1) ) ) ),
+             cv2 = rowMeans( as.matrix( 
+                      do.call(cbind, lapply(molecules_cv_batch, "[[", 3) ) )^2 ),
+             adj_cv2 = rowMeans( 10^as.matrix( 
+                      do.call(cbind, log10cv2_adj) ) ) )
+             
+library(broman)
+crayon <- brocolors("crayons")
+with(df_compare, plot(x = log10(mean), y = cv2, pch = 1, cex = 1, col = "grey50",
+                      lwd = .5,
+                      ylab = "average squared coeffcient of variations \n across samples",
+                      xlab = "log10 average of mean CPM across samples") )
+with(df_compare[F.p.adj < .2, ], points(x = log10(mean), y = cv2, pch = 16, cex = .6,
+                                        col = crayon["Tumbleweed"]) )
+with(df_compare[F.p.adj < .1, ], points(x = log10(mean), y = cv2, pch = 16, cex = .6,
+                                        col = crayon["Orange"]) )
+with(df_compare[F.p.adj < .01, ], points(x = log10(mean), y = cv2, pch = 16, cex = .6,
+                                        col = crayon["Scarlet"]) )
+title(main = "Avg. Squred CV vs. log10(Avg. mean count)")
+legend("topright", pch = c(1, 16, 16, 16), 
+       legend = c("All genes", "Adj p-value < .2", 
+                  "Adj p-value < .01", "Adj p-value < .01"),
+       col = c("grey50", crayon[c("Tumbleweed", "Orange", "Scarlet")]),
+       bty = "n")
+
+
+with(df_compare, plot(x = log10(mean), y = adj_cv2, pch = 1, cex = 1, col = "grey50",
+                      lwd = .5,
+                      ylab = "average squared coeffcient of variations \n across samples",
+                      xlab = "log10 average of mean CPM across samples") )
+with(df_compare[F.p.adj < .2, ], points(x = log10(mean), y = adj_cv2, pch = 16, cex = .6,
+                                        col = crayon["Tumbleweed"]) )
+with(df_compare[F.p.adj < .1, ], points(x = log10(mean), y = adj_cv2, pch = 16, cex = .6,
+                                        col = crayon["Orange"]) )
+with(df_compare[F.p.adj < .01, ], points(x = log10(mean), y = adj_cv2, pch = 16, cex = .6,
+                                        col = crayon["Scarlet"]) )
+title(main = "Avg. Adjusted Squred CV vs. log10(Avg. mean count)")
+legend("topright", pch = c(1, 16, 16, 16), 
+       legend = c("All genes", "Adj p-value < .2", 
+                  "Adj p-value < .01", "Adj p-value < .01"),
+       col = c("grey50", crayon[c("Tumbleweed", "Orange", "Scarlet")]),
+       bty = "n")
+```
+
+
+Heatmap
+
+```{r}
+library(mygene)
+gene_symbols <- getGenes(rownames(molecules_qc), 
+                         fields = c("name", "symbol") ) [ , c("query", "symbol")]
+head(gene_symbols)
+```
+
+
+```{r, fig.height=12, fig.width = 15}
+library(gplots)
+
+order_cv <- order(F.p.adj)[F.p.adj < .01]
+
+my_palette <- colorRampPalette(c("red", "yellow", "blue"))(n = 299)
+
+heatmap.2(as.matrix(molecules_qc[order_cv, ]), 
+          symm = FALSE, col = my_palette,
+          Colv = "NA", trace = "none", labRow = gene_symbols$symbol[ order_cv ])
+```
+
+
+```{r}
+kable(queryMany(rownames(molecules_qc)[which(F.p.adj< .01)], scopes = "ensembl.gene", 
+                 fields=c("summary"), species="human") )
+```
+
+
+
+## Session information
+
+```{r info}
+sessionInfo()
+```
