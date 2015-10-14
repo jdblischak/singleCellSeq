@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+<meta name="author" content="Joyce Hsiao" />
+
+<meta name="date" content="2015-10-13" />
+
+<title>Compare CVs: explore significant genes</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Compare CVs: explore significant genes</h1>
+<h4 class="author"><em>Joyce Hsiao</em></h4>
+<h4 class="date"><em>2015-10-13</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#objective">Objective</a></li>
+<li><a href="#model">Model</a></li>
+<li><a href="#set-up">Set up</a></li>
+<li><a href="#prepare-data">Prepare data</a></li>
+<li><a href="#compute-coefficient-of-variation">Compute coefficient of variation</a></li>
+<li><a href="#compute-normalized-cv">Compute normalized CV</a></li>
+<li><a href="#compare-adjusted-cvs">Compare adjusted CVs</a></li>
+<li><a href="#overlapy-with-pluripotency-genes">Overlapy with pluripotency genes</a></li>
+<li><a href="#overlap-with-cell-cycle-genes">Overlap with cell-cycle genes</a><ul>
+<li><a href="#gene-annotations">Gene annotations</a></li>
+</ul></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2015-10-14</p>
+<p><strong>Code version:</strong> ad00494d79195dafacf84a4ae0b08314007456b3</p>
+<div id="objective" class="section level2">
+<h2>Objective</h2>
+<p>Previously, we normalized coefficient of variations across samples and showed that this normalized measure is independent of mean moleucle count and also percent of zero-count cells.</p>
+<p>Here we will look more into the annotations of these genes; specifically, among the genes that we observe significant individual differences, is there any cell-cycle genes pluripotent genes?</p>
+</div>
+<div id="model" class="section level2">
+<h2>Model</h2>
+<p><br /><span class="math"><em>l</em><em>o</em><em>g</em>10(<em>C</em><em>V</em><sub><em>g</em><em>k</em></sub><sup>2</sup>) = <em>l</em><em>o</em><em>g</em>10(<em>C</em><em>V</em><sub><em>g</em></sub><sup>2</sup>) + <em>ϵ</em><sub><em>g</em><em>k</em></sub></span><br /></p>
+<p>where <span class="math"><em>ϵ</em><sub><em>g</em><em>k</em></sub></span> is independent distributed as a normal random variables for each gene <span class="math"><em>g</em></span> and sample <span class="math"><em>k</em></span>.</p>
+<p>Equivalent,</p>
+<p><br /><span class="math">$$log10(\frac{\sigma^2_{gk}}{\mu^2_{gk}}) = log10(\frac{\sigma^2_{g}}{\mu^2_{g}}) + \epsilon_{gk}$$</span><br /></p>
+</div>
+<div id="set-up" class="section level2">
+<h2>Set up</h2>
+<pre class="r"><code>library(&quot;data.table&quot;)
+library(&quot;dplyr&quot;)
+library(&quot;limma&quot;)
+library(&quot;edgeR&quot;)
+library(&quot;ggplot2&quot;)
+library(&quot;grid&quot;)
+theme_set(theme_bw(base_size = 12))
+source(&quot;functions.R&quot;)</code></pre>
+</div>
+<div id="prepare-data" class="section level2">
+<h2>Prepare data</h2>
+<p>Input annotation of only QC-filtered single cells</p>
+<pre class="r"><code>anno_qc &lt;- read.table(&quot;../data/annotation-filter.txt&quot;, header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno_qc)</code></pre>
+<pre><code>  individual replicate well      batch      sample_id
+1    NA19098        r1  A01 NA19098.r1 NA19098.r1.A01
+2    NA19098        r1  A02 NA19098.r1 NA19098.r1.A02
+3    NA19098        r1  A04 NA19098.r1 NA19098.r1.A04
+4    NA19098        r1  A05 NA19098.r1 NA19098.r1.A05
+5    NA19098        r1  A06 NA19098.r1 NA19098.r1.A06
+6    NA19098        r1  A07 NA19098.r1 NA19098.r1.A07</code></pre>
+<p>Input molecule counts that are filtered, transformed, and also processed to remove unwanted variation from batch effet. ERCC genes are also removed.</p>
+<pre class="r"><code>molecules_qc &lt;- read.table(&quot;../data/molecules-final.txt&quot;, header = TRUE, stringsAsFactors = FALSE)</code></pre>
+<p>Input moleclule counts before log2 CPM transformation.</p>
+<pre class="r"><code>molecules_filter &lt;- read.table(&quot;../data/molecules-filter.txt&quot;, header = TRUE, stringsAsFactors = FALSE)
+molecules_filter &lt;- molecules_filter[which(rownames(molecules_filter) %in% rownames(molecules_qc)), ]
+
+stopifnot(dim(molecules_filter) == dim(molecules_qc))</code></pre>
+</div>
+<div id="compute-coefficient-of-variation" class="section level2">
+<h2>Compute coefficient of variation</h2>
+<p>Compute per batch coefficient of variation.</p>
+<p>Include only genes with positive coefficient of variation. Some genes in this data may have zero coefficient of variation, because we include gene with more than 0 count across all cells.</p>
+<pre class="r"><code>molecules_cv_batch &lt;- 
+  lapply(1:length(unique(anno_qc$batch)), function(per_batch) {
+      molecules_per_batch &lt;- 2^molecules_qc[ , unique(anno_qc$batch) == unique(anno_qc$batch)[per_batch] ]
+      mean_per_gene &lt;- apply(molecules_per_batch, 1, mean, na.rm = TRUE)
+      sd_per_gene &lt;- apply(molecules_per_batch, 1, sd, na.rm = TRUE)
+      cv_per_gene &lt;- data.frame(mean = mean_per_gene,
+                                sd = sd_per_gene,
+                                cv = sd_per_gene/mean_per_gene)
+      rownames(cv_per_gene) &lt;- rownames(molecules_qc)
+  
+      cv_per_gene &lt;- cv_per_gene[rowSums(is.na(cv_per_gene)) == 0, ]
+      cv_per_gene$batch &lt;- unique(anno_qc$batch)[per_batch]
+      
+      # Add sparsity percent
+      molecules_count &lt;- molecules_filter[ , unique(anno_qc$batch) == unique(anno_qc$batch)[per_batch]]
+      cv_per_gene$sparse &lt;- rowMeans(as.matrix(molecules_count) == 0)
+        
+      return(cv_per_gene)
+      }) 
+names(molecules_cv_batch) &lt;- unique(anno_qc$batch)
+
+dim(molecules_cv_batch[[1]])</code></pre>
+<pre><code>[1] 10483     5</code></pre>
+</div>
+<div id="compute-normalized-cv" class="section level2">
+<h2>Compute normalized CV</h2>
+<p>Merge summary data.frames.</p>
+<pre class="r"><code>df_plot &lt;- do.call(rbind, molecules_cv_batch)</code></pre>
+<p>Compute rolling medians.</p>
+<pre class="r"><code>library(zoo)
+# Compute a data-wide coefficient of variation on CPM normalized counts.
+data_cv &lt;- apply(2^molecules_qc, 1, sd)/apply(2^molecules_qc, 1, mean)
+
+# Order of genes by mean expression levels
+order_gene &lt;- order(apply(2^molecules_qc, 1, mean))
+
+# Rolling medians of log10 squared CV by mean expression levels
+roll_medians &lt;- rollapply(log10(data_cv^2)[order_gene], width = 50, by = 25,
+                         FUN = median, fill = list(&quot;extend&quot;, &quot;extend&quot;, &quot;NA&quot;) )
+ii_na &lt;- which( is.na(roll_medians) )
+roll_medians[ii_na] &lt;- median( log10(data_cv^2)[order_gene][ii_na] )
+
+names(roll_medians) &lt;- rownames(molecules_qc)[order_gene]
+
+# re-order rolling medians
+reorder_gene &lt;- match(rownames(molecules_qc), names(roll_medians) )
+head(reorder_gene)</code></pre>
+<pre><code>[1]  225 3650 4564 6158 3352 1963</code></pre>
+<pre class="r"><code>roll_medians &lt;- roll_medians[ reorder_gene ]
+
+head(names(roll_medians))</code></pre>
+<pre><code>[1] &quot;ENSG00000237683&quot; &quot;ENSG00000188976&quot; &quot;ENSG00000187608&quot; &quot;ENSG00000188157&quot;
+[5] &quot;ENSG00000078808&quot; &quot;ENSG00000176022&quot;</code></pre>
+<pre class="r"><code>head(rownames(molecules_qc))</code></pre>
+<pre><code>[1] &quot;ENSG00000237683&quot; &quot;ENSG00000188976&quot; &quot;ENSG00000187608&quot; &quot;ENSG00000188157&quot;
+[5] &quot;ENSG00000078808&quot; &quot;ENSG00000176022&quot;</code></pre>
+<p>Double-check the computation of rolling median.</p>
+<pre class="r"><code>ggplot(data.frame(cv2 = log10(data_cv^2), 
+                  roll_medians = roll_medians,
+                  mean = log10(apply(2^molecules_qc, 1, mean) ) ) )+
+  geom_point(aes(x = mean, y = cv2), col = &quot;red&quot;) +
+  geom_point(aes(x = mean, y = roll_medians), col = &quot;blue&quot;, alpha = .7)</code></pre>
+<p><img src="figure/cv-adjusted-explore.Rmd/unnamed-chunk-8-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>Compute adjusted coefficient of variation.</p>
+<pre class="r"><code># adjusted coefficient of variation on log10 scale
+log10cv2_adj &lt;- 
+  lapply(1:length(molecules_cv_batch), function(per_batch) {
+    foo &lt;- log10(molecules_cv_batch[[per_batch]]$cv^2) - roll_medians
+    return(foo)
+})
+df_plot$log10cv2_adj &lt;- do.call(c, log10cv2_adj)</code></pre>
+</div>
+<div id="compare-adjusted-cvs" class="section level2">
+<h2>Compare adjusted CVs</h2>
+<p>limma <em>lmFit</em> function takes log-ratios or log-expression values and does not require default normalizations methods. This is because limma was originally designed for microarray data.</p>
+<pre class="r"><code>library(limma)
+
+df_limma &lt;- matrix(df_plot$log10cv2_adj, 
+                      nrow = nrow(molecules_qc), ncol = 9, byrow = FALSE)
+
+design &lt;- data.frame(individual = factor(rep(unique(anno_qc$individual), each = 3) ),
+                     rep = factor(rep(c(1:3), times = 3)) )
+
+colnames(df_limma) &lt;- with(design, paste0(individual, rep))
+
+fit_limma &lt;- lmFit(df_limma, design = model.matrix( ~ individual, data = design))                    
+fit_limma &lt;- eBayes(fit_limma)</code></pre>
+<p>False discover control adjutment.</p>
+<pre class="r"><code>F.p.adj &lt;- p.adjust(fit_limma$F.p.value, method = &quot;fdr&quot;)
+summary(F.p.adj)</code></pre>
+<pre><code>   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+ 0.0000  0.6261  0.8358  0.7541  0.9424  1.0000 </code></pre>
+<p>Rank genes by FDR.</p>
+<pre class="r"><code>order_limma &lt;- order(F.p.adj)</code></pre>
+<p>Cutoffs</p>
+<pre class="r"><code>df_cuts &lt;- data.frame(cuts = c(.001, .01, .05, .1, .15, .2))
+df_cuts$sig_count &lt;- sapply(1:6, function(per_cut) {
+                    sum(F.p.adj &lt; df_cuts$cuts[per_cut] )
+                    })
+df_cuts</code></pre>
+<pre><code>   cuts sig_count
+1 0.001        24
+2 0.010        54
+3 0.050       115
+4 0.100       179
+5 0.150       290
+6 0.200       423</code></pre>
+</div>
+<div id="overlapy-with-pluripotency-genes" class="section level2">
+<h2>Overlapy with pluripotency genes</h2>
+<p>Input pluripotency genes. A list of 27 pluripotency genes used to demonstrate iPSC heterogeneity in Narshinh2011 Gene ID conversion was done by using the DAVID <a href="http://david.abcc.ncifcrf.gov" class="uri">http://david.abcc.ncifcrf.gov</a></p>
+<pre class="r"><code>pluripotency_genes &lt;- read.table(&quot;../data/pluripotency-genes.txt&quot;, header = TRUE, sep=&quot;\t&quot;)</code></pre>
+<pre class="r"><code>pluripotent_count &lt;- lapply(1:nrow(df_cuts), function(per_cut) {
+    is_pluripotent &lt;- rownames(molecules_qc)[which(F.p.adj&lt; df_cuts$cuts[per_cut])] %in% pluripotency_genes$To
+    sum(is_pluripotent)
+  })
+pluripotent_count &lt;- do.call(rbind, pluripotent_count)
+
+rownames(pluripotent_count) &lt;- df_cuts$cuts
+kable(pluripotent_count)</code></pre>
+<table>
+<tbody>
+<tr class="odd">
+<td align="left">0.001</td>
+<td align="right">0</td>
+</tr>
+<tr class="even">
+<td align="left">0.01</td>
+<td align="right">0</td>
+</tr>
+<tr class="odd">
+<td align="left">0.05</td>
+<td align="right">0</td>
+</tr>
+<tr class="even">
+<td align="left">0.1</td>
+<td align="right">0</td>
+</tr>
+<tr class="odd">
+<td align="left">0.15</td>
+<td align="right">0</td>
+</tr>
+<tr class="even">
+<td align="left">0.2</td>
+<td align="right">0</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div id="overlap-with-cell-cycle-genes" class="section level2">
+<h2>Overlap with cell-cycle genes</h2>
+<p>Input cell cycle gene Gene sets reflecting 5 cell cycle phases were taken from Table S2 of Macosko2015 Gene ID conversion was done by using the DAVID <a href="http://david.abcc.ncifcrf.gov" class="uri">http://david.abcc.ncifcrf.gov</a></p>
+<pre class="r"><code>cell_cycle_genes &lt;- read.table(&quot;../data/cellcyclegenes.txt&quot;, header = TRUE, sep=&quot;\t&quot;)</code></pre>
+<pre class="r"><code>cell_cycle_count &lt;- lapply(1:nrow(df_cuts), function(per_cut) {
+  per_cycle &lt;- sapply(1:ncol(cell_cycle_genes), function(per_cycle) {
+        is_cell_cycle &lt;- rownames(molecules_qc)[which(F.p.adj&lt; df_cuts$cuts[per_cut])] %in% cell_cycle_genes[[per_cycle]]
+        sum(is_cell_cycle)
+  })
+})
+cell_cycle_count &lt;- do.call(rbind, cell_cycle_count)
+
+colnames(cell_cycle_count) &lt;- colnames(cell_cycle_genes)
+rownames(cell_cycle_count) &lt;- df_cuts$cuts
+cell_cycle_count &lt;- cbind(df_cuts, cell_cycle_count)
+
+kable(cell_cycle_count)</code></pre>
+<table>
+<thead>
+<tr class="header">
+<th align="left"></th>
+<th align="right">cuts</th>
+<th align="right">sig_count</th>
+<th align="right">G1.S</th>
+<th align="right">S</th>
+<th align="right">G2.M</th>
+<th align="right">M</th>
+<th align="right">M.G1</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">0.001</td>
+<td align="right">0.001</td>
+<td align="right">24</td>
+<td align="right">0</td>
+<td align="right">0</td>
+<td align="right">0</td>
+<td align="right">0</td>
+<td align="right">0</td>
+</tr>
+<tr class="even">
+<td align="left">0.01</td>
+<td align="right">0.010</td>
+<td align="right">54</td>
+<td align="right">0</td>
+<td align="right">0</td>
+<td align="right">1</td>
+<td align="right">0</td>
+<td align="right">0</td>
+</tr>
+<tr class="odd">
+<td align="left">0.05</td>
+<td align="right">0.050</td>
+<td align="right">115</td>
+<td align="right">0</td>
+<td align="right">1</td>
+<td align="right">2</td>
+<td align="right">1</td>
+<td align="right">1</td>
+</tr>
+<tr class="even">
+<td align="left">0.1</td>
+<td align="right">0.100</td>
+<td align="right">179</td>
+<td align="right">1</td>
+<td align="right">1</td>
+<td align="right">2</td>
+<td align="right">1</td>
+<td align="right">1</td>
+</tr>
+<tr class="odd">
+<td align="left">0.15</td>
+<td align="right">0.150</td>
+<td align="right">290</td>
+<td align="right">1</td>
+<td align="right">3</td>
+<td align="right">6</td>
+<td align="right">1</td>
+<td align="right">3</td>
+</tr>
+<tr class="even">
+<td align="left">0.2</td>
+<td align="right">0.200</td>
+<td align="right">423</td>
+<td align="right">2</td>
+<td align="right">5</td>
+<td align="right">6</td>
+<td align="right">4</td>
+<td align="right">4</td>
+</tr>
+</tbody>
+</table>
+<div id="gene-annotations" class="section level3">
+<h3>Gene annotations</h3>
+<p>FDR &lt; .001</p>
+<pre class="r"><code>library(knitr)
+library(mygene)
+
+kable(queryMany(rownames(molecules_qc)[which(F.p.adj&lt; .001)], scopes=&quot;ensembl.gene&quot;, 
+                 fields=c(&quot;name&quot;, &quot;summary&quot;), species=&quot;human&quot;) )</code></pre>
+<pre><code>Finished
+Pass returnall=TRUE to return lists of duplicate or missing query terms.</code></pre>
+<table>
+<thead>
+<tr class="header">
+<th align="left">name</th>
+<th align="left">query</th>
+<th align="left">_id</th>
+<th align="left">summary</th>
+<th align="left">notfound</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">peptidylprolyl isomerase A (cyclophilin A)-like 4G</td>
+<td align="left">ENSG00000236334</td>
+<td align="left">644591</td>
+<td align="left">NA</td>
+<td align="left">NA</td>
+</tr>
+<tr class="even">
+<td align="left">regulator of G-protein signaling 5</td>
+<td align="left">ENSG00000143248</td>
+<td align="left">8490</td>
+<td align="left">This gene encodes a member of the regulators of G protein signaling (RGS) family. The RGS proteins are signal transduction molecules which are involved in the regulation of heterotrimeric G proteins by acting as GTPase activators. This gene is a hypoxia-inducible factor-1 dependent, hypoxia-induced gene which is involved in the induction of endothelial apoptosis. This gene is also one of three genes on chromosome 1q contributing to elevated blood pressure. Alternatively spliced transcript variants have been identified.</td>
+<td align="left">NA</td>
+</tr>
+<tr class="odd">
+<td align="left">vimentin</td>
+<td align="left">ENSG00000026025</td>
+<td align="left">7431</td>
+<td align="left">This gene encodes a member of the intermediate filament family. Intermediate filamentents, along with microtubules and actin microfilaments, make up the cytoskeleton. The protein encoded by this gene is responsible for maintaining cell shape, integrity of the cytoplasm, and stabilizing cytoskeletal interactions. It is also involved in the immune response, and controls the transport of low-density lipoprotein (LDL)-derived cholesterol from a lysosome to the site of esterification. It functions as an organizer of a number of critical proteins involved in attachment, migration, and cell signaling. Mutations in this gene causes a dominant, pulverulent cataract.</td>
+<td align="left">NA</td>
+</tr>
+<tr class="even">
+<td align="left">inositol polyphosphate-5-phosphatase F</td>
+<td align="left">ENSG00000198825</td>
+<td align="left">22876</td>
+<td align="left">The protein encoded by this gene is an inositol 1,4,5-trisphosphate (InsP3) 5-phosphatase and contains a Sac domain. The activity of this protein is specific for phosphatidylinositol 4,5-bisphosphate and phosphatidylinositol 3,4,5-trisphosphate. Alternatively spliced transcript variants encoding multiple isoforms have been observed for this gene.</td>
+<td align="left">NA</td>
+</tr>
+<tr class="odd">
+<td align="left">MT-RNR2-like 8</td>
+<td align="left">ENSG00000255823</td>
+<td align="left">100463486</td>
+<td align="left">NA</td>
+<td align="left">NA</td>
+</tr>
+<tr class="even">
+<td align="left">ferritin, heavy polypeptide 1</td>
+<td align="left">ENSG00000167996</td>
+<td align="left">2495</td>
+<td align="left">This gene encodes the heavy subunit of ferritin, the major intracellular iron storage protein in prokaryotes and eukaryotes. It is composed of 24 subunits of the heavy and light ferritin chains. Variation in ferritin subunit composition may affect the rates of iron uptake and release in different tissues. A major function of ferritin is the storage of iron in a soluble and nontoxic state. Defects in ferritin proteins are associated with several neurodegenerative diseases. This gene has multiple pseudogenes. Several alternatively spliced transcript variants have been observed, but their biological validity has not been determined.</td>
+<td align="left">NA</td>
+</tr>
+<tr class="odd">
+<td align="left">ribosomal protein S27-like</td>
+<td align="left">ENSG00000185088</td>
+<td align="left">51065</td>
+<td align="left">This gene encodes a protein sharing 96% amino acid similarity with ribosomal protein S27, which suggests the encoded protein may be a component of the 40S ribosomal subunit.</td>
+<td align="left">NA</td>
+</tr>
+<tr class="even">
+<td align="left">metallothionein 2A</td>
+<td align="left">ENSG00000125148</td>
+<td align="left">4502</td>
+<td align="left">NA</td>
+<td align="left">NA</td>
+</tr>
+<tr class="odd">
+<td align="left">metallothionein 1E</td>
+<td align="left">ENSG00000169715</td>
+<td align="left">4493</td>
+<td align="left">NA</td>
+<td align="left">NA</td>
+</tr>
+<tr class="even">
+<td align="left">metallothionein 1F</td>
+<td align="left">ENSG00000198417</td>
+<td align="left">4494</td>
+<td align="left">NA</td>
+<td align="left">NA</td>
+</tr>
+<tr class="odd">
+<td align="left">metallothionein 1H</td>
+<td align="left">ENSG00000205358</td>
+<td align="left">4496</td>
+<td align="left">NA</td>
+<td align="left">NA</td>
+</tr>
+<tr class="even">
+<td align="left">metallothionein 1X</td>
+<td align="left">ENSG00000187193</td>
+<td align="left">4501</td>
+<td align="left">NA</td>
+<td align="left">NA</td>
+</tr>
+<tr class="odd">
+<td align="left">profilin 1</td>
+<td align="left">ENSG00000108518</td>
+<td align="left">5216</td>
+<td align="left">This gene encodes a member of the profilin family of small actin-binding proteins. The encoded protein plays an important role in actin dynamics by regulating actin polymerization in response to extracellular signals. Deletion of this gene is associated with Miller-Dieker syndrome, and the encoded protein may also play a role in Huntington disease. Multiple pseudogenes of this gene are located on chromosome 1.</td>
+<td align="left">NA</td>
+</tr>
+<tr class="even">
+<td align="left">MT-RNR2-like 1</td>
+<td align="left">ENSG00000256618</td>
+<td align="left">100462977</td>
+<td align="left">NA</td>
+<td align="left">NA</td>
+</tr>
+<tr class="odd">
+<td align="left">NLR family, pyrin domain containing 2</td>
+<td align="left">ENSG00000022556</td>
+<td align="left">55655</td>
+<td align="left">NALP proteins, such as NALP2, are characterized by an N-terminal pyrin (MIM 608107) domain (PYD) and are involved in the activation of caspase-1 (CASP1; MIM 147678) by Toll-like receptors (see TLR4; MIM 603030). They may also be involved in protein complexes that activate proinflammatory caspases (Tschopp et al., 2003 [PubMed 12563287]).</td>
+<td align="left">NA</td>
+</tr>
+<tr class="even">
+<td align="left">tissue factor pathway inhibitor (lipoprotein-associated coagulation inhibitor)</td>
+<td align="left">ENSG00000003436</td>
+<td align="left">7035</td>
+<td align="left">This gene encodes a protease inhibitor that regulates the tissue factor (TF)-dependent pathway of blood coagulation. The coagulation process initiates with the formation of a factor VIIa-TF complex, which proteolytically activates additional proteases (factors IX and X) and ultimately leads to the formation of a fibrin clot. The product of this gene inhibits the activated factor X and VIIa-TF proteases in an autoregulatory loop. The encoded protein is glycosylated and predominantly found in the vascular endothelium and plasma in both free forms and complexed with plasma lipoproteins. Several alternatively spliced transcript variants of this gene have been described, but the full-length nature of some of these variants has not been confirmed.</td>
+<td align="left">NA</td>
+</tr>
+<tr class="odd">
+<td align="left">NA</td>
+<td align="left">ENSG00000184674</td>
+<td align="left">NA</td>
+<td align="left">NA</td>
+<td align="left">TRUE</td>
+</tr>
+<tr class="even">
+<td align="left">MT-RNR2-like 2</td>
+<td align="left">ENSG00000269028</td>
+<td align="left">100462981</td>
+<td align="left">NA</td>
+<td align="left">NA</td>
+</tr>
+<tr class="odd">
+<td align="left">pituitary tumor-transforming 2</td>
+<td align="left">ENSG00000250254</td>
+<td align="left">10744</td>
+<td align="left">NA</td>
+<td align="left">NA</td>
+</tr>
+<tr class="even">
+<td align="left">coiled-coil domain containing 152</td>
+<td align="left">ENSG00000198865</td>
+<td align="left">100129792</td>
+<td align="left">NA</td>
+<td align="left">NA</td>
+</tr>
+<tr class="odd">
+<td align="left">protein kinase (cAMP-dependent, catalytic) inhibitor beta</td>
+<td align="left">ENSG00000135549</td>
+<td align="left">5570</td>
+<td align="left">This gene encodes a member of the cAMP-dependent protein kinase inhibitor family. The encoded protein may play a role in the protein kinase A (PKA) pathway by interacting with the catalytic subunit of PKA, and overexpression of this gene may play a role in prostate cancer. Alternatively spliced transcript variants encoding multiple isoforms have been observed for this gene.</td>
+<td align="left">NA</td>
+</tr>
+<tr class="even">
+<td align="left">fatty acid binding protein 7, brain</td>
+<td align="left">ENSG00000164434</td>
+<td align="left">2173</td>
+<td align="left">The protein encoded by this gene is a brain fatty acid binding protein. Fatty acid binding proteins (FABPs) are a family of small, highly conserved, cytoplasmic proteins that bind long-chain fatty acids and other hydrophobic ligands. FABPs are thought to play roles in fatty acid uptake, transport, and metabolism.</td>
+<td align="left">NA</td>
+</tr>
+<tr class="odd">
+<td align="left">connective tissue growth factor</td>
+<td align="left">ENSG00000118523</td>
+<td align="left">1490</td>
+<td align="left">The protein encoded by this gene is a mitogen that is secreted by vascular endothelial cells. The encoded protein plays a role in chondrocyte proliferation and differentiation, cell adhesion in many cell types, and is related to platelet-derived growth factor. Certain polymorphisms in this gene have been linked with a higher incidence of systemic sclerosis.</td>
+<td align="left">NA</td>
+</tr>
+<tr class="even">
+<td align="left">coiled-coil-helix-coiled-coil-helix domain containing 2</td>
+<td align="left">ENSG00000106153</td>
+<td align="left">51142</td>
+<td align="left">NA</td>
+<td align="left">NA</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+ [1] stats4    parallel  grid      stats     graphics  grDevices utils    
+ [8] datasets  methods   base     
+
+other attached packages:
+ [1] mygene_1.2.3           GenomicFeatures_1.20.1 AnnotationDbi_1.30.1  
+ [4] Biobase_2.28.0         GenomicRanges_1.20.5   GenomeInfoDb_1.4.0    
+ [7] IRanges_2.2.4          S4Vectors_0.6.0        BiocGenerics_0.14.0   
+[10] zoo_1.7-12             ggplot2_1.0.1          edgeR_3.10.2          
+[13] limma_3.24.9           dplyr_0.4.2            data.table_1.9.4      
+[16] knitr_1.10.5          
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.12.0             lattice_0.20-31        
+ [3] Rsamtools_1.20.4        Biostrings_2.36.1      
+ [5] assertthat_0.1          digest_0.6.8           
+ [7] R6_2.1.1                plyr_1.8.3             
+ [9] chron_2.3-45            acepack_1.3-3.3        
+[11] futile.options_1.0.0    RSQLite_1.0.0          
+[13] evaluate_0.7            sqldf_0.4-10           
+[15] httr_0.6.1              highr_0.5              
+[17] zlibbioc_1.14.0         rpart_4.1-9            
+[19] gsubfn_0.6-6            rmarkdown_0.6.1        
+[21] proto_0.3-10            labeling_0.3           
+[23] splines_3.2.0           BiocParallel_1.2.2     
+[25] foreign_0.8-63          stringr_1.0.0          
+[27] RCurl_1.95-4.6          biomaRt_2.24.0         
+[29] munsell_0.4.2           rtracklayer_1.28.4     
+[31] htmltools_0.2.6         nnet_7.3-9             
+[33] gridExtra_0.9.1         Hmisc_3.16-0           
+[35] XML_3.98-1.2            GenomicAlignments_1.4.1
+[37] MASS_7.3-40             bitops_1.0-6           
+[39] jsonlite_0.9.16         gtable_0.1.2           
+[41] DBI_0.3.1               magrittr_1.5           
+[43] formatR_1.2             scales_0.2.4           
+[45] stringi_0.4-1           XVector_0.8.0          
+[47] reshape2_1.4.1          latticeExtra_0.6-26    
+[49] futile.logger_1.4.1     Formula_1.2-1          
+[51] RColorBrewer_1.1-2      lambda.r_1.1.7         
+[53] tools_3.2.0             survival_2.38-1        
+[55] yaml_2.1.13             colorspace_1.2-6       
+[57] cluster_2.0.1          </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+
+</body>
+</html>

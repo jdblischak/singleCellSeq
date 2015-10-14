@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+<meta name="author" content="Joyce Hsiao" />
+
+<meta name="date" content="2015-10-13" />
+
+<title>Compare CVs</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Compare CVs</h1>
+<h4 class="author"><em>Joyce Hsiao</em></h4>
+<h4 class="date"><em>2015-10-13</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#objective">Objective</a></li>
+<li><a href="#model">Model</a></li>
+<li><a href="#set-up">Set up</a></li>
+<li><a href="#prepare-data">Prepare data</a></li>
+<li><a href="#compute-coefficient-of-variation">Compute coefficient of variation</a></li>
+<li><a href="#distance-to-the-median">Distance-to-the-median</a></li>
+<li><a href="#compare-adjusted-cvs">Compare adjusted CVs</a><ul>
+<li><a href="#limma">limma</a></li>
+<li><a href="#cpm-density-distributions-of-significant-genes">CPM density distributions of significant genes</a></li>
+<li><a href="#p-value-and-sparsity">P-value and sparsity</a></li>
+</ul></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2015-10-14</p>
+<p><strong>Code version:</strong> ad00494d79195dafacf84a4ae0b08314007456b3</p>
+<div id="objective" class="section level2">
+<h2>Objective</h2>
+<p>We would like to use per gene coefficient of variation as a metric of heterogeneity comparison between genes and across cells. We know that coefficient of variation at the gene level is dependent on the mean gene expression levels, a well known phenomena in the analysis of seqencing data, not limited to RNA-seq.</p>
+<p><a href="http://dx.doi.org/10.1016/j.stem.2015.09.011">Kolodziejczyk et al. 2015</a> surveyed the transcriptome profiles of mESCs cultured in three different conditions and propose DM (distance-to-the-median), a corrected version of CV that is independent of the mean, as a metric of heterogenity comparison. This idea was first proposed in <a href="">Kalmar et al. 2009</a>.</p>
+<p>Here, we will follow their method in removing the dependency of coefficient of variation on the mean gene expression. Then, these “normalized” coefficient of variation will be compared via standard linear regression where individual is treated as a fixed effect.</p>
+<p>The results below will show that after this normalization step, the coefficient of variations no longer has a polynomial relationship with mean gene molecule count.</p>
+</div>
+<div id="model" class="section level2">
+<h2>Model</h2>
+<p><br /><span class="math">$$log10(CV_{gk}) = log10(\mu_g) + \epislon_{gk}$$</span><br /></p>
+<p>where <span class="math">$\epislon_{gk}$</span> is independent distributed across genes and samples.</p>
+</div>
+<div id="set-up" class="section level2">
+<h2>Set up</h2>
+<pre class="r"><code>library(&quot;data.table&quot;)
+library(&quot;dplyr&quot;)
+library(&quot;limma&quot;)
+library(&quot;edgeR&quot;)
+library(&quot;ggplot2&quot;)
+library(&quot;grid&quot;)
+library(&quot;zoo&quot;)
+theme_set(theme_bw(base_size = 12))
+source(&quot;functions.R&quot;)</code></pre>
+</div>
+<div id="prepare-data" class="section level2">
+<h2>Prepare data</h2>
+<p>Input annotation of only QC-filtered single cells</p>
+<pre class="r"><code>anno_qc &lt;- read.table(&quot;../data/annotation-filter.txt&quot;, header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno_qc)</code></pre>
+<pre><code>  individual replicate well      batch      sample_id
+1    NA19098        r1  A01 NA19098.r1 NA19098.r1.A01
+2    NA19098        r1  A02 NA19098.r1 NA19098.r1.A02
+3    NA19098        r1  A04 NA19098.r1 NA19098.r1.A04
+4    NA19098        r1  A05 NA19098.r1 NA19098.r1.A05
+5    NA19098        r1  A06 NA19098.r1 NA19098.r1.A06
+6    NA19098        r1  A07 NA19098.r1 NA19098.r1.A07</code></pre>
+<p>Input molecule counts that are filtered, transformed, and also processed to remove unwanted variation from batch effet. ERCC genes are also removed.</p>
+<pre class="r"><code>molecules_qc &lt;- read.table(&quot;../data/molecules-final.txt&quot;, header = TRUE, stringsAsFactors = FALSE)</code></pre>
+<p>Input moleclule counts before log2 CPM transformation.</p>
+<pre class="r"><code>molecules_filter &lt;- read.table(&quot;../data/molecules-filter.txt&quot;, header = TRUE, stringsAsFactors = FALSE)
+molecules_filter &lt;- molecules_filter[which(rownames(molecules_filter) %in% rownames(molecules_qc)), ]
+
+stopifnot(dim(molecules_filter) == dim(molecules_qc))</code></pre>
+</div>
+<div id="compute-coefficient-of-variation" class="section level2">
+<h2>Compute coefficient of variation</h2>
+<p>Compute per batch coefficient of variation.</p>
+<p>Include only genes with positive coefficient of variation. Some genes in this data may have zero coefficient of variation, because we include gene with more than 0 count across all cells.</p>
+<pre class="r"><code>molecules_cv_batch &lt;- 
+  lapply(1:length(unique(anno_qc$batch)), function(per_batch) {
+      molecules_per_batch &lt;- 2^molecules_qc[ , unique(anno_qc$batch) == unique(anno_qc$batch)[per_batch] ]
+      mean_per_gene &lt;- apply(molecules_per_batch, 1, mean, na.rm = TRUE)
+      sd_per_gene &lt;- apply(molecules_per_batch, 1, sd, na.rm = TRUE)
+      cv_per_gene &lt;- data.frame(mean = mean_per_gene,
+                                sd = sd_per_gene,
+                                cv = sd_per_gene/mean_per_gene)
+      rownames(cv_per_gene) &lt;- rownames(molecules_qc)
+  
+      cv_per_gene &lt;- cv_per_gene[rowSums(is.na(cv_per_gene)) == 0, ]
+      cv_per_gene$batch &lt;- unique(anno_qc$batch)[per_batch]
+      
+      # Add sparsity percent
+      molecules_count &lt;- molecules_filter[ , unique(anno_qc$batch) == unique(anno_qc$batch)[per_batch]]
+      cv_per_gene$sparse &lt;- rowMeans(as.matrix(molecules_count) == 0)
+        
+      return(cv_per_gene)
+      }) 
+names(molecules_cv_batch) &lt;- unique(anno_qc$batch)
+
+dim(molecules_cv_batch[[1]])</code></pre>
+<pre><code>[1] 10483     5</code></pre>
+</div>
+<div id="distance-to-the-median" class="section level2">
+<h2>Distance-to-the-median</h2>
+<p>*This method was designed for comparison of variation profile across genes, while we are intersted in comparison of heterogeneity profiles on a per-gene basis.</p>
+<p>The computation of DM for gene <em>i</em> in Kolodziejczyk et al. (2015) involves two steps:</p>
+<ol style="list-style-type: decimal">
+<li>Correct for mean dependency:
+<ul>
+<li>log10 (CV^2 / rolling median log10 of squared CV)</li>
+</ul></li>
+<li>Correct for dependency on gene length
+<ul>
+<li>Corrected CV - gene length (union of all exons); equivalently, log10 of CV on count scale divided by gene length</li>
+</ul></li>
+</ol>
+<p>In studies that count reads instead of molecules, gene length is a possible confounder in expression levels. However in our study, UMI is used to count the number of RNA molecules in each cell. Hence, we may not need to adjust coefficient of variation for correlation with gene lenght.</p>
+<p>Merge summary data.frames.</p>
+<pre class="r"><code>df_plot &lt;- do.call(rbind, molecules_cv_batch)</code></pre>
+<p>Compute rolling medians.</p>
+<blockquote>
+<p>We take the rolling medians of squared coefficient of variation across samples, along the order of the genes by their mean molecule count. We then substract each gene’s corresponding medians from the sample’s log10 squared coefficient of variation.</p>
+</blockquote>
+<blockquote>
+<p>As we can see from the scatter plots below, the log10 squared coefficient of variation show a symmetric distribuion</p>
+</blockquote>
+<pre class="r"><code># Compute a data-wide coefficient of variation on CPM normalized counts.
+data_cv &lt;- apply(2^molecules_qc, 1, sd)/apply(2^molecules_qc, 1, mean)
+
+# Order of genes by mean expression levels
+order_gene &lt;- order(apply(2^molecules_qc, 1, mean))
+
+# Rolling medians of log10 squared CV by mean expression levels
+roll_medians &lt;- rollapply(log10(data_cv^2)[order_gene], width = 50, by = 25,
+                         FUN = median, fill = list(&quot;extend&quot;, &quot;extend&quot;, &quot;NA&quot;) )
+ii_na &lt;- which( is.na(roll_medians) )
+roll_medians[ii_na] &lt;- median( log10(data_cv^2)[order_gene][ii_na] )
+
+names(roll_medians) &lt;- rownames(molecules_qc)[order_gene]
+
+# re-order rolling medians
+reorder_gene &lt;- match(rownames(molecules_qc), names(roll_medians) )
+head(reorder_gene)</code></pre>
+<pre><code>[1]  225 3650 4564 6158 3352 1963</code></pre>
+<pre class="r"><code>roll_medians &lt;- roll_medians[ reorder_gene ]
+
+head(names(roll_medians))</code></pre>
+<pre><code>[1] &quot;ENSG00000237683&quot; &quot;ENSG00000188976&quot; &quot;ENSG00000187608&quot; &quot;ENSG00000188157&quot;
+[5] &quot;ENSG00000078808&quot; &quot;ENSG00000176022&quot;</code></pre>
+<pre class="r"><code>head(rownames(molecules_qc))</code></pre>
+<pre><code>[1] &quot;ENSG00000237683&quot; &quot;ENSG00000188976&quot; &quot;ENSG00000187608&quot; &quot;ENSG00000188157&quot;
+[5] &quot;ENSG00000078808&quot; &quot;ENSG00000176022&quot;</code></pre>
+<p>Double-check the computation of rolling median.</p>
+<pre class="r"><code>ggplot(data.frame(cv2 = log10(data_cv^2), 
+                  roll_medians = roll_medians,
+                  mean = log10(apply(2^molecules_qc, 1, mean) ) ) )+
+  geom_point(aes(x = mean, y = cv2), col = &quot;red&quot;) +
+  geom_point(aes(x = mean, y = roll_medians), col = &quot;blue&quot;, alpha = .7)</code></pre>
+<p><img src="figure/cv-adjusted.Rmd/unnamed-chunk-8-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>Compute adjusted coefficient of variation.</p>
+<pre class="r"><code># adjusted coefficient of variation on log10 scale
+log10cv2_adj &lt;- 
+  lapply(1:length(molecules_cv_batch), function(per_batch) {
+    foo &lt;- log10(molecules_cv_batch[[per_batch]]$cv^2) - roll_medians
+    return(foo)
+})
+df_plot$log10cv2_adj &lt;- do.call(c, log10cv2_adj)</code></pre>
+<p>Adjusted squared coefficient of variation versus log10 mean count (CPM corrected).</p>
+<pre class="r"><code>ggplot( df_plot, aes(x = log10(mean), y = log10cv2_adj) ) +
+  geom_point( aes(col = as.factor(batch)), cex = .6 ) + 
+  facet_wrap( ~ batch) +
+  labs(x = &quot;log10(Mean CPM)&quot;, y = &quot;log10(Adjusted Squared coefficient of variation&quot;) </code></pre>
+<p><img src="figure/cv-adjusted.Rmd/unnamed-chunk-10-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>Coefficient of variation before adjustment.</p>
+<pre class="r"><code>ggplot(df_plot, aes(x= factor(batch), y = log10(cv^2), fill = factor(batch) ) ) +
+  geom_violin(alpha = .5) + 
+  geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+  labs(title = &quot;log10 Squared coefficient of variation&quot;) +
+  theme(axis.text.x = element_text(hjust=1, angle = 45))</code></pre>
+<p><img src="figure/cv-adjusted.Rmd/unnamed-chunk-11-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>Coefficient of variation after adjustment.</p>
+<pre class="r"><code>ggplot(df_plot, aes(x= factor(batch), y = log10cv2_adj, fill = factor(batch) ) ) +
+  geom_violin(alpha = .5) + 
+  geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+  labs(title = &quot;log10 adjusted Squared coefficient of variation&quot;) +
+  theme(axis.text.x = element_text(hjust=1, angle = 45))</code></pre>
+<p><img src="figure/cv-adjusted.Rmd/unnamed-chunk-12-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="compare-adjusted-cvs" class="section level2">
+<h2>Compare adjusted CVs</h2>
+<div id="limma" class="section level3">
+<h3>limma</h3>
+<pre class="r"><code>library(limma)
+
+df_limma &lt;- matrix(df_plot$log10cv2_adj, 
+                      nrow = nrow(molecules_qc), ncol = 9, byrow = FALSE)
+
+design &lt;- data.frame(individual = factor(rep(unique(anno_qc$individual), each = 3) ),
+                     rep = factor(rep(c(1:3), times = 3)) )
+
+colnames(df_limma) &lt;- with(design, paste0(individual, rep))
+
+fit_limma &lt;- lmFit(df_limma, design = model.matrix( ~ individual, data = design))                      
+
+fit_limma &lt;- eBayes(fit_limma)</code></pre>
+<p>Voom plot</p>
+<pre class="r"><code>voom(10^df_limma, design = model.matrix(~individual, data = design),
+     plot = TRUE)</code></pre>
+<p><img src="figure/cv-adjusted.Rmd/unnamed-chunk-14-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre><code>An object of class &quot;EList&quot;
+$E
+     NA190981 NA190982 NA190983 NA191011 NA191012 NA191013 NA192391
+[1,] 6.938583 6.719987 6.937170 6.666742 7.074477 7.415754 7.068700
+[2,] 7.441367 6.924385 6.860992 7.058814 7.346335 6.911337 7.065733
+[3,] 6.723826 7.131536 7.203866 6.939747 7.271126 7.344119 7.652535
+[4,] 6.818569 6.646731 6.905941 6.793387 6.904291 6.797644 6.929121
+[5,] 7.163102 6.867586 7.093480 6.888451 6.602076 6.765628 6.978299
+     NA192392 NA192393
+[1,] 6.767081 7.284193
+[2,] 7.375086 7.553111
+[3,] 6.909938 7.086203
+[4,] 6.776536 7.155887
+[5,] 7.090412 6.801035
+10478 more rows ...
+
+$weights
+         [,1]     [,2]     [,3]     [,4]     [,5]     [,6]     [,7]
+[1,] 27.79724 25.91025 24.27047 24.48494 22.44153 24.15789 24.29375
+[2,] 24.30776 24.29538 23.34643 23.97999 20.40107 24.43564 20.39044
+[3,] 24.95665 24.19272 24.39650 20.92141 18.53465 24.06167 24.28125
+[4,] 29.67190 27.29689 25.08710 25.23869 24.23675 26.67994 25.39429
+[5,] 24.63763 24.15451 24.21290 26.62978 24.99676 28.36731 25.34753
+         [,8]     [,9]
+[1,] 22.74789 24.66358
+[2,] 16.82595 21.86643
+[3,] 18.01240 24.50032
+[4,] 24.48264 26.08771
+[5,] 24.47708 26.04011
+10478 more rows ...
+
+$design
+  (Intercept) individualNA19101 individualNA19239
+1           1                 0                 0
+2           1                 0                 0
+3           1                 0                 0
+4           1                 1                 0
+5           1                 1                 0
+6           1                 1                 0
+7           1                 0                 1
+8           1                 0                 1
+9           1                 0                 1
+attr(,&quot;assign&quot;)
+[1] 0 1 1
+attr(,&quot;contrasts&quot;)
+attr(,&quot;contrasts&quot;)$individual
+[1] &quot;contr.treatment&quot;
+
+
+$targets
+          lib.size
+NA190981  9537.015
+NA190982 10209.415
+NA190983 11118.466
+NA191011 10736.622
+NA191012 11462.013
+NA191013 10140.486
+NA192391  9803.241
+NA192392 11504.142
+NA192393  9533.414</code></pre>
+<p>limma unmoderated F-test p-value</p>
+<pre class="r"><code>hist(fit_limma$F.p.value, breaks = 100, main = &quot;F-test p-value&quot;)</code></pre>
+<p><img src="figure/cv-adjusted.Rmd/unnamed-chunk-15-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>False discover control adjutment.</p>
+<pre class="r"><code>F.p.adj &lt;- p.adjust(fit_limma$F.p.value, method = &quot;fdr&quot;)
+summary(F.p.adj)</code></pre>
+<pre><code>   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+ 0.0000  0.6261  0.8358  0.7541  0.9424  1.0000 </code></pre>
+<pre class="r"><code>hist(F.p.adj, main = &quot;False discovery rate&quot;, xlab = &quot;FDR&quot;)</code></pre>
+<p><img src="figure/cv-adjusted.Rmd/unnamed-chunk-16-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>sum(F.p.adj &lt; .05)</code></pre>
+<pre><code>[1] 115</code></pre>
+<p>P-value before/after false discovery adjustment.</p>
+<pre class="r"><code>plot(y = F.p.adj, x = fit_limma$F.p.value,
+     xlab = &quot;F-test p-value&quot;, ylab = &quot;FDR&quot;)</code></pre>
+<p><img src="figure/cv-adjusted.Rmd/unnamed-chunk-17-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="cpm-density-distributions-of-significant-genes" class="section level3">
+<h3>CPM density distributions of significant genes</h3>
+<p>Rank genes by FDR.</p>
+<p>*The most different gene by CV</p>
+<pre class="r"><code>order_limma &lt;- order(F.p.adj)
+
+ggplot(data.frame(values = unlist(molecules_qc[order_limma[1],] ),
+                  individual = factor(anno_qc$individual),
+                  replicate = factor(anno_qc$replicate),
+                  batch = factor(anno_qc$batch), check.rows = F), aes(x = values)) + 
+  geom_density(aes(group = batch, col = individual)) +
+  ggtitle(&quot;Most significant gene&quot;)</code></pre>
+<p><img src="figure/cv-adjusted.Rmd/unnamed-chunk-18-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>*The least different gene by CV</p>
+<pre class="r"><code>order_limma &lt;- order(F.p.adj)
+
+ggplot(data.frame(values = unlist(molecules_qc[ tail(order_limma, 1),] ),
+                  individual = factor(anno_qc$individual),
+                  replicate = factor(anno_qc$replicate),
+                  batch = factor(anno_qc$batch), check.rows = F), aes(x = values)) + 
+  geom_density(aes(group = batch, col = individual)) +
+  ggtitle(&quot;Least significant gene&quot;)</code></pre>
+<p><img src="figure/cv-adjusted.Rmd/unnamed-chunk-19-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="p-value-and-sparsity" class="section level3">
+<h3>P-value and sparsity</h3>
+<pre class="r"><code>df_sparse &lt;- rowMeans(matrix(df_plot$sparse, nrow = nrow(molecules_qc), ncol = 9,
+                      byrow = FALSE) )
+
+plot(x = df_sparse, y = log10(fit_limma$F.p.value),
+     xlab = &quot;Average percent of zero-count cells&quot;,
+     ylab = &quot;log10(p-value of F-test)&quot;,
+     main = &quot;CV and sparsity&quot;)</code></pre>
+<p><img src="figure/cv-adjusted.Rmd/unnamed-chunk-20-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>Correlation between mean sparsity rate and p-value.</p>
+<pre class="r"><code>cor(df_sparse, fit_limma$F.p.value, method = &quot;spearman&quot;)</code></pre>
+<pre><code>[1] -0.2980284</code></pre>
+</div>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] grid      stats     graphics  grDevices utils     datasets  methods  
+[8] base     
+
+other attached packages:
+[1] zoo_1.7-12       ggplot2_1.0.1    edgeR_3.10.2     limma_3.24.9    
+[5] dplyr_0.4.2      data.table_1.9.4 knitr_1.10.5    
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.12.0      magrittr_1.5     MASS_7.3-40      munsell_0.4.2   
+ [5] lattice_0.20-31  colorspace_1.2-6 R6_2.1.1         stringr_1.0.0   
+ [9] httr_0.6.1       plyr_1.8.3       tools_3.2.0      parallel_3.2.0  
+[13] gtable_0.1.2     DBI_0.3.1        htmltools_0.2.6  yaml_2.1.13     
+[17] digest_0.6.8     assertthat_0.1   reshape2_1.4.1   formatR_1.2     
+[21] bitops_1.0-6     RCurl_1.95-4.6   evaluate_0.7     rmarkdown_0.6.1 
+[25] labeling_0.3     stringi_0.4-1    scales_0.2.4     chron_2.3-45    
+[29] proto_0.3-10    </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+
+</body>
+</html>
