@@ -1,5 +1,5 @@
 ---
-title: "Compare CVs: explore significant genes"
+title: "Compare Coefficient of variation between individuals"
 author: "Joyce Hsiao"
 date: 2015-10-14
 ---
@@ -19,12 +19,11 @@ opts_chunk$set(message = FALSE, warning = FALSE, eval = TRUE,
 
 ## Objective
 
-Previously, we normlaized CVs ([link1]) and used a per gene linear model to compare normalized coefficient of variations across individuals ([link2]). 
+We normalize CVs ([link]) and use a per gene linear model to compare normalized coefficient of variations across individuals. The voom plot of normalized coefficients of variation indicate that normliazed CV qualifies the assumption of homogeneity of variances in linear model. 
 
-In this document, we cross-reference the top significant differential CV genes with cell-cycle genes and pluripotent genes. Results suggest genes indicating cell cycle and pluripotency have little cell-to-cell heterogeneity across individuals.
+[link]: http://jdblischak.github.io/singleCellSeq/analysis/cv-adjusted.html
 
-[link1]: http://jdblischak.github.io/singleCellSeq/analysis/cv-adjusted.html
-[link2]: http://jdblischak.github.io/singleCellSeq/analysis/cv-adjusted-all-genes.html
+The analyses in this document include both endogeneous genes and ERCC genes. However, results suggest that we should interpret these results with a grain of salt, noting that most of the top significant genes are ERCC genes.
 
 
 ## Set up
@@ -164,6 +163,7 @@ df_plot$is_ERCC <- ( 1:dim(df_plot)[1] %in% grep("ERCC", rownames(df_plot)) )
 
 ## limma
 
+We use the *lmFit* function in the limma package to fit linear models comparing coefficients of variations between individuals for all genes. *lmFit* provides a fast algorithm for least-square estimation, when design matrix is the same for all genes.
 
 ```{r}
 library(limma)
@@ -180,11 +180,37 @@ fit_limma <- lmFit(df_limma, design = model.matrix( ~ individual, data = design)
 fit_limma <- eBayes(fit_limma)
 ```
 
+Voom plot of all genes
+
+```{r}
+voom(10^df_limma, design = model.matrix(~individual, data = design),
+     plot = TRUE)
+```
+
+
+Voom plot of only endogeneous genes
+
+```{r}
+is_ERCC <- c(1:dim(df_limma)[1]) %in% grep("ERCC", rownames(molecules_all_genes))
+voom(10^df_limma[which(!is_ERCC), ], design = model.matrix(~individual, data = design),
+     plot = TRUE)
+```
+
+
+limma unmoderated F-test p-value
+
+```{r}
+hist(fit_limma$F.p.value, breaks = 100, main = "F-test p-value")
+```
+
+
 False discover control adjutment.
 
 ```{r}
 F.p.adj <- p.adjust(fit_limma$F.p.value, method = "fdr")
 summary(F.p.adj)
+
+hist(F.p.adj, main = "False discovery rate", xlab = "FDR")
 ```
 
 Cutoffs
@@ -197,76 +223,82 @@ df_cuts$sig_count <- sapply(1:6, function(per_cut) {
 df_cuts
 ```
 
-
-## Overlapy with pluripotency genes
-
-Input pluripotency genes. A list of 27 pluripotency genes used to demonstrate iPSC heterogeneity in Narshinh2011 Gene ID conversion was done by using the DAVID http://david.abcc.ncifcrf.gov
+P-value before versus after false discovery adjustment.
 
 ```{r}
-pluripotency_genes <- read.table("../data/pluripotency-genes.txt", header = TRUE, sep="\t")
+plot(y = F.p.adj, x = fit_limma$F.p.value,
+     xlab = "F-test p-value", ylab = "FDR")
 ```
 
 
-```{r}
-pluripotent_count <- lapply(1:nrow(df_cuts), function(per_cut) {
-    is_pluripotent <- rownames(molecules_all_genes)[which(F.p.adj< df_cuts$cuts[per_cut])] %in% pluripotency_genes$To
-    sum(is_pluripotent)
-  })
-pluripotent_count <- do.call(rbind, pluripotent_count)
+## P-value and sparsity
 
-rownames(pluripotent_count) <- df_cuts$cuts
-kable(pluripotent_count)
+```{r}
+df_sparse <- rowMeans(matrix(df_plot$sparse, nrow = nrow(molecules_all_genes), ncol = 9,
+                      byrow = FALSE) )
+
+is_ERCC <- (1:dim(df_plot)[1] %in% grep("ERCC", rownames(df_plot)) )
+plot(x = df_sparse, y = log10(fit_limma$F.p.value),
+     xlab = "Average percent of zero-count cells",
+     ylab = "log10(p-value of F-test)",
+     main = "CV and sparsity of all genes", col = "grey60")
+points(x = df_sparse[is_ERCC], y = log10(fit_limma$F.p.value)[is_ERCC],
+       col = "red", pch = 16, cex = .8)
+
+
+plot(x = df_sparse[!is_ERCC], y = log10(fit_limma$F.p.value)[!is_ERCC],
+     xlab = "Average percent of zero-count cells",
+     ylab = "log10(p-value of F-test)",
+     main = "CV and sparsity of ENSG genes", col = "grey60")
+```
+
+Correlation between mean sparsity rate and p-value.
+
+```{r}
+cor(df_sparse, fit_limma$F.p.value, method = "spearman")
 ```
 
 
-## Overlap with cell-cycle genes
+## CPM density distributions of significant genes
 
-Input cell cycle gene Gene sets reflecting 5 cell cycle phases were taken from Table S2 of Macosko2015 Gene ID conversion was done by using the DAVID http://david.abcc.ncifcrf.gov
+Rank genes by FDR.
 
 ```{r}
-cell_cycle_genes <- read.table("../data/cellcyclegenes.txt", header = TRUE, sep="\t")
+order_limma <- order(F.p.adj)
+
+ggplot(data.frame(values = unlist(molecules_all_genes[order_limma[1],] ),
+                  individual = factor(anno_qc$individual),
+                  replicate = factor(anno_qc$replicate),
+                  batch = factor(anno_qc$batch), check.rows = F), aes(x = values)) + 
+  geom_density(aes(group = batch, col = individual)) +
+  ggtitle(paste("The most significant gene", rownames(molecules_all_genes)[order_limma[1]]) )
+
+ggplot(data.frame(values = unlist(molecules_all_genes[order_limma[2],] ),
+                  individual = factor(anno_qc$individual),
+                  replicate = factor(anno_qc$replicate),
+                  batch = factor(anno_qc$batch), check.rows = F), aes(x = values)) + 
+  geom_density(aes(group = batch, col = individual)) +
+  ggtitle(paste("The second significant gene", rownames(molecules_all_genes)[order_limma[2]]) )
+
+ggplot(data.frame(values = unlist(molecules_all_genes[order_limma[3],] ),
+                  individual = factor(anno_qc$individual),
+                  replicate = factor(anno_qc$replicate),
+                  batch = factor(anno_qc$batch), check.rows = F), aes(x = values)) + 
+  geom_density(aes(group = batch, col = individual)) +
+  ggtitle(paste("The third significant gene", rownames(molecules_all_genes)[order_limma[3]]) )
 ```
 
 
-```{r}
-cell_cycle_count <- lapply(1:nrow(df_cuts), function(per_cut) {
-  per_cycle <- sapply(1:ncol(cell_cycle_genes), function(per_cycle) {
-        is_cell_cycle <- rownames(molecules_all_genes)[which(F.p.adj< df_cuts$cuts[per_cut])] %in% cell_cycle_genes[[per_cycle]]
-        sum(is_cell_cycle)
-  })
-})
-cell_cycle_count <- do.call(rbind, cell_cycle_count)
+## ERCC ranks in FDR
 
-colnames(cell_cycle_count) <- colnames(cell_cycle_genes)
-rownames(cell_cycle_count) <- df_cuts$cuts
-cell_cycle_count <- cbind(df_cuts, cell_cycle_count)
-
-kable(cell_cycle_count)
-```
-
-
-### Gene annotations
-
-For genes that we found to have FDR < .001 (54 genes) in our analysis comparing coefficient of variations between individuals, we look up the gene annotations as follows
+Most are ranked as very high in individual differences and some are very low. A quick glance of the density distributions of molecule counts across cells suggest that this may be the result of high molecule counts in NA19098 batch 2.
 
 ```{r}
-library(knitr)
-library(biomaRt)
+ordered_genes_FDR <- rownames(molecules_all_genes)[order(F.p.adj)]
 
-ensembl <- useMart(host = "grch37.ensembl.org",
-                   biomart = "ENSEMBL_MART_ENSEMBL",
-                   dataset = "hsapiens_gene_ensembl")
-
-diff_cv_genes <- rownames(molecules_all_genes)[which(F.p.adj< .001)]
-
-diff_cv_genes_info <- getBM(attributes = c("ensembl_gene_id", "chromosome_name",
-                                           "external_gene_name", "transcript_count",
-                                           "description"),
-                            filters = "ensembl_gene_id",
-                            values = diff_cv_genes[grep("ENSG", diff_cv_genes)],
-                            mart = ensembl)
-kable(diff_cv_genes_info)
+grep("ERCC", ordered_genes_FDR)
 ```
+
 
 
 
