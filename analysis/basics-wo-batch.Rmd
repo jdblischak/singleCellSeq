@@ -88,7 +88,7 @@ spike <- read.table("../data/expected-ercc-molecules.txt", header = TRUE,
                     sep = "\t", stringsAsFactors = FALSE)
 ```
 
-Only keep the spike-ins that were observed in at least one cell.
+Only keep the spike-ins that were kept after applying the expression cutoff.
 
 ```{r spike-input}
 spike_input <- spike$ercc_molecules_well[spike$id %in% rownames(molecules_filter)]
@@ -103,15 +103,14 @@ stopifnot(sum(tech) == length(spike_input),
 > These elements must be stored into an object of class `BASiCS_Data`.
 
 ```{r create-object}
-basics_data <- newBASiCS_Data(as.matrix(molecules_filter), tech, spike_input,
-                              BatchInfo = anno_filter$batch)
+basics_data <- newBASiCS_Data(as.matrix(molecules_filter), tech, spike_input)
 ```
 
 ## Fit the model
 
 ```{r fit-model}
 store_dir <- "../data"
-run_name <- "batch-clean"
+run_name <- "new"
 if (file.exists(paste0(store_dir, "/chain_phi_", run_name, ".txt"))) {
   chain_mu = as.matrix(fread(paste0(store_dir, "/chain_mu_", run_name, ".txt")))
   chain_delta = as.matrix(fread(paste0(store_dir, "/chain_delta_", run_name, ".txt")))
@@ -142,19 +141,6 @@ Summarize the results.
 
 ```{r summary}
 mcmc_summary <- Summary(mcmc_output)
-```
-
-## Batch information
-
-The unexplained technical noise is similar across batches.
-
-```{r batch-theta}
-colnames(chain_theta) <- unique(anno_filter$batch)
-theta_long <- gather(as.data.frame(chain_theta), key = "batch", value = "theta")
-ggplot(theta_long, aes(x = batch, y = theta)) +
-  geom_boxplot() +
-  theme(axis.text.x = element_text(angle = 90)) +
-  labs(title = "Modeling of separate technical effects per batch")
 ```
 
 ## Cellular mRNA content
@@ -222,8 +208,7 @@ phi_read_plot <- phi_molecule_plot %+% phi %+% aes(x = total_read_count) +
 phi_read_plot
 ```
 
-The results are similar per individual.
-Batch NA19101.r3 has the most outliers, which are likely due to wells which actually contained more than one cell.
+The low values are from replicate 2 of individual 19098.
 
 ```{r phi-versus-read-count-per-batch}
 phi_read_plot + facet_grid(replicate ~ individual)
@@ -271,6 +256,14 @@ The correlation is harder to see when the the 95% posterior density intervals ar
 
 ```{r s-v-capture-efficiency-prob-density}
 s_plot + geom_errorbar(aes(ymin = lower, ymax = upper), alpha = 0.5)
+```
+
+The results are similar per individual.
+Batch NA19101.r3 has the most outliers, which are likely due to wells which actually contained more than one cell.
+
+```{r s-v-capture-efficiency-per-batch}
+s_plot %+% s[s$batch != "NA19098.r2", ] +
+  facet_grid(replicate ~ individual)
 ```
 
 ## Denoised data
