@@ -126,7 +126,6 @@ img {
 <ul>
 <li><a href="#input">Input</a></li>
 <li><a href="#fit-the-model">Fit the model</a></li>
-<li><a href="#batch-information">Batch information</a></li>
 <li><a href="#cell-specific-normalizing-constants">Cell-specific normalizing constants</a><ul>
 <li><a href="#phi-versus-gene-molecule-count">Phi versus gene molecule count</a></li>
 <li><a href="#phi-versus-ercc-molecule-count">Phi versus ERCC molecule count</a></li>
@@ -146,7 +145,7 @@ img {
 
 <p><strong>Last updated:</strong> 2015-10-19</p>
 <p><strong>Code version:</strong> 6b16d0b7ff64ea109c14ebf7c3bfbb5cebd4dec8</p>
-<p>We analyzed our single cell data with <a href="https://github.com/catavallejos/BASiCS">BASiCS</a> developed by <a href="http://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1004333">Vallejos et al., 2015</a>. The results shown here are from a model fit with 40,000 iterations. This time we also modeled the unexplained technical noise with a separate parameter (theta) per batch.</p>
+<p>We analyzed our single cell data with <a href="https://github.com/catavallejos/BASiCS">BASiCS</a> developed by <a href="http://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1004333">Vallejos et al., 2015</a>. The results shown here are from a model fit with 40,000 iterations.</p>
 <p>BASiCS and its dependency, RcppArmadillo, were able to be installed on the cluster using a new version of gcc. Since this took a long time to run, it was submitted via the following:</p>
 <pre class="bash"><code>echo &quot;Rscript -e &#39;library(rmarkdown); render(\&quot;basics.Rmd\&quot;)&#39;&quot; | \
   qsub -l h_vmem=32g -cwd -V -j y -o ~/log/ -N basics</code></pre>
@@ -197,7 +196,7 @@ stopifnot(nrow(anno_filter) == ncol(molecules_filter),
 </blockquote>
 <pre class="r"><code>spike &lt;- read.table(&quot;../data/expected-ercc-molecules.txt&quot;, header = TRUE,
                     sep = &quot;\t&quot;, stringsAsFactors = FALSE)</code></pre>
-<p>Only keep the spike-ins that were observed in at least one cell.</p>
+<p>Only keep the spike-ins that were kept after applying the expression cutoff.</p>
 <pre class="r"><code>spike_input &lt;- spike$ercc_molecules_well[spike$id %in% rownames(molecules_filter)]
 names(spike_input) &lt;- spike$id[spike$id %in% rownames(molecules_filter)]
 spike_input &lt;- spike_input[order(names(spike_input))]
@@ -207,12 +206,11 @@ stopifnot(sum(tech) == length(spike_input),
 <blockquote>
 <p>These elements must be stored into an object of class <code>BASiCS_Data</code>.</p>
 </blockquote>
-<pre class="r"><code>basics_data &lt;- newBASiCS_Data(as.matrix(molecules_filter), tech, spike_input,
-                              BatchInfo = anno_filter$batch)</code></pre>
+<pre class="r"><code>basics_data &lt;- newBASiCS_Data(as.matrix(molecules_filter), tech, spike_input)</code></pre>
 <pre><code>An object of class BASiCS_Data
  Dataset contains 10513 genes (10483 biological and 30 technical) and 563 cells.
  Elements (slots): Counts, Tech, SpikeInput and BatchInfo.
- The data contains 8 batches.
+ The data contains 1 batch.
 
 NOTICE: BASiCS requires a pre-filtered dataset 
     - You must remove poor quality cells before creating the BASiCS data object 
@@ -228,7 +226,7 @@ NOTICE: BASiCS requires a pre-filtered dataset
 <div id="fit-the-model" class="section level2">
 <h2>Fit the model</h2>
 <pre class="r"><code>store_dir &lt;- &quot;../data&quot;
-run_name &lt;- &quot;batch-clean&quot;
+run_name &lt;- &quot;new&quot;
 if (file.exists(paste0(store_dir, &quot;/chain_phi_&quot;, run_name, &quot;.txt&quot;))) {
   chain_mu = as.matrix(fread(paste0(store_dir, &quot;/chain_mu_&quot;, run_name, &quot;.txt&quot;)))
   chain_delta = as.matrix(fread(paste0(store_dir, &quot;/chain_delta_&quot;, run_name, &quot;.txt&quot;)))
@@ -253,36 +251,25 @@ if (file.exists(paste0(store_dir, &quot;/chain_phi_&quot;, run_name, &quot;.txt&
 }</code></pre>
 <pre><code>
 Read 0.0% of 2000 rows
-Read 2000 rows and 10513 (of 10513) columns from 0.331 GB file in 00:00:09
+Read 2000 rows and 10513 (of 10513) columns from 0.331 GB file in 00:00:08
 
 Read 0.0% of 2000 rows
 Read 2000 rows and 10483 (of 10483) columns from 0.348 GB file in 00:00:09
 An object of class BASiCS_Chain
  2000 MCMC samples.
- Dataset contains 10513 genes (10483 biological and 30 technical) and 563 cells (8 batches). 
+ Dataset contains 10513 genes (10483 biological and 30 technical) and 563 cells (1 batch). 
  Elements (slots): mu, delta, phi, s, nu and theta.</code></pre>
-<p>Fitting the model took 77.76 hours.</p>
+<p>Fitting the model took 81.06 hours.</p>
 <p>Summarize the results.</p>
 <pre class="r"><code>mcmc_summary &lt;- Summary(mcmc_output)</code></pre>
-</div>
-<div id="batch-information" class="section level2">
-<h2>Batch information</h2>
-<p>The unexplained technical noise is similar across batches.</p>
-<pre class="r"><code>colnames(chain_theta) &lt;- unique(anno_filter$batch)
-theta_long &lt;- gather(as.data.frame(chain_theta), key = &quot;batch&quot;, value = &quot;theta&quot;)
-ggplot(theta_long, aes(x = batch, y = theta)) +
-  geom_boxplot() +
-  theme(axis.text.x = element_text(angle = 90)) +
-  labs(title = &quot;Modeling of separate technical effects per batch&quot;)</code></pre>
-<p><img src="figure/basics.Rmd/batch-theta-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
 <div id="cell-specific-normalizing-constants" class="section level2">
 <h2>Cell-specific normalizing constants</h2>
 <p>BASiCS models two cell-specific parameters. Phi models the differences in gene molecules. S models the differences in ERCC molecules.</p>
 <pre class="r"><code>plot(mcmc_summary, Param = &quot;phi&quot;)</code></pre>
-<p><img src="figure/basics.Rmd/phi-rna-content-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="figure/basics-wo-batch.Rmd/phi-rna-content-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>plot(mcmc_summary, Param = &quot;s&quot;)</code></pre>
-<p><img src="figure/basics.Rmd/s-capture-efficiency-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="figure/basics-wo-batch.Rmd/s-capture-efficiency-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>phi &lt;- displaySummaryBASiCS(mcmc_summary, Param = &quot;phi&quot;)
 s &lt;- displaySummaryBASiCS(mcmc_summary, Param = &quot;s&quot;)
 parameters &lt;- cbind(phi, s, anno_filter)
@@ -297,7 +284,7 @@ parameters$ercc_count &lt;- colSums(counts(basics_data, type = &quot;technical&q
        title = paste0(&quot;Phi measures gene molecule count differences\nr = &quot;,
                       round(cor(parameters$gene_count, parameters$Phi), 2)))
 phi_gene_count</code></pre>
-<p><img src="figure/basics.Rmd/phi-versus-gene-molecule-count-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="figure/basics-wo-batch.Rmd/phi-versus-gene-molecule-count-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
 <div id="phi-versus-ercc-molecule-count" class="section level3">
 <h3>Phi versus ERCC molecule count</h3>
@@ -306,7 +293,7 @@ phi_gene_count</code></pre>
        title = paste0(&quot;Phi does not measure ERCC molecule count differences\nr = &quot;,
                       round(cor(parameters$ercc_count, parameters$Phi), 2)))
 phi_ercc_count</code></pre>
-<p><img src="figure/basics.Rmd/phi-versus-ercc-molecule-count-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="figure/basics-wo-batch.Rmd/phi-versus-ercc-molecule-count-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
 <div id="s-versus-ercc-molecule-count" class="section level3">
 <h3>S versus ERCC molecule count</h3>
@@ -315,7 +302,7 @@ phi_ercc_count</code></pre>
        title = paste0(&quot;S measures ERCC molecule count differences\nr = &quot;,
                       round(cor(parameters$ercc_count, parameters$S), 2)))
 s_ercc_count</code></pre>
-<p><img src="figure/basics.Rmd/s-versus-ercc-molecule-count-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="figure/basics-wo-batch.Rmd/s-versus-ercc-molecule-count-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
 <div id="s-versus-gene-molecule-count" class="section level3">
 <h3>S versus gene molecule count</h3>
@@ -324,7 +311,7 @@ s_ercc_count</code></pre>
        title = paste0(&quot;S does not measure gene molecule count differences\nr = &quot;,
                       round(cor(parameters$gene_count, parameters$S), 2)))
 s_gene_count</code></pre>
-<p><img src="figure/basics.Rmd/s-versus-gene-molecule-count-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="figure/basics-wo-batch.Rmd/s-versus-gene-molecule-count-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
 <div id="phi-versus-s" class="section level3">
 <h3>Phi versus S</h3>
@@ -334,7 +321,7 @@ s_gene_count</code></pre>
   labs(       title = paste0(&quot;Phi versus S\nr = &quot;,
                       round(cor(parameters$S, parameters$Phi), 2)))
 phi_s</code></pre>
-<p><img src="figure/basics.Rmd/phi-versus-s-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="figure/basics-wo-batch.Rmd/phi-versus-s-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
 </div>
 <div id="denoised-data" class="section level2">
@@ -348,7 +335,7 @@ phi_s</code></pre>
 plot_pca(pca_basics$PCs, explained = pca_basics$explained,
          metadata = anno_filter, color = &quot;individual&quot;,
          shape = &quot;replicate&quot;)</code></pre>
-<p><img src="figure/basics.Rmd/pca-basics-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="figure/basics-wo-batch.Rmd/pca-basics-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
 <div id="pca---basics-denoised-cpm" class="section level3">
 <h3>PCA - BASiCS Denoised cpm</h3>
@@ -359,7 +346,7 @@ pca_basics_cpm &lt;- run_pca(denoised_cpm)
 plot_pca(pca_basics_cpm$PCs, explained = pca_basics_cpm$explained,
          metadata = anno_filter, color = &quot;individual&quot;,
          shape = &quot;replicate&quot;)</code></pre>
-<p><img src="figure/basics.Rmd/pca-basics-cpm-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="figure/basics-wo-batch.Rmd/pca-basics-cpm-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
 <div id="pca---non-normalized" class="section level3">
 <h3>PCA - non-normalized</h3>
@@ -367,7 +354,7 @@ plot_pca(pca_basics_cpm$PCs, explained = pca_basics_cpm$explained,
 plot_pca(pca_non$PCs, explained = pca_non$explained,
          metadata = anno_filter, color = &quot;individual&quot;,
          shape = &quot;replicate&quot;)</code></pre>
-<p><img src="figure/basics.Rmd/pca-non-normalized-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="figure/basics-wo-batch.Rmd/pca-non-normalized-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
 <div id="pca---non-normalized-cpm" class="section level3">
 <h3>PCA - non-normalized cpm</h3>
@@ -378,7 +365,7 @@ pca_non_cpm &lt;- run_pca(non_cpm)
 plot_pca(pca_non_cpm$PCs, explained = pca_non_cpm$explained,
          metadata = anno_filter, color = &quot;individual&quot;,
          shape = &quot;replicate&quot;)</code></pre>
-<p><img src="figure/basics.Rmd/pca-non-normalized-cpm-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="figure/basics-wo-batch.Rmd/pca-non-normalized-cpm-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
 </div>
 <div id="session-information" class="section level2">
