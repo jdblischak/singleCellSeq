@@ -13,11 +13,6 @@ source("chunk-options.R")
 
 We analyzed our single cell data with [BASiCS][] developed by [Vallejos et al., 2015][vallejos2015].
 The results shown here are from a model fit with 40,000 iterations.
-This time we also modeled the unexplained technical noise with a separate parameter (theta) per batch.
-
-Unfortunately this time we also included some cells from replicate 2 of individual NA19098.
-Because it is such an outlier in its ERCC counts, it breaks the assumptions of the model.
-I'll run it again with all cells from this batch removed (results will be ready in ~60 hours)000.
 
 [basics]: https://github.com/catavallejos/BASiCS
 [vallejos2015]: http://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1004333
@@ -143,127 +138,79 @@ Summarize the results.
 mcmc_summary <- Summary(mcmc_output)
 ```
 
-## Cellular mRNA content
+## Cell-specific normalizing constants
 
-Phi is the cellular RNA content differences.
-They ascribe all these differences to true biological differences in RNA content from cell to cell, i.e. due to the cell cylce.
+BASiCS models two cell-specific parameters.
+Phi models the differences in gene molecules.
+S models the differences in ERCC molecules.
 
 ```{r phi-rna-content}
 plot(mcmc_summary, Param = "phi")
 ```
 
-However, we have observed that
-
-* [total molecule count increases with increasing sequencing depth](detect-genes.html#mean-number-of-total-counts)
-* [this relationship holds within cell cycle phases](cell-cycle.html#total-molecule-counts-and-reads-counts-of-each-cell)
-* [molecules are not exhausted even after thorough sequencing](subsample-high-coverage-lcl.html#number-of-total-counts)
-
-It is no suprise that Phi and the total molecule counts are highly correlated.
-But we believe most of these differences are due to sequencing depth and the counts should be standardized.
-
-```{r extract-phi}
-phi <- displaySummaryBASiCS(mcmc_summary, Param = "phi")
-phi <- cbind(phi, anno_filter)
-phi$total_count <- colSums(counts(basics_data))
-```
-
-```{r phi-versus-molecule-count}
-phi_molecule_plot <- ggplot(phi, aes(x = total_count, y = Phi)) +
-  geom_point() +
-  geom_smooth(method = "lm") +
-  labs(x = "Total molecule count",
-       title = paste0("Phi measures total molecule count differences\nr = ",
-                      round(cor(phi$total_count, phi$Phi), 2)))
-phi_molecule_plot
-```
-
-Since read and molecule counts are highly correlated, we expect the same relationship to hold for read depth.
-But it does drive the point home more that we think this is due to sequencing depth and not a difference in cell size.
-
-Input read counts.
-
-```{r input-read-counts}
-reads_filter <- read.table("../data/reads-filter.txt", header = TRUE,
-                    stringsAsFactors = FALSE)
-# Remove 19098.r2
-reads_filter <- reads_filter[, grep("NA19098.r2", colnames(reads_filter),
-                                    invert = TRUE)]
-stopifnot(dim(reads_filter) == dim(counts(basics_data)))
-```
-
-Calculate total read counts.
-
-```{r total-read-counts}
-phi$total_read_count <- colSums(reads_filter) / 10^6
-```
-
-While the fit is not as good, it is still clearly driving the pattern.
-
-```{r phi-versus-read-count}
-phi_read_plot <- phi_molecule_plot %+% phi %+% aes(x = total_read_count) +
-  geom_smooth(method = "lm") +
-  labs(x = "Total read count (x10^6)",
-       title = paste0("Phi measures total read count differences\nr = ",
-                      round(cor(phi$total_read_count, phi$Phi), 2)))
-phi_read_plot
-```
-
-The low values are from replicate 2 of individual 19098.
-
-```{r phi-versus-read-count-per-batch}
-phi_read_plot + facet_grid(replicate ~ individual)
-```
-
-## Capture efficiency
-
-S measures the capture efficiency.
-
 ```{r s-capture-efficiency}
 plot(mcmc_summary, Param = "s")
 ```
 
-```{r capture-efficiency}
-efficiency <- numeric(length = ncol(counts(basics_data)))
-total_ercc_molecules <- sum(spike$ercc_molecules_well)
-for (i in 1:ncol(counts(basics_data))) {
-  efficiency[i] <- sum(counts(basics_data, type = "technical")[, i]) /
-                   total_ercc_molecules
-}
-summary(efficiency)
-```
-
-```{r extract-s}
+```{r extract-model-parameters}
+phi <- displaySummaryBASiCS(mcmc_summary, Param = "phi")
 s <- displaySummaryBASiCS(mcmc_summary, Param = "s")
-s <- cbind(s, anno_filter)
-s$efficiency <- efficiency
+parameters <- cbind(phi, s, anno_filter)
+parameters$gene_count <- colSums(counts(basics_data, type = "biological"))
+parameters$ercc_count <- colSums(counts(basics_data, type = "technical"))
 ```
 
-This takes lots of iterations to estimate well.
-With just a few thousand iterations, the correlation with the capture efficiency is low.
-Once the iterations are in the tens of thousands, the correlation with the capture efficiency is better.
+### Phi versus gene molecule count
 
-```{r s-v-capture-efficiency}
-s_plot <- ggplot(s, aes(x = efficiency, y = S)) +
+```{r phi-versus-gene-molecule-count}
+phi_gene_count <- ggplot(parameters, aes(x = gene_count, y = Phi)) +
   geom_point() +
   geom_smooth(method = "lm") +
-  labs(x = "ERCC capture efficiency",
-       title = paste0("S measures capture efficiency\nr = ",
-                      round(cor(s$efficiency, s$S), 2)))
-s_plot
+  labs(x = "Gene molecule count",
+       title = paste0("Phi measures gene molecule count differences\nr = ",
+                      round(cor(parameters$gene_count, parameters$Phi), 2)))
+phi_gene_count
 ```
 
-The correlation is harder to see when the the 95% posterior density intervals are added the posterior medians.
+### Phi versus ERCC molecule count
 
-```{r s-v-capture-efficiency-prob-density}
-s_plot + geom_errorbar(aes(ymin = lower, ymax = upper), alpha = 0.5)
+```{r phi-versus-ercc-molecule-count}
+phi_ercc_count <- phi_gene_count %+% aes(x = ercc_count) +
+  labs(x = "ERCC molecule count",
+       title = paste0("Phi does not measure ERCC molecule count differences\nr = ",
+                      round(cor(parameters$ercc_count, parameters$Phi), 2)))
+phi_ercc_count
 ```
 
-The results are similar per individual.
-Batch NA19101.r3 has the most outliers, which are likely due to wells which actually contained more than one cell.
+### S versus ERCC molecule count
 
-```{r s-v-capture-efficiency-per-batch}
-s_plot %+% s[s$batch != "NA19098.r2", ] +
-  facet_grid(replicate ~ individual)
+```{r s-versus-ercc-molecule-count}
+s_ercc_count <- phi_ercc_count %+% aes(y = S) +
+  labs(y = "S",
+       title = paste0("S measures ERCC molecule count differences\nr = ",
+                      round(cor(parameters$ercc_count, parameters$S), 2)))
+s_ercc_count
+```
+
+### S versus gene molecule count
+
+```{r s-versus-gene-molecule-count}
+s_gene_count <- phi_gene_count %+% aes(y = S) +
+  labs(y = "S",
+       title = paste0("S does not measure gene molecule count differences\nr = ",
+                      round(cor(parameters$gene_count, parameters$S), 2)))
+s_gene_count
+```
+
+### Phi versus S
+
+```{r phi-versus-s}
+phi_s <- ggplot(parameters, aes(x = S, y = Phi)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  labs(       title = paste0("Phi versus S\nr = ",
+                      round(cor(parameters$S, parameters$Phi), 2)))
+phi_s
 ```
 
 ## Denoised data
