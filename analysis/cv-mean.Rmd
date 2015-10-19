@@ -335,12 +335,32 @@ heatmap.2(as.matrix(molecules_qc[order_cv, ]),
 ```
 
 
+Use a different method to get gene ID.
+
 ```{r}
-kable(queryMany(rownames(molecules_qc)[which(F.p.adj< .01)], scopes = "ensembl.gene", 
-                 fields=c("summary"), species="human") )
+library("biomaRt")
+ensembl <- useMart(host = "grch37.ensembl.org",
+                   biomart = "ENSEMBL_MART_ENSEMBL",
+                   dataset = "hsapiens_gene_ensembl")
+
+differential_CV_genes_info <- getBM(attributes = c("ensembl_gene_id", "chromosome_name",
+                                                 "external_gene_name", "transcript_count",
+                                                 "description"),
+                                  filters = "ensembl_gene_id",
+                                  values = rownames(molecules_qc[order_cv, ]),
+                                  mart = ensembl)
+
+differential_CV_genes_info
 ```
 
+Use [string analysis] data base to look for protein protein interaction of these differential CV genes.
 
+[string analysis]:http://string-db.org
+
+This is the confidence view. Stronger associations are represented by thicker lines.
+![This is the confidence view](figure/cv-mean.Rmd/string1.png)
+This is the evidence view. Different line colors represent the types of evidence for the association.
+![This is the evidence view](figure/cv-mean.Rmd/string2.png)
 
 ## Session information
 
