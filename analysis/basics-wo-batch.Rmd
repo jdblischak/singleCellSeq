@@ -13,7 +13,6 @@ source("chunk-options.R")
 
 We analyzed our single cell data with [BASiCS][] developed by [Vallejos et al., 2015][vallejos2015].
 The results shown here are from a model fit with 40,000 iterations.
-This time we also modeled the unexplained technical noise with a separate parameter (theta) per batch.
 
 [basics]: https://github.com/catavallejos/BASiCS
 [vallejos2015]: http://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1004333
@@ -84,7 +83,7 @@ spike <- read.table("../data/expected-ercc-molecules.txt", header = TRUE,
                     sep = "\t", stringsAsFactors = FALSE)
 ```
 
-Only keep the spike-ins that were observed in at least one cell.
+Only keep the spike-ins that were kept after applying the expression cutoff.
 
 ```{r spike-input}
 spike_input <- spike$ercc_molecules_well[spike$id %in% rownames(molecules_filter)]
@@ -99,15 +98,14 @@ stopifnot(sum(tech) == length(spike_input),
 > These elements must be stored into an object of class `BASiCS_Data`.
 
 ```{r create-object}
-basics_data <- newBASiCS_Data(as.matrix(molecules_filter), tech, spike_input,
-                              BatchInfo = anno_filter$batch)
+basics_data <- newBASiCS_Data(as.matrix(molecules_filter), tech, spike_input)
 ```
 
 ## Fit the model
 
 ```{r fit-model}
 store_dir <- "../data"
-run_name <- "batch-clean"
+run_name <- "new"
 if (file.exists(paste0(store_dir, "/chain_phi_", run_name, ".txt"))) {
   chain_mu = as.matrix(fread(paste0(store_dir, "/chain_mu_", run_name, ".txt")))
   chain_delta = as.matrix(fread(paste0(store_dir, "/chain_delta_", run_name, ".txt")))
@@ -138,19 +136,6 @@ Summarize the results.
 
 ```{r summary}
 mcmc_summary <- Summary(mcmc_output)
-```
-
-## Batch information
-
-The unexplained technical noise is similar across batches.
-
-```{r batch-theta}
-colnames(chain_theta) <- unique(anno_filter$batch)
-theta_long <- gather(as.data.frame(chain_theta), key = "batch", value = "theta")
-ggplot(theta_long, aes(x = batch, y = theta)) +
-  geom_boxplot() +
-  theme(axis.text.x = element_text(angle = 90)) +
-  labs(title = "Modeling of separate technical effects per batch")
 ```
 
 ## Cell-specific normalizing constants
