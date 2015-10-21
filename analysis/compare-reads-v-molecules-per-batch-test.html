@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+
+<meta name="date" content="2015-10-20" />
+
+<title>Batch effects of conversion rates</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Batch effects of conversion rates</h1>
+<h4 class="date"><em>2015-10-20</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#objective">Objective</a></li>
+<li><a href="#input">Input</a></li>
+<li><a href="#reads-to-molecule-conversion-rate">Reads to molecule conversion rate</a></li>
+<li><a href="#compare-variances-of-conversion-rates-between-batches">Compare variances of conversion rates between batches</a><ul>
+<li><a href="#ensg">ENSG</a></li>
+<li><a href="#ercc">ERCC</a></li>
+</ul></li>
+<li><a href="#summary-plots">Summary plots</a></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2015-10-21</p>
+<p><strong>Code version:</strong> 78afeddbcf288d337c42915e95f0d9a578030a08</p>
+<div id="objective" class="section level2">
+<h2>Objective</h2>
+<p>Compute conversion rates of each cell using the filerted set of cells. Compare conversion rates between batches: is there an individual effect or batch effect of coversion rate?</p>
+<p>Note that we will remove the NA19098 batch 2 in the following analyses.</p>
+<p>We used Levene’s test and also Brown-Frosythe test to compare variances of conversion rates between batches. Both of these two methods center the observations such that observaitons within each group centered at a mean or median of zero (Levene’s and Brown-Frosythe, respectively). Results below are described at an alpha level of .05. Note that Brown-Frosythe is our reporting statistical test of choice for now.</p>
+<p>For the ERCC genes, we found the variances of the conversion rates to vary between the 9 batches (p &lt; .05), but to be similar between the three individuals (p = .61). On the other hand, among the endogeneous genes, we found significant differences in variances of the conversion rates between the 9 batches (p &lt; .0005) and between the individuals (p &lt; .05).</p>
+<p>Next we compared variances of the conversion rates between batches within each individual. Interesting, for the ERCC genes, we found NA19239 batches significantly different in variances of the conversion rates (p &lt; .01); while there was no significant difference in conversion rates of the other individual batches. However, among the endogeneous genes, NA19239 batches were not different in variances of the conversion rates; on the other hand, we see a small difference in NA19101 batches in variances of conversion rates (p &lt; .05).</p>
+</div>
+<div id="input" class="section level2">
+<h2>Input</h2>
+<pre class="r"><code>library(&quot;dplyr&quot;)
+library(&quot;ggplot2&quot;)
+theme_set(theme_bw(base_size = 16))
+library(&quot;edgeR&quot;)
+source(&quot;functions.R&quot;)</code></pre>
+<p>Input annotation.</p>
+<pre class="r"><code>anno_filter &lt;- read.table(&quot;../data/annotation-filter.txt&quot;, header = TRUE,
+                   stringsAsFactors = FALSE)
+select_individual &lt;- anno_filter$batch != &quot;NA19098.r2&quot;
+anno_filter &lt;- anno_filter[select_individual, ]
+head(anno_filter)</code></pre>
+<pre><code>  individual replicate well      batch      sample_id
+1    NA19098        r1  A01 NA19098.r1 NA19098.r1.A01
+2    NA19098        r1  A02 NA19098.r1 NA19098.r1.A02
+3    NA19098        r1  A04 NA19098.r1 NA19098.r1.A04
+4    NA19098        r1  A05 NA19098.r1 NA19098.r1.A05
+5    NA19098        r1  A06 NA19098.r1 NA19098.r1.A06
+6    NA19098        r1  A07 NA19098.r1 NA19098.r1.A07</code></pre>
+<p>Input read counts.</p>
+<pre class="r"><code>reads_filter &lt;- read.table(&quot;../data/reads-filter.txt&quot;, header = TRUE,
+                    stringsAsFactors = FALSE)
+reads_filter &lt;- reads_filter[ , select_individual]
+reads_ENSG &lt;- reads_filter[grep(&quot;ERCC&quot;, rownames(reads_filter), invert = TRUE), ]
+reads_ERCC &lt;- reads_filter[grep(&quot;ERCC&quot;, rownames(reads_filter), invert = FALSE), ]</code></pre>
+<p>Input molecule counts.</p>
+<pre class="r"><code>molecules_filter &lt;- read.table(&quot;../data/molecules-filter.txt&quot;, header = TRUE,
+                    stringsAsFactors = FALSE)
+molecules_filter &lt;- molecules_filter[ , select_individual]
+molecules_ENSG &lt;- molecules_filter[grep(&quot;ERCC&quot;, rownames(molecules_filter), invert = TRUE), ]
+molecules_ERCC &lt;- molecules_filter[grep(&quot;ERCC&quot;, rownames(molecules_filter), invert = FALSE), ]</code></pre>
+</div>
+<div id="reads-to-molecule-conversion-rate" class="section level2">
+<h2>Reads to molecule conversion rate</h2>
+<pre class="r"><code>total_counts_ERCC &lt;- data.frame(total_reads = colSums(reads_ERCC),
+                                total_molecules = colSums(molecules_ERCC))
+total_counts_ERCC$conversion &lt;- with(total_counts_ERCC,
+                                     total_reads/total_molecules)
+summary(total_counts_ERCC)</code></pre>
+<pre><code>  total_reads    total_molecules   conversion    
+ Min.   :  899   Min.   :178.0   Min.   : 4.534  
+ 1st Qu.: 7554   1st Qu.:319.0   1st Qu.:21.252  
+ Median : 9627   Median :363.0   Median :25.587  
+ Mean   : 9777   Mean   :383.7   Mean   :25.411  
+ 3rd Qu.:11660   3rd Qu.:449.0   3rd Qu.:29.903  
+ Max.   :24537   Max.   :707.0   Max.   :43.263  </code></pre>
+<pre class="r"><code>total_counts_ENSG &lt;- data.frame(total_reads = colSums(reads_ENSG),
+                                total_molecules = colSums(molecules_ENSG))
+total_counts_ENSG$conversion &lt;- with(total_counts_ENSG,
+                                     total_reads/total_molecules)
+summary(total_counts_ENSG)</code></pre>
+<pre><code>  total_reads      total_molecules    conversion   
+ Min.   : 736808   Min.   : 45254   Min.   : 7.27  
+ 1st Qu.:1805278   1st Qu.: 79457   1st Qu.:19.87  
+ Median :2211026   Median : 93452   Median :23.00  
+ Mean   :2157945   Mean   : 95740   Mean   :22.80  
+ 3rd Qu.:2506770   3rd Qu.:111337   3rd Qu.:25.76  
+ Max.   :3870013   Max.   :195757   Max.   :33.50  </code></pre>
+</div>
+<div id="compare-variances-of-conversion-rates-between-batches" class="section level2">
+<h2>Compare variances of conversion rates between batches</h2>
+<div id="ensg" class="section level3">
+<h3>ENSG</h3>
+<pre class="r"><code>ggplot(data.frame(total_counts_ENSG,
+                  batch = anno_filter$batch),
+       aes(x = factor(batch), y = conversion,
+           fill = factor(batch)), height = 600, width = 2000) +
+geom_violin(alpha = .5) + 
+geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+labs(x = &quot;batch&quot;, y = &quot;conversion rate&quot;, title = &quot;ENSG batch effect of conversion rate&quot;) +
+theme(axis.text.x = element_text(hjust=1, angle = 45))</code></pre>
+<p><img src="figure/compare-reads-v-molecules-per-batch-test.Rmd/unnamed-chunk-1-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>*Between all batches.</p>
+<pre class="r"><code>library(car)
+# Leven&#39;s test
+leveneTest(y = total_counts_ENSG$conversion,
+           group = factor(anno_filter$batch), center = mean )</code></pre>
+<pre><code>Levene&#39;s Test for Homogeneity of Variance (center = mean)
+       Df F value    Pr(&gt;F)    
+group   7  7.4306 1.483e-08 ***
+      555                      
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
+<pre class="r"><code># Brown-Forsythe test
+leveneTest(y = total_counts_ENSG$conversion,
+           group = factor(anno_filter$batch), center = median )</code></pre>
+<pre><code>Levene&#39;s Test for Homogeneity of Variance (center = median)
+       Df F value    Pr(&gt;F)    
+group   7  4.0114 0.0002691 ***
+      555                      
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
+<p>*Between individuals.</p>
+<pre class="r"><code>library(car)
+# Leven&#39;s test
+leveneTest(y = total_counts_ENSG$conversion,
+           group = factor(anno_filter$individual), center = mean )</code></pre>
+<pre><code>Levene&#39;s Test for Homogeneity of Variance (center = mean)
+       Df F value   Pr(&gt;F)   
+group   2   6.111 0.002369 **
+      560                    
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
+<pre class="r"><code># Brown-Forsythe test
+leveneTest(y = total_counts_ENSG$conversion,
+           group = factor(anno_filter$individual), center = median )</code></pre>
+<pre><code>Levene&#39;s Test for Homogeneity of Variance (center = median)
+       Df F value  Pr(&gt;F)  
+group   2  4.4099 0.01258 *
+      560                  
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
+<p>*For each individual, between batches.</p>
+<pre class="r"><code>for (i in 1:length(unique(anno_filter$individual))) {
+  print(unique(anno_filter$individual)[i])
+  select_individual &lt;- with(anno_filter, individual == unique(individual)[i])
+  # Levene&#39;s test
+  print(leveneTest(y = total_counts_ENSG$conversion[select_individual],
+             group = factor(anno_filter$replicate[select_individual]), center = mean ))
+  
+  # Brown-Forsythe test
+  print(leveneTest(y = total_counts_ENSG$conversion[select_individual],
+             group = factor(anno_filter$replicate[select_individual]), center = median ) )
+}</code></pre>
+<pre><code>[1] &quot;NA19098&quot;
+Levene&#39;s Test for Homogeneity of Variance (center = mean)
+       Df F value Pr(&gt;F)
+group   1  0.6335 0.4274
+      140               
+Levene&#39;s Test for Homogeneity of Variance (center = median)
+       Df F value Pr(&gt;F)
+group   1  0.2636 0.6084
+      140               
+[1] &quot;NA19101&quot;
+Levene&#39;s Test for Homogeneity of Variance (center = mean)
+       Df F value   Pr(&gt;F)    
+group   2  7.9829 0.000466 ***
+      194                     
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
+Levene&#39;s Test for Homogeneity of Variance (center = median)
+       Df F value  Pr(&gt;F)  
+group   2  3.6868 0.02682 *
+      194                  
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
+[1] &quot;NA19239&quot;
+Levene&#39;s Test for Homogeneity of Variance (center = mean)
+       Df F value Pr(&gt;F)
+group   2  1.1051  0.333
+      221               
+Levene&#39;s Test for Homogeneity of Variance (center = median)
+       Df F value Pr(&gt;F)
+group   2  1.0756 0.3429
+      221               </code></pre>
+</div>
+<div id="ercc" class="section level3">
+<h3>ERCC</h3>
+<pre class="r"><code>ggplot(data.frame(total_counts_ERCC,
+                  batch = anno_filter$batch),
+       aes(x = factor(batch), y = conversion,
+           fill = factor(batch)), height = 600, width = 2000) +
+geom_violin(alpha = .5) + 
+geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+labs(x = &quot;batch&quot;, y = &quot;conversion rate&quot;, title = &quot;ERCC batch effect of conversion rate&quot;) +
+theme(axis.text.x = element_text(hjust=1, angle = 45))</code></pre>
+<p><img src="figure/compare-reads-v-molecules-per-batch-test.Rmd/unnamed-chunk-5-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>*Between all batches.</p>
+<pre class="r"><code>library(car)
+# Leven&#39;s test
+leveneTest(y = total_counts_ERCC$conversion,
+           group = factor(anno_filter$batch), center = mean )</code></pre>
+<pre><code>Levene&#39;s Test for Homogeneity of Variance (center = mean)
+       Df F value   Pr(&gt;F)   
+group   7  3.1996 0.002485 **
+      555                    
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
+<pre class="r"><code># Brown-Forsythe test
+leveneTest(y = total_counts_ERCC$conversion,
+           group = factor(anno_filter$batch), center = median )</code></pre>
+<pre><code>Levene&#39;s Test for Homogeneity of Variance (center = median)
+       Df F value  Pr(&gt;F)  
+group   7  2.3384 0.02331 *
+      555                  
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
+<p>*Between individuals.</p>
+<pre class="r"><code>library(car)
+# Leven&#39;s test
+leveneTest(y = total_counts_ERCC$conversion,
+           group = factor(anno_filter$individual), center = mean )</code></pre>
+<pre><code>Levene&#39;s Test for Homogeneity of Variance (center = mean)
+       Df F value Pr(&gt;F)
+group   2  0.7765 0.4605
+      560               </code></pre>
+<pre class="r"><code># Brown-Forsythe test
+leveneTest(y = total_counts_ERCC$conversion,
+           group = factor(anno_filter$individual), center = median )</code></pre>
+<pre><code>Levene&#39;s Test for Homogeneity of Variance (center = median)
+       Df F value Pr(&gt;F)
+group   2  0.6706 0.5118
+      560               </code></pre>
+<p>*For each individual, between batches.</p>
+<pre class="r"><code>for (i in 1:length(unique(anno_filter$individual))) {
+  print(unique(anno_filter$individual)[i])
+  select_individual &lt;- with(anno_filter, individual == unique(individual)[i])
+  # Levene&#39;s test
+  print(leveneTest(y = total_counts_ERCC$conversion[select_individual],
+             group = factor(anno_filter$replicate[select_individual]), center = mean ))
+  
+  # Brown-Forsythe test
+  print(leveneTest(y = total_counts_ERCC$conversion[select_individual],
+             group = factor(anno_filter$replicate[select_individual]), center = median ) )
+}</code></pre>
+<pre><code>[1] &quot;NA19098&quot;
+Levene&#39;s Test for Homogeneity of Variance (center = mean)
+       Df F value Pr(&gt;F)
+group   1  0.0703 0.7913
+      140               
+Levene&#39;s Test for Homogeneity of Variance (center = median)
+       Df F value Pr(&gt;F)
+group   1  0.0699 0.7918
+      140               
+[1] &quot;NA19101&quot;
+Levene&#39;s Test for Homogeneity of Variance (center = mean)
+       Df F value  Pr(&gt;F)  
+group   2  4.1732 0.01681 *
+      194                  
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
+Levene&#39;s Test for Homogeneity of Variance (center = median)
+       Df F value  Pr(&gt;F)  
+group   2  2.4436 0.08951 .
+      194                  
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
+[1] &quot;NA19239&quot;
+Levene&#39;s Test for Homogeneity of Variance (center = mean)
+       Df F value   Pr(&gt;F)   
+group   2  5.6718 0.003962 **
+      221                    
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
+Levene&#39;s Test for Homogeneity of Variance (center = median)
+       Df F value   Pr(&gt;F)   
+group   2  5.3235 0.005521 **
+      221                    
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
+</div>
+</div>
+<div id="summary-plots" class="section level2">
+<h2>Summary plots</h2>
+<pre class="r"><code>library(gridExtra)</code></pre>
+<pre><code>Loading required package: grid</code></pre>
+<pre class="r"><code>grid.arrange(
+  ggplot(data.frame(total_counts_ERCC,
+                    batch = anno_filter$batch),
+         aes(x = factor(batch), y = conversion,
+             fill = factor(batch)), height = 600, width = 2000) +
+  geom_violin(alpha = .5) + 
+  geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+  labs(x = &quot;batch&quot;, y = &quot;conversion rate&quot;, title = &quot;ERCC batch effect of conversion rate&quot;) +
+  theme(axis.text.x = element_text(hjust=1, angle = 45))
+  ,
+  ggplot(data.frame(total_counts_ENSG,
+                    batch = anno_filter$batch),
+         aes(x = factor(batch), y = conversion,
+             fill = factor(batch)), height = 600, width = 2000) +
+  geom_violin(alpha = .5) + 
+  geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+  labs(x = &quot;batch&quot;, y = &quot;conversion rate&quot;, title = &quot;ENSG batch effect of conversion rate&quot;) +
+  theme(axis.text.x = element_text(hjust=1, angle = 45)),
+  ncol = 2
+)</code></pre>
+<p><img src="figure/compare-reads-v-molecules-per-batch-test.Rmd/unnamed-chunk-9-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] grid      stats     graphics  grDevices utils     datasets  methods  
+[8] base     
+
+other attached packages:
+[1] gridExtra_0.9.1 car_2.1-0       edgeR_3.10.2    limma_3.24.9   
+[5] ggplot2_1.0.1   dplyr_0.4.2     knitr_1.10.5   
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.12.0      nloptr_1.0.4     formatR_1.2      plyr_1.8.3      
+ [5] bitops_1.0-6     tools_3.2.0      digest_0.6.8     lme4_1.1-10     
+ [9] evaluate_0.7     gtable_0.1.2     nlme_3.1-120     lattice_0.20-31 
+[13] mgcv_1.8-6       Matrix_1.2-1     DBI_0.3.1        yaml_2.1.13     
+[17] parallel_3.2.0   SparseM_1.6      proto_0.3-10     httr_0.6.1      
+[21] stringr_1.0.0    nnet_7.3-9       R6_2.1.1         rmarkdown_0.6.1 
+[25] minqa_1.2.4      reshape2_1.4.1   magrittr_1.5     scales_0.2.4    
+[29] htmltools_0.2.6  MASS_7.3-40      splines_3.2.0    assertthat_0.1  
+[33] pbkrtest_0.4-2   colorspace_1.2-6 quantreg_5.11    labeling_0.3    
+[37] stringi_0.4-1    RCurl_1.95-4.6   munsell_0.4.2   </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+
+</body>
+</html>

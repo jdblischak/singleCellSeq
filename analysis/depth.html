@@ -132,8 +132,8 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-10-14</p>
-<p><strong>Code version:</strong> ad00494d79195dafacf84a4ae0b08314007456b3</p>
+<p><strong>Last updated:</strong> 2015-10-21</p>
+<p><strong>Code version:</strong> 78afeddbcf288d337c42915e95f0d9a578030a08</p>
 <div id="setup" class="section level2">
 <h2>Setup</h2>
 <pre class="r"><code>library(&quot;dplyr&quot;)
@@ -177,7 +177,7 @@ anno_single$total_molecules = colSums(molecules)</code></pre>
 <p>Clean up the data.</p>
 <pre class="r"><code>summary_per_sample &lt;- summary_counts %&gt;%
   filter(sickle == &quot;quality-trimmed&quot;, well != &quot;bulk&quot;) %&gt;%
-  select(-sickle) %&gt;%
+  dplyr::select(-sickle) %&gt;%
   arrange(rmdup, individual, batch, well) %&gt;%
   as.data.frame
 stopifnot(paste0(&quot;NA&quot;, summary_per_sample$individual) == anno_single$individual,
@@ -323,7 +323,8 @@ summary(efficiency_vec)</code></pre>
 <pre class="r"><code>anno_single &lt;- anno_single %&gt;% filter(cell_number &lt;= 3)</code></pre>
 <p>Using data from sequencing reads, i.e. not utitlizing UMI information, we observe no correlation between the number of sequences and the number of cells in a well.</p>
 <pre class="r"><code>plot_cell_depth &lt;- ggplot(anno_single, aes(x = as.factor(cell_number), y = depth / 10^6)) +
-  geom_boxplot() +
+  geom_violin(width = 1) +
+  geom_boxplot(width = .1, position = position_dodge(width = .9)) +
   labs(x = &quot;Observed cells in well&quot;, y = &quot;&quot;,
        title = &quot;Sequencing depth (millions)&quot;)
 boxplot_base &lt;- plot_cell_depth
@@ -379,7 +380,7 @@ plot_grid(plot_conc_molecules_gene, plot_cell_concentration,
 <p>We also see some wells with one cell that cluster with the multi-cell wells. These may be errors in the cell counting.</p>
 <pre class="r"><code>outliers &lt;- anno_single %&gt;% filter(cell_number == 1, concentration &lt; 1.5,
                                    total_molecules_gene &gt; 140000)
-outliers %&gt;% select(sample_id)</code></pre>
+outliers %&gt;% dplyr::select(sample_id)</code></pre>
 <pre><code>        sample_id
 1  NA19098.r3.B04
 2  NA19098.r3.B11
@@ -406,9 +407,9 @@ plot_conc_molecules_ercc_batch &lt;-  plot_conc_molecules_gene_batch %+%
   aes(y = total_molecules_ercc / 10^3) +
   labs(y = &quot;&quot;, title = &quot;ERCC molecules (only wells with 1 cell)&quot;)
 
-plot_grid(plot_cell_mol_gene %+% aes(fill = batch) + theme(legend.position = &quot;none&quot;),
-          plot_cell_mol_ercc %+% aes(fill = batch) + theme(legend.position = &quot;none&quot;),
-          plot_cell_num_genes %+% aes(fill = batch) + theme(legend.position = &quot;bottom&quot;),
+plot_grid(plot_cell_mol_gene %+% aes(fill = batch) + theme(legend.position = &quot;none&quot;) + geom_boxplot(width = 1),
+          plot_cell_mol_ercc %+% aes(fill = batch) + theme(legend.position = &quot;none&quot;) + geom_boxplot(width = 1),
+          plot_cell_num_genes %+% aes(fill = batch) + theme(legend.position = &quot;bottom&quot;) + geom_boxplot(width = 1),
           plot_conc_molecules_gene_batch,
           plot_conc_molecules_ercc_batch,
           labels = LETTERS[1:5], nrow = 5)</code></pre>

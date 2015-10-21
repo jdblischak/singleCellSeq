@@ -127,12 +127,15 @@ img {
 <div id="TOC">
 <ul>
 <li><a href="#objective">Objective</a></li>
-<li><a href="#model">Model</a></li>
 <li><a href="#set-up">Set up</a></li>
 <li><a href="#prepare-data">Prepare data</a></li>
-<li><a href="#compute-coefficient-of-variation">Compute coefficient of variation</a></li>
-<li><a href="#distance-to-the-median">Distance-to-the-median</a></li>
-<li><a href="#normalize-coefficient-of-variation">Normalize coefficient of variation</a></li>
+<li><a href="#compute-coefficient-of-variation">Compute coefficient of variation</a><ul>
+<li><a href="#remove-na19098.r2">Remove NA19098.r2</a></li>
+</ul></li>
+<li><a href="#normalize-coefficient-of-variation">Normalize coefficient of variation</a><ul>
+<li><a href="#remove-na19098.r2-ercc-genes">Remove NA19098.r2 + ERCC genes</a></li>
+</ul></li>
+<li><a href="#normalize-coefficient-of-variation-1">Normalize coefficient of variation</a></li>
 <li><a href="#session-information">Session information</a></li>
 </ul>
 </div>
@@ -141,17 +144,7 @@ img {
 <p><strong>Code version:</strong> 78afeddbcf288d337c42915e95f0d9a578030a08</p>
 <div id="objective" class="section level2">
 <h2>Objective</h2>
-<p>We would like to compare coefficients of variation of gene expression across individuals, a metric that is widely employed for quantifying heterogeneity of gene expression in single cell sequencing data. Setting the discussion of heterogeneity aside, the major challenge associated with the analysis of coefficient of variation resides in the nature of count data having high coefficient of variation at the low count level. We verified the mean-CV relationship in the scatter plots of per gene coefficient of variation across cells versus mean molecule cout across cells, for each individual samples and across all samples.</p>
-<p><a href="http://dx.doi.org/10.1016/j.stem.2015.09.011">Kolodziejczyk et al. 2015</a> surveyed the transcriptome profiles of mESCs cultured in three different conditions and propose DM (distance-to-the-median), a corrected version of CV that is independent of the mean, as a metric of heterogenity comparison. They followed the analytical strategy in <a href="http://dx.doi.org/10.1038/nature04785">Newman et al. 2006</a>.</p>
-<p>In this document, we adopt the same strategy as in Kolodziejczyk et al. when removing the dependency of squared coefficient of variation on mean molecule count per gene. These “normalized” squared coefficients of variation will be used in all downstream analyses of cell-to-cell heterogeneity individual differences.</p>
-<p>Our results indicate that after this normalization step, the coefficient of variations no longer has a polynomial relationship with mean gene molecule count.</p>
-</div>
-<div id="model" class="section level2">
-<h2>Model</h2>
-<p><br /><span class="math"><em>l</em><em>o</em><em>g</em>10(<em>C</em><em>V</em><sub><em>g</em><em>k</em></sub><sup>2</sup>) = <em>l</em><em>o</em><em>g</em>10(<em>C</em><em>V</em><sub><em>g</em></sub><sup>2</sup>) + <em>ϵ</em><sub><em>g</em><em>k</em></sub></span><br /></p>
-<p>where <span class="math"><em>ϵ</em><sub><em>g</em><em>k</em></sub></span> is independent distributed as a normal random variables for each gene <span class="math"><em>g</em></span> and sample <span class="math"><em>k</em></span>, and <span class="math"><em>C</em><em>V</em><sub><em>g</em></sub><sup>2</sup></span> is modeled as a smooth function of <span class="math"><em>μ</em><sub><em>g</em></sub></span>, the mean molecule count for gene <span class="math"><em>g</em></span>.</p>
-<p>Equivalently,</p>
-<p><br /><span class="math">$$log10\left(\frac{\sigma^2_{gk}}{\mu^2_{gk}} \right) = log10 \left(\frac{\sigma^2_{g}}{\mu^2_{g}} \right) + \epsilon_{gk}$$</span><br />.</p>
+<p>Previously, we normalized coefficients of variations in the data of all samples and all genes (both ENSG and ERCC). Because one of the samples NA19098.r2 is an outlier batch, we suspected that the rolling medians of data-wide coefficient of variation, which is used to normalize sample-specific coefficients of variation may change if the sample NA19098.r2 were removed.</p>
 </div>
 <div id="set-up" class="section level2">
 <h2>Set up</h2>
@@ -230,36 +223,23 @@ sapply(molecules_cv_batch, dim)</code></pre>
      NA19239.r1 NA19239.r2 NA19239.r3
 [1,]      10513      10513      10513
 [2,]          5          5          5</code></pre>
+<div id="remove-na19098.r2" class="section level3">
+<h3>Remove NA19098.r2</h3>
+<pre class="r"><code>molecules_cv_batch &lt;- molecules_cv_batch[-2]</code></pre>
 </div>
-<div id="distance-to-the-median" class="section level2">
-<h2>Distance-to-the-median</h2>
-<p>*This method was designed for comparison of variation profile across genes, while we are intersted in comparison of heterogeneity profiles on a per-gene basis.</p>
-<p>The computation of DM for gene <em>i</em> in <a href="http://dx.doi.org/10.1016/j.stem.2015.09.011">Kolodziejczyk et al. 2015</a> involves two steps:</p>
-<ol style="list-style-type: decimal">
-<li>Correct for mean dependency:
-<ul>
-<li>log10 (CV^2 / rolling median log10 of squared CV)</li>
-</ul></li>
-<li>Correct for dependency on gene length
-<ul>
-<li>Corrected CV - gene length (union of all exons); equivalently, log10 of CV on count scale divided by gene length</li>
-</ul></li>
-</ol>
-<p>In studies that count reads instead of molecules, gene length is a possible confounder in expression levels. However in our study, UMI is used to count the number of RNA molecules in each cell. Hence, we may not need to adjust coefficient of variation for correlation with gene lenght.</p>
 </div>
 <div id="normalize-coefficient-of-variation" class="section level2">
 <h2>Normalize coefficient of variation</h2>
 <p>Merge summary data.frames.</p>
 <pre class="r"><code>df_plot &lt;- do.call(rbind, molecules_cv_batch)</code></pre>
 <p>Compute rolling medians across all samples.</p>
-<blockquote>
-<p>We aggregate normalized molecule counts across samples to compute sample-wide rolling medians. Specifically, we ordered data-wide coefficients of variations according to their corresponding values of molecule counts. Then, we take rolling medians of the ordered coefficients of variations, using the same parameters in <a href="http://dx.doi.org/10.1016/j.stem.2015.09.011">Kolodziejczyk et al. 2015</a>: the number of genes in each window is 50, and the number of genes that overlap between windows is 25. Finally, we substract data-wide rolling medians of CVs from each sample’s CVs.</p>
-</blockquote>
-<pre class="r"><code># Compute a data-wide coefficient of variation on CPM normalized counts.
-data_cv &lt;- apply(2^molecules_all_genes, 1, sd)/apply(2^molecules_all_genes, 1, mean)
+<pre class="r"><code>molecules_all_genes_filter &lt;- molecules_all_genes[ , anno_qc$batch != &quot;NA19098.r1&quot;]
+
+# Compute a data-wide coefficient of variation on CPM normalized counts.
+data_cv &lt;- apply(2^molecules_all_genes_filter, 1, sd)/apply(2^molecules_all_genes_filter, 1, mean)
 
 # Order of genes by mean expression levels
-order_gene &lt;- order(apply(2^molecules_all_genes, 1, mean))
+order_gene &lt;- order(apply(2^molecules_all_genes_filter, 1, mean))
 
 # Rolling medians of log10 squared CV by mean expression levels
 roll_medians &lt;- rollapply(log10(data_cv^2)[order_gene], width = 50, by = 25,
@@ -267,26 +247,29 @@ roll_medians &lt;- rollapply(log10(data_cv^2)[order_gene], width = 50, by = 25,
 ii_na &lt;- which( is.na(roll_medians) )
 roll_medians[ii_na] &lt;- median( log10(data_cv^2)[order_gene][ii_na] )
 
-names(roll_medians) &lt;- rownames(molecules_all_genes)[order_gene]
+names(roll_medians) &lt;- rownames(molecules_all_genes_filter)[order_gene]
 
 # re-order rolling medians
-reorder_gene &lt;- match(rownames(molecules_all_genes), names(roll_medians) )
+reorder_gene &lt;- match(rownames(molecules_all_genes_filter), names(roll_medians) )
 head(reorder_gene)</code></pre>
-<pre><code>[1]  225 3650 4564 6158 3352 1963</code></pre>
+<pre><code>[1]  319 3691 4513 6147 3468 1810</code></pre>
 <pre class="r"><code>roll_medians &lt;- roll_medians[ reorder_gene ]
 
 stopifnot( all.equal(names(roll_medians), rownames(molecules_all_genes) ) )</code></pre>
 <p>Sanity check for the computation of rolling median.</p>
-<p>Compared to data before normalization and transformation (<a href="http://jdblischak.github.io/singleCellSeq/analysis/noisy-gene.html">link</a>), ERCC gene mean molecule counts are higher than endogeneous molecule counts after normalization and transformation.</p>
+<blockquote>
+<p>Almost no difference in rolling median after removing NA19098.r2</p>
+</blockquote>
 <pre class="r"><code>ggplot(data.frame(cv2 = log10(data_cv^2), 
                   roll_medians = roll_medians,
-                  mean = log10(apply(2^molecules_all_genes, 1, mean) ),
+                  mean = log10(apply(2^molecules_all_genes_filter, 1, mean) ),
                   is_ERCC = (1:length(data_cv) %in% grep(&quot;ERCC&quot;, names(data_cv)) )  ) ) +
   geom_point( aes(x = mean, y = cv2, shape = factor(is_ERCC) ), col = &quot;red&quot; ) + 
   geom_point(aes(x = mean, y = roll_medians), col = &quot;blue&quot;, alpha = .7) +
   labs(x = &quot;log10 data-wide per gene molecule count&quot;,
-       y = &quot;log10 squared coefficient of variation&quot;)</code></pre>
-<p><img src="figure/cv-adjusted.Rmd/unnamed-chunk-10-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+       y = &quot;log10 squared coefficient of variation&quot;) +
+  ggtitle( &quot;remove NA19098.r2&quot;)</code></pre>
+<p><img src="figure/cv-adjusted-wo-19098-r2.Rmd/unnamed-chunk-11-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <p>Compute adjusted coefficient of variation.</p>
 <pre class="r"><code># adjusted coefficient of variation on log10 scale
 log10cv2_adj &lt;- 
@@ -297,96 +280,78 @@ log10cv2_adj &lt;-
 df_plot$log10cv2_adj &lt;- do.call(c, log10cv2_adj)
 df_plot$is_ERCC &lt;- ( 1:dim(df_plot)[1] %in% grep(&quot;ERCC&quot;, rownames(df_plot)) )</code></pre>
 <p>Adjusted squared coefficient of variation versus log10 mean count (CPM corrected).</p>
-<p>ERCC remain the outliers after substracting out rolling medians.</p>
 <pre class="r"><code>ggplot( df_plot, aes(x = log10(mean), y = log10cv2_adj) ) +
   geom_point( aes(col = as.factor(batch), shape = factor(is_ERCC)), cex = .9 ) + 
   facet_wrap( ~ batch) +
   labs(x = &quot;log10(Mean CPM)&quot;, y = &quot;log10(Adjusted Squared coefficient of variation&quot;) </code></pre>
-<p><img src="figure/cv-adjusted.Rmd/unnamed-chunk-12-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<p>All genes: coefficient of variation after adjustment.</p>
-<pre class="r"><code>ggplot(df_plot, aes(x= factor(batch), y = log10cv2_adj, fill = factor(batch) ) ) +
-  geom_violin(alpha = .5) + 
-  geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
-  labs(xlab = &quot;log10 adjusted Squared coefficient of variation&quot;) +
-  ggtitle( &quot;log10 CV^2 after adjustment&quot; )</code></pre>
-<p><img src="figure/cv-adjusted.Rmd/unnamed-chunk-13-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>  theme(axis.text.x = element_text(hjust=1, angle = 45))</code></pre>
-<pre><code>List of 1
- $ axis.text.x:List of 8
-  ..$ family    : NULL
-  ..$ face      : NULL
-  ..$ colour    : NULL
-  ..$ size      : NULL
-  ..$ hjust     : num 1
-  ..$ vjust     : NULL
-  ..$ angle     : num 45
-  ..$ lineheight: NULL
-  ..- attr(*, &quot;class&quot;)= chr [1:2] &quot;element_text&quot; &quot;element&quot;
- - attr(*, &quot;class&quot;)= chr [1:2] &quot;theme&quot; &quot;gg&quot;
- - attr(*, &quot;complete&quot;)= logi FALSE</code></pre>
-<p>All genes: coefficient of variation before adjustment.</p>
-<pre class="r"><code>ggplot(df_plot, aes(x= factor(batch), y = log10(cv^2), fill = factor(batch) ) ) +
-  geom_violin(alpha = .5) + 
-  geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
-  labs(xlab = &quot;log10 unadjusted Squared coefficient of variation&quot;) +
-  ggtitle( &quot;log10 CV^2 before adjustment&quot; )</code></pre>
-<p><img src="figure/cv-adjusted.Rmd/unnamed-chunk-14-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>  theme(axis.text.x = element_text(hjust=1, angle = 45))</code></pre>
-<pre><code>List of 1
- $ axis.text.x:List of 8
-  ..$ family    : NULL
-  ..$ face      : NULL
-  ..$ colour    : NULL
-  ..$ size      : NULL
-  ..$ hjust     : num 1
-  ..$ vjust     : NULL
-  ..$ angle     : num 45
-  ..$ lineheight: NULL
-  ..- attr(*, &quot;class&quot;)= chr [1:2] &quot;element_text&quot; &quot;element&quot;
- - attr(*, &quot;class&quot;)= chr [1:2] &quot;theme&quot; &quot;gg&quot;
- - attr(*, &quot;complete&quot;)= logi FALSE</code></pre>
-<p>Endogeneous genes: coefficient of variation after adjustment.</p>
-<pre class="r"><code>ggplot(df_plot[which(!df_plot$is_ERCC), ], aes(x= factor(batch), y = log10cv2_adj, fill = factor(batch) ) ) +
-  geom_violin(alpha = .5) + 
-  geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
-  labs(xlab = &quot;log10 adjusted Squared coefficient of variation&quot;) +
-  ggtitle( &quot;log10 CV^2 after adjustment w/o ERCC&quot; )</code></pre>
-<p><img src="figure/cv-adjusted.Rmd/unnamed-chunk-15-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>  theme(axis.text.x = element_text(hjust=1, angle = 45))</code></pre>
-<pre><code>List of 1
- $ axis.text.x:List of 8
-  ..$ family    : NULL
-  ..$ face      : NULL
-  ..$ colour    : NULL
-  ..$ size      : NULL
-  ..$ hjust     : num 1
-  ..$ vjust     : NULL
-  ..$ angle     : num 45
-  ..$ lineheight: NULL
-  ..- attr(*, &quot;class&quot;)= chr [1:2] &quot;element_text&quot; &quot;element&quot;
- - attr(*, &quot;class&quot;)= chr [1:2] &quot;theme&quot; &quot;gg&quot;
- - attr(*, &quot;complete&quot;)= logi FALSE</code></pre>
-<p>Endogeneous genes: coefficient of variation before adjustment.</p>
-<pre class="r"><code>ggplot(df_plot[which(!df_plot$is_ERCC), ], aes(x= factor(batch), y = log10(cv^2), fill = factor(batch) ) ) +
-  geom_violin(alpha = .5) + 
-  geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
-  labs(xlab = &quot;log10 unadjusted Squared coefficient of variation&quot;) +
-  ggtitle( &quot;log10 CV^2 before adjustment w/o ERCC&quot; )</code></pre>
-<p><img src="figure/cv-adjusted.Rmd/unnamed-chunk-16-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>  theme(axis.text.x = element_text(hjust=1, angle = 45))</code></pre>
-<pre><code>List of 1
- $ axis.text.x:List of 8
-  ..$ family    : NULL
-  ..$ face      : NULL
-  ..$ colour    : NULL
-  ..$ size      : NULL
-  ..$ hjust     : num 1
-  ..$ vjust     : NULL
-  ..$ angle     : num 45
-  ..$ lineheight: NULL
-  ..- attr(*, &quot;class&quot;)= chr [1:2] &quot;element_text&quot; &quot;element&quot;
- - attr(*, &quot;class&quot;)= chr [1:2] &quot;theme&quot; &quot;gg&quot;
- - attr(*, &quot;complete&quot;)= logi FALSE</code></pre>
+<p><img src="figure/cv-adjusted-wo-19098-r2.Rmd/unnamed-chunk-13-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<div id="remove-na19098.r2-ercc-genes" class="section level3">
+<h3>Remove NA19098.r2 + ERCC genes</h3>
+<p>Remove ERCC genes.</p>
+<pre class="r"><code>molecules_cv_batch_ENSG &lt;- lapply(1:length(molecules_cv_batch), function(per_batch) {
+  obj &lt;- molecules_cv_batch[[per_batch]]
+  is_ENSG &lt;- grep(&quot;ENSG&quot;, rownames(obj))
+  obj[is_ENSG, ]
+})</code></pre>
+</div>
+</div>
+<div id="normalize-coefficient-of-variation-1" class="section level2">
+<h2>Normalize coefficient of variation</h2>
+<p>Merge summary data.frames.</p>
+<pre class="r"><code>df_ENSG &lt;- do.call(rbind, molecules_cv_batch_ENSG)</code></pre>
+<p>Compute rolling medians across all samples.</p>
+<pre class="r"><code>molecules_all_genes_ENSG &lt;- molecules_all_genes[ grep(&quot;ENSG&quot;, rownames(molecules_all_genes)) , anno_qc$batch != &quot;NA19098.r1&quot;]
+
+# Compute a data-wide coefficient of variation on CPM normalized counts.
+data_cv &lt;- apply(2^molecules_all_genes_ENSG, 1, sd)/apply(2^molecules_all_genes_ENSG, 1, mean)
+
+# Order of genes by mean expression levels
+order_gene &lt;- order(apply(2^molecules_all_genes_ENSG, 1, mean))
+
+# Rolling medians of log10 squared CV by mean expression levels
+roll_medians &lt;- rollapply(log10(data_cv^2)[order_gene], width = 50, by = 25,
+                         FUN = median, fill = list(&quot;extend&quot;, &quot;extend&quot;, &quot;NA&quot;) )
+ii_na &lt;- which( is.na(roll_medians) )
+roll_medians[ii_na] &lt;- median( log10(data_cv^2)[order_gene][ii_na] )
+
+names(roll_medians) &lt;- rownames(molecules_all_genes_ENSG)[order_gene]
+
+# re-order rolling medians
+reorder_gene &lt;- match(rownames(molecules_all_genes_ENSG), names(roll_medians) )
+head(reorder_gene)</code></pre>
+<pre><code>[1]  319 3691 4513 6147 3468 1810</code></pre>
+<pre class="r"><code>roll_medians &lt;- roll_medians[ reorder_gene ]
+
+stopifnot( all.equal(names(roll_medians), rownames(molecules_all_genes_ENSG) ) )</code></pre>
+<p>Sanity check for the computation of rolling median.</p>
+<blockquote>
+<p>ERCC genes are the outliers in their data-wide average of coefficients of variations. After removing these, the data-wide coefficients of variation look more resonable distributed.</p>
+</blockquote>
+<pre class="r"><code>ggplot(data.frame(cv2 = log10(data_cv^2), 
+                  roll_medians = roll_medians,
+                  mean = log10(apply(2^molecules_all_genes_ENSG, 1, mean) ),
+                  is_ERCC = (1:length(data_cv) %in% grep(&quot;ERCC&quot;, names(data_cv)) )  ) ) +
+  geom_point( aes(x = mean, y = cv2, shape = factor(is_ERCC) ), col = &quot;red&quot; ) + 
+  geom_point(aes(x = mean, y = roll_medians), col = &quot;blue&quot;, alpha = .7) +
+  labs(x = &quot;log10 data-wide per gene molecule count&quot;,
+       y = &quot;log10 squared coefficient of variation&quot;) +
+  ggtitle( &quot;remove NA19098.r2, only ENSG&quot;)</code></pre>
+<p><img src="figure/cv-adjusted-wo-19098-r2.Rmd/unnamed-chunk-17-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>Compute adjusted coefficient of variation.</p>
+<pre class="r"><code># adjusted coefficient of variation on log10 scale
+log10cv2_adj &lt;- 
+  lapply(1:length(molecules_cv_batch_ENSG), function(per_batch) {
+    foo &lt;- log10(molecules_cv_batch_ENSG[[per_batch]]$cv^2) - roll_medians
+    return(foo)
+})
+df_ENSG$log10cv2_adj &lt;- do.call(c, log10cv2_adj)
+df_ENSG$is_ERCC &lt;- ( 1:dim(df_ENSG)[1] %in% grep(&quot;ERCC&quot;, rownames(df_ENSG)) )</code></pre>
+<p>Adjusted squared coefficient of variation versus log10 mean count (CPM corrected).</p>
+<pre class="r"><code>ggplot( df_ENSG, aes(x = log10(mean), y = log10cv2_adj) ) +
+  geom_point( aes(col = as.factor(batch), shape = factor(is_ERCC)), cex = .9 ) + 
+  facet_wrap( ~ batch) +
+  labs(x = &quot;log10(Mean CPM)&quot;, y = &quot;log10(Adjusted Squared coefficient of variation&quot;) </code></pre>
+<p><img src="figure/cv-adjusted-wo-19098-r2.Rmd/unnamed-chunk-19-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
 <div id="session-information" class="section level2">
 <h2>Session information</h2>
