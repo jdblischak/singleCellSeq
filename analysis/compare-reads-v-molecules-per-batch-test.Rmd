@@ -1,0 +1,246 @@
+---
+title: "Batch effects of conversion rates"
+date: 2015-10-20
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+# opts_chunk$set(cache = TRUE)
+```
+
+
+## Objective
+
+Compute conversion rates of each cell using the filerted set of cells. Compare conversion rates between batches: is there an individual effect or batch effect of coversion rate?
+
+Note that we will remove the NA19098 batch 2 in the following analyses. 
+
+We used Levene's test and also Brown-Frosythe test to compare variances of conversion rates between batches. Both of these two methods center the observations such that observaitons within each group centered at a mean or median of zero (Levene's and Brown-Frosythe, respectively). Results below are described at an alpha level of .05. Note that Brown-Frosythe is our reporting statistical test of choice for now.
+
+For the ERCC genes, we found the variances of the conversion rates to vary between the 9 batches (p < .05), but to be similar between the three individuals (p = .61). On the other hand, among the endogeneous genes, we found significant differences in variances of the conversion rates between the 9 batches (p < .0005) and between the individuals (p < .05). 
+
+Next we compared variances of the conversion rates between batches within each individual. Interesting, for the ERCC genes, we found NA19239 batches significantly different in variances of the conversion rates (p < .01); while there was no significant difference in conversion rates of the other individual batches. However, among the endogeneous genes, NA19239 batches were not different in variances of the conversion rates; on the other hand, we see a small difference in NA19101 batches in variances of conversion rates (p < .05).
+
+
+
+
+## Input
+
+```{r packages, message=FALSE}
+library("dplyr")
+library("ggplot2")
+theme_set(theme_bw(base_size = 16))
+library("edgeR")
+source("functions.R")
+```
+
+Input annotation.
+
+```{r input-annotation}
+anno_filter <- read.table("../data/annotation-filter.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+select_individual <- anno_filter$batch != "NA19098.r2"
+anno_filter <- anno_filter[select_individual, ]
+head(anno_filter)
+```
+
+Input read counts.
+
+```{r input-read-counts}
+reads_filter <- read.table("../data/reads-filter.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+reads_filter <- reads_filter[ , select_individual]
+reads_ENSG <- reads_filter[grep("ERCC", rownames(reads_filter), invert = TRUE), ]
+reads_ERCC <- reads_filter[grep("ERCC", rownames(reads_filter), invert = FALSE), ]
+```
+
+Input molecule counts.
+
+```{r input-molecule-counts}
+molecules_filter <- read.table("../data/molecules-filter.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+molecules_filter <- molecules_filter[ , select_individual]
+molecules_ENSG <- molecules_filter[grep("ERCC", rownames(molecules_filter), invert = TRUE), ]
+molecules_ERCC <- molecules_filter[grep("ERCC", rownames(molecules_filter), invert = FALSE), ]
+```
+
+## Reads to molecule conversion rate
+
+```{r conversion-rate}
+total_counts_ERCC <- data.frame(total_reads = colSums(reads_ERCC),
+                                total_molecules = colSums(molecules_ERCC))
+total_counts_ERCC$conversion <- with(total_counts_ERCC,
+                                     total_reads/total_molecules)
+summary(total_counts_ERCC)
+
+
+total_counts_ENSG <- data.frame(total_reads = colSums(reads_ENSG),
+                                total_molecules = colSums(molecules_ENSG))
+total_counts_ENSG$conversion <- with(total_counts_ENSG,
+                                     total_reads/total_molecules)
+summary(total_counts_ENSG)
+```
+
+
+
+
+
+
+## Compare variances of conversion rates between batches
+
+### ENSG
+
+```{r}
+ggplot(data.frame(total_counts_ENSG,
+                  batch = anno_filter$batch),
+       aes(x = factor(batch), y = conversion,
+           fill = factor(batch)), height = 600, width = 2000) +
+geom_violin(alpha = .5) + 
+geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+labs(x = "batch", y = "conversion rate", title = "ENSG batch effect of conversion rate") +
+theme(axis.text.x = element_text(hjust=1, angle = 45))
+```
+
+
+*Between all batches.
+
+```{r}
+library(car)
+# Leven's test
+leveneTest(y = total_counts_ENSG$conversion,
+           group = factor(anno_filter$batch), center = mean )
+
+# Brown-Forsythe test
+leveneTest(y = total_counts_ENSG$conversion,
+           group = factor(anno_filter$batch), center = median )
+```
+
+
+*Between individuals.
+
+```{r}
+library(car)
+# Leven's test
+leveneTest(y = total_counts_ENSG$conversion,
+           group = factor(anno_filter$individual), center = mean )
+
+# Brown-Forsythe test
+leveneTest(y = total_counts_ENSG$conversion,
+           group = factor(anno_filter$individual), center = median )
+```
+
+
+*For each individual, between batches.
+
+```{r}
+for (i in 1:length(unique(anno_filter$individual))) {
+  print(unique(anno_filter$individual)[i])
+  select_individual <- with(anno_filter, individual == unique(individual)[i])
+  # Levene's test
+  print(leveneTest(y = total_counts_ENSG$conversion[select_individual],
+             group = factor(anno_filter$replicate[select_individual]), center = mean ))
+  
+  # Brown-Forsythe test
+  print(leveneTest(y = total_counts_ENSG$conversion[select_individual],
+             group = factor(anno_filter$replicate[select_individual]), center = median ) )
+}
+```
+
+
+
+### ERCC
+
+```{r}
+ggplot(data.frame(total_counts_ERCC,
+                  batch = anno_filter$batch),
+       aes(x = factor(batch), y = conversion,
+           fill = factor(batch)), height = 600, width = 2000) +
+geom_violin(alpha = .5) + 
+geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+labs(x = "batch", y = "conversion rate", title = "ERCC batch effect of conversion rate") +
+theme(axis.text.x = element_text(hjust=1, angle = 45))
+```
+
+
+*Between all batches.
+
+```{r}
+library(car)
+# Leven's test
+leveneTest(y = total_counts_ERCC$conversion,
+           group = factor(anno_filter$batch), center = mean )
+
+# Brown-Forsythe test
+leveneTest(y = total_counts_ERCC$conversion,
+           group = factor(anno_filter$batch), center = median )
+```
+
+
+*Between individuals.
+
+```{r}
+library(car)
+# Leven's test
+leveneTest(y = total_counts_ERCC$conversion,
+           group = factor(anno_filter$individual), center = mean )
+
+# Brown-Forsythe test
+leveneTest(y = total_counts_ERCC$conversion,
+           group = factor(anno_filter$individual), center = median )
+```
+
+
+*For each individual, between batches.
+
+```{r}
+for (i in 1:length(unique(anno_filter$individual))) {
+  print(unique(anno_filter$individual)[i])
+  select_individual <- with(anno_filter, individual == unique(individual)[i])
+  # Levene's test
+  print(leveneTest(y = total_counts_ERCC$conversion[select_individual],
+             group = factor(anno_filter$replicate[select_individual]), center = mean ))
+  
+  # Brown-Forsythe test
+  print(leveneTest(y = total_counts_ERCC$conversion[select_individual],
+             group = factor(anno_filter$replicate[select_individual]), center = median ) )
+}
+```
+
+
+## Summary plots
+
+```{r, fig.width = 12, fig.height=6}
+library(gridExtra)
+grid.arrange(
+  ggplot(data.frame(total_counts_ERCC,
+                    batch = anno_filter$batch),
+         aes(x = factor(batch), y = conversion,
+             fill = factor(batch)), height = 600, width = 2000) +
+  geom_violin(alpha = .5) + 
+  geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+  labs(x = "batch", y = "conversion rate", title = "ERCC batch effect of conversion rate") +
+  theme(axis.text.x = element_text(hjust=1, angle = 45))
+  ,
+  ggplot(data.frame(total_counts_ENSG,
+                    batch = anno_filter$batch),
+         aes(x = factor(batch), y = conversion,
+             fill = factor(batch)), height = 600, width = 2000) +
+  geom_violin(alpha = .5) + 
+  geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+  labs(x = "batch", y = "conversion rate", title = "ENSG batch effect of conversion rate") +
+  theme(axis.text.x = element_text(hjust=1, angle = 45)),
+  ncol = 2
+)
+
+```
+
+
+## Session information
+
+```{r info}
+sessionInfo()
+```

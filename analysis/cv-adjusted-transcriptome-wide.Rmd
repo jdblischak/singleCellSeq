@@ -1,0 +1,224 @@
+---
+title: "Compare transcriptome-wide profile of CVs"
+author: "Joyce Hsiao"
+date: 2015-10-15
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+
+library(knitr)
+opts_chunk$set(message = FALSE, warning = FALSE, eval = TRUE, 
+               echo = TRUE)
+```
+
+
+## Objective
+
+Compare transcriptome profile of cell-to-cell heterogeneity within individuals betwen batches and between individuals. 
+
+[link]: http://jdblischak.github.io/singleCellSeq/analysis/cv-adjusted.html
+
+For both within and between individuals comparisons, we will use the coefficients of variation normalized across all samples. 
+
+
+## Set up
+
+```{r, message=FALSE, warning=FALSE}
+library("data.table")
+library("dplyr")
+library("limma")
+library("edgeR")
+library("ggplot2")
+library("grid")
+library("zoo")
+theme_set(theme_bw(base_size = 12))
+source("functions.R")
+```
+
+
+
+## Prepare data
+
+Input annotation of only QC-filtered single cells
+
+```{r}
+anno_qc <- read.table("../data/annotation-filter.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno_qc)
+```
+
+Remove NA19098.r2
+
+```{r}
+is_include <- anno_qc$batch != "NA19098.r2"
+anno_qc_filter <- anno_qc[which(is_include), ]
+```
+
+Import endogeneous gene molecule counts that are QC-filtered, CPM-normalized, ERCC-normalized, and also processed to remove unwanted variation from batch effet. ERCC genes are removed from this file.
+
+```{r}
+molecules_ENSG <- read.table("../data/molecules-final.txt", header = TRUE, stringsAsFactors = FALSE)
+molecules_ENSG <- molecules_ENSG[ , is_include]
+```
+
+Input moleclule counts before log2 CPM transformation. This file is used to compute percent zero-count cells per sample.
+
+```{r}
+molecules_sparse <- read.table("../data/molecules-filter.txt", header = TRUE, stringsAsFactors = FALSE)
+
+molecules_sparse <- molecules_sparse[grep("ENSG", rownames(molecules_sparse)), ]
+stopifnot( all.equal(rownames(molecules_ENSG), rownames(molecules_sparse)) )
+```
+
+
+
+## Normalize coefficient of variation
+
+Compute coefficient of variation.
+
+```{r}
+# Compute CV and mean of normalized molecule counts (take 2^(log2-normalized count))
+
+molecules_cv_batch_ENSG <- 
+  lapply(1:length(unique(anno_qc_filter$batch)), function(per_batch) {
+      molecules_per_batch <- 2^molecules_ENSG[ , unique(anno_qc_filter$batch) == unique(anno_qc_filter$batch)[per_batch] ]
+      mean_per_gene <- apply(molecules_per_batch, 1, mean, na.rm = TRUE)
+      sd_per_gene <- apply(molecules_per_batch, 1, sd, na.rm = TRUE)
+      cv_per_gene <- data.frame(mean = mean_per_gene,
+                                sd = sd_per_gene,
+                                cv = sd_per_gene/mean_per_gene)
+      rownames(cv_per_gene) <- rownames(molecules_ENSG)
+  
+      # cv_per_gene <- cv_per_gene[rowSums(is.na(cv_per_gene)) == 0, ]
+      cv_per_gene$batch <- unique(anno_qc_filter$batch)[per_batch]
+      
+      # Add sparsity percent
+      molecules_sparse_per_batch <- molecules_sparse[ , unique(anno_qc_filter$batch) == unique(anno_qc_filter$batch)[per_batch]]
+      cv_per_gene$sparse <- rowMeans(as.matrix(molecules_sparse_per_batch) == 0)
+        
+      return(cv_per_gene)
+      }) 
+names(molecules_cv_batch_ENSG) <- unique(anno_qc_filter$batch)
+
+sapply(molecules_cv_batch_ENSG, dim)
+```
+
+
+Merge summary data.frames.
+
+```{r}
+df_ENSG <- do.call(rbind, molecules_cv_batch_ENSG)
+```
+
+Compute rolling medians across all samples.
+
+```{r}
+# Compute a data-wide coefficient of variation on CPM normalized counts.
+data_cv_ENSG <- apply(2^molecules_ENSG, 1, sd)/apply(2^molecules_ENSG, 1, mean)
+
+# Order of genes by mean expression levels
+order_gene <- order(apply(2^molecules_ENSG, 1, mean))
+
+# Rolling medians of log10 squared CV by mean expression levels
+roll_medians <- rollapply(log10(data_cv_ENSG^2)[order_gene], width = 50, by = 25,
+                         FUN = median, fill = list("extend", "extend", "NA") )
+ii_na <- which( is.na(roll_medians) )
+roll_medians[ii_na] <- median( log10(data_cv_ENSG^2)[order_gene][ii_na] )
+
+names(roll_medians) <- rownames(molecules_ENSG)[order_gene]
+
+
+# re-order rolling medians
+reorder_gene <- match(rownames(molecules_ENSG), names(roll_medians) )
+roll_medians <- roll_medians[ reorder_gene ]
+
+stopifnot( all.equal(names(roll_medians), rownames(molecules_ENSG) ) )
+```
+
+
+Compute adjusted coefficient of variation.
+
+```{r}
+# adjusted coefficient of variation on log10 scale
+log10cv2_adj_ENSG <- 
+  lapply(1:length(molecules_cv_batch_ENSG), function(per_batch) {
+    foo <- log10(molecules_cv_batch_ENSG[[per_batch]]$cv^2) - roll_medians
+    return(foo)
+})
+df_ENSG$log10cv2_adj_ENSG <- do.call(c, log10cv2_adj_ENSG)
+```
+
+
+
+
+## Statistical test of choice
+
+We use the Friedman rank sum test, a non-parametric multivariate test, to test the null hypothesis that the cell-to-cell heterogeneity is similar between batches within an individual cell line. Since the batches are performend on individual Fluidigm C1 plate, one may also interpret the difference between batches within individuals as technical artifacts arised from different C1 plate. 
+
+* Exclude ERCC genes from these analyses.
+
+
+## Within individual, between batches
+
+
+```{r}
+select_batch <- with(df_plot, 1:dim(df_plot)[1] %in% grep("NA19098", batch) )
+select_ENSG <- with(df_plot, !is_ERCC )
+
+df_ENSG_batch <- df_plot[select_batch & select_ENSG, ]
+df_ENSG_batch$id <- rownames(df_ENSG_batch)
+df_ENSG_batch_wide <- 
+  do.call( cbind, lapply(c("r1", "r2", "r3"), 
+                      function(per_rep) {
+                          is_batch <- 1:dim(df_ENSG_batch)[1] %in% grep(per_rep, df_ENSG_batch$batch)
+                          df_ENSG_batch[is_batch, ]$log10cv2_adj
+                      })
+          )
+colnames(df_ENSG_batch_wide) <- paste0("NA19098.", c("r1", "r2", "r3"))
+
+fit <- friedman.test(df_ENSG_batch_wide)
+```
+
+
+
+
+## Between individuals
+
+
+```{r}
+# select_batch <- with(df_plot, 1:dim(df_plot)[1] %in% grep("NA19098", batch) )
+# select_ENSG <- with(df_plot, !is_ERCC )
+# df_ENSG_batch <- df_plot[select_batch & select_ENSG, ]
+# id_string <- strsplit(as.character(df_ENSG_batch$batch), split = ".", fix = TRUE)
+# df_ENSG_batch$individual <- do.call(c, lapply(id_string, "[[", 1) )
+# df_ENSG_batch$rep <- do.call(c, lapply(id_string, "[[", 2) )
+# df_ENSG_batch_wide <- 
+#   do.call( cbind, lapply(c("r1", "r2", "r3"), 
+#                       function(per_rep) {
+#                           is_batch <- 1:dim(df_ENSG_batch)[1] %in% grep(per_rep, df_ENSG_batch$batch)
+#                           df_ENSG_batch[is_batch, ]$log10cv2_adj
+#                       })
+#           )
+# colnames(df_ENSG_batch_wide) <- paste0("NA19098.", c("r1", "r2", "r3"))
+
+# select_batch <- with(df_plot, 1:dim(df_plot)[1] %in% grep("NA19098", batch) )
+select_ENSG <- with(df_plot, !is_ERCC )
+df_ENSG <- df_plot[select_ENSG, ]
+id_string <- strsplit(as.character(df_ENSG$batch), split = ".", fix = TRUE)
+df_ENSG$individual <- factor( do.call(c, lapply(id_string, "[[", 1) ) )
+df_ENSG$rep <- factor( do.call(c, lapply(id_string, "[[", 2) ) )
+
+fit <- friedman.test(df_ENSG$log10cv2_adj, df_ENSG$individual, df_ENSG$rep)
+```
+
+
+## Session information
+
+```{r info}
+sessionInfo()
+```
