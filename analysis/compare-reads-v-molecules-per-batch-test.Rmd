@@ -33,6 +33,7 @@ Next we compared variances of the conversion rates between batches within each i
 ```{r packages, message=FALSE}
 library("dplyr")
 library("ggplot2")
+library("cowplot")
 theme_set(theme_bw(base_size = 16))
 library("edgeR")
 source("functions.R")
@@ -85,19 +86,40 @@ total_counts_ENSG$conversion <- with(total_counts_ENSG,
 summary(total_counts_ENSG)
 ```
 
+```{r plot-convertion}
+## create a color palette with one color per individual and different shades for repplicates
+great_color <- c("#CC3300", "#FFCC99", "#006633", "#009900", "#99FF99", "#3366FF", "#6699FF", "#66CCFF")
+
+depth_plot_ensg <- ggplot(data.frame(total_counts_ENSG,
+                  batch = anno_filter$batch), 
+       aes(x = total_reads/10^6, y = total_molecules/10^3, col = factor(batch))) +
+  geom_point() +
+  scale_color_manual(values = great_color) +
+  labs(x = "Total number of reads (x10^6)",
+       y = "Total number of molecules (x10^3)",
+       title = "Effect of read depth on single cells (genes)")
+
+depth_plot_ensg
+
+depth_plot_ercc <- ggplot(data.frame(total_counts_ERCC,
+                  batch = anno_filter$batch), 
+       aes(x = total_reads/10^6, y = total_molecules/10^3, col = factor(batch))) +
+  geom_point() +
+  scale_color_manual(values = great_color) +
+  labs(x = "Total number of reads (x10^6)",
+       y = "Total number of molecules (x10^3)",
+       title = "Effect of read depth on single cells (ERCC spike-in)")
+
+depth_plot_ercc
+```
+
 
 ## Compare variances of conversion rates between batches
 
 ### ENSG
 
-```{r color}
-## create a color palette with one color per individual and different shades for repplicates
-great_color <- c("#CC0033", "#FF99CC", "#006633", "#009900", "#99FFCC", "#3366FF", "#6699FF", "#66CCFF")
-```
-
-
 ```{r}
-ggplot(data.frame(total_counts_ENSG,
+convertion_ensg <- ggplot(data.frame(total_counts_ENSG,
                   batch = anno_filter$batch),
        aes(x = factor(batch), y = conversion,
            fill = factor(batch)), height = 600, width = 2000) +
@@ -106,6 +128,8 @@ geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
   scale_fill_manual(values = great_color) +
 labs(x = "batch", y = "conversion rate", title = "ENSG batch effect of conversion rate") +
 theme(axis.text.x = element_text(hjust=1, angle = 45))
+
+convertion_ensg
 ```
 
 
@@ -158,7 +182,7 @@ for (i in 1:length(unique(anno_filter$individual))) {
 ### ERCC
 
 ```{r}
-ggplot(data.frame(total_counts_ERCC,
+convertion_ercc <- ggplot(data.frame(total_counts_ERCC,
                   batch = anno_filter$batch),
        aes(x = factor(batch), y = conversion,
            fill = factor(batch)), height = 600, width = 2000) +
@@ -167,6 +191,8 @@ geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
   scale_fill_manual(values = great_color) +
 labs(x = "batch", y = "conversion rate", title = "ERCC batch effect of conversion rate") +
 theme(axis.text.x = element_text(hjust=1, angle = 45))
+
+convertion_ercc
 ```
 
 
@@ -227,7 +253,7 @@ grid.arrange(
   geom_violin(alpha = .5) + 
   geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
     scale_fill_manual(values = great_color) +
-  labs(x = "batch", y = "conversion rate", title = "ERCC batch effect of conversion rate") +
+  labs(x = "batch", y = "conversion rate", title = "Batch effect of conversion rate (ERCC spike-in)") +
   theme(axis.text.x = element_text(hjust=1, angle = 45))
   ,
   ggplot(data.frame(total_counts_ENSG,
@@ -237,13 +263,21 @@ grid.arrange(
   geom_violin(alpha = .5) + 
   geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
     scale_fill_manual(values = great_color) +
-  labs(x = "batch", y = "conversion rate", title = "ENSG batch effect of conversion rate") +
+  labs(x = "batch", y = "conversion rate", title = "Batch effect of conversion rate (genes)") +
   theme(axis.text.x = element_text(hjust=1, angle = 45)),
   ncol = 2
 )
 
 ```
 
+```{r plot-reads-molecule, fig.width=12, fig.height=8}
+theme_set(theme_bw(base_size = 8))
+plot_grid(depth_plot_ensg + theme(legend.position = "none"), 
+          convertion_ensg + theme(legend.position = "none"),
+          depth_plot_ercc + theme(legend.position = "none"),
+          convertion_ercc + theme(legend.position = "none"),
+          labels = LETTERS[1:4])
+```
 
 ## Session information
 
