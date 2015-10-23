@@ -48,13 +48,6 @@ Input read counts.
 ```{r input-read-counts}
 reads <- read.table("../data/reads.txt", header = TRUE,
                     stringsAsFactors = FALSE)
-
-reads_bulk <- read.table("../data/reads-bulk.txt", header = TRUE,
-                    stringsAsFactors = FALSE)
-
-reads_bulk_cpm <- read.table("../data/reads-bulk-cpm.txt", header = TRUE,
-                    stringsAsFactors = FALSE)
-
 ```
 
 Input molecule counts.
@@ -94,6 +87,27 @@ stopifnot(dim(reads) == dim(molecules),
           nrow(anno) == ncol(molecules_per_lane))
 ```
 
+Remove genes with zero read or molecule counts in the single cell or bulk samples.
+
+```{r remove-non-expressed-genes}
+expressed <- rowSums(reads[anno$well == "bulk"]) > 0 &
+             rowSums(reads[anno$well != "bulk"]) > 0 &
+             rowSums(molecules[anno$well == "bulk"]) > 0 &
+             rowSums(molecules[anno$well != "bulk"]) > 0
+reads <- reads[expressed, ]
+molecules <- molecules[expressed, ]
+molecules_per_lane <- molecules_per_lane[expressed, ]
+```
+
+## Sequencing depth 
+
+Calculate the number of reads per molecule of each gene in each cell.
+
+```{r seq-depth}
+reads_per_molecule <- as.matrix(reads/molecules)
+hist(reads_per_molecule, breaks=100)
+plot(density(reads_per_molecule, na.rm = TRUE))
+```
 
 ## Calculate counts per million (cpm)
 
@@ -138,9 +152,7 @@ mean_data$type <- ifelse(grepl("ERCC", rownames(mean_data)), "ERCC", "gene")
 ggplot(mean_data, aes(x = reads_cpm, y = molecules)) +
   geom_point() +
   geom_smooth(method = "lm") +
-  facet_wrap(~ type) +
-  scale_x_log10() +
-  scale_y_log10()
+  facet_wrap(~ type)
 ```
 
 There are only a few genes with molecule counts greater than the number of UMIs.
@@ -156,9 +168,7 @@ ggplot(mean_data, aes(x = reads_cpm, y = molecules)) +
   geom_point() +
   geom_smooth(method = "lm") +
   facet_wrap(~ type) +
-  ylim(0, 1100) +
-  scale_x_log10() +
-  scale_y_log10()
+  ylim(0, 1100)
 ```
 
 
@@ -166,9 +176,7 @@ ggplot(mean_data, aes(x = reads_cpm, y = molecules)) +
 ggplot(mean_data, aes(x = reads_cpm, y = molecules_per_lane)) +
   geom_point() +
   geom_smooth(method = "lm") +
-  facet_wrap(~ type) +
-  scale_x_log10() +
-  scale_y_log10()
+  facet_wrap(~ type)
 ```
 
 The molecule counts and the molecule counts summed per sequencing lane are highly correlated.
@@ -178,9 +186,7 @@ This indicates that most of the bias is introduced in the library preparation st
 ggplot(mean_data, aes(x = molecules_per_lane, y = molecules)) +
   geom_point() +
   geom_smooth(method = "lm") +
-  facet_wrap(~ type) +
-  scale_x_log10() +
-  scale_y_log10()
+  facet_wrap(~ type)
 ```
 
 ## Effect of sequencing depth on molecule count
@@ -196,19 +202,27 @@ Does the total number of molecules per sample vary with the total number of read
 If it is not necessary to standardize the molecule counts, the molecule counts should be consistent across varying read depths.
 
 ```{r total-mol-v-reads-single, fig.width=8, fig.height=8}
-anno_single <- anno[anno$well != "bulk",]
 total_counts_data <- data.frame(total_reads = colSums(reads) / 10^6,
                                 total_molecules = colSums(molecules) / 10^3,
-                                anno_single)
+                                anno)
 str(total_counts_data)
 total_counts_single <- ggplot(total_counts_data[total_counts_data$well != "bulk", ],
                               aes(x = total_reads, y = total_molecules)) +
-  geom_point(aes(col = as.factor(individual), shape = as.factor(replicate))) +
+  geom_point(aes(col = as.factor(individual), shape = as.factor(batch))) +
   geom_smooth(method = "lm") +
   labs(x = "Total number of reads (x10^6)",
        y = "Total number of molecules (x10^3)",
        title = "Effect of read depth on single cells")
 total_counts_single
+```
+
+```{r total-mol-v-reads-bulk}
+total_counts_bulk <- total_counts_single %+%
+  total_counts_data[total_counts_data$well == "bulk", ] +
+  labs(x = "Total number of reads (x10^6)",
+       y = "Total number of molecules (x10^3)",
+       title = "Effect of read depth on bulk samples")
+total_counts_bulk
 ```
 
 So this is clearly not the case.
@@ -217,7 +231,7 @@ Perhaps in the ideal case where all the cells are sequenced to saturation, then 
 Also, there is a difference in total molecule count between the three individuals.
 
 ```{r total-molecules-by-ind}
-total_molecules_ind <- ggplot(total_counts_data,
+total_molecules_ind <- ggplot(total_counts_data[total_counts_data$well != "bulk", ],
                               aes(x = as.factor(individual), y = total_molecules)) +
   geom_boxplot(aes(fill = as.factor(batch))) +
   scale_fill_brewer(type = "qual", palette = "Dark2", name ="Batch") +
@@ -240,7 +254,7 @@ There is a clear difference between individuals.
 Is there a difference between the full 9 batches?
 
 ```{r total-mol-v-reads-single-9-batches, fig.width=8, fig.height=8}
-total_counts_single_batch <- ggplot(total_counts_data,
+total_counts_single_batch <- ggplot(total_counts_data[total_counts_data$well != "bulk", ],
                               aes(x = total_reads, y = total_molecules,
                                   col = paste(individual, batch, sep = "."))) +
   geom_point() +
@@ -255,7 +269,7 @@ It is diffcult to see when all 9 are plotted at once.
 Here are the batches split by individual.
 
 ```{r total-mol-v-reads-single-per-ind, fig.width=8, fig.height=24}
-total_counts_single_ind <- ggplot(total_counts_data,
+total_counts_single_ind <- ggplot(total_counts_data[total_counts_data$well != "bulk", ],
                               aes(x = total_reads, y = total_molecules)) +
   geom_point(aes(color = as.factor(batch))) +
   facet_wrap(~individual, nrow = 3) +
