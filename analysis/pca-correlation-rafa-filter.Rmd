@@ -1,0 +1,217 @@
+---
+title: "Proportion of gene detected after filter"
+author: "PoYuan Tung"
+date: 2015-10-23
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+```
+
+The purpose is to see if removing the lowly expressed genes or using the final data (after correction of batch effect) would have any effect on the correltaion of PC1 and proportion of gene detected. 
+
+## Setup
+```{r}
+source("functions.R")
+library("edgeR")
+library(ggplot2)
+library("cowplot")
+theme_set(theme_bw(base_size = 16))
+```
+
+## Prepare single cell molecule data
+
+Input annotation
+
+```{r anno}
+anno <- read.table("../data/annotation.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+
+anno_filter <- read.table("../data/annotation-filter.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+```
+
+Input molecule counts
+
+```{r molecule}
+molecules <- read.table("../data/molecules.txt", header = TRUE,
+           stringsAsFactors = FALSE)
+
+molecules_filter <- read.table("../data/molecules-filter.txt", header = TRUE,
+           stringsAsFactors = FALSE)
+
+molecules_final <- read.table("../data/molecules-final.txt", header = TRUE,
+           stringsAsFactors = FALSE)
+
+## qc cell
+molecules_qc <- molecules[,colnames(molecules_filter)]
+stopifnot(anno_filter$sample_id == colnames(molecules_qc))
+```
+
+Input read counts
+
+```{r reads}
+reads <- read.table("../data/reads.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+
+reads_filter <- read.table("../data/reads-filter.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+## qc cell
+reads_qc <- reads[,colnames(reads_filter)]
+stopifnot(anno_filter$sample_id == colnames(reads_qc))
+```
+
+## Molecule count data
+
+First look at the data set before removing lowly expressed genes (genes with low counts)
+
+Remove genes with zero count in the single cells
+```{r}
+expressed_single <- rowSums(molecules_qc) > 0
+molecules_single <- molecules_qc[which(expressed_single), ]
+reads_single <- reads_qc[expressed_single, ]
+```
+
+```{r mol-non-filtered}
+require(matrixStats)
+number_nonzero_cells <- colSums(molecules_single != 0)
+number_genes <- dim(molecules_single)[1]
+molecules_prop_genes_detected <- 
+    data.frame(prop = number_nonzero_cells/number_genes,
+               individual = anno_filter$individual,
+               individual.batch = anno_filter$batch)
+
+## create a color palette with one color per individual and different shades for repplicates
+great_color <- c("#CC3300", "#FF9966", "#FFCC99", "#006633", "#009900", "#99FF99", "#3366FF", "#6699FF", "#66CCFF")
+
+genes_detected_plot <- ggplot(molecules_prop_genes_detected,
+                       aes(y = prop, x = as.factor(individual.batch), fill = as.factor(individual.batch))) + 
+                       geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+                       geom_violin(alpha = .5) + 
+                       scale_fill_manual(values = great_color) +
+                       labs(x = "Batch",
+                       y = "Proportion of detected genes",
+                       title = "Proportion of detected genes") +
+                       theme(axis.text.x = element_text(hjust=1, angle = 45))
+
+genes_detected_plot
+```
+
+Principal component analysis on log2 transformed values. We avoid log of 0's
+by add 1's. In addition, our PCA analysis requires that every gene needs
+to be present in at least one of the cells.
+
+```{r pca}
+molecules_single_log2_pca <- run_pca( log2( molecules_single + 1 ) )
+
+pc1_plot <- qplot(y = molecules_single_log2_pca$PCs[,1],
+      x = molecules_prop_genes_detected$prop,
+      shape = as.factor(anno_filter$replicate),
+      colour = as.factor(anno_filter$individual),
+      xlab = "Proportion of genes detected",
+      ylab = "PC1",
+      title = "Proportion of genes detected") 
+
+pc1_plot
+
+qplot(y = molecules_single_log2_pca$PCs[,2],
+      x = molecules_prop_genes_detected$prop,
+      shape = as.factor(anno_filter$replicate),
+      colour = as.factor(anno_filter$individual),
+      xlab = "Proportion of genes detected",
+      ylab = "PC2") 
+```
+
+## Molecule count data after filtering
+
+```{r mol-filtered}
+require(matrixStats)
+number_nonzero_cells_filter <- colSums(molecules_filter != 0)
+number_genes_filter <- dim(molecules_filter)[1]
+molecules_prop_genes_detected_filter <- 
+    data.frame(prop = number_nonzero_cells_filter/number_genes_filter,
+               individual = anno_filter$individual,
+               individual.batch = anno_filter$batch)
+
+genes_detected_filter_plot <- ggplot(molecules_prop_genes_detected_filter,
+                              aes(y = prop, x = as.factor(individual.batch), fill = as.factor(individual.batch))) + 
+                              geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+                              geom_violin(alpha = .5) + 
+                              scale_fill_manual(values = great_color) +
+                              labs(x = "Batch",
+                              y = "Proportion of detected genes",
+                              title = "Proportion of detected genes (filtered)") +
+                              theme(axis.text.x = element_text(hjust=1, angle = 45))
+
+genes_detected_filter_plot
+```
+
+```{r pca-filter}
+molecules_filter_log2_pca <- run_pca( log2( molecules_filter + 1 ) )
+
+pc1_filter_plot <- qplot(y = molecules_filter_log2_pca$PCs[,1],
+      x = molecules_prop_genes_detected_filter$prop,
+      shape = as.factor(anno_filter$replicate),
+      colour = as.factor(anno_filter$individual),
+      xlab = "Proportion of genes detected (filter)",
+      ylab = "PC1",
+      title = "Proportion of genes detected (filter)") 
+
+pc1_filter_plot
+
+qplot(y = molecules_filter_log2_pca$PCs[,2],
+      x = molecules_prop_genes_detected$prop,
+      shape = as.factor(anno_filter$replicate),
+      colour = as.factor(anno_filter$individual),
+      xlab = "Proportion of genes detected (filter)",
+      ylab = "PC2") 
+```
+
+## Molecule count data final
+
+```{r pca-final}
+molecules_final_pca <- run_pca(molecules_final)
+
+pc1_final_plot <- qplot(y = molecules_final_pca$PCs[,1],
+      x = molecules_prop_genes_detected_filter$prop,
+      shape = as.factor(anno_filter$replicate),
+      colour = as.factor(anno_filter$individual),
+      xlab = "Proportion of genes detected (final)",
+      ylab = "PC1",
+      title = "Proportion of genes detected (final)") 
+
+pc1_final_plot
+
+qplot(y = molecules_filter_log2_pca$PCs[,2],
+      x = molecules_prop_genes_detected$prop,
+      shape = as.factor(anno_filter$replicate),
+      colour = as.factor(anno_filter$individual),
+      xlab = "Proportion of genes detected (filter)",
+      ylab = "PC2") 
+```
+
+## Summary plots
+
+```{r sum-plots, fig.width=12, fig.height=8}
+theme_set(theme_bw(base_size = 8))
+plot_grid(genes_detected_plot + theme(legend.position = "none"),
+          genes_detected_filter_plot + theme(legend.position = "none"),
+          labels = LETTERS[1:2])
+
+plot_grid(pc1_plot + theme(legend.position = "none"),
+          pc1_filter_plot + theme(legend.position = "none"),
+          pc1_final_plot + theme(legend.position = "none"),
+          labels = LETTERS[3:5])
+
+```
+
+
+## Session information
+
+```{r info}
+sessionInfo()
+```
