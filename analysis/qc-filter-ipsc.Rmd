@@ -1,0 +1,238 @@
+---
+title: "QC of single cell libraries"
+author: "PoYuan Tung"
+date: 2015-10-23
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+opts_chunk$set(fig.width = 8, fig.height = 8)
+```
+
+## Input
+
+```{r packages, message=FALSE}
+library("dplyr")
+library("edgeR")
+library("ggplot2")
+library("cowplot")
+theme_set(theme_bw(base_size = 16))
+source("functions.R")
+```
+
+Summary counts from featureCounts.
+Created with [gather-summary-counts.py](https://github.com/jdblischak/singleCellSeq/blob/master/code/gather-summary-counts.py).
+These data were collected from the summary files of the full combined samples.
+
+```{r input-summary-counts}
+summary_counts <- read.table("../data/summary-counts.txt", header = TRUE,
+                             stringsAsFactors = FALSE)
+```
+
+Currently this file only contains data from sickle-trimmed reads, so the code below simply ensures this and then removes the column.
+
+```{r clean-summary-counts}
+summary_per_sample <- summary_counts %>%
+  filter(sickle == "quality-trimmed") %>%
+  dplyr :: select(-sickle) %>%
+  arrange(individual, batch, well, rmdup) %>%
+  as.data.frame
+
+summary_per_sample_single <- summary_per_sample[summary_per_sample$well != "bulk", ]
+```
+
+Input annotation.
+
+```{r input-annotation}
+anno <- read.table("../data/annotation.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno)
+anno_single <- anno[anno$well != "bulk",]
+```
+
+Input read counts.
+
+```{r input-read-counts}
+reads <- read.table("../data/reads.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+```
+
+Input molecule counts.
+
+```{r input-molecule-counts}
+molecules <- read.table("../data/molecules.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+```
+
+Input single cell observational quality control data.
+
+```{r input-qc}
+qc <- read.table("../data/qc-ipsc.txt", header = TRUE,
+                 stringsAsFactors = FALSE)
+head(qc)
+```
+
+## Total ERCC and removal of 19098.r2
+
+Show the evidence that removing 19098 batch 2 is the first thing to do.
+
+```{r sad-ercc}
+summary_per_sample_single_reads <- summary_per_sample_single[summary_per_sample_single$rmdup == "reads",]
+
+summary_per_sample_single_reads$sample_id <- anno_single$sample_id
+summary_per_sample_single_reads$batch_9 <- anno_single$batch
+stopifnot(colnames(reads) == summary_per_sample_single_reads$sample_id )
+
+summary_per_sample_single_reads$ERCC_reads <- apply(reads[grep("ERCC", rownames(reads)), ],2,sum)
+summary_per_sample_single_reads$ERCC_molecules <- apply(reads[grep("ERCC", rownames(molecules)), ],2,sum)
+```
+
+```{r sad-ercc-plot, fig.width=12, fig.height=8}
+## create a color palette with one color per individual and different shades for repplicates
+great_color <- c("#CC3300", "#FF9966", "#FFCC99", "#006633", "#009900", "#99FF99", "#3366FF", "#6699FF", "#66CCFF")
+
+ercc_reads_plot <- ggplot(summary_per_sample_single_reads,
+                   aes(x = factor(batch_9), y = ERCC_reads,
+                   fill = factor(batch_9)), height = 600, width = 2000) +
+                   geom_violin(alpha = .5) + 
+                   geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+                   scale_fill_manual(values = great_color) + 
+                   labs(x = "batch", y = "ERCC reads", title = "Total ERCC read counts per cell") +
+                   theme(axis.text.x = element_text(hjust=1, angle = 45))
+
+ercc_molecule_plot <- ggplot(summary_per_sample_single_reads,
+                   aes(x = factor(batch_9), y = ERCC_molecules,
+                   fill = factor(batch_9)), height = 600, width = 2000) +
+                   geom_violin(alpha = .5) + 
+                   geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+                   scale_fill_manual(values = great_color) + 
+                   labs(x = "batch", y = "ERCC molecules", title = "Total ERCC molecule counts per cell") +
+                   theme(axis.text.x = element_text(hjust=1, angle = 45))
+
+theme_set(theme_bw(base_size = 8))
+plot_grid(ercc_reads_plot + theme(legend.position = "none"),
+          ercc_molecule_plot + theme(legend.position = "none"),
+          labels = LETTERS[1:2])
+```
+
+Remove 19098r2 for all the following analysis
+```{r remove-19098r2}
+remove_19098r2 <- anno_single$batch != "NA19098.r2"
+anno_single_rm <- anno_single[remove_19098r2,]
+summary_per_sample_single_reads_rm <- summary_per_sample_single_reads[remove_19098r2,]
+reads_rm <- reads[, remove_19098r2]
+molecules_rm <- molecules[, remove_19098r2]
+
+stopifnot(summary_per_sample_single_reads_rm$sample_id == colnames(reads_rm))
+```
+
+## Total mapped reads reads
+
+```{r total reads}
+## add cell number per well by merging qc file
+summary_per_sample_reads_single_qc <- merge(summary_per_sample_single_reads_rm,qc,by=c("individual","batch","well"))
+
+## calculate total mapped reads per sample
+summary_per_sample_reads_single_qc$total_mapped <- apply(summary_per_sample_reads_single_qc[,5:8],1,sum)
+
+## density plots
+ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0 |
+                                           summary_per_sample_reads_single_qc$cell_number == 1 , ],
+       aes(x = total_mapped, fill = as.factor(cell_number))) + 
+       geom_density(alpha = 0.5) +
+       labs(x = "total mapped reads", title = "Total mappred reads")
+```
+
+## Unmapped ratios
+```{r unmapped ratios}
+## calculate unmapped ratios
+summary_per_sample_reads_single_qc$unmapped_ratios <- summary_per_sample_reads_single_qc[,9]/apply(summary_per_sample_reads_single_qc[,5:13],1,sum)
+
+## density plots
+ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0 |
+                                           summary_per_sample_reads_single_qc$cell_number == 1 , ],
+       aes(x = unmapped_ratios, fill = as.factor(cell_number))) + 
+       geom_density(alpha = 0.5) +
+       labs(x = "unmapped reads/ total reads", title = "Unmapped reads")
+```
+
+## Total molecule counts
+```{r total-mol}
+## calculate total gene molecule counts
+summary_per_sample_reads_single_qc$total_gene_molecule <- colSums(molecules_rm[grep("ENSG", rownames(molecules_rm)),])
+
+## look for outiers
+ggplot(summary_per_sample_reads_single_qc, aes(x = concentration, y = total_gene_molecule / 10^3,
+  color = as.factor(cell_number))) +
+  geom_text(aes(label = cell_number)) +
+  labs(x = "Concentration", y = "", title = "Gene molecules (thousands)") +
+  scale_color_brewer(palette = "Dark2") +
+  theme(legend.position = "none")
+
+outliers <- summary_per_sample_reads_single_qc %>% filter(cell_number == 1, concentration < 1.25, concentration > .15,
+                                   total_gene_molecule > 140000)
+outliers %>% dplyr::select(sample_id)
+```
+
+
+## ERCC percentage 
+```{r ercc-percentage}
+## calculate ercc reads percentage
+summary_per_sample_reads_single_qc$ercc_percentage <- apply(reads_rm[grep("ERCC", rownames(reads_rm)), ],2,sum)/apply(summary_per_sample_reads_single_qc[,5:8],1,sum) 
+
+## density plots
+ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0 |
+                                           summary_per_sample_reads_single_qc$cell_number == 1 , ],
+       aes(x = ercc_percentage, fill = as.factor(cell_number))) + 
+       geom_density(alpha = 0.5) +
+       labs(x = "ERCC reads / total mapped reads", title = "ERCC reads percentage")
+```
+
+## Mitochondrial genes
+```{r mito-gene}
+## endogenous genes
+reads_rm_gene <- reads_rm[grep("ENSG", rownames(reads_rm)), ]
+
+## create a list of mitochondrial genes (13 protein-coding genes)
+## MT-ATP6, MT-CYB, MT-ND1, MT-ND4, MT-ND4L, MT-ND5, MT-ND6, MT-CO2, MT-CO1, MT-ND2, MT-ATP8, MT-CO3, MT-ND3
+mtgene <- c("ENSG00000198899", "ENSG00000198727", "ENSG00000198888", "ENSG00000198886", "ENSG00000212907", "ENSG00000198786", "ENSG00000198695", "ENSG00000198712", "ENSG00000198804", "ENSG00000198763","ENSG00000228253", "ENSG00000198938", "ENSG00000198840")
+
+## reads of mt genes in single cells
+mt_reads <- reads_rm_gene[mtgene,]
+dim(mt_reads)
+
+## mt ratio of single cell
+summary_per_sample_reads_single_qc$mt_reads_ratio <- apply(mt_reads, 2, sum)/summary_per_sample_reads_single_qc$total_mapped
+
+## density plots
+ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0 |
+                                           summary_per_sample_reads_single_qc$cell_number == 1 , ],
+       aes(x = mt_reads_ratio, fill = as.factor(cell_number))) + 
+       geom_density(alpha = 0.5) +
+       labs(x = "mitochondrial gene reads / total reads", title = "Mitochondrial gene reads ratios")
+```
+
+## Number of genes detected 
+```{r gene-number}
+## number of genes detected 
+summary_per_sample_reads_single_qc$gene_number <- colSums(reads_rm_gene >= 1)
+
+## density plots
+ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0 |
+                                           summary_per_sample_reads_single_qc$cell_number == 1 , ],
+       aes(x = gene_number, fill = as.factor(cell_number))) + 
+       geom_density(alpha = 0.5) +
+       labs(x = "gene numbers detected", title = "Numbers of detected genes")
+```
+
+
+## Session information
+
+```{r info}
+sessionInfo()
+```
+
