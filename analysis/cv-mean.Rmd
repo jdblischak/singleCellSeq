@@ -1,7 +1,7 @@
 ---
-title: "Individual differences in CV and mean"
+title: "Per gene individual differences in CV and mean"
 author: "Joyce Hsiao"
-date: 2015-10-13
+date: 2015-10-21
 ---
 
 **Last updated:** `r Sys.Date()`
@@ -23,7 +23,7 @@ Previously, we compared normalized coefficient of variations across individuals.
 
 It would be interesting to learn the possible overlap or non-overlap between the genes that we observed significant individual differences in coefficient of variations versus those different in mean gene expression levels across cells.
 
-
+From here on we will work with the filtered data without NA19098.r2. 
 
 ## Set up
 
@@ -40,125 +40,145 @@ source("functions.R")
 
 
 
+## Objective
+
+Previously, we used the entire set of data including all individuals and all batches to perform normalization of coefficient of variations ([link1]) and performed 
+
+In this document, we wil perform per gene differential analysis of coefficients of variations using only coefficients of variation from ENSG genes and also from QC-approved batches (no NA19098.r2).
+
+[link1]: http://jdblischak.github.io/singleCellSeq/analysis/cv-adjusted.html
+
+
+## Set up
+
+```{r, message=FALSE, warning=FALSE}
+library("data.table")
+library("dplyr")
+library("limma")
+library("edgeR")
+library("ggplot2")
+library("grid")
+library("zoo")
+theme_set(theme_bw(base_size = 12))
+source("functions.R")
+```
+
+
+
 ## Prepare data
 
-
-Input annotation of only QC-filtered single cells
+Input annotation of only QC-filtered single cells. Remove NA19098.r2
 
 ```{r}
 anno_qc <- read.table("../data/annotation-filter.txt", header = TRUE,
                    stringsAsFactors = FALSE)
-head(anno_qc)
+is_include <- anno_qc$batch != "NA19098.r2"
+anno_qc_filter <- anno_qc[which(is_include), ]
+```
+
+Import endogeneous gene molecule counts that are QC-filtered, CPM-normalized, ERCC-normalized, and also processed to remove unwanted variation from batch effet. ERCC genes are removed from this file.
+
+```{r}
+molecules_ENSG <- read.table("../data/molecules-final.txt", header = TRUE, stringsAsFactors = FALSE)
+molecules_ENSG <- molecules_ENSG[ , is_include]
+```
+
+Input moleclule counts before log2 CPM transformation. This file is used to compute percent zero-count cells per sample.
+
+```{r}
+molecules_sparse <- read.table("../data/molecules-filter.txt", header = TRUE, stringsAsFactors = FALSE)
+
+molecules_sparse <- molecules_sparse[grep("ENSG", rownames(molecules_sparse)), ]
+stopifnot( all.equal(rownames(molecules_ENSG), rownames(molecules_sparse)) )
 ```
 
 
-Input molecule counts that are filtered, transformed, and also processed to remove unwanted variation from batch effet. ERCC genes are also removed.
+## Normalize coefficient of variation
+
+Compute coefficient of variation.
 
 ```{r}
-molecules_qc <- read.table("../data/molecules-final.txt", header = TRUE, stringsAsFactors = FALSE)
-```
+# Compute CV and mean of normalized molecule counts (take 2^(log2-normalized count))
 
-
-Input moleclule counts before log2 CPM transformation.
-
-```{r}
-molecules_filter <- read.table("../data/molecules-filter.txt", header = TRUE, stringsAsFactors = FALSE)
-molecules_filter <- molecules_filter[which(rownames(molecules_filter) %in% rownames(molecules_qc)), ]
-
-stopifnot(dim(molecules_filter) == dim(molecules_qc))
-```
-
-
-## Compare coefficient of variation
-
-Compute per batch coefficient of variation.
-
-Include only genes with positive coefficient of variation. Some genes in this data may have zero coefficient of variation, because we include gene with more than 0 count 
-across all cells.
-
-```{r}
-molecules_cv_batch <- 
-  lapply(1:length(unique(anno_qc$batch)), function(per_batch) {
-      molecules_per_batch <- 2^molecules_qc[ , unique(anno_qc$batch) == unique(anno_qc$batch)[per_batch] ]
+molecules_cv_batch_ENSG <- 
+  lapply(1:length(unique(anno_qc_filter$batch)), function(per_batch) {
+      molecules_per_batch <- 2^molecules_ENSG[ , unique(anno_qc_filter$batch) == unique(anno_qc_filter$batch)[per_batch] ]
       mean_per_gene <- apply(molecules_per_batch, 1, mean, na.rm = TRUE)
       sd_per_gene <- apply(molecules_per_batch, 1, sd, na.rm = TRUE)
       cv_per_gene <- data.frame(mean = mean_per_gene,
                                 sd = sd_per_gene,
                                 cv = sd_per_gene/mean_per_gene)
-      rownames(cv_per_gene) <- rownames(molecules_qc)
+      rownames(cv_per_gene) <- rownames(molecules_ENSG)
   
-      cv_per_gene <- cv_per_gene[rowSums(is.na(cv_per_gene)) == 0, ]
-      cv_per_gene$batch <- unique(anno_qc$batch)[per_batch]
+      # cv_per_gene <- cv_per_gene[rowSums(is.na(cv_per_gene)) == 0, ]
+      cv_per_gene$batch <- unique(anno_qc_filter$batch)[per_batch]
       
       # Add sparsity percent
-      molecules_count <- molecules_filter[ , unique(anno_qc$batch) == unique(anno_qc$batch)[per_batch]]
-      cv_per_gene$sparse <- rowMeans(as.matrix(molecules_count) == 0)
+      molecules_sparse_per_batch <- molecules_sparse[ , unique(anno_qc_filter$batch) == unique(anno_qc_filter$batch)[per_batch]]
+      cv_per_gene$sparse <- rowMeans(as.matrix(molecules_sparse_per_batch) == 0)
         
       return(cv_per_gene)
       }) 
-names(molecules_cv_batch) <- unique(anno_qc$batch)
-
-dim(molecules_cv_batch[[1]])
+names(molecules_cv_batch_ENSG) <- unique(anno_qc_filter$batch)
 ```
-
 
 Merge summary data.frames.
 
 ```{r}
-df_plot <- do.call(rbind, molecules_cv_batch)
+df_ENSG <- do.call(rbind, molecules_cv_batch_ENSG)
 ```
 
-Compute rolling medians.
-
+Compute rolling medians across all samples.
 
 ```{r}
 library(zoo)
 # Compute a data-wide coefficient of variation on CPM normalized counts.
-data_cv <- apply(2^molecules_qc, 1, sd)/apply(2^molecules_qc, 1, mean)
+data_cv_ENSG <- apply(2^molecules_ENSG, 1, sd)/apply(2^molecules_ENSG, 1, mean)
 
 # Order of genes by mean expression levels
-order_gene <- order(apply(2^molecules_qc, 1, mean))
+order_gene <- order(apply(2^molecules_ENSG, 1, mean))
 
 # Rolling medians of log10 squared CV by mean expression levels
-roll_medians <- rollapply(log10(data_cv^2)[order_gene], width = 50, by = 25,
+roll_medians <- rollapply(log10(data_cv_ENSG^2)[order_gene], width = 50, by = 25,
                          FUN = median, fill = list("extend", "extend", "NA") )
 ii_na <- which( is.na(roll_medians) )
-roll_medians[ii_na] <- median( log10(data_cv^2)[order_gene][ii_na] )
+roll_medians[ii_na] <- median( log10(data_cv_ENSG^2)[order_gene][ii_na] )
 
-names(roll_medians) <- rownames(molecules_qc)[order_gene]
+names(roll_medians) <- rownames(molecules_ENSG)[order_gene]
+
 
 # re-order rolling medians
-reorder_gene <- match(rownames(molecules_qc), names(roll_medians) )
-head(reorder_gene)
+reorder_gene <- match(rownames(molecules_ENSG), names(roll_medians) )
 roll_medians <- roll_medians[ reorder_gene ]
 
-head(names(roll_medians))
-head(rownames(molecules_qc))
+stopifnot( all.equal(names(roll_medians), rownames(molecules_ENSG) ) )
 ```
+
 
 Compute adjusted coefficient of variation.
 
 ```{r}
 # adjusted coefficient of variation on log10 scale
-log10cv2_adj <- 
-  lapply(1:length(molecules_cv_batch), function(per_batch) {
-    foo <- log10(molecules_cv_batch[[per_batch]]$cv^2) - roll_medians
+log10cv2_adj_ENSG <- 
+  lapply(1:length(molecules_cv_batch_ENSG), function(per_batch) {
+    foo <- log10(molecules_cv_batch_ENSG[[per_batch]]$cv^2) - roll_medians
     return(foo)
 })
-df_plot$log10cv2_adj <- do.call(c, log10cv2_adj)
+df_ENSG$log10cv2_adj_ENSG <- do.call(c, log10cv2_adj_ENSG)
 ```
 
 
-Compare adjusted CVs
+## Compare coefficients of variations
 
 ```{r}
 library(limma)
 
-df_limma <- matrix(df_plot$log10cv2_adj, 
-                      nrow = nrow(molecules_qc), ncol = 9, byrow = FALSE)
+df_limma <- matrix(df_ENSG$log10cv2_adj_ENSG, 
+                      nrow = nrow(molecules_ENSG), ncol = 8, byrow = FALSE)
 
-design <- data.frame(individual = factor(rep(unique(anno_qc$individual), each = 3) ),
+design <- data.frame(individual = factor(rep(unique(anno_qc_filter$individual), each = 3) ),
                      rep = factor(rep(c(1:3), times = 3)) )
+design <- design[ with(design, !(individual == "NA19098" & rep == "2")), ]
 
 colnames(df_limma) <- with(design, paste0(individual, rep))
 
@@ -184,97 +204,31 @@ df_cuts$sig_count <- sapply(1:6, function(per_cut) {
 df_cuts
 ```
 
-## Compare mean expression levels.
 
-### Single-cell sequencing data
-
-Almost all of the genes came out to be statistically significant due the large sample size (about ~70 sample points per replicate, per individual).
-
+False discover control adjutment.
 
 ```{r}
-fit_limma_mean <- lmFit(molecules_qc, 
-                        design = model.matrix(~factor(individual), data = anno_qc) )
-
-fit_limma_mean <- eBayes(fit_limma_mean)
-
-summary(fit_limma_mean$F.p.value)
-```
-
-Histogram of p-values.
-
-```{r}
-hist(-log10(fit_limma_mean$F.p.value), 
-     main = "F-test p-values comparing mean expression", breaks = 100)
-```
-
-FDR 
-
-```{r}
-padj_mean_single <- p.adjust(fit_limma_mean$F.p.value, method = "fdr")
-summary(padj_mean_single)
-```
-
-Mean versus coefficient of variation comparisons
-
-```{r}
-plot(x = -log10(fit_limma_mean$F.p.value), 
-     y = -log10(fit_limma$F.p.value),
-     xlab = "-log10 F-test p-value comparing means",
-     ylab = "-log10 F-test p-value compare adjusted CV",
-     main = "Unadjusted F-test p-values")
-abline( h = -log10(.01), col = "red")
-
-
-plot(x = -log10(padj_mean_single), 
-     y = -log10(F.p.adj),
-     xlab = "-log10 FDR comparing means",
-     ylab = "-log10 FDSR compare adjusted CV",
-     main = "FDR")
-abline( h = -log10(.01), col = "red")
-abline( h = -log10(.05), col = "red")
+F.p.adj <- p.adjust(fit_limma$F.p.value, method = "fdr")
 ```
 
 
-Overlap of the significant genes
+### Squared CV vs. mean expression level
 
-*Adjusted p-value cut-offs
-
-```{r}
-cuts <- c(.001, .01, .05, .1, .15, .2)
-both_table <- lapply(1:6, function(per_cut) {
-                  table(F.p.adj < df_cuts$cuts[per_cut],
-                        padj_mean_single < df_cuts$cut[per_cut])
-              })
-names(both_table) <- cuts
-
-both_table
-```
-
-
-*Ranks of adjusted p-values
-
-
-```{r}
-plot(x = rank(-log10(padj_mean_single)), 
-     y = rank(-log10(F.p.adj)),
-     xlab = "rank of -log10 FDR comparing means",
-     ylab = "rank of -log10 FDR compare adjusted CV",
-     main = "FDR")
-```
-
+We plotted out per gene average CVs across samples versus average expression level for the endogeneous genes, and identified the genes classifed as significantly different between individuals in coefficients of variation.
 
 
 ```{r}
 df_compare <- 
   data.frame(mean = rowMeans( as.matrix( 
-                      do.call(cbind, lapply(molecules_cv_batch, "[[", 1) ) ) ),
+                      do.call(cbind, lapply(molecules_cv_batch_ENSG, "[[", 1) ) ) ),
              cv2 = rowMeans( as.matrix( 
-                      do.call(cbind, lapply(molecules_cv_batch, "[[", 3) ) )^2 ),
+                      do.call(cbind, lapply(molecules_cv_batch_ENSG, "[[", 3) ) )^2 ),
              adj_cv2 = rowMeans( 10^as.matrix( 
-                      do.call(cbind, log10cv2_adj) ) ) )
+                      do.call(cbind, log10cv2_adj_ENSG) ) ) )
              
 library(broman)
 crayon <- brocolors("crayons")
+par(mar=c(5,5,3,1))
 with(df_compare, plot(x = log10(mean), y = cv2, pch = 1, cex = 1, col = "grey50",
                       lwd = .5,
                       ylab = "average squared coeffcient of variations \n across samples",
@@ -291,8 +245,12 @@ legend("topright", pch = c(1, 16, 16, 16),
                   "Adj p-value < .1", "Adj p-value < .01"),
        col = c("grey50", crayon[c("Tumbleweed", "Orange", "Scarlet")]),
        bty = "n")
+```
 
 
+
+```{r}
+par(mar=c(5,5,3,1))
 with(df_compare, plot(x = log10(mean), y = adj_cv2, pch = 1, cex = 1, col = "grey50",
                       lwd = .5,
                       ylab = "average squared coeffcient of variations \n across samples",
@@ -312,46 +270,62 @@ legend("topright", pch = c(1, 16, 16, 16),
 ```
 
 
-Heatmap
+### Investigate...
 
-```{r}
-library(mygene)
-gene_symbols <- getGenes(rownames(molecules_qc), 
-                         fields = c("name", "symbol") ) [ , c("query", "symbol")]
-head(gene_symbols)
+```{r, fig.width = 12, fig.height=12}
+library(gridExtra)
+order_low_cv <- order(df_compare[F.p.adj < .01, ]$cv)
+low_plots <- lapply(1:6, function(i) {
+  ind <- order_low_cv[i]
+  ggplot(data.frame(values = unlist(molecules_ENSG[ind, ]),
+                    individual = factor(anno_qc_filter$individual),
+                    replicate = factor(anno_qc_filter$replicate),
+                    batch = factor(anno_qc_filter$batch), check.rows = F), 
+         aes(x = values)) + 
+    geom_density(aes(group = batch, col = individual)) + 
+    ggtitle(paste(rownames(molecules_ENSG)[ind],
+                  ";CV = ", round(df_compare[F.p.adj < .01, ]$cv[ind], 2) ) )
+})
+grid.arrange(grobs = low_plots, ncol = 2)
 ```
 
 
-```{r, fig.height=12, fig.width = 15}
-library(gplots)
-
-order_cv <- order(F.p.adj)[F.p.adj < .01]
-
-my_palette <- colorRampPalette(c("red", "yellow", "blue"))(n = 299)
-
-heatmap.2(as.matrix(molecules_qc[order_cv, ]), 
-          symm = FALSE, col = my_palette,
-          Colv = "NA", trace = "none", labRow = gene_symbols$symbol[ order_cv ])
+```{r, fig.width=12, fig.height=12}
+order_high_cv <- order(df_compare[F.p.adj < .01, ]$cv, decreasing = TRUE)
+high_plots <- lapply(1:6, function(i) {
+  ind <- order_high_cv[i]
+  ggplot(data.frame(values = unlist(molecules_ENSG[ind, ]),
+                    individual = factor(anno_qc_filter$individual),
+                    replicate = factor(anno_qc_filter$replicate),
+                    batch = factor(anno_qc_filter$batch), check.rows = F), 
+         aes(x = values)) + 
+    geom_density(aes(group = batch, col = individual)) + 
+    ggtitle(paste(rownames(molecules_ENSG)[ind],
+                  ";CV = ", round(df_compare[F.p.adj < .01, ]$cv[ind], 2) ) )
+})
+grid.arrange(grobs = high_plots, ncol = 2)
 ```
 
 
-Use a different method to get gene ID.
-
 ```{r}
+sig_cv <- order(F.p.adj)[F.p.adj < .05]
 library("biomaRt")
 ensembl <- useMart(host = "grch37.ensembl.org",
                    biomart = "ENSEMBL_MART_ENSEMBL",
                    dataset = "hsapiens_gene_ensembl")
 
 differential_CV_genes_info <- getBM(attributes = c("ensembl_gene_id", "chromosome_name",
-                                                 "external_gene_name", "transcript_count",
-                                                 "description"),
-                                  filters = "ensembl_gene_id",
-                                  values = rownames(molecules_qc[order_cv, ]),
-                                  mart = ensembl)
+                                                   "external_gene_name", "transcript_count",
+                                                   "description"),
+                                    filters = "ensembl_gene_id",
+                                    values = rownames(molecules_ENSG[sig_cv, ]),
+                                    mart = ensembl)
 
 differential_CV_genes_info
+# write.table(rownames(molecules_ENSG[sig_cv, ]), file = 
+# "~/Dropbox/temp.txt", row.names = FALSE, col.names = FALSE)
 ```
+
 
 Use [string analysis] data base to look for protein protein interaction of these differential CV genes.
 
