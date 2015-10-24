@@ -136,8 +136,8 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-10-21</p>
-<p><strong>Code version:</strong> 78afeddbcf288d337c42915e95f0d9a578030a08</p>
+<p><strong>Last updated:</strong> 2015-10-24</p>
+<p><strong>Code version:</strong> d99925d21498748ab56d2b7fc33447f186fe50ac</p>
 <div id="objective" class="section level2">
 <h2>Objective</h2>
 <p>Compute conversion rates of each cell using the filerted set of cells. Compare conversion rates between batches: is there an individual effect or batch effect of coversion rate?</p>
@@ -150,6 +150,7 @@ img {
 <h2>Input</h2>
 <pre class="r"><code>library(&quot;dplyr&quot;)
 library(&quot;ggplot2&quot;)
+library(&quot;cowplot&quot;)
 theme_set(theme_bw(base_size = 16))
 library(&quot;edgeR&quot;)
 source(&quot;functions.R&quot;)</code></pre>
@@ -205,19 +206,47 @@ summary(total_counts_ENSG)</code></pre>
  Mean   :2157945   Mean   : 95740   Mean   :22.80  
  3rd Qu.:2506770   3rd Qu.:111337   3rd Qu.:25.76  
  Max.   :3870013   Max.   :195757   Max.   :33.50  </code></pre>
+<pre class="r"><code>## create a color palette with one color per individual and different shades for repplicates
+great_color &lt;- c(&quot;#CC3300&quot;, &quot;#FF9966&quot;, &quot;#006633&quot;, &quot;#009900&quot;, &quot;#99FF99&quot;, &quot;#3366FF&quot;, &quot;#6699FF&quot;, &quot;#66CCFF&quot;)
+
+depth_plot_ensg &lt;- ggplot(data.frame(total_counts_ENSG,
+                  batch = anno_filter$batch), 
+       aes(x = total_reads/10^6, y = total_molecules/10^3, col = factor(batch))) +
+  geom_point() +
+  scale_color_manual(values = great_color) +
+  labs(x = &quot;Total number of reads (x10^6)&quot;,
+       y = &quot;Total number of molecules (x10^3)&quot;,
+       title = &quot;Effect of read depth on single cells (genes)&quot;)
+
+depth_plot_ensg</code></pre>
+<p><img src="figure/compare-reads-v-molecules-per-batch-test.Rmd/plot-convertion-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>depth_plot_ercc &lt;- ggplot(data.frame(total_counts_ERCC,
+                  batch = anno_filter$batch), 
+       aes(x = total_reads/10^6, y = total_molecules/10^3, col = factor(batch))) +
+  geom_point() +
+  scale_color_manual(values = great_color) +
+  labs(x = &quot;Total number of reads (x10^6)&quot;,
+       y = &quot;Total number of molecules (x10^3)&quot;,
+       title = &quot;Effect of read depth on single cells (ERCC spike-in)&quot;)
+
+depth_plot_ercc</code></pre>
+<p><img src="figure/compare-reads-v-molecules-per-batch-test.Rmd/plot-convertion-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
 <div id="compare-variances-of-conversion-rates-between-batches" class="section level2">
 <h2>Compare variances of conversion rates between batches</h2>
 <div id="ensg" class="section level3">
 <h3>ENSG</h3>
-<pre class="r"><code>ggplot(data.frame(total_counts_ENSG,
+<pre class="r"><code>convertion_ensg &lt;- ggplot(data.frame(total_counts_ENSG,
                   batch = anno_filter$batch),
        aes(x = factor(batch), y = conversion,
            fill = factor(batch)), height = 600, width = 2000) +
 geom_violin(alpha = .5) + 
 geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+  scale_fill_manual(values = great_color) +
 labs(x = &quot;batch&quot;, y = &quot;conversion rate&quot;, title = &quot;ENSG batch effect of conversion rate&quot;) +
-theme(axis.text.x = element_text(hjust=1, angle = 45))</code></pre>
+theme(axis.text.x = element_text(hjust=1, angle = 45))
+
+convertion_ensg</code></pre>
 <p><img src="figure/compare-reads-v-molecules-per-batch-test.Rmd/unnamed-chunk-1-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <p>*Between all batches.</p>
 <pre class="r"><code>library(car)
@@ -305,14 +334,17 @@ group   2  1.0756 0.3429
 </div>
 <div id="ercc" class="section level3">
 <h3>ERCC</h3>
-<pre class="r"><code>ggplot(data.frame(total_counts_ERCC,
+<pre class="r"><code>convertion_ercc &lt;- ggplot(data.frame(total_counts_ERCC,
                   batch = anno_filter$batch),
        aes(x = factor(batch), y = conversion,
            fill = factor(batch)), height = 600, width = 2000) +
 geom_violin(alpha = .5) + 
 geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+  scale_fill_manual(values = great_color) +
 labs(x = &quot;batch&quot;, y = &quot;conversion rate&quot;, title = &quot;ERCC batch effect of conversion rate&quot;) +
-theme(axis.text.x = element_text(hjust=1, angle = 45))</code></pre>
+theme(axis.text.x = element_text(hjust=1, angle = 45))
+
+convertion_ercc</code></pre>
 <p><img src="figure/compare-reads-v-molecules-per-batch-test.Rmd/unnamed-chunk-5-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <p>*Between all batches.</p>
 <pre class="r"><code>library(car)
@@ -410,7 +442,8 @@ Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&
              fill = factor(batch)), height = 600, width = 2000) +
   geom_violin(alpha = .5) + 
   geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
-  labs(x = &quot;batch&quot;, y = &quot;conversion rate&quot;, title = &quot;ERCC batch effect of conversion rate&quot;) +
+    scale_fill_manual(values = great_color) +
+  labs(x = &quot;batch&quot;, y = &quot;conversion rate&quot;, title = &quot;Batch effect of conversion rate (ERCC spike-in)&quot;) +
   theme(axis.text.x = element_text(hjust=1, angle = 45))
   ,
   ggplot(data.frame(total_counts_ENSG,
@@ -419,11 +452,19 @@ Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&
              fill = factor(batch)), height = 600, width = 2000) +
   geom_violin(alpha = .5) + 
   geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
-  labs(x = &quot;batch&quot;, y = &quot;conversion rate&quot;, title = &quot;ENSG batch effect of conversion rate&quot;) +
+    scale_fill_manual(values = great_color) +
+  labs(x = &quot;batch&quot;, y = &quot;conversion rate&quot;, title = &quot;Batch effect of conversion rate (genes)&quot;) +
   theme(axis.text.x = element_text(hjust=1, angle = 45)),
   ncol = 2
 )</code></pre>
 <p><img src="figure/compare-reads-v-molecules-per-batch-test.Rmd/unnamed-chunk-9-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>theme_set(theme_bw(base_size = 8))
+plot_grid(depth_plot_ensg + theme(legend.position = &quot;none&quot;), 
+          convertion_ensg + theme(legend.position = &quot;none&quot;),
+          depth_plot_ercc + theme(legend.position = &quot;none&quot;),
+          convertion_ercc + theme(legend.position = &quot;none&quot;),
+          labels = LETTERS[1:4])</code></pre>
+<p><img src="figure/compare-reads-v-molecules-per-batch-test.Rmd/plot-reads-molecule-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
 </div>
 <div id="session-information" class="section level2">
 <h2>Session information</h2>
@@ -445,7 +486,7 @@ attached base packages:
 
 other attached packages:
 [1] gridExtra_0.9.1 car_2.1-0       edgeR_3.10.2    limma_3.24.9   
-[5] ggplot2_1.0.1   dplyr_0.4.2     knitr_1.10.5   
+[5] cowplot_0.3.1   ggplot2_1.0.1   dplyr_0.4.2     knitr_1.10.5   
 
 loaded via a namespace (and not attached):
  [1] Rcpp_0.12.0      nloptr_1.0.4     formatR_1.2      plyr_1.8.3      

@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+<meta name="author" content="PoYuan Tung" />
+
+<meta name="date" content="2015-10-21" />
+
+<title>Quality control plots</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Quality control plots</h1>
+<h4 class="author"><em>PoYuan Tung</em></h4>
+<h4 class="date"><em>2015-10-21</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#input">Input</a></li>
+<li><a href="#compare-reads-and-molecules">Compare reads and molecules</a></li>
+<li><a href="#distribution-of-fold-change-to-mean">Distribution of fold change to mean</a></li>
+<li><a href="#visualizing-capture-efficiency">Visualizing capture efficiency</a></li>
+<li><a href="#qc-plots">QC plots</a></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2015-10-24</p>
+<p><strong>Code version:</strong> d99925d21498748ab56d2b7fc33447f186fe50ac</p>
+<div id="input" class="section level2">
+<h2>Input</h2>
+<pre class="r"><code>library(&quot;biomaRt&quot;)
+library(&quot;data.table&quot;)
+library(&quot;dplyr&quot;)
+library(&quot;limma&quot;)
+library(&quot;edgeR&quot;)
+library(&quot;ggplot2&quot;)
+library(&quot;grid&quot;)
+library(&quot;cowplot&quot;)
+theme_set(theme_bw(base_size = 12))
+source(&quot;functions.R&quot;)</code></pre>
+<p>Input ERCC molecule counts calculated in <a href="capture-efficiency.html">capture efficiency</a>.</p>
+<pre class="r"><code>ercc &lt;- read.table(&quot;../data/expected-ercc-molecules.txt&quot;, header = TRUE,
+                   stringsAsFactors = FALSE)
+head(ercc)</code></pre>
+<pre><code>          id conc_mix1 ercc_molecules_well
+1 ERCC-00130 30000.000          4877.93485
+2 ERCC-00004  7500.000          1219.48371
+3 ERCC-00136  1875.000           304.87093
+4 ERCC-00108   937.500           152.43546
+5 ERCC-00116   468.750            76.21773
+6 ERCC-00092   234.375            38.10887</code></pre>
+<p>Input annotation.</p>
+<pre class="r"><code>anno &lt;- read.table(&quot;../data/annotation.txt&quot;, header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno)</code></pre>
+<pre><code>  individual replicate well      batch      sample_id
+1    NA19098        r1  A01 NA19098.r1 NA19098.r1.A01
+2    NA19098        r1  A02 NA19098.r1 NA19098.r1.A02
+3    NA19098        r1  A03 NA19098.r1 NA19098.r1.A03
+4    NA19098        r1  A04 NA19098.r1 NA19098.r1.A04
+5    NA19098        r1  A05 NA19098.r1 NA19098.r1.A05
+6    NA19098        r1  A06 NA19098.r1 NA19098.r1.A06</code></pre>
+<p>Input read counts.</p>
+<pre class="r"><code>reads &lt;- read.table(&quot;../data/reads.txt&quot;, header = TRUE,
+                    stringsAsFactors = FALSE)</code></pre>
+<p>Input molecule counts.</p>
+<pre class="r"><code>molecules &lt;- read.table(&quot;../data/molecules.txt&quot;, header = TRUE,
+                    stringsAsFactors = FALSE)</code></pre>
+<p>Input list of quality single cells.</p>
+<pre class="r"><code>quality_single_cells &lt;- scan(&quot;../data/quality-single-cells.txt&quot;,
+                             what = &quot;character&quot;)</code></pre>
+<p>Keep only the single cells that passed the <a href="qc-cell-ipsc.html">QC filters</a>.</p>
+<pre class="r"><code>reads &lt;- reads[, colnames(reads) %in% quality_single_cells]
+molecules &lt;- molecules[, colnames(molecules) %in% quality_single_cells]
+anno &lt;- anno[anno$sample_id %in% quality_single_cells, ]
+stopifnot(dim(reads) == dim(molecules),
+          nrow(anno) == ncol(reads))</code></pre>
+</div>
+<div id="compare-reads-and-molecules" class="section level2">
+<h2>Compare reads and molecules</h2>
+<p>Compare the means of each gene obtained via the different methods.</p>
+<pre class="r"><code>## calculate mean
+reads_mean     &lt;- apply(reads, 1, mean)
+molecules_mean &lt;- apply(molecules, 1, mean)
+distribution &lt;- data.frame(reads_mean, molecules_mean)
+
+## correlation between reads and molecules
+cor(distribution)</code></pre>
+<pre><code>               reads_mean molecules_mean
+reads_mean      1.0000000      0.9708677
+molecules_mean  0.9708677      1.0000000</code></pre>
+<pre class="r"><code>## select ERCC
+distribution$type &lt;- ifelse(grepl(&quot;ERCC&quot;, rownames(distribution)), &quot;ERCC&quot;, &quot;gene&quot;)
+
+## color palette
+cbPalette &lt;- c(&quot;#0000FF&quot;, &quot;#999999&quot;, &quot;#990033&quot;, &quot;#F0E442&quot;, &quot;#0072B2&quot;, &quot;#D55E00&quot;, &quot;#CC79A7&quot;, &quot;#009E73&quot;)
+
+## plot
+plot_mean_log &lt;- ggplot(distribution, aes(x = molecules_mean, y = reads_mean, col = type)) + 
+  geom_point(size = 3, alpha = 0.5) +  
+  scale_colour_manual(values=cbPalette) + 
+  labs(x = &quot;mean molecule&quot;, y = &quot;mean reads&quot;, title = &quot;ERCC capture efficiency - log transformed&quot;) + 
+  scale_x_log10() + 
+  scale_y_log10()
+
+plot_mean_log</code></pre>
+<p><img src="figure/qc-plots.Rmd/reads-v-molecules-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>plot_mean &lt;- ggplot(distribution, aes(x = molecules_mean, y = reads_mean, col = type)) + 
+  geom_point(size = 3, alpha = 0.5) +  
+  scale_colour_manual(values=cbPalette) + 
+  labs(x = &quot;mean molecule&quot;, y = &quot;mean reads&quot;, title = &quot;ERCC capture efficiency&quot;) +
+  geom_smooth(method = &quot;lm&quot;)
+
+plot_mean</code></pre>
+<p><img src="figure/qc-plots.Rmd/reads-v-molecules-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="distribution-of-fold-change-to-mean" class="section level2">
+<h2>Distribution of fold change to mean</h2>
+<p>Look at the distribution of fold change to mean. As being reported by others, the lowly expressed genes show divergent read and molecule counts</p>
+<pre class="r"><code>## calculate fold change to mean
+distribution$fold_change_read     &lt;- log2(reads_mean/mean(reads_mean))
+distribution$fold_change_molecule &lt;- log2(molecules_mean/mean(molecules_mean))
+
+plot_distribution &lt;- ggplot(distribution, aes(x = fold_change_molecule, y = fold_change_read, col = type)) + 
+  geom_point(size = 3, alpha = 0.5) + 
+  scale_colour_manual(values=cbPalette) + 
+  stat_function(fun= function(x) {x}, col= &quot;#56B4E9&quot;) + 
+  labs(x = &quot;log2 fold change to mean (molecule)&quot;, y =  &quot;log2 fold change to mean (reads)&quot;)
+
+plot_distribution</code></pre>
+<p><img src="figure/qc-plots.Rmd/distribution-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="visualizing-capture-efficiency" class="section level2">
+<h2>Visualizing capture efficiency</h2>
+<p>Use only those 50 ERCC genes with at least 1 expected molecule per well.</p>
+<pre class="r"><code>ercc_list &lt;- list()
+for (spike in ercc$id[ercc$ercc_molecules_well &gt;= 1]) {
+  if (spike %in% rownames(molecules)) {
+    ercc_list$id &lt;- c(ercc_list$id, spike)
+    ercc_list$observed_mean &lt;- c(ercc_list$observed_mean,
+                                 mean(as.numeric(molecules[spike, ])))
+    ercc_list$observed_sem &lt;- c(ercc_list$observed_sem,
+                                 sd(as.numeric(molecules[spike, ])) /
+                                 sqrt(ncol(molecules)))
+    ercc_list$expected &lt;- c(ercc_list$expected,
+                            ercc$ercc_molecules_well[ercc$id == spike])
+  }
+}
+ercc_plot &lt;- as.data.frame(ercc_list, stringsAsFactors = FALSE)
+str(ercc_plot)</code></pre>
+<pre><code>&#39;data.frame&#39;:   50 obs. of  4 variables:
+ $ id           : chr  &quot;ERCC-00130&quot; &quot;ERCC-00004&quot; &quot;ERCC-00136&quot; &quot;ERCC-00108&quot; ...
+ $ observed_mean: num  481.073 87.391 31.49 21.566 0.325 ...
+ $ observed_sem : num  14.1687 2.8826 1.1007 0.7198 0.0367 ...
+ $ expected     : num  4877.9 1219.5 304.9 152.4 76.2 ...</code></pre>
+<pre class="r"><code>p_efficiency &lt;- ggplot(ercc_plot, aes(x = expected, y = observed_mean)) +
+  geom_point(col = &quot;red&quot;) +
+  geom_errorbar(aes(ymin = observed_mean - observed_sem,
+                    ymax = observed_mean + observed_sem), width = 0) +
+  labs(x = &quot;Expected ERCC molecules&quot;,
+       y = &quot;Observed ERCC molecules\n(mean +/- sem)&quot;,
+       title = &quot;ERCC capture efficiency&quot;)
+
+p_efficiency</code></pre>
+<p><img src="figure/qc-plots.Rmd/ercc-capture-efficiency-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>p_efficiency_plot &lt;- p_efficiency + scale_x_log10() +
+  scale_y_log10() +
+  labs(x = &quot;log10 Expected ERCC molecules&quot;,
+       y = &quot;log10 Observed ERCC molecules\n(mean +/- sem)&quot;,
+       title = &quot;ERCC capture efficiency - log transformed&quot;)
+
+p_efficiency_plot</code></pre>
+<p><img src="figure/qc-plots.Rmd/ercc-capture-efficiency-2.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
+<div id="qc-plots" class="section level2">
+<h2>QC plots</h2>
+<pre class="r"><code>plot_grid(plot_mean + theme(legend.position = &quot;none&quot;),
+          plot_mean_log + theme(legend.position = &quot;none&quot;),
+          p_efficiency + theme(legend.position = &quot;none&quot;),
+          p_efficiency_plot + theme(legend.position = &quot;none&quot;),
+          labels = LETTERS[1:4])</code></pre>
+<p><img src="figure/qc-plots.Rmd/plots-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] grid      stats     graphics  grDevices utils     datasets  methods  
+[8] base     
+
+other attached packages:
+[1] cowplot_0.3.1    ggplot2_1.0.1    edgeR_3.10.2     limma_3.24.9    
+[5] dplyr_0.4.2      data.table_1.9.4 biomaRt_2.24.0   knitr_1.10.5    
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.12.0          formatR_1.2          GenomeInfoDb_1.4.0  
+ [4] plyr_1.8.3           bitops_1.0-6         tools_3.2.0         
+ [7] digest_0.6.8         RSQLite_1.0.0        evaluate_0.7        
+[10] gtable_0.1.2         DBI_0.3.1            yaml_2.1.13         
+[13] parallel_3.2.0       proto_0.3-10         httr_0.6.1          
+[16] stringr_1.0.0        S4Vectors_0.6.0      IRanges_2.2.4       
+[19] stats4_3.2.0         Biobase_2.28.0       R6_2.1.1            
+[22] AnnotationDbi_1.30.1 XML_3.98-1.2         rmarkdown_0.6.1     
+[25] reshape2_1.4.1       magrittr_1.5         scales_0.2.4        
+[28] htmltools_0.2.6      BiocGenerics_0.14.0  MASS_7.3-40         
+[31] assertthat_0.1       colorspace_1.2-6     labeling_0.3        
+[34] stringi_0.4-1        RCurl_1.95-4.6       munsell_0.4.2       
+[37] chron_2.3-45        </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+
+</body>
+</html>

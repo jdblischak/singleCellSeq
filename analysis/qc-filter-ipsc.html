@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+<meta name="author" content="PoYuan Tung" />
+
+<meta name="date" content="2015-10-23" />
+
+<title>QC of single cell libraries</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">QC of single cell libraries</h1>
+<h4 class="author"><em>PoYuan Tung</em></h4>
+<h4 class="date"><em>2015-10-23</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#input">Input</a></li>
+<li><a href="#total-ercc-and-removal-of-19098.r2">Total ERCC and removal of 19098.r2</a></li>
+<li><a href="#total-mapped-reads-reads">Total mapped reads reads</a></li>
+<li><a href="#unmapped-ratios">Unmapped ratios</a></li>
+<li><a href="#total-molecule-counts">Total molecule counts</a></li>
+<li><a href="#ercc-percentage">ERCC percentage</a></li>
+<li><a href="#mitochondrial-genes">Mitochondrial genes</a></li>
+<li><a href="#number-of-genes-detected">Number of genes detected</a></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2015-10-24</p>
+<p><strong>Code version:</strong> d99925d21498748ab56d2b7fc33447f186fe50ac</p>
+<div id="input" class="section level2">
+<h2>Input</h2>
+<pre class="r"><code>library(&quot;dplyr&quot;)
+library(&quot;edgeR&quot;)
+library(&quot;ggplot2&quot;)
+library(&quot;cowplot&quot;)
+theme_set(theme_bw(base_size = 16))
+source(&quot;functions.R&quot;)</code></pre>
+<p>Summary counts from featureCounts. Created with <a href="https://github.com/jdblischak/singleCellSeq/blob/master/code/gather-summary-counts.py">gather-summary-counts.py</a>. These data were collected from the summary files of the full combined samples.</p>
+<pre class="r"><code>summary_counts &lt;- read.table(&quot;../data/summary-counts.txt&quot;, header = TRUE,
+                             stringsAsFactors = FALSE)</code></pre>
+<p>Currently this file only contains data from sickle-trimmed reads, so the code below simply ensures this and then removes the column.</p>
+<pre class="r"><code>summary_per_sample &lt;- summary_counts %&gt;%
+  filter(sickle == &quot;quality-trimmed&quot;) %&gt;%
+  dplyr :: select(-sickle) %&gt;%
+  arrange(individual, batch, well, rmdup) %&gt;%
+  as.data.frame
+
+summary_per_sample_single &lt;- summary_per_sample[summary_per_sample$well != &quot;bulk&quot;, ]</code></pre>
+<p>Input annotation.</p>
+<pre class="r"><code>anno &lt;- read.table(&quot;../data/annotation.txt&quot;, header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno)</code></pre>
+<pre><code>  individual replicate well      batch      sample_id
+1    NA19098        r1  A01 NA19098.r1 NA19098.r1.A01
+2    NA19098        r1  A02 NA19098.r1 NA19098.r1.A02
+3    NA19098        r1  A03 NA19098.r1 NA19098.r1.A03
+4    NA19098        r1  A04 NA19098.r1 NA19098.r1.A04
+5    NA19098        r1  A05 NA19098.r1 NA19098.r1.A05
+6    NA19098        r1  A06 NA19098.r1 NA19098.r1.A06</code></pre>
+<pre class="r"><code>anno_single &lt;- anno[anno$well != &quot;bulk&quot;,]</code></pre>
+<p>Input read counts.</p>
+<pre class="r"><code>reads &lt;- read.table(&quot;../data/reads.txt&quot;, header = TRUE,
+                    stringsAsFactors = FALSE)</code></pre>
+<p>Input molecule counts.</p>
+<pre class="r"><code>molecules &lt;- read.table(&quot;../data/molecules.txt&quot;, header = TRUE,
+                    stringsAsFactors = FALSE)</code></pre>
+<p>Input single cell observational quality control data.</p>
+<pre class="r"><code>qc &lt;- read.table(&quot;../data/qc-ipsc.txt&quot;, header = TRUE,
+                 stringsAsFactors = FALSE)
+head(qc)</code></pre>
+<pre><code>  individual batch well cell_number concentration tra1.60
+1      19098     1  A01           1      1.734785       1
+2      19098     1  A02           1      1.723038       1
+3      19098     1  A03           1      1.512786       1
+4      19098     1  A04           1      1.347492       1
+5      19098     1  A05           1      2.313047       1
+6      19098     1  A06           1      2.056803       1</code></pre>
+</div>
+<div id="total-ercc-and-removal-of-19098.r2" class="section level2">
+<h2>Total ERCC and removal of 19098.r2</h2>
+<p>Show the evidence that removing 19098 batch 2 is the first thing to do.</p>
+<pre class="r"><code>summary_per_sample_single_reads &lt;- summary_per_sample_single[summary_per_sample_single$rmdup == &quot;reads&quot;,]
+
+summary_per_sample_single_reads$sample_id &lt;- anno_single$sample_id
+summary_per_sample_single_reads$batch_9 &lt;- anno_single$batch
+stopifnot(colnames(reads) == summary_per_sample_single_reads$sample_id )
+
+summary_per_sample_single_reads$ERCC_reads &lt;- apply(reads[grep(&quot;ERCC&quot;, rownames(reads)), ],2,sum)
+summary_per_sample_single_reads$ERCC_molecules &lt;- apply(reads[grep(&quot;ERCC&quot;, rownames(molecules)), ],2,sum)</code></pre>
+<pre class="r"><code>## create a color palette with one color per individual and different shades for repplicates
+great_color &lt;- c(&quot;#CC3300&quot;, &quot;#FF9966&quot;, &quot;#FFCC99&quot;, &quot;#006633&quot;, &quot;#009900&quot;, &quot;#99FF99&quot;, &quot;#3366FF&quot;, &quot;#6699FF&quot;, &quot;#66CCFF&quot;)
+
+ercc_reads_plot &lt;- ggplot(summary_per_sample_single_reads,
+                   aes(x = factor(batch_9), y = ERCC_reads,
+                   fill = factor(batch_9)), height = 600, width = 2000) +
+                   geom_violin(alpha = .5) + 
+                   geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+                   scale_fill_manual(values = great_color) + 
+                   labs(x = &quot;batch&quot;, y = &quot;ERCC reads&quot;, title = &quot;Total ERCC read counts per cell&quot;) +
+                   theme(axis.text.x = element_text(hjust=1, angle = 45))
+
+ercc_molecule_plot &lt;- ggplot(summary_per_sample_single_reads,
+                   aes(x = factor(batch_9), y = ERCC_molecules,
+                   fill = factor(batch_9)), height = 600, width = 2000) +
+                   geom_violin(alpha = .5) + 
+                   geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+                   scale_fill_manual(values = great_color) + 
+                   labs(x = &quot;batch&quot;, y = &quot;ERCC molecules&quot;, title = &quot;Total ERCC molecule counts per cell&quot;) +
+                   theme(axis.text.x = element_text(hjust=1, angle = 45))
+
+theme_set(theme_bw(base_size = 8))
+plot_grid(ercc_reads_plot + theme(legend.position = &quot;none&quot;),
+          ercc_molecule_plot + theme(legend.position = &quot;none&quot;),
+          labels = LETTERS[1:2])</code></pre>
+<p><img src="figure/qc-filter-ipsc.Rmd/sad-ercc-plot-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
+<p>Remove 19098r2 for all the following analysis</p>
+<pre class="r"><code>remove_19098r2 &lt;- anno_single$batch != &quot;NA19098.r2&quot;
+anno_single_rm &lt;- anno_single[remove_19098r2,]
+summary_per_sample_single_reads_rm &lt;- summary_per_sample_single_reads[remove_19098r2,]
+reads_rm &lt;- reads[, remove_19098r2]
+molecules_rm &lt;- molecules[, remove_19098r2]
+
+stopifnot(summary_per_sample_single_reads_rm$sample_id == colnames(reads_rm))</code></pre>
+</div>
+<div id="total-mapped-reads-reads" class="section level2">
+<h2>Total mapped reads reads</h2>
+<pre class="r"><code>## add cell number per well by merging qc file
+summary_per_sample_reads_single_qc &lt;- merge(summary_per_sample_single_reads_rm,qc,by=c(&quot;individual&quot;,&quot;batch&quot;,&quot;well&quot;))
+
+## calculate total mapped reads per sample
+summary_per_sample_reads_single_qc$total_mapped &lt;- apply(summary_per_sample_reads_single_qc[,5:8],1,sum)
+
+## density plots
+ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0 |
+                                           summary_per_sample_reads_single_qc$cell_number == 1 , ],
+       aes(x = total_mapped, fill = as.factor(cell_number))) + 
+       geom_density(alpha = 0.5) +
+       labs(x = &quot;total mapped reads&quot;, title = &quot;Total mappred reads&quot;)</code></pre>
+<p><img src="figure/qc-filter-ipsc.Rmd/total%20reads-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
+<div id="unmapped-ratios" class="section level2">
+<h2>Unmapped ratios</h2>
+<pre class="r"><code>## calculate unmapped ratios
+summary_per_sample_reads_single_qc$unmapped_ratios &lt;- summary_per_sample_reads_single_qc[,9]/apply(summary_per_sample_reads_single_qc[,5:13],1,sum)
+
+## density plots
+ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0 |
+                                           summary_per_sample_reads_single_qc$cell_number == 1 , ],
+       aes(x = unmapped_ratios, fill = as.factor(cell_number))) + 
+       geom_density(alpha = 0.5) +
+       labs(x = &quot;unmapped reads/ total reads&quot;, title = &quot;Unmapped reads&quot;)</code></pre>
+<p><img src="figure/qc-filter-ipsc.Rmd/unmapped%20ratios-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
+<div id="total-molecule-counts" class="section level2">
+<h2>Total molecule counts</h2>
+<pre class="r"><code>## calculate total gene molecule counts
+summary_per_sample_reads_single_qc$total_gene_molecule &lt;- colSums(molecules_rm[grep(&quot;ENSG&quot;, rownames(molecules_rm)),])
+
+## look for outiers
+ggplot(summary_per_sample_reads_single_qc, aes(x = concentration, y = total_gene_molecule / 10^3,
+  color = as.factor(cell_number))) +
+  geom_text(aes(label = cell_number)) +
+  labs(x = &quot;Concentration&quot;, y = &quot;&quot;, title = &quot;Gene molecules (thousands)&quot;) +
+  scale_color_brewer(palette = &quot;Dark2&quot;) +
+  theme(legend.position = &quot;none&quot;)</code></pre>
+<p><img src="figure/qc-filter-ipsc.Rmd/total-mol-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>outliers &lt;- summary_per_sample_reads_single_qc %&gt;% filter(cell_number == 1, concentration &lt; 1.25, concentration &gt; .15,
+                                   total_gene_molecule &gt; 140000)
+outliers %&gt;% dplyr::select(sample_id)</code></pre>
+<pre><code>        sample_id
+1  NA19098.r3.B04
+2  NA19098.r3.B11
+3  NA19101.r1.B10
+4  NA19101.r2.D07
+5  NA19101.r3.C07
+6  NA19101.r3.D08
+7  NA19101.r3.D10
+8  NA19101.r3.F05
+9  NA19101.r3.F10
+10 NA19239.r2.A12
+11 NA19239.r2.B07</code></pre>
+</div>
+<div id="ercc-percentage" class="section level2">
+<h2>ERCC percentage</h2>
+<pre class="r"><code>## calculate ercc reads percentage
+summary_per_sample_reads_single_qc$ercc_percentage &lt;- apply(reads_rm[grep(&quot;ERCC&quot;, rownames(reads_rm)), ],2,sum)/apply(summary_per_sample_reads_single_qc[,5:8],1,sum) 
+
+## density plots
+ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0 |
+                                           summary_per_sample_reads_single_qc$cell_number == 1 , ],
+       aes(x = ercc_percentage, fill = as.factor(cell_number))) + 
+       geom_density(alpha = 0.5) +
+       labs(x = &quot;ERCC reads / total mapped reads&quot;, title = &quot;ERCC reads percentage&quot;)</code></pre>
+<p><img src="figure/qc-filter-ipsc.Rmd/ercc-percentage-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
+<div id="mitochondrial-genes" class="section level2">
+<h2>Mitochondrial genes</h2>
+<pre class="r"><code>## endogenous genes
+reads_rm_gene &lt;- reads_rm[grep(&quot;ENSG&quot;, rownames(reads_rm)), ]
+
+## create a list of mitochondrial genes (13 protein-coding genes)
+## MT-ATP6, MT-CYB, MT-ND1, MT-ND4, MT-ND4L, MT-ND5, MT-ND6, MT-CO2, MT-CO1, MT-ND2, MT-ATP8, MT-CO3, MT-ND3
+mtgene &lt;- c(&quot;ENSG00000198899&quot;, &quot;ENSG00000198727&quot;, &quot;ENSG00000198888&quot;, &quot;ENSG00000198886&quot;, &quot;ENSG00000212907&quot;, &quot;ENSG00000198786&quot;, &quot;ENSG00000198695&quot;, &quot;ENSG00000198712&quot;, &quot;ENSG00000198804&quot;, &quot;ENSG00000198763&quot;,&quot;ENSG00000228253&quot;, &quot;ENSG00000198938&quot;, &quot;ENSG00000198840&quot;)
+
+## reads of mt genes in single cells
+mt_reads &lt;- reads_rm_gene[mtgene,]
+dim(mt_reads)</code></pre>
+<pre><code>[1]  13 768</code></pre>
+<pre class="r"><code>## mt ratio of single cell
+summary_per_sample_reads_single_qc$mt_reads_ratio &lt;- apply(mt_reads, 2, sum)/summary_per_sample_reads_single_qc$total_mapped
+
+## density plots
+ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0 |
+                                           summary_per_sample_reads_single_qc$cell_number == 1 , ],
+       aes(x = mt_reads_ratio, fill = as.factor(cell_number))) + 
+       geom_density(alpha = 0.5) +
+       labs(x = &quot;mitochondrial gene reads / total reads&quot;, title = &quot;Mitochondrial gene reads ratios&quot;)</code></pre>
+<p><img src="figure/qc-filter-ipsc.Rmd/mito-gene-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
+<div id="number-of-genes-detected" class="section level2">
+<h2>Number of genes detected</h2>
+<pre class="r"><code>## number of genes detected 
+summary_per_sample_reads_single_qc$gene_number &lt;- colSums(reads_rm_gene &gt;= 1)
+
+## density plots
+ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0 |
+                                           summary_per_sample_reads_single_qc$cell_number == 1 , ],
+       aes(x = gene_number, fill = as.factor(cell_number))) + 
+       geom_density(alpha = 0.5) +
+       labs(x = &quot;gene numbers detected&quot;, title = &quot;Numbers of detected genes&quot;)</code></pre>
+<p><img src="figure/qc-filter-ipsc.Rmd/gene-number-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] cowplot_0.3.1 ggplot2_1.0.1 edgeR_3.10.2  limma_3.24.9  dplyr_0.4.2  
+[6] knitr_1.10.5 
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.12.0        magrittr_1.5       MASS_7.3-40       
+ [4] munsell_0.4.2      colorspace_1.2-6   R6_2.1.1          
+ [7] stringr_1.0.0      httr_0.6.1         plyr_1.8.3        
+[10] tools_3.2.0        parallel_3.2.0     grid_3.2.0        
+[13] gtable_0.1.2       DBI_0.3.1          htmltools_0.2.6   
+[16] lazyeval_0.1.10    yaml_2.1.13        assertthat_0.1    
+[19] digest_0.6.8       RColorBrewer_1.1-2 reshape2_1.4.1    
+[22] formatR_1.2        bitops_1.0-6       RCurl_1.95-4.6    
+[25] evaluate_0.7       rmarkdown_0.6.1    labeling_0.3      
+[28] stringi_0.4-1      scales_0.2.4       proto_0.3-10      </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+
+</body>
+</html>
