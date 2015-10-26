@@ -14,8 +14,8 @@
 #' make_subsample()
 
 make_subsample <- function(counts, anno,
-                           subsample_size = 20,
-                           number_subsample = 5)
+                           subsample_size,
+                           number_subsample)
 {
   ind_subsample <- lapply( unique(anno$individual),
                            function(per_individual) {
@@ -30,7 +30,7 @@ make_subsample <- function(counts, anno,
                              # Subsample counts
                              counts_subsample <- lapply(1:number_subsample, function(i) {
                                set.seed(which(unique(anno$individual) == per_individual)*1000 +
-                                          subsample_size + number_subsample)
+                                          subsample_size + i)
                                ii_sample <- sample(nn_individual, subsample_size, replace = FALSE)
                                counts_subsample <- counts_individual[ , ii_sample]
                                colnames(counts_subsample) <- rep(paste0("r.", i), ncol(counts_subsample) )
