@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+<meta name="author" content="Joyce Hsiao" />
+
+<meta name="date" content="2015-10-25" />
+
+<title>Compare transcriptome-wide profile of CVs</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Compare transcriptome-wide profile of CVs</h1>
+<h4 class="author"><em>Joyce Hsiao</em></h4>
+<h4 class="date"><em>2015-10-25</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#objective">Objective</a></li>
+<li><a href="#set-up">Set up</a></li>
+<li><a href="#prepare-data">Prepare data</a></li>
+<li><a href="#compute-normalized-cv">Compute normalized CV</a></li>
+<li><a href="#compare-transcriptome-profile-within-individuals">Compare transcriptome profile within individuals</a><ul>
+<li><a href="#within-each-individual">Within each individual</a></li>
+<li><a href="#between-individual-adjusted-cv">Between individual, adjusted CV</a></li>
+<li><a href="#between-individual-unadjusted-cv">Between individual, unadjusted CV</a></li>
+</ul></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2015-10-26</p>
+<p><strong>Code version:</strong> 972bb96e0aaadb60cece679ebd7f25f961a30df5</p>
+<div id="objective" class="section level2">
+<h2>Objective</h2>
+<p>Compare transcriptome profile of cell-to-cell heterogeneity within individuals betwen batches and between individuals.</p>
+<p>We normalized CV to account for heterogeneity of per gene coefficient variation as a function of mean gene expression, using the algorithm described in <a href="link1">Kolodziejczk et al. (2015)</a>. Then, we estimated the first principal component loadings of samples from each of the three individuals. These three sets of PC1 gene loadsings are compared using Friedman rank sum test.</p>
+<p>Before normalization, the coefficients of variation significantly differ between individuals (p &lt; 1e-5); but, after normalization, the CVs are similar between the three individuals.</p>
+</div>
+<div id="set-up" class="section level2">
+<h2>Set up</h2>
+<pre class="r"><code>library(&quot;data.table&quot;)
+library(&quot;dplyr&quot;)
+library(&quot;limma&quot;)
+library(&quot;edgeR&quot;)
+library(&quot;ggplot2&quot;)
+library(&quot;grid&quot;)
+theme_set(theme_bw(base_size = 12))
+source(&quot;functions.R&quot;)</code></pre>
+</div>
+<div id="prepare-data" class="section level2">
+<h2>Prepare data</h2>
+<p>Input annotation of only QC-filtered single cells. Remove NA19098.r2</p>
+<pre class="r"><code>anno_qc &lt;- read.table(&quot;../data/annotation-filter.txt&quot;, header = TRUE,
+                   stringsAsFactors = FALSE)
+is_include &lt;- anno_qc$batch != &quot;NA19098.r2&quot;
+anno_qc_filter &lt;- anno_qc[which(is_include), ]</code></pre>
+<p>Import endogeneous gene molecule counts that are QC-filtered, CPM-normalized, ERCC-normalized, and also processed to remove unwanted variation from batch effet. ERCC genes are removed from this file.</p>
+<pre class="r"><code>molecules_ENSG &lt;- read.table(&quot;../data/molecules-final.txt&quot;, header = TRUE, stringsAsFactors = FALSE)
+molecules_ENSG &lt;- molecules_ENSG[ , is_include]</code></pre>
+<p>Input moleclule counts before log2 CPM transformation. This file is used to compute percent zero-count cells per sample.</p>
+<pre class="r"><code>molecules_sparse &lt;- read.table(&quot;../data/molecules-filter.txt&quot;, header = TRUE, stringsAsFactors = FALSE)
+
+molecules_sparse &lt;- molecules_sparse[grep(&quot;ENSG&quot;, rownames(molecules_sparse)), ]
+stopifnot( all.equal(rownames(molecules_ENSG), rownames(molecules_sparse)) )</code></pre>
+</div>
+<div id="compute-normalized-cv" class="section level2">
+<h2>Compute normalized CV</h2>
+<pre class="r"><code>source(&quot;../code/cv-functions.r&quot;)
+
+# compute_cv() takes log2 counts as input
+ENSG_cv &lt;- compute_cv(counts = molecules_ENSG,
+                           anno = anno_qc_filter)
+
+ENSG_cv_adj &lt;- normalize_cv(batch_cv = ENSG_cv, 
+                                 counts = molecules_ENSG, 
+                                 anno = anno_qc_filter)</code></pre>
+</div>
+<div id="compare-transcriptome-profile-within-individuals" class="section level2">
+<h2>Compare transcriptome profile within individuals</h2>
+<div id="within-each-individual" class="section level3">
+<h3>Within each individual</h3>
+<p>The CV normalization method employed here scales each sample individual with respect to data-wide coefficients of variation. Therefore, we would expect that the transcriptome-wide profile relationship between samples (with or between individuals) to be consistent before versus after normalization.</p>
+<ul>
+<li>Before normalization</li>
+</ul>
+<pre class="r"><code>print(ENSG_cv[[1]]$individual[1])</code></pre>
+<pre><code>[1] NA19098
+Levels: NA19098</code></pre>
+<pre class="r"><code>print(friedman.test( cbind(ENSG_cv[[1]]$cv, ENSG_cv[[2]]$cv) ) )</code></pre>
+<pre><code>
+    Friedman rank sum test
+
+data:  cbind(ENSG_cv[[1]]$cv, ENSG_cv[[2]]$cv)
+Friedman chi-squared = 62.124, df = 1, p-value = 3.224e-15</code></pre>
+<pre class="r"><code>print(ENSG_cv[[3]]$individual[3])</code></pre>
+<pre><code>[1] NA19101
+Levels: NA19101</code></pre>
+<pre class="r"><code>print(friedman.test( cbind(ENSG_cv[[3]]$cv, ENSG_cv[[4]]$cv, ENSG_cv[[5]]$cv) ) )</code></pre>
+<pre><code>
+    Friedman rank sum test
+
+data:  cbind(ENSG_cv[[3]]$cv, ENSG_cv[[4]]$cv, ENSG_cv[[5]]$cv)
+Friedman chi-squared = 5.9756, df = 2, p-value = 0.0504</code></pre>
+<pre class="r"><code>print(ENSG_cv[[6]]$individual[6])</code></pre>
+<pre><code>[1] NA19239
+Levels: NA19239</code></pre>
+<pre class="r"><code>print(friedman.test( cbind(ENSG_cv[[6]]$cv, ENSG_cv[[7]]$cv, ENSG_cv[[8]]$cv) ) )</code></pre>
+<pre><code>
+    Friedman rank sum test
+
+data:  cbind(ENSG_cv[[6]]$cv, ENSG_cv[[7]]$cv, ENSG_cv[[8]]$cv)
+Friedman chi-squared = 3887.5, df = 2, p-value &lt; 2.2e-16</code></pre>
+<ul>
+<li>After normalization</li>
+</ul>
+<pre class="r"><code>print(ENSG_cv_adj[[1]]$individual[1])</code></pre>
+<pre><code>[1] NA19098
+Levels: NA19098</code></pre>
+<pre class="r"><code>print(friedman.test( cbind(ENSG_cv_adj[[1]]$log10cv2_adj, ENSG_cv_adj[[2]]$log10cv2_adj) ) )</code></pre>
+<pre><code>
+    Friedman rank sum test
+
+data:  cbind(ENSG_cv_adj[[1]]$log10cv2_adj, ENSG_cv_adj[[2]]$log10cv2_adj)
+Friedman chi-squared = 62.124, df = 1, p-value = 3.224e-15</code></pre>
+<pre class="r"><code>print(ENSG_cv[[3]]$individual[3])</code></pre>
+<pre><code>[1] NA19101
+Levels: NA19101</code></pre>
+<pre class="r"><code>print(friedman.test( cbind(ENSG_cv_adj[[3]]$log10cv2_adj, 
+                           ENSG_cv_adj[[4]]$log10cv2_adj, ENSG_cv_adj[[5]]$log10cv2_adj) ) )</code></pre>
+<pre><code>
+    Friedman rank sum test
+
+data:  cbind(ENSG_cv_adj[[3]]$log10cv2_adj, ENSG_cv_adj[[4]]$log10cv2_adj,     ENSG_cv_adj[[5]]$log10cv2_adj)
+Friedman chi-squared = 5.9756, df = 2, p-value = 0.0504</code></pre>
+<pre class="r"><code>print(ENSG_cv[[6]]$individual[6])</code></pre>
+<pre><code>[1] NA19239
+Levels: NA19239</code></pre>
+<pre class="r"><code>print(friedman.test( cbind(ENSG_cv_adj[[6]]$log10cv2_adj, 
+                           ENSG_cv_adj[[7]]$log10cv2_adj, ENSG_cv_adj[[8]]$log10cv2_adj) ) )</code></pre>
+<pre><code>
+    Friedman rank sum test
+
+data:  cbind(ENSG_cv_adj[[6]]$log10cv2_adj, ENSG_cv_adj[[7]]$log10cv2_adj,     ENSG_cv_adj[[8]]$log10cv2_adj)
+Friedman chi-squared = 3887.5, df = 2, p-value &lt; 2.2e-16</code></pre>
+<p>*Plot CV before/after normalization</p>
+<p>The normalization method we used is a non-linear transformation. The method aims to remove heterogeneity of variances across mean gene expression levels.</p>
+<pre class="r"><code>print(ENSG_cv[[6]]$individual[6])</code></pre>
+<pre><code>[1] NA19239
+Levels: NA19239</code></pre>
+<pre class="r"><code>plot(x = rank(log10((ENSG_cv_adj[[6]]$cv)^2)),
+     y = rank(ENSG_cv_adj[[6]]$log10cv2_adj),
+     xlab = &quot;Before normalization&quot;, ylab = &quot;After normalization&quot;,
+     cex = .4, pch = 16, main = &quot;Ranks of CV&quot;)
+abline(0, 1, col = &quot;red&quot;)</code></pre>
+<p><img src="figure/cv-adjusted-transcriptome-wide.Rmd/unnamed-chunk-8-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>print(ENSG_cv[[6]]$individual[6])</code></pre>
+<pre><code>[1] NA19239
+Levels: NA19239</code></pre>
+<pre class="r"><code>plot(x = (log10((ENSG_cv_adj[[6]]$cv)^2)),
+     y = (ENSG_cv_adj[[6]]$log10cv2_adj),
+     xlab = &quot;Before normalization&quot;, ylab = &quot;After normalization&quot;,
+     cex = .4, pch = 16, main = &quot;log10 squared-CV&quot;)
+abline(0, 1, col = &quot;red&quot;)</code></pre>
+<p><img src="figure/cv-adjusted-transcriptome-wide.Rmd/unnamed-chunk-8-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="between-individual-adjusted-cv" class="section level3">
+<h3>Between individual, adjusted CV</h3>
+<ul>
+<li>PCA</li>
+</ul>
+<p>Perform PCA for each individual. Then compare PCA gene loadings between individuals.</p>
+<p>Use <em>prcomp</em> to perform PCA: * output<span class="math"><em>x</em> : <em>l</em><em>o</em><em>a</em><em>d</em><em>i</em><em>n</em><em>g</em><em>s</em> * <em>o</em><em>u</em><em>t</em><em>p</em><em>u</em><em>t</em></span>rotation: loadings * output<span class="math"><em>c</em><em>e</em><em>n</em><em>t</em><em>e</em><em>r</em> : <em>v</em><em>a</em><em>r</em><em>i</em><em>a</em><em>b</em><em>l</em><em>e</em><em>m</em><em>e</em><em>a</em><em>n</em><em>s</em> * <em>o</em><em>u</em><em>t</em><em>p</em><em>u</em><em>t</em></span>scale: variable standard deviation</p>
+<pre class="r"><code>pca_individuals &lt;- lapply(1:3, function(ii_individual) {
+  if (ii_individual == 1) {
+  df_ind &lt;- cbind(ENSG_cv_adj$NA19098.r1$log10cv2_adj,
+                  ENSG_cv_adj$NA19098.r3$log10cv2_adj ) 
+  }
+  if (ii_individual == 2) {
+  df_ind &lt;- cbind(ENSG_cv_adj$NA19101.r1$log10cv2_adj,
+                  ENSG_cv_adj$NA19101.r2$log10cv2_adj,
+                  ENSG_cv_adj$NA19101.r3$log10cv2_adj )
+  }
+  if (ii_individual == 3) {
+  df_ind &lt;- cbind(ENSG_cv_adj$NA19239.r1$log10cv2_adj,
+                  ENSG_cv_adj$NA19239.r2$log10cv2_adj,
+                  ENSG_cv_adj$NA19239.r3$log10cv2_adj )
+  }
+  pca_results &lt;- prcomp( df_ind, retx = TRUE, center = TRUE, scale = TRUE)
+  prop_var &lt;- (pca_results$sdev^2) / sum(pca_results$sdev^2)
+  
+  list(loadings = pca_results$x,
+       prop_var = prop_var)
+})
+
+sapply(pca_individuals, function(xx) xx$prop_var)</code></pre>
+<pre><code>[[1]]
+[1] 0.5671191 0.4328809
+
+[[2]]
+[1] 0.4364410 0.2915905 0.2719686
+
+[[3]]
+[1] 0.4261285 0.2977384 0.2761331</code></pre>
+<pre class="r"><code>pca_all &lt;- cbind(pca_individuals[[1]]$loadings[ , 1],
+                 pca_individuals[[2]]$loadings[ , 1],
+                 pca_individuals[[3]]$loadings[ , 1] )
+                 
+friedman_results &lt;- friedman.test(pca_all)
+friedman_results</code></pre>
+<pre><code>
+    Friedman rank sum test
+
+data:  pca_all
+Friedman chi-squared = 8.4516, df = 2, p-value = 0.01461</code></pre>
+<ul>
+<li>Mean of sample CV</li>
+</ul>
+<p>Compute the mean of CVs of the samples.</p>
+<pre class="r"><code>df_mean &lt;- with(ENSG_cv_adj,
+                cbind(rowMeans(cbind(NA19098.r1$log10cv2_adj,
+                               NA19098.r3$log10cv2_adj) ),
+                      rowMeans(cbind(ENSG_cv_adj$NA19101.r1$log10cv2_adj,
+                               ENSG_cv_adj$NA19101.r2$log10cv2_adj,
+                               ENSG_cv_adj$NA19101.r3$log10cv2_adj ) ),
+                      rowMeans(cbind(ENSG_cv_adj$NA19239.r1$log10cv2_adj,
+                               ENSG_cv_adj$NA19239.r2$log10cv2_adj,
+                               ENSG_cv_adj$NA19239.r3$log10cv2_adj ) ) ) )
+
+friedman_results &lt;- friedman.test(df_mean)
+friedman_results</code></pre>
+<pre><code>
+    Friedman rank sum test
+
+data:  df_mean
+Friedman chi-squared = 2311.8, df = 2, p-value &lt; 2.2e-16</code></pre>
+</div>
+<div id="between-individual-unadjusted-cv" class="section level3">
+<h3>Between individual, unadjusted CV</h3>
+<ul>
+<li>PCA</li>
+</ul>
+<pre class="r"><code>pca_individuals &lt;- lapply(1:3, function(ii_individual) {
+  if (ii_individual == 1) {
+  df_ind &lt;- log10(cbind(ENSG_cv_adj$NA19098.r1$cv,
+                        ENSG_cv_adj$NA19098.r3$cv )^2 ) 
+  }
+  if (ii_individual == 2) {
+  df_ind &lt;- log10(cbind(ENSG_cv_adj$NA19101.r1$cv,
+                        ENSG_cv_adj$NA19101.r2$cv,
+                        ENSG_cv_adj$NA19101.r3$cv )^2)
+  }
+  if (ii_individual == 3) {
+  df_ind &lt;- log10(cbind(ENSG_cv_adj$NA19239.r1$cv,
+                        ENSG_cv_adj$NA19239.r2$cv,
+                        ENSG_cv_adj$NA19239.r3$cv )^2 )
+  }
+  pca_results &lt;- prcomp( df_ind, retx = TRUE, center = TRUE, scale = TRUE)
+  prop_var &lt;- (pca_results$sdev^2) / sum(pca_results$sdev^2)
+  
+  list(loadings = pca_results$x,
+       prop_var = prop_var)
+})
+
+sapply(pca_individuals, function(xx) xx$prop_var)</code></pre>
+<pre><code>[[1]]
+[1] 0.94651638 0.05348362
+
+[[2]]
+[1] 0.93150071 0.03522002 0.03327928
+
+[[3]]
+[1] 0.93415038 0.03524909 0.03060053</code></pre>
+<pre class="r"><code>pca_all &lt;- cbind(pca_individuals[[1]]$loadings[ , 1],
+                 pca_individuals[[2]]$loadings[ , 1],
+                 pca_individuals[[3]]$loadings[ , 1] )
+                 
+friedman_results &lt;- friedman.test(pca_all)
+friedman_results</code></pre>
+<pre><code>
+    Friedman rank sum test
+
+data:  pca_all
+Friedman chi-squared = 25.112, df = 2, p-value = 3.524e-06</code></pre>
+<ul>
+<li>Mean of sample CV</li>
+</ul>
+<p>Compute the mean of CVs of the samples.</p>
+<pre class="r"><code>df_mean &lt;- with(ENSG_cv_adj,
+              cbind(rowMeans(log10(cbind(NA19098.r1$cv,
+                                        NA19098.r3$cv)^2) ),
+                    rowMeans(log10(cbind(ENSG_cv_adj$NA19101.r1$cv,
+                                         ENSG_cv_adj$NA19101.r2$cv,
+                                         ENSG_cv_adj$NA19101.r3$cv )^2) ),
+                    rowMeans(log10(cbind(ENSG_cv_adj$NA19239.r1$cv,
+                                         ENSG_cv_adj$NA19239.r2$cv,
+                                         ENSG_cv_adj$NA19239.r3$cv )^2) ) ) )
+
+friedman_results &lt;- friedman.test(df_mean)
+friedman_results</code></pre>
+<pre><code>
+    Friedman rank sum test
+
+data:  df_mean
+Friedman chi-squared = 2311.8, df = 2, p-value &lt; 2.2e-16</code></pre>
+</div>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] grid      stats     graphics  grDevices utils     datasets  methods  
+[8] base     
+
+other attached packages:
+[1] zoo_1.7-12       ggplot2_1.0.1    edgeR_3.10.2     limma_3.24.9    
+[5] dplyr_0.4.2      data.table_1.9.4 knitr_1.10.5    
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.12.0      magrittr_1.5     MASS_7.3-40      munsell_0.4.2   
+ [5] lattice_0.20-31  colorspace_1.2-6 R6_2.1.1         stringr_1.0.0   
+ [9] httr_0.6.1       plyr_1.8.3       tools_3.2.0      parallel_3.2.0  
+[13] gtable_0.1.2     DBI_0.3.1        htmltools_0.2.6  yaml_2.1.13     
+[17] digest_0.6.8     assertthat_0.1   reshape2_1.4.1   formatR_1.2     
+[21] bitops_1.0-6     RCurl_1.95-4.6   evaluate_0.7     rmarkdown_0.6.1 
+[25] stringi_0.4-1    scales_0.2.4     chron_2.3-45     proto_0.3-10    </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+
+</body>
+</html>

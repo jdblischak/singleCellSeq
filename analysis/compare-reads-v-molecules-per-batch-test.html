@@ -8,8 +8,9 @@
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
 <meta name="generator" content="pandoc" />
 
+<meta name="author" content="Joyce Hsiao" />
 
-<meta name="date" content="2015-10-20" />
+<meta name="date" content="2015-10-23" />
 
 <title>Batch effects of conversion rates</title>
 
@@ -119,7 +120,8 @@ img {
 
 <div id="header">
 <h1 class="title">Batch effects of conversion rates</h1>
-<h4 class="date"><em>2015-10-20</em></h4>
+<h4 class="author"><em>Joyce Hsiao</em></h4>
+<h4 class="date"><em>2015-10-23</em></h4>
 </div>
 
 <div id="TOC">
@@ -136,15 +138,13 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-10-24</p>
-<p><strong>Code version:</strong> d99925d21498748ab56d2b7fc33447f186fe50ac</p>
+<p><strong>Last updated:</strong> 2015-10-26</p>
+<p><strong>Code version:</strong> 972bb96e0aaadb60cece679ebd7f25f961a30df5</p>
 <div id="objective" class="section level2">
 <h2>Objective</h2>
 <p>Compute conversion rates of each cell using the filerted set of cells. Compare conversion rates between batches: is there an individual effect or batch effect of coversion rate?</p>
 <p>Note that we will remove the NA19098 batch 2 in the following analyses.</p>
-<p>We used Levene’s test and also Brown-Frosythe test to compare variances of conversion rates between batches. Both of these two methods center the observations such that observaitons within each group centered at a mean or median of zero (Levene’s and Brown-Frosythe, respectively). Results below are described at an alpha level of .05. Note that Brown-Frosythe is our reporting statistical test of choice for now.</p>
-<p>For the ERCC genes, we found the variances of the conversion rates to vary between the 9 batches (p &lt; .05), but to be similar between the three individuals (p = .61). On the other hand, among the endogeneous genes, we found significant differences in variances of the conversion rates between the 9 batches (p &lt; .0005) and between the individuals (p &lt; .05).</p>
-<p>Next we compared variances of the conversion rates between batches within each individual. Interesting, for the ERCC genes, we found NA19239 batches significantly different in variances of the conversion rates (p &lt; .01); while there was no significant difference in conversion rates of the other individual batches. However, among the endogeneous genes, NA19239 batches were not different in variances of the conversion rates; on the other hand, we see a small difference in NA19101 batches in variances of conversion rates (p &lt; .05).</p>
+<p>We will use analysis of variance to test whether conversion rates are significantly different between individuals. Results below are described at an alpha level of .05.</p>
 </div>
 <div id="input" class="section level2">
 <h2>Input</h2>
@@ -248,89 +248,125 @@ theme(axis.text.x = element_text(hjust=1, angle = 45))
 
 convertion_ensg</code></pre>
 <p><img src="figure/compare-reads-v-molecules-per-batch-test.Rmd/unnamed-chunk-1-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<p>*Between all batches.</p>
-<pre class="r"><code>library(car)
-# Leven&#39;s test
-leveneTest(y = total_counts_ENSG$conversion,
-           group = factor(anno_filter$batch), center = mean )</code></pre>
-<pre><code>Levene&#39;s Test for Homogeneity of Variance (center = mean)
-       Df F value    Pr(&gt;F)    
-group   7  7.4306 1.483e-08 ***
-      555                      
----
-Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
-<pre class="r"><code># Brown-Forsythe test
-leveneTest(y = total_counts_ENSG$conversion,
-           group = factor(anno_filter$batch), center = median )</code></pre>
-<pre><code>Levene&#39;s Test for Homogeneity of Variance (center = median)
-       Df F value    Pr(&gt;F)    
-group   7  4.0114 0.0002691 ***
-      555                      
----
-Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
-<p>*Between individuals.</p>
-<pre class="r"><code>library(car)
-# Leven&#39;s test
-leveneTest(y = total_counts_ENSG$conversion,
-           group = factor(anno_filter$individual), center = mean )</code></pre>
-<pre><code>Levene&#39;s Test for Homogeneity of Variance (center = mean)
-       Df F value   Pr(&gt;F)   
-group   2   6.111 0.002369 **
-      560                    
----
-Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
-<pre class="r"><code># Brown-Forsythe test
-leveneTest(y = total_counts_ENSG$conversion,
-           group = factor(anno_filter$individual), center = median )</code></pre>
-<pre><code>Levene&#39;s Test for Homogeneity of Variance (center = median)
-       Df F value  Pr(&gt;F)  
-group   2  4.4099 0.01258 *
-      560                  
+<p>*Between individual</p>
+<p>For individual <span class="math"><em>i</em></span>, sample <span class="math"><em>j</em></span>, we have <span class="math"><em>n</em><sub><em>i</em><em>j</em></sub></span> cells. Here we compare the per cell conversion rate from molecule count to read count between the three individuals:</p>
+<p><br /><span class="math"><em>Y</em><sub><em>i</em><em>j</em><em>k</em></sub> = <em>μ</em><sub><em>i</em></sub> + <em>b</em><sub><em>i</em><em>j</em></sub> + <em>ϵ</em><sub><em>i</em><em>j</em><em>k</em></sub></span><br /></p>
+<p>where <span class="math"><em>i</em> = 1, 2, 3</span>, <span class="math"><em>j</em> = 1, 2, 3</span>, and <span class="math"><em>k</em> = 1, 2, …, <em>n</em><sub><em>i</em><em>j</em></sub></span>.</p>
+<pre class="r"><code>df_ENSG &lt;- data.frame(total_counts_ENSG,
+                      individual = factor(anno_filter$individual),
+                      replicate = factor(anno_filter$replicate),
+                      batch = factor(anno_filter$batch))
+
+library(lme4)</code></pre>
+<pre><code>Loading required package: Matrix</code></pre>
+<pre class="r"><code>lmer_ENSG_full &lt;- lmer(conversion ~ individual + (1| individual:replicate), 
+                        data = df_ENSG)
+lmer_ENSG_null &lt;- lmer(conversion ~ 1 + (1| individual:replicate), 
+                        data = df_ENSG)
+anova(lmer_ENSG_null, lmer_ENSG_full)</code></pre>
+<pre><code>refitting model(s) with ML (instead of REML)</code></pre>
+<pre><code>Data: df_ENSG
+Models:
+lmer_ENSG_null: conversion ~ 1 + (1 | individual:replicate)
+lmer_ENSG_full: conversion ~ individual + (1 | individual:replicate)
+               Df    AIC    BIC  logLik deviance  Chisq Chi Df Pr(&gt;Chisq)
+lmer_ENSG_null  3 2814.6 2827.6 -1404.3   2808.6                         
+lmer_ENSG_full  5 2800.8 2822.4 -1395.4   2790.8 17.843      2  0.0001335
+                  
+lmer_ENSG_null    
+lmer_ENSG_full ***
 ---
 Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
 <p>*For each individual, between batches.</p>
 <pre class="r"><code>for (i in 1:length(unique(anno_filter$individual))) {
   print(unique(anno_filter$individual)[i])
   select_individual &lt;- with(anno_filter, individual == unique(individual)[i])
-  # Levene&#39;s test
-  print(leveneTest(y = total_counts_ENSG$conversion[select_individual],
-             group = factor(anno_filter$replicate[select_individual]), center = mean ))
-  
-  # Brown-Forsythe test
-  print(leveneTest(y = total_counts_ENSG$conversion[select_individual],
-             group = factor(anno_filter$replicate[select_individual]), center = median ) )
+  print( summary(aov(conversion ~ batch, 
+                     data = df_ENSG[select_individual, ]) ) )
 }</code></pre>
 <pre><code>[1] &quot;NA19098&quot;
-Levene&#39;s Test for Homogeneity of Variance (center = mean)
-       Df F value Pr(&gt;F)
-group   1  0.6335 0.4274
-      140               
-Levene&#39;s Test for Homogeneity of Variance (center = median)
-       Df F value Pr(&gt;F)
-group   1  0.2636 0.6084
-      140               
-[1] &quot;NA19101&quot;
-Levene&#39;s Test for Homogeneity of Variance (center = mean)
-       Df F value   Pr(&gt;F)    
-group   2  7.9829 0.000466 ***
-      194                     
+             Df Sum Sq Mean Sq F value   Pr(&gt;F)    
+batch         1   92.3   92.32   19.24 2.25e-05 ***
+Residuals   140  671.8    4.80                     
 ---
 Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
-Levene&#39;s Test for Homogeneity of Variance (center = median)
-       Df F value  Pr(&gt;F)  
-group   2  3.6868 0.02682 *
-      194                  
+[1] &quot;NA19101&quot;
+             Df Sum Sq Mean Sq F value Pr(&gt;F)  
+batch         2   92.1   46.05   3.383  0.036 *
+Residuals   194 2640.9   13.61                 
 ---
 Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
 [1] &quot;NA19239&quot;
-Levene&#39;s Test for Homogeneity of Variance (center = mean)
-       Df F value Pr(&gt;F)
-group   2  1.1051  0.333
-      221               
-Levene&#39;s Test for Homogeneity of Variance (center = median)
-       Df F value Pr(&gt;F)
-group   2  1.0756 0.3429
-      221               </code></pre>
+             Df Sum Sq Mean Sq F value   Pr(&gt;F)    
+batch         2  285.2  142.58   26.69 4.15e-11 ***
+Residuals   221 1180.7    5.34                     
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
+<pre class="r"><code># 19098
+summary(lm(conversion ~ replicate, data = df_ENSG[df_ENSG$individual== &quot;NA19098&quot;,]))</code></pre>
+<pre><code>
+Call:
+lm(formula = conversion ~ replicate, data = df_ENSG[df_ENSG$individual == 
+    &quot;NA19098&quot;, ])
+
+Residuals:
+     Min       1Q   Median       3Q      Max 
+-11.1261  -0.8933   0.1579   0.9474   7.4636 
+
+Coefficients:
+            Estimate Std. Error t value Pr(&gt;|t|)    
+(Intercept)  18.3957     0.2376  77.420  &lt; 2e-16 ***
+replicater3   1.6449     0.3750   4.386 2.25e-05 ***
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
+
+Residual standard error: 2.191 on 140 degrees of freedom
+Multiple R-squared:  0.1208,    Adjusted R-squared:  0.1145 
+F-statistic: 19.24 on 1 and 140 DF,  p-value: 2.254e-05</code></pre>
+<pre class="r"><code># 19101
+summary(lm(conversion ~ replicate, data = df_ENSG[df_ENSG$individual== &quot;NA19101&quot;,]))</code></pre>
+<pre><code>
+Call:
+lm(formula = conversion ~ replicate, data = df_ENSG[df_ENSG$individual == 
+    &quot;NA19101&quot;, ])
+
+Residuals:
+     Min       1Q   Median       3Q      Max 
+-18.1985  -1.0879   0.7014   2.0830   7.8304 
+
+Coefficients:
+            Estimate Std. Error t value Pr(&gt;|t|)    
+(Intercept)  25.6677     0.4205  61.046   &lt;2e-16 ***
+replicater2   1.1481     0.6140   1.870    0.063 .  
+replicater3  -0.5399     0.6622  -0.815    0.416    
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
+
+Residual standard error: 3.69 on 194 degrees of freedom
+Multiple R-squared:  0.0337,    Adjusted R-squared:  0.02374 
+F-statistic: 3.383 on 2 and 194 DF,  p-value: 0.03596</code></pre>
+<pre class="r"><code># 19239
+summary(lm(conversion ~ replicate, data = df_ENSG[df_ENSG$individual== &quot;NA19239&quot;,]))</code></pre>
+<pre><code>
+Call:
+lm(formula = conversion ~ replicate, data = df_ENSG[df_ENSG$individual == 
+    &quot;NA19239&quot;, ])
+
+Residuals:
+     Min       1Q   Median       3Q      Max 
+-13.7961  -0.9565   0.4097   1.4549   5.0439 
+
+Coefficients:
+            Estimate Std. Error t value Pr(&gt;|t|)    
+(Intercept)  20.9429     0.2617  80.021  &lt; 2e-16 ***
+replicater2   1.8286     0.3850   4.749 3.67e-06 ***
+replicater3   2.6393     0.3690   7.153 1.23e-11 ***
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
+
+Residual standard error: 2.311 on 221 degrees of freedom
+Multiple R-squared:  0.1945,    Adjusted R-squared:  0.1872 
+F-statistic: 26.69 on 2 and 221 DF,  p-value: 4.154e-11</code></pre>
 </div>
 <div id="ercc" class="section level3">
 <h3>ERCC</h3>
@@ -346,89 +382,119 @@ theme(axis.text.x = element_text(hjust=1, angle = 45))
 
 convertion_ercc</code></pre>
 <p><img src="figure/compare-reads-v-molecules-per-batch-test.Rmd/unnamed-chunk-5-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<p>*Between all batches.</p>
-<pre class="r"><code>library(car)
-# Leven&#39;s test
-leveneTest(y = total_counts_ERCC$conversion,
-           group = factor(anno_filter$batch), center = mean )</code></pre>
-<pre><code>Levene&#39;s Test for Homogeneity of Variance (center = mean)
-       Df F value   Pr(&gt;F)   
-group   7  3.1996 0.002485 **
-      555                    
+<ul>
+<li>Between individuals</li>
+</ul>
+<pre class="r"><code>df_ERCC &lt;- data.frame(total_counts_ERCC,
+                      individual = factor(anno_filter$individual),
+                      replicate = factor(anno_filter$replicate),
+                      batch = factor(anno_filter$batch))
+
+library(lme4)
+lmer_ERCC_full &lt;- lmer(conversion ~ individual + (1| individual:replicate), 
+                        data = df_ERCC)
+lmer_ERCC_null &lt;- lmer(conversion ~ 1 + (1| individual:replicate), 
+                        data = df_ERCC)
+anova(lmer_ERCC_null, lmer_ERCC_full)</code></pre>
+<pre><code>refitting model(s) with ML (instead of REML)</code></pre>
+<pre><code>Data: df_ERCC
+Models:
+lmer_ERCC_null: conversion ~ 1 + (1 | individual:replicate)
+lmer_ERCC_full: conversion ~ individual + (1 | individual:replicate)
+               Df    AIC    BIC  logLik deviance  Chisq Chi Df Pr(&gt;Chisq)
+lmer_ERCC_null  3 3556.1 3569.1 -1775.0   3550.1                         
+lmer_ERCC_full  5 3543.4 3565.1 -1766.7   3533.4 16.662      2  0.0002409
+                  
+lmer_ERCC_null    
+lmer_ERCC_full ***
 ---
 Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
-<pre class="r"><code># Brown-Forsythe test
-leveneTest(y = total_counts_ERCC$conversion,
-           group = factor(anno_filter$batch), center = median )</code></pre>
-<pre><code>Levene&#39;s Test for Homogeneity of Variance (center = median)
-       Df F value  Pr(&gt;F)  
-group   7  2.3384 0.02331 *
-      555                  
----
-Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
-<p>*Between individuals.</p>
-<pre class="r"><code>library(car)
-# Leven&#39;s test
-leveneTest(y = total_counts_ERCC$conversion,
-           group = factor(anno_filter$individual), center = mean )</code></pre>
-<pre><code>Levene&#39;s Test for Homogeneity of Variance (center = mean)
-       Df F value Pr(&gt;F)
-group   2  0.7765 0.4605
-      560               </code></pre>
-<pre class="r"><code># Brown-Forsythe test
-leveneTest(y = total_counts_ERCC$conversion,
-           group = factor(anno_filter$individual), center = median )</code></pre>
-<pre><code>Levene&#39;s Test for Homogeneity of Variance (center = median)
-       Df F value Pr(&gt;F)
-group   2  0.6706 0.5118
-      560               </code></pre>
 <p>*For each individual, between batches.</p>
 <pre class="r"><code>for (i in 1:length(unique(anno_filter$individual))) {
   print(unique(anno_filter$individual)[i])
   select_individual &lt;- with(anno_filter, individual == unique(individual)[i])
-  # Levene&#39;s test
-  print(leveneTest(y = total_counts_ERCC$conversion[select_individual],
-             group = factor(anno_filter$replicate[select_individual]), center = mean ))
-  
-  # Brown-Forsythe test
-  print(leveneTest(y = total_counts_ERCC$conversion[select_individual],
-             group = factor(anno_filter$replicate[select_individual]), center = median ) )
+  print( summary(aov(conversion ~ batch, 
+                     data = df_ERCC[select_individual, ]) ) )
 }</code></pre>
 <pre><code>[1] &quot;NA19098&quot;
-Levene&#39;s Test for Homogeneity of Variance (center = mean)
-       Df F value Pr(&gt;F)
-group   1  0.0703 0.7913
-      140               
-Levene&#39;s Test for Homogeneity of Variance (center = median)
-       Df F value Pr(&gt;F)
-group   1  0.0699 0.7918
-      140               
+             Df Sum Sq Mean Sq F value Pr(&gt;F)
+batch         1     10    9.87   0.394  0.531
+Residuals   140   3507   25.05               
 [1] &quot;NA19101&quot;
-Levene&#39;s Test for Homogeneity of Variance (center = mean)
-       Df F value  Pr(&gt;F)  
-group   2  4.1732 0.01681 *
-      194                  
----
-Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
-Levene&#39;s Test for Homogeneity of Variance (center = median)
-       Df F value  Pr(&gt;F)  
-group   2  2.4436 0.08951 .
-      194                  
----
-Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
+             Df Sum Sq Mean Sq F value Pr(&gt;F)
+batch         2    145   72.48   1.925  0.149
+Residuals   194   7303   37.65               
 [1] &quot;NA19239&quot;
-Levene&#39;s Test for Homogeneity of Variance (center = mean)
-       Df F value   Pr(&gt;F)   
-group   2  5.6718 0.003962 **
-      221                    
----
-Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
-Levene&#39;s Test for Homogeneity of Variance (center = median)
-       Df F value   Pr(&gt;F)   
-group   2  5.3235 0.005521 **
-      221                    
+             Df Sum Sq Mean Sq F value   Pr(&gt;F)    
+batch         2    691   345.4   12.36 8.14e-06 ***
+Residuals   221   6174    27.9                     
 ---
 Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
+<pre class="r"><code># 19098
+summary(lm(conversion ~ replicate, data = df_ERCC[df_ERCC$individual== &quot;NA19098&quot;,]))</code></pre>
+<pre><code>
+Call:
+lm(formula = conversion ~ replicate, data = df_ERCC[df_ERCC$individual == 
+    &quot;NA19098&quot;, ])
+
+Residuals:
+     Min       1Q   Median       3Q      Max 
+-16.1854  -3.2298   0.1855   2.9322  15.3908 
+
+Coefficients:
+            Estimate Std. Error t value Pr(&gt;|t|)    
+(Intercept)  21.3964     0.5429  39.413   &lt;2e-16 ***
+replicater3  -0.5378     0.8569  -0.628    0.531    
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
+
+Residual standard error: 5.005 on 140 degrees of freedom
+Multiple R-squared:  0.002806,  Adjusted R-squared:  -0.004316 
+F-statistic: 0.394 on 1 and 140 DF,  p-value: 0.5312</code></pre>
+<pre class="r"><code># 19101
+summary(lm(conversion ~ replicate, data = df_ERCC[df_ERCC$individual== &quot;NA19101&quot;,]))</code></pre>
+<pre><code>
+Call:
+lm(formula = conversion ~ replicate, data = df_ERCC[df_ERCC$individual == 
+    &quot;NA19101&quot;, ])
+
+Residuals:
+     Min       1Q   Median       3Q      Max 
+-23.8485  -2.8927   0.9391   3.8309  15.2357 
+
+Coefficients:
+            Estimate Std. Error t value Pr(&gt;|t|)    
+(Intercept)  29.4077     0.6992  42.057   &lt;2e-16 ***
+replicater2   0.8317     1.0211   0.815    0.416    
+replicater3  -1.3804     1.1013  -1.253    0.212    
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
+
+Residual standard error: 6.136 on 194 degrees of freedom
+Multiple R-squared:  0.01946,   Adjusted R-squared:  0.009352 
+F-statistic: 1.925 on 2 and 194 DF,  p-value: 0.1486</code></pre>
+<pre class="r"><code># 19239
+summary(lm(conversion ~ replicate, data = df_ERCC[df_ERCC$individual== &quot;NA19239&quot;,]))</code></pre>
+<pre><code>
+Call:
+lm(formula = conversion ~ replicate, data = df_ERCC[df_ERCC$individual == 
+    &quot;NA19239&quot;, ])
+
+Residuals:
+     Min       1Q   Median       3Q      Max 
+-19.0096  -3.6807   0.0515   3.7629  13.0844 
+
+Coefficients:
+            Estimate Std. Error t value Pr(&gt;|t|)    
+(Intercept)  22.8673     0.5985  38.209  &lt; 2e-16 ***
+replicater2   1.1424     0.8804   1.298    0.196    
+replicater3   4.0759     0.8437   4.831 2.54e-06 ***
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
+
+Residual standard error: 5.286 on 221 degrees of freedom
+Multiple R-squared:  0.1006,    Adjusted R-squared:  0.09249 
+F-statistic: 12.36 on 2 and 221 DF,  p-value: 8.138e-06</code></pre>
 </div>
 </div>
 <div id="summary-plots" class="section level2">
@@ -485,20 +551,19 @@ attached base packages:
 [8] base     
 
 other attached packages:
-[1] gridExtra_0.9.1 car_2.1-0       edgeR_3.10.2    limma_3.24.9   
-[5] cowplot_0.3.1   ggplot2_1.0.1   dplyr_0.4.2     knitr_1.10.5   
+[1] gridExtra_0.9.1 lme4_1.1-10     Matrix_1.2-1    edgeR_3.10.2   
+[5] limma_3.24.9    cowplot_0.3.1   ggplot2_1.0.1   dplyr_0.4.2    
+[9] knitr_1.10.5   
 
 loaded via a namespace (and not attached):
- [1] Rcpp_0.12.0      nloptr_1.0.4     formatR_1.2      plyr_1.8.3      
- [5] bitops_1.0-6     tools_3.2.0      digest_0.6.8     lme4_1.1-10     
- [9] evaluate_0.7     gtable_0.1.2     nlme_3.1-120     lattice_0.20-31 
-[13] mgcv_1.8-6       Matrix_1.2-1     DBI_0.3.1        yaml_2.1.13     
-[17] parallel_3.2.0   SparseM_1.6      proto_0.3-10     httr_0.6.1      
-[21] stringr_1.0.0    nnet_7.3-9       R6_2.1.1         rmarkdown_0.6.1 
-[25] minqa_1.2.4      reshape2_1.4.1   magrittr_1.5     scales_0.2.4    
-[29] htmltools_0.2.6  MASS_7.3-40      splines_3.2.0    assertthat_0.1  
-[33] pbkrtest_0.4-2   colorspace_1.2-6 quantreg_5.11    labeling_0.3    
-[37] stringi_0.4-1    RCurl_1.95-4.6   munsell_0.4.2   </code></pre>
+ [1] Rcpp_0.12.0      formatR_1.2      nloptr_1.0.4     plyr_1.8.3      
+ [5] bitops_1.0-6     tools_3.2.0      digest_0.6.8     evaluate_0.7    
+ [9] gtable_0.1.2     nlme_3.1-120     lattice_0.20-31  DBI_0.3.1       
+[13] yaml_2.1.13      parallel_3.2.0   proto_0.3-10     httr_0.6.1      
+[17] stringr_1.0.0    R6_2.1.1         rmarkdown_0.6.1  minqa_1.2.4     
+[21] reshape2_1.4.1   magrittr_1.5     scales_0.2.4     htmltools_0.2.6 
+[25] MASS_7.3-40      splines_3.2.0    assertthat_0.1   colorspace_1.2-6
+[29] labeling_0.3     stringi_0.4-1    RCurl_1.95-4.6   munsell_0.4.2   </code></pre>
 </div>
 
 

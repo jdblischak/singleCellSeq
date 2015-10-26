@@ -138,8 +138,8 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-10-24</p>
-<p><strong>Code version:</strong> d99925d21498748ab56d2b7fc33447f186fe50ac</p>
+<p><strong>Last updated:</strong> 2015-10-26</p>
+<p><strong>Code version:</strong> 972bb96e0aaadb60cece679ebd7f25f961a30df5</p>
 <div id="input" class="section level2">
 <h2>Input</h2>
 <pre class="r"><code>library(&quot;dplyr&quot;)
@@ -243,11 +243,25 @@ summary_per_sample_reads_single_qc &lt;- merge(summary_per_sample_single_reads_r
 ## calculate total mapped reads per sample
 summary_per_sample_reads_single_qc$total_mapped &lt;- apply(summary_per_sample_reads_single_qc[,5:8],1,sum)
 
-## density plots
+## cut off 
+cut_off_reads &lt;- quantile(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0,&quot;total_mapped&quot;], 0.95)
+
+cut_off_reads</code></pre>
+<pre><code>    95% 
+1581061 </code></pre>
+<pre class="r"><code>summary_per_sample_reads_single_qc$cut_off_reads &lt;- summary_per_sample_reads_single_qc$total_mapped &gt; cut_off_reads
+
+## numbers of cells 
+sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, &quot;total_mapped&quot;] &gt; cut_off_reads)</code></pre>
+<pre><code>[1] 601</code></pre>
+<pre class="r"><code>sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, &quot;total_mapped&quot;] &lt;= cut_off_reads)</code></pre>
+<pre><code>[1] 98</code></pre>
+<pre class="r"><code>## density plots
 ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0 |
                                            summary_per_sample_reads_single_qc$cell_number == 1 , ],
        aes(x = total_mapped, fill = as.factor(cell_number))) + 
        geom_density(alpha = 0.5) +
+       geom_vline(xintercept = cut_off_reads, colour=&quot;grey&quot;, linetype = &quot;longdash&quot;) +
        labs(x = &quot;total mapped reads&quot;, title = &quot;Total mappred reads&quot;)</code></pre>
 <p><img src="figure/qc-filter-ipsc.Rmd/total%20reads-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 </div>
@@ -256,11 +270,25 @@ ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cel
 <pre class="r"><code>## calculate unmapped ratios
 summary_per_sample_reads_single_qc$unmapped_ratios &lt;- summary_per_sample_reads_single_qc[,9]/apply(summary_per_sample_reads_single_qc[,5:13],1,sum)
 
-## density plots
+## cut off 
+cut_off_unmapped &lt;- quantile(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0,&quot;unmapped_ratios&quot;], 0.05)
+
+cut_off_unmapped</code></pre>
+<pre><code>       5% 
+0.3746674 </code></pre>
+<pre class="r"><code>summary_per_sample_reads_single_qc$cut_off_unmapped &lt;- summary_per_sample_reads_single_qc$unmapped_ratios &gt; cut_off_unmapped
+
+## numbers of cells 
+sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, &quot;unmapped_ratios&quot;] &gt; cut_off_unmapped)</code></pre>
+<pre><code>[1] 85</code></pre>
+<pre class="r"><code>sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, &quot;unmapped_ratios&quot;] &lt;= cut_off_unmapped)</code></pre>
+<pre><code>[1] 614</code></pre>
+<pre class="r"><code>## density plots
 ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0 |
                                            summary_per_sample_reads_single_qc$cell_number == 1 , ],
        aes(x = unmapped_ratios, fill = as.factor(cell_number))) + 
        geom_density(alpha = 0.5) +
+       geom_vline(xintercept = cut_off_unmapped, colour=&quot;grey&quot;, linetype = &quot;longdash&quot;) +
        labs(x = &quot;unmapped reads/ total reads&quot;, title = &quot;Unmapped reads&quot;)</code></pre>
 <p><img src="figure/qc-filter-ipsc.Rmd/unmapped%20ratios-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 </div>
@@ -298,11 +326,25 @@ outliers %&gt;% dplyr::select(sample_id)</code></pre>
 <pre class="r"><code>## calculate ercc reads percentage
 summary_per_sample_reads_single_qc$ercc_percentage &lt;- apply(reads_rm[grep(&quot;ERCC&quot;, rownames(reads_rm)), ],2,sum)/apply(summary_per_sample_reads_single_qc[,5:8],1,sum) 
 
-## density plots
+## cut off 
+cut_off_ercc &lt;- quantile(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0,&quot;ercc_percentage&quot;], 0.05)
+
+cut_off_ercc</code></pre>
+<pre><code>        5% 
+0.03223869 </code></pre>
+<pre class="r"><code>summary_per_sample_reads_single_qc$cut_off_ercc &lt;- summary_per_sample_reads_single_qc$ercc_percentage &gt; cut_off_ercc
+
+## numbers of cells 
+sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, &quot;ercc_percentage&quot;] &gt; cut_off_ercc)</code></pre>
+<pre><code>[1] 90</code></pre>
+<pre class="r"><code>sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, &quot;ercc_percentage&quot;] &lt;= cut_off_ercc)</code></pre>
+<pre><code>[1] 609</code></pre>
+<pre class="r"><code>## density plots
 ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0 |
                                            summary_per_sample_reads_single_qc$cell_number == 1 , ],
        aes(x = ercc_percentage, fill = as.factor(cell_number))) + 
        geom_density(alpha = 0.5) +
+       geom_vline(xintercept = cut_off_ercc, colour=&quot;grey&quot;, linetype = &quot;longdash&quot;) +
        labs(x = &quot;ERCC reads / total mapped reads&quot;, title = &quot;ERCC reads percentage&quot;)</code></pre>
 <p><img src="figure/qc-filter-ipsc.Rmd/ercc-percentage-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 </div>
@@ -319,14 +361,31 @@ mtgene &lt;- c(&quot;ENSG00000198899&quot;, &quot;ENSG00000198727&quot;, &quot;E
 mt_reads &lt;- reads_rm_gene[mtgene,]
 dim(mt_reads)</code></pre>
 <pre><code>[1]  13 768</code></pre>
-<pre class="r"><code>## mt ratio of single cell
-summary_per_sample_reads_single_qc$mt_reads_ratio &lt;- apply(mt_reads, 2, sum)/summary_per_sample_reads_single_qc$total_mapped
+<pre class="r"><code>stopifnot(colnames(reads_rm) == rownames(summary_per_sample_reads_single_qc$sample_id))
 
-## density plots
+## mt ratio of single cell
+summary_per_sample_reads_single_qc$mt_reads &lt;- apply(mt_reads, 2, sum)
+summary_per_sample_reads_single_qc$mt_reads_ratio &lt;- summary_per_sample_reads_single_qc$mt_reads /summary_per_sample_reads_single_qc$total_mapped
+
+## cut off 
+cut_off_mito &lt;- quantile(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0,&quot;mt_reads_ratio&quot;], 0.95)
+
+cut_off_mito</code></pre>
+<pre><code>      95% 
+0.0856798 </code></pre>
+<pre class="r"><code>summary_per_sample_reads_single_qc$cut_off_mito &lt;- summary_per_sample_reads_single_qc$mt_reads_ratio &gt; cut_off_mito
+
+## numbers of cells 
+sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, &quot;mt_reads_ratio&quot;] &gt; cut_off_mito)</code></pre>
+<pre><code>[1] 141</code></pre>
+<pre class="r"><code>sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, &quot;mt_reads_ratio&quot;] &lt;= cut_off_mito)</code></pre>
+<pre><code>[1] 558</code></pre>
+<pre class="r"><code>## density plots
 ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0 |
                                            summary_per_sample_reads_single_qc$cell_number == 1 , ],
        aes(x = mt_reads_ratio, fill = as.factor(cell_number))) + 
        geom_density(alpha = 0.5) +
+       geom_vline(xintercept = cut_off_mito, colour=&quot;grey&quot;, linetype = &quot;longdash&quot;) +
        labs(x = &quot;mitochondrial gene reads / total reads&quot;, title = &quot;Mitochondrial gene reads ratios&quot;)</code></pre>
 <p><img src="figure/qc-filter-ipsc.Rmd/mito-gene-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 </div>
