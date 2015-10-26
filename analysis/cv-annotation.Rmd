@@ -1,7 +1,7 @@
 ---
 title: "Per gene individual differences in CV and mean"
 author: "Joyce Hsiao"
-date: 2015-10-21
+date: 2015-10-23
 ---
 
 **Last updated:** `r Sys.Date()`
@@ -39,32 +39,6 @@ source("functions.R")
 ```
 
 
-
-## Objective
-
-Previously, we used the entire set of data including all individuals and all batches to perform normalization of coefficient of variations ([link1]) and performed 
-
-In this document, we wil perform per gene differential analysis of coefficients of variations using only coefficients of variation from ENSG genes and also from QC-approved batches (no NA19098.r2).
-
-[link1]: http://jdblischak.github.io/singleCellSeq/analysis/cv-adjusted.html
-
-
-## Set up
-
-```{r, message=FALSE, warning=FALSE}
-library("data.table")
-library("dplyr")
-library("limma")
-library("edgeR")
-library("ggplot2")
-library("grid")
-library("zoo")
-theme_set(theme_bw(base_size = 12))
-source("functions.R")
-```
-
-
-
 ## Prepare data
 
 Input annotation of only QC-filtered single cells. Remove NA19098.r2
@@ -75,6 +49,7 @@ anno_qc <- read.table("../data/annotation-filter.txt", header = TRUE,
 is_include <- anno_qc$batch != "NA19098.r2"
 anno_qc_filter <- anno_qc[which(is_include), ]
 ```
+
 
 Import endogeneous gene molecule counts that are QC-filtered, CPM-normalized, ERCC-normalized, and also processed to remove unwanted variation from batch effet. ERCC genes are removed from this file.
 
@@ -187,7 +162,7 @@ fit_limma <- eBayes(fit_limma)
 ```
 
 
-False discover control adjustment.
+False discovery control adjustment.
 
 ```{r}
 F.p.adj <- p.adjust(fit_limma$F.p.value, method = "fdr")
@@ -205,7 +180,7 @@ df_cuts
 ```
 
 
-False discover control adjutment.
+False discovery control adjutment.
 
 ```{r}
 F.p.adj <- p.adjust(fit_limma$F.p.value, method = "fdr")
@@ -272,6 +247,8 @@ legend("topright", pch = c(1, 16, 16, 16),
 
 ### Investigate...
 
+Our naive analysis seems to pick up genes with different density between individuals.
+
 ```{r, fig.width = 12, fig.height=12}
 library(gridExtra)
 order_low_cv <- order(df_compare[F.p.adj < .01, ]$cv)
@@ -306,6 +283,9 @@ high_plots <- lapply(1:6, function(i) {
 grid.arrange(grobs = high_plots, ncol = 2)
 ```
 
+## Annotation
+
+### ENSEMBLE database 
 
 ```{r}
 sig_cv <- order(F.p.adj)[F.p.adj < .05]
@@ -320,21 +300,119 @@ differential_CV_genes_info <- getBM(attributes = c("ensembl_gene_id", "chromosom
                                     filters = "ensembl_gene_id",
                                     values = rownames(molecules_ENSG[sig_cv, ]),
                                     mart = ensembl)
-
 differential_CV_genes_info
-# write.table(rownames(molecules_ENSG[sig_cv, ]), file = 
-# "~/Dropbox/temp.txt", row.names = FALSE, col.names = FALSE)
 ```
 
+### Protein-protein interaction
+
+Export significant genes.
+
+```{r, eval = FALSE}
+write.table(rownames(molecules_ENSG[F.p.adj < .05, ]), 
+            file = "../data/genelist-cv-sig.txt", 
+            row.names = FALSE, col.names = FALSE, quote = FALSE)
+```
 
 Use [string analysis] data base to look for protein protein interaction of these differential CV genes.
 
 [string analysis]:http://string-db.org
 
 This is the confidence view. Stronger associations are represented by thicker lines.
-![This is the confidence view](figure/cv-mean.Rmd/string1.png)
+![This is the confidence view](figure/cv-annotation.Rmd/string1-new.png)
+
 This is the evidence view. Different line colors represent the types of evidence for the association.
-![This is the evidence view](figure/cv-mean.Rmd/string2.png)
+![This is the evidence view](figure/cv-annotation.Rmd/string2-new.png)
+
+
+### GO analysis
+
+[Description and steps are copied from my work with Sidney]
+
+GOstats performed Hypergeometric test for gene set enrichment. The test can 
+take account into the conditional relationship between GO terms. Standard GOstats
+output contains the following information:
+
+1. GPID: GO term ID number
+2. Pvalue: p-vlaue of the Hypergeometric test for over-representation 
+3. OddsRatio: effect size
+4. ExpCount: expected number of genes 
+5. Count: observed number of genes
+6. Size: number of possible genes given the defined gene universe
+
+
+GO analysis workflow is consisted of two major steps. First, we identified GO terms significant enriched given a p-value cutoff, which we set to 1 so that all possible GO terms associated with the genes can be included. We do this to eliminate false negatives. Then, we take the union of the GO terms across functional categories of interest (e.g., translation attentuation and post-translational buffering). The GO terms that are significant in at least one of the four functional categories are presented in the results. 
+
+Note. The following heatmaps are generated based on the p-values of the gene sets. 
+
+
+```{r}
+if (file.exists("rda/cv-annotation/go-cv.rda")) {
+  load("rda/cv-annotation/go-cv.rda")  
+} else {
+go_sig_cv <- GOtest(my_ensembl_gene_universe = rownames(molecules_ENSG),
+              my_ensembl_gene_test = rownames(molecules_ENSG)[F.p.adj < .05],
+              pval_cutoff = 1, ontology=c("BP","CC","MF") )
+save(molecules_ENSG,
+     F.p.adj, go_sig_cv, file = "rda/cv-annotation/go-cv.rda")
+}
+```
+
+Extract terms
+
+```{r}
+if (file.exists("rda/cv-annotation/go-cv-terms.rda")) {
+  load("rda/cv-annotation/go-cv-terms.rda")  
+} else {
+  # Biological process
+  goterms_bp <- summary(go_sig_cv$GO$BP, pvalue = 1)
+  goterms_bp <- data.frame(ID = goterms_bp[[1]],
+                           Pvalue = goterms_bp[[2]],
+                           Terms = goterms_bp[[7]])
+  goterms_bp <- goterms_bp[order(goterms_bp$Pvalue), ]
+  
+  # Cellular component
+  goterms_cc <- summary(go_sig_cv$GO$CC, pvalue = 1)
+  goterms_cc <- data.frame(ID = goterms_cc[[1]],
+                           Pvalue = goterms_cc[[2]],
+                           Terms = goterms_cc[[7]])
+  goterms_cc <- goterms_cc[order(goterms_cc$Pvalue), ]
+
+  # Molecular function
+  goterms_mf <- summary(go_sig_cv$GO$MF, pvalue = 1)
+  goterms_mf <- data.frame(ID = goterms_mf[[1]],
+                           Pvalue = goterms_mf[[2]],
+                           Terms = goterms_mf[[7]])
+  goterms_mf <- goterms_mf[order(goterms_mf$Pvalue), ]
+
+  save(goterms_bp, goterms_cc, goterms_mf, 
+       file = "rda/cv-annotation/go-cv-terms.rda")
+}
+```
+
+
+*Biological process
+
+```{r}
+dim(goterms_bp)
+kable(goterms_bp[1:50, ])
+```
+
+
+*Cellular component
+
+```{r}
+dim(goterms_cc)
+kable(goterms_cc[1:50, ])
+```
+
+
+*Molecular function
+
+```{r}
+dim(goterms_mf)
+kable(goterms_mf[1:50, ])
+```
+
 
 ## Session information
 

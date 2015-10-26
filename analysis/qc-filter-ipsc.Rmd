@@ -139,11 +139,24 @@ summary_per_sample_reads_single_qc <- merge(summary_per_sample_single_reads_rm,q
 ## calculate total mapped reads per sample
 summary_per_sample_reads_single_qc$total_mapped <- apply(summary_per_sample_reads_single_qc[,5:8],1,sum)
 
+## cut off 
+cut_off_reads <- quantile(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0,"total_mapped"], 0.95)
+
+cut_off_reads
+
+summary_per_sample_reads_single_qc$cut_off_reads <- summary_per_sample_reads_single_qc$total_mapped > cut_off_reads
+
+## numbers of cells 
+sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, "total_mapped"] > cut_off_reads)
+
+sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, "total_mapped"] <= cut_off_reads)
+
 ## density plots
 ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0 |
                                            summary_per_sample_reads_single_qc$cell_number == 1 , ],
        aes(x = total_mapped, fill = as.factor(cell_number))) + 
        geom_density(alpha = 0.5) +
+       geom_vline(xintercept = cut_off_reads, colour="grey", linetype = "longdash") +
        labs(x = "total mapped reads", title = "Total mappred reads")
 ```
 
@@ -152,11 +165,24 @@ ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cel
 ## calculate unmapped ratios
 summary_per_sample_reads_single_qc$unmapped_ratios <- summary_per_sample_reads_single_qc[,9]/apply(summary_per_sample_reads_single_qc[,5:13],1,sum)
 
+## cut off 
+cut_off_unmapped <- quantile(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0,"unmapped_ratios"], 0.05)
+
+cut_off_unmapped
+
+summary_per_sample_reads_single_qc$cut_off_unmapped <- summary_per_sample_reads_single_qc$unmapped_ratios > cut_off_unmapped
+
+## numbers of cells 
+sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, "unmapped_ratios"] > cut_off_unmapped)
+
+sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, "unmapped_ratios"] <= cut_off_unmapped)
+
 ## density plots
 ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0 |
                                            summary_per_sample_reads_single_qc$cell_number == 1 , ],
        aes(x = unmapped_ratios, fill = as.factor(cell_number))) + 
        geom_density(alpha = 0.5) +
+       geom_vline(xintercept = cut_off_unmapped, colour="grey", linetype = "longdash") +
        labs(x = "unmapped reads/ total reads", title = "Unmapped reads")
 ```
 
@@ -184,11 +210,24 @@ outliers %>% dplyr::select(sample_id)
 ## calculate ercc reads percentage
 summary_per_sample_reads_single_qc$ercc_percentage <- apply(reads_rm[grep("ERCC", rownames(reads_rm)), ],2,sum)/apply(summary_per_sample_reads_single_qc[,5:8],1,sum) 
 
+## cut off 
+cut_off_ercc <- quantile(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0,"ercc_percentage"], 0.05)
+
+cut_off_ercc
+
+summary_per_sample_reads_single_qc$cut_off_ercc <- summary_per_sample_reads_single_qc$ercc_percentage > cut_off_ercc
+
+## numbers of cells 
+sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, "ercc_percentage"] > cut_off_ercc)
+
+sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, "ercc_percentage"] <= cut_off_ercc)
+
 ## density plots
 ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0 |
                                            summary_per_sample_reads_single_qc$cell_number == 1 , ],
        aes(x = ercc_percentage, fill = as.factor(cell_number))) + 
        geom_density(alpha = 0.5) +
+       geom_vline(xintercept = cut_off_ercc, colour="grey", linetype = "longdash") +
        labs(x = "ERCC reads / total mapped reads", title = "ERCC reads percentage")
 ```
 
@@ -204,15 +243,30 @@ mtgene <- c("ENSG00000198899", "ENSG00000198727", "ENSG00000198888", "ENSG000001
 ## reads of mt genes in single cells
 mt_reads <- reads_rm_gene[mtgene,]
 dim(mt_reads)
+stopifnot(colnames(reads_rm) == rownames(summary_per_sample_reads_single_qc$sample_id))
 
 ## mt ratio of single cell
-summary_per_sample_reads_single_qc$mt_reads_ratio <- apply(mt_reads, 2, sum)/summary_per_sample_reads_single_qc$total_mapped
+summary_per_sample_reads_single_qc$mt_reads <- apply(mt_reads, 2, sum)
+summary_per_sample_reads_single_qc$mt_reads_ratio <- summary_per_sample_reads_single_qc$mt_reads /summary_per_sample_reads_single_qc$total_mapped
+
+## cut off 
+cut_off_mito <- quantile(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0,"mt_reads_ratio"], 0.95)
+
+cut_off_mito
+
+summary_per_sample_reads_single_qc$cut_off_mito <- summary_per_sample_reads_single_qc$mt_reads_ratio > cut_off_mito
+
+## numbers of cells 
+sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, "mt_reads_ratio"] > cut_off_mito)
+
+sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, "mt_reads_ratio"] <= cut_off_mito)
 
 ## density plots
 ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0 |
                                            summary_per_sample_reads_single_qc$cell_number == 1 , ],
        aes(x = mt_reads_ratio, fill = as.factor(cell_number))) + 
        geom_density(alpha = 0.5) +
+       geom_vline(xintercept = cut_off_mito, colour="grey", linetype = "longdash") +
        labs(x = "mitochondrial gene reads / total reads", title = "Mitochondrial gene reads ratios")
 ```
 
