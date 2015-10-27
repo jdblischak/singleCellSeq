@@ -130,16 +130,16 @@ img {
 <li><a href="#total-ercc-and-removal-of-19098.r2">Total ERCC and removal of 19098.r2</a></li>
 <li><a href="#total-mapped-reads-reads">Total mapped reads reads</a></li>
 <li><a href="#unmapped-ratios">Unmapped ratios</a></li>
-<li><a href="#total-molecule-counts">Total molecule counts</a></li>
 <li><a href="#ercc-percentage">ERCC percentage</a></li>
-<li><a href="#mitochondrial-genes">Mitochondrial genes</a></li>
 <li><a href="#number-of-genes-detected">Number of genes detected</a></li>
+<li><a href="#total-molecule-counts">Total molecule counts</a></li>
+<li><a href="#mitochondrial-genes">Mitochondrial genes</a></li>
 <li><a href="#session-information">Session information</a></li>
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-10-26</p>
-<p><strong>Code version:</strong> 972bb96e0aaadb60cece679ebd7f25f961a30df5</p>
+<p><strong>Last updated:</strong> 2015-10-27</p>
+<p><strong>Code version:</strong> f4be18c104f70809fbbd1acf23293745e7a0e69d</p>
 <div id="input" class="section level2">
 <h2>Input</h2>
 <pre class="r"><code>library(&quot;dplyr&quot;)
@@ -292,6 +292,63 @@ ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cel
        labs(x = &quot;unmapped reads/ total reads&quot;, title = &quot;Unmapped reads&quot;)</code></pre>
 <p><img src="figure/qc-filter-ipsc.Rmd/unmapped%20ratios-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 </div>
+<div id="ercc-percentage" class="section level2">
+<h2>ERCC percentage</h2>
+<pre class="r"><code>## calculate ercc reads percentage
+summary_per_sample_reads_single_qc$ercc_percentage &lt;- apply(reads_rm[grep(&quot;ERCC&quot;, rownames(reads_rm)), ],2,sum)/apply(summary_per_sample_reads_single_qc[,5:8],1,sum) 
+
+## cut off 
+cut_off_ercc &lt;- quantile(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0,&quot;ercc_percentage&quot;], 0.05)
+
+cut_off_ercc</code></pre>
+<pre><code>        5% 
+0.03223869 </code></pre>
+<pre class="r"><code>summary_per_sample_reads_single_qc$cut_off_ercc &lt;- summary_per_sample_reads_single_qc$ercc_percentage &gt; cut_off_ercc
+
+## numbers of cells 
+sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, &quot;ercc_percentage&quot;] &gt; cut_off_ercc)</code></pre>
+<pre><code>[1] 90</code></pre>
+<pre class="r"><code>sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, &quot;ercc_percentage&quot;] &lt;= cut_off_ercc)</code></pre>
+<pre><code>[1] 609</code></pre>
+<pre class="r"><code>## density plots
+ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0 |
+                                           summary_per_sample_reads_single_qc$cell_number == 1 , ],
+       aes(x = ercc_percentage, fill = as.factor(cell_number))) + 
+       geom_density(alpha = 0.5) +
+       geom_vline(xintercept = cut_off_ercc, colour=&quot;grey&quot;, linetype = &quot;longdash&quot;) +
+       labs(x = &quot;ERCC reads / total mapped reads&quot;, title = &quot;ERCC reads percentage&quot;)</code></pre>
+<p><img src="figure/qc-filter-ipsc.Rmd/ercc-percentage-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
+<div id="number-of-genes-detected" class="section level2">
+<h2>Number of genes detected</h2>
+<pre class="r"><code>## endogenous genes
+reads_rm_gene &lt;- reads_rm[grep(&quot;ENSG&quot;, rownames(reads_rm)), ]
+
+## number of genes detected 
+summary_per_sample_reads_single_qc$gene_number &lt;- colSums(reads_rm_gene &gt;= 1)
+
+## cut off 
+cut_off_genes &lt;- quantile(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0,&quot;gene_number&quot;], 0.95)
+
+cut_off_genes</code></pre>
+<pre><code>   95% 
+6875.6 </code></pre>
+<pre class="r"><code>summary_per_sample_reads_single_qc$cut_off_genes &lt;- summary_per_sample_reads_single_qc$gene_number &gt; cut_off_genes
+
+## numbers of cells 
+sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, &quot;gene_number&quot;] &gt; cut_off_genes)</code></pre>
+<pre><code>[1] 629</code></pre>
+<pre class="r"><code>sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, &quot;gene_number&quot;] &lt;= cut_off_genes)</code></pre>
+<pre><code>[1] 70</code></pre>
+<pre class="r"><code>## density plots
+ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0 |
+                                           summary_per_sample_reads_single_qc$cell_number == 1 , ],
+       aes(x = gene_number, fill = as.factor(cell_number))) + 
+       geom_density(alpha = 0.5) +
+       geom_vline(xintercept = cut_off_genes, colour=&quot;grey&quot;, linetype = &quot;longdash&quot;) +
+       labs(x = &quot;gene numbers detected&quot;, title = &quot;Numbers of detected genes&quot;)</code></pre>
+<p><img src="figure/qc-filter-ipsc.Rmd/gene-number-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
 <div id="total-molecule-counts" class="section level2">
 <h2>Total molecule counts</h2>
 <pre class="r"><code>## calculate total gene molecule counts
@@ -321,39 +378,9 @@ outliers %&gt;% dplyr::select(sample_id)</code></pre>
 10 NA19239.r2.A12
 11 NA19239.r2.B07</code></pre>
 </div>
-<div id="ercc-percentage" class="section level2">
-<h2>ERCC percentage</h2>
-<pre class="r"><code>## calculate ercc reads percentage
-summary_per_sample_reads_single_qc$ercc_percentage &lt;- apply(reads_rm[grep(&quot;ERCC&quot;, rownames(reads_rm)), ],2,sum)/apply(summary_per_sample_reads_single_qc[,5:8],1,sum) 
-
-## cut off 
-cut_off_ercc &lt;- quantile(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0,&quot;ercc_percentage&quot;], 0.05)
-
-cut_off_ercc</code></pre>
-<pre><code>        5% 
-0.03223869 </code></pre>
-<pre class="r"><code>summary_per_sample_reads_single_qc$cut_off_ercc &lt;- summary_per_sample_reads_single_qc$ercc_percentage &gt; cut_off_ercc
-
-## numbers of cells 
-sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, &quot;ercc_percentage&quot;] &gt; cut_off_ercc)</code></pre>
-<pre><code>[1] 90</code></pre>
-<pre class="r"><code>sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, &quot;ercc_percentage&quot;] &lt;= cut_off_ercc)</code></pre>
-<pre><code>[1] 609</code></pre>
-<pre class="r"><code>## density plots
-ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0 |
-                                           summary_per_sample_reads_single_qc$cell_number == 1 , ],
-       aes(x = ercc_percentage, fill = as.factor(cell_number))) + 
-       geom_density(alpha = 0.5) +
-       geom_vline(xintercept = cut_off_ercc, colour=&quot;grey&quot;, linetype = &quot;longdash&quot;) +
-       labs(x = &quot;ERCC reads / total mapped reads&quot;, title = &quot;ERCC reads percentage&quot;)</code></pre>
-<p><img src="figure/qc-filter-ipsc.Rmd/ercc-percentage-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
-</div>
 <div id="mitochondrial-genes" class="section level2">
 <h2>Mitochondrial genes</h2>
-<pre class="r"><code>## endogenous genes
-reads_rm_gene &lt;- reads_rm[grep(&quot;ENSG&quot;, rownames(reads_rm)), ]
-
-## create a list of mitochondrial genes (13 protein-coding genes)
+<pre class="r"><code>## create a list of mitochondrial genes (13 protein-coding genes)
 ## MT-ATP6, MT-CYB, MT-ND1, MT-ND4, MT-ND4L, MT-ND5, MT-ND6, MT-CO2, MT-CO1, MT-ND2, MT-ATP8, MT-CO3, MT-ND3
 mtgene &lt;- c(&quot;ENSG00000198899&quot;, &quot;ENSG00000198727&quot;, &quot;ENSG00000198888&quot;, &quot;ENSG00000198886&quot;, &quot;ENSG00000212907&quot;, &quot;ENSG00000198786&quot;, &quot;ENSG00000198695&quot;, &quot;ENSG00000198712&quot;, &quot;ENSG00000198804&quot;, &quot;ENSG00000198763&quot;,&quot;ENSG00000228253&quot;, &quot;ENSG00000198938&quot;, &quot;ENSG00000198840&quot;)
 
@@ -367,40 +394,31 @@ dim(mt_reads)</code></pre>
 summary_per_sample_reads_single_qc$mt_reads &lt;- apply(mt_reads, 2, sum)
 summary_per_sample_reads_single_qc$mt_reads_ratio &lt;- summary_per_sample_reads_single_qc$mt_reads /summary_per_sample_reads_single_qc$total_mapped
 
-## cut off 
-cut_off_mito &lt;- quantile(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0,&quot;mt_reads_ratio&quot;], 0.95)
-
-cut_off_mito</code></pre>
-<pre><code>      95% 
-0.0856798 </code></pre>
-<pre class="r"><code>summary_per_sample_reads_single_qc$cut_off_mito &lt;- summary_per_sample_reads_single_qc$mt_reads_ratio &gt; cut_off_mito
-
-## numbers of cells 
-sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, &quot;mt_reads_ratio&quot;] &gt; cut_off_mito)</code></pre>
-<pre><code>[1] 141</code></pre>
-<pre class="r"><code>sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, &quot;mt_reads_ratio&quot;] &lt;= cut_off_mito)</code></pre>
-<pre><code>[1] 558</code></pre>
-<pre class="r"><code>## density plots
+## density plots
 ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0 |
                                            summary_per_sample_reads_single_qc$cell_number == 1 , ],
        aes(x = mt_reads_ratio, fill = as.factor(cell_number))) + 
        geom_density(alpha = 0.5) +
-       geom_vline(xintercept = cut_off_mito, colour=&quot;grey&quot;, linetype = &quot;longdash&quot;) +
        labs(x = &quot;mitochondrial gene reads / total reads&quot;, title = &quot;Mitochondrial gene reads ratios&quot;)</code></pre>
 <p><img src="figure/qc-filter-ipsc.Rmd/mito-gene-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
-</div>
-<div id="number-of-genes-detected" class="section level2">
-<h2>Number of genes detected</h2>
-<pre class="r"><code>## number of genes detected 
-summary_per_sample_reads_single_qc$gene_number &lt;- colSums(reads_rm_gene &gt;= 1)
-
-## density plots
-ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0 |
-                                           summary_per_sample_reads_single_qc$cell_number == 1 , ],
-       aes(x = gene_number, fill = as.factor(cell_number))) + 
-       geom_density(alpha = 0.5) +
-       labs(x = &quot;gene numbers detected&quot;, title = &quot;Numbers of detected genes&quot;)</code></pre>
-<p><img src="figure/qc-filter-ipsc.Rmd/gene-number-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>## vs. total mapped reads
+ggplot(summary_per_sample_reads_single_qc,
+       aes(x = total_mapped, y = mt_reads_ratio, 
+       color = as.factor(cell_number))) +
+       geom_text(aes(label = cell_number)) +
+       labs(x = &quot;Total mapped reads&quot;, y = &quot;Mitochondrial ratio&quot;) +
+       scale_color_brewer(palette = &quot;Dark2&quot;) +
+       theme(legend.position = &quot;none&quot;)</code></pre>
+<p><img src="figure/qc-filter-ipsc.Rmd/mito-gene-2.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>## vs. total gene molecules
+ggplot(summary_per_sample_reads_single_qc,
+       aes(x = total_gene_molecule, y = mt_reads_ratio, 
+       color = as.factor(cell_number))) +
+       geom_text(aes(label = cell_number)) +
+       labs(x = &quot;Total gene molecules&quot;, y = &quot;Mitochondrial ratio&quot;) +
+       scale_color_brewer(palette = &quot;Dark2&quot;) +
+       theme(legend.position = &quot;none&quot;)</code></pre>
+<p><img src="figure/qc-filter-ipsc.Rmd/mito-gene-3.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 </div>
 <div id="session-information" class="section level2">
 <h2>Session information</h2>

@@ -132,20 +132,20 @@ img {
 <li><a href="#compute-normalized-cv">Compute normalized CV</a></li>
 <li><a href="#compare-transcriptome-profile-within-individuals">Compare transcriptome profile within individuals</a><ul>
 <li><a href="#within-each-individual">Within each individual</a></li>
-<li><a href="#between-individual-adjusted-cv">Between individual, adjusted CV</a></li>
+</ul></li>
+<li><a href="#compare-transcriptome-profile-between-individual-adjusted-cv">Compare transcriptome profile between individual, adjusted CV</a><ul>
 <li><a href="#between-individual-unadjusted-cv">Between individual, unadjusted CV</a></li>
 </ul></li>
 <li><a href="#session-information">Session information</a></li>
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-10-26</p>
-<p><strong>Code version:</strong> 972bb96e0aaadb60cece679ebd7f25f961a30df5</p>
+<p><strong>Last updated:</strong> 2015-10-27</p>
+<p><strong>Code version:</strong> f4be18c104f70809fbbd1acf23293745e7a0e69d</p>
 <div id="objective" class="section level2">
 <h2>Objective</h2>
 <p>Compare transcriptome profile of cell-to-cell heterogeneity within individuals betwen batches and between individuals.</p>
-<p>We normalized CV to account for heterogeneity of per gene coefficient variation as a function of mean gene expression, using the algorithm described in <a href="link1">Kolodziejczk et al. (2015)</a>. Then, we estimated the first principal component loadings of samples from each of the three individuals. These three sets of PC1 gene loadsings are compared using Friedman rank sum test.</p>
-<p>Before normalization, the coefficients of variation significantly differ between individuals (p &lt; 1e-5); but, after normalization, the CVs are similar between the three individuals.</p>
+<p>Here we compute CV for each of the batches and then follow the algorithm described in <a href="link1">Kolodziejczk et al. (2015)</a> to remove mean dependency of the batch-specific CVs. Then, in order to compare CVs between individuals, we need to account for the multiple CVs for each gene for each individual cell line. The statistical test of choice would be a nonparametric equivalent of two-way ANOVA, which turns out to be difficult to compute.</p>
 </div>
 <div id="set-up" class="section level2">
 <h2>Set up</h2>
@@ -274,81 +274,93 @@ Levels: NA19239</code></pre>
 abline(0, 1, col = &quot;red&quot;)</code></pre>
 <p><img src="figure/cv-adjusted-transcriptome-wide.Rmd/unnamed-chunk-8-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
-<div id="between-individual-adjusted-cv" class="section level3">
-<h3>Between individual, adjusted CV</h3>
+</div>
+<div id="compare-transcriptome-profile-between-individual-adjusted-cv" class="section level2">
+<h2>Compare transcriptome profile between individual, adjusted CV</h2>
 <ul>
 <li>PCA</li>
 </ul>
-<p>Perform PCA for each individual. Then compare PCA gene loadings between individuals.</p>
+<p>Perform PCA for each individual. Consider replicates. Then compare PCA gene loadings between individuals.</p>
 <p>Use <em>prcomp</em> to perform PCA: * output<span class="math"><em>x</em> : <em>l</em><em>o</em><em>a</em><em>d</em><em>i</em><em>n</em><em>g</em><em>s</em> * <em>o</em><em>u</em><em>t</em><em>p</em><em>u</em><em>t</em></span>rotation: loadings * output<span class="math"><em>c</em><em>e</em><em>n</em><em>t</em><em>e</em><em>r</em> : <em>v</em><em>a</em><em>r</em><em>i</em><em>a</em><em>b</em><em>l</em><em>e</em><em>m</em><em>e</em><em>a</em><em>n</em><em>s</em> * <em>o</em><em>u</em><em>t</em><em>p</em><em>u</em><em>t</em></span>scale: variable standard deviation</p>
-<pre class="r"><code>pca_individuals &lt;- lapply(1:3, function(ii_individual) {
+<pre class="r"><code>library(matrixStats)
+pca_individuals &lt;- lapply(1:3, function(ii_individual) {
   if (ii_individual == 1) {
   df_ind &lt;- cbind(ENSG_cv_adj$NA19098.r1$log10cv2_adj,
                   ENSG_cv_adj$NA19098.r3$log10cv2_adj ) 
+  df_ind &lt;- (df_ind - rowMeans(df_ind))/sqrt(rowVars(df_ind))
+
   }
   if (ii_individual == 2) {
   df_ind &lt;- cbind(ENSG_cv_adj$NA19101.r1$log10cv2_adj,
                   ENSG_cv_adj$NA19101.r2$log10cv2_adj,
                   ENSG_cv_adj$NA19101.r3$log10cv2_adj )
+  df_ind &lt;- (df_ind - rowMeans(df_ind))/sqrt(rowVars(df_ind))
+
   }
   if (ii_individual == 3) {
   df_ind &lt;- cbind(ENSG_cv_adj$NA19239.r1$log10cv2_adj,
                   ENSG_cv_adj$NA19239.r2$log10cv2_adj,
                   ENSG_cv_adj$NA19239.r3$log10cv2_adj )
+  df_ind &lt;- (df_ind - rowMeans(df_ind))/sqrt(rowVars(df_ind))
   }
-  pca_results &lt;- prcomp( df_ind, retx = TRUE, center = TRUE, scale = TRUE)
+  pca_results &lt;- prcomp( t(df_ind), retx = TRUE, center = TRUE, scale = TRUE )
   prop_var &lt;- (pca_results$sdev^2) / sum(pca_results$sdev^2)
   
   list(loadings = pca_results$x,
        prop_var = prop_var)
 })
 
-sapply(pca_individuals, function(xx) xx$prop_var)</code></pre>
+
+sapply(pca_individuals, function(xx) round(xx$prop_var,2) )</code></pre>
 <pre><code>[[1]]
-[1] 0.5671191 0.4328809
+[1] 1 0
 
 [[2]]
-[1] 0.4364410 0.2915905 0.2719686
+[1] 0.51 0.49 0.00
 
 [[3]]
-[1] 0.4261285 0.2977384 0.2761331</code></pre>
+[1] 0.57 0.43 0.00</code></pre>
 <pre class="r"><code>pca_all &lt;- cbind(pca_individuals[[1]]$loadings[ , 1],
                  pca_individuals[[2]]$loadings[ , 1],
                  pca_individuals[[3]]$loadings[ , 1] )
-                 
+
 friedman_results &lt;- friedman.test(pca_all)
 friedman_results</code></pre>
 <pre><code>
     Friedman rank sum test
 
 data:  pca_all
-Friedman chi-squared = 8.4516, df = 2, p-value = 0.01461</code></pre>
+Friedman chi-squared = 2, df = 2, p-value = 0.3679</code></pre>
 <ul>
-<li>Mean of sample CV</li>
+<li>Subsampling (NOT RUN).</li>
 </ul>
-<p>Compute the mean of CVs of the samples.</p>
-<pre class="r"><code>df_mean &lt;- with(ENSG_cv_adj,
-                cbind(rowMeans(cbind(NA19098.r1$log10cv2_adj,
-                               NA19098.r3$log10cv2_adj) ),
-                      rowMeans(cbind(ENSG_cv_adj$NA19101.r1$log10cv2_adj,
-                               ENSG_cv_adj$NA19101.r2$log10cv2_adj,
-                               ENSG_cv_adj$NA19101.r3$log10cv2_adj ) ),
-                      rowMeans(cbind(ENSG_cv_adj$NA19239.r1$log10cv2_adj,
-                               ENSG_cv_adj$NA19239.r2$log10cv2_adj,
-                               ENSG_cv_adj$NA19239.r3$log10cv2_adj ) ) ) )
+<pre class="r"><code>source(&quot;../code/cv-functions.r&quot;)
 
-friedman_results &lt;- friedman.test(df_mean)
-friedman_results</code></pre>
-<pre><code>
-    Friedman rank sum test
-
-data:  df_mean
-Friedman chi-squared = 2311.8, df = 2, p-value &lt; 2.2e-16</code></pre>
-</div>
+sizes &lt;- c(10, 20, 30, 40, 60, 70, 80, 90, 100)
+subsamples_compare &lt;- lapply(sizes, function(per_size) {
+  per_size_test &lt;- sapply(1:100, function(per_sample) {
+      subsample_obj &lt;- make_subsample(counts = molecules_ENSG,
+                                      anno = anno_qc_filter,
+                                      subsample_size = per_size,
+                                      number_subsample = 1) 
+      
+      subsample_cv &lt;- compute_cv(counts = subsample_obj$counts_subsample,
+                                 anno = subsample_obj$anno_subsample)
+      
+      subsample_cv_adj &lt;- normalize_cv(batch_cv = subsample_cv, 
+                                       counts = subsample_obj$counts_subsample, 
+                                       anno = subsample_obj$anno_subsample)
+      df_compare &lt;- do.call(cbind, lapply(subsample_cv_adj, &quot;[[&quot;, 7) )
+      res &lt;- friedman.test(df_compare)
+      res$p.value
+  })
+  per_size_test
+})
+names(subsamples_compare) &lt;- sizes</code></pre>
 <div id="between-individual-unadjusted-cv" class="section level3">
 <h3>Between individual, unadjusted CV</h3>
 <ul>
-<li>PCA</li>
+<li>PCA for each individual</li>
 </ul>
 <pre class="r"><code>pca_individuals &lt;- lapply(1:3, function(ii_individual) {
   if (ii_individual == 1) {
@@ -368,7 +380,8 @@ Friedman chi-squared = 2311.8, df = 2, p-value &lt; 2.2e-16</code></pre>
   pca_results &lt;- prcomp( df_ind, retx = TRUE, center = TRUE, scale = TRUE)
   prop_var &lt;- (pca_results$sdev^2) / sum(pca_results$sdev^2)
   
-  list(loadings = pca_results$x,
+  list(scores = pca_results,
+       loadings = pca_results$x,
        prop_var = prop_var)
 })
 
@@ -393,26 +406,93 @@ friedman_results</code></pre>
 data:  pca_all
 Friedman chi-squared = 25.112, df = 2, p-value = 3.524e-06</code></pre>
 <ul>
-<li>Mean of sample CV</li>
+<li>Compute CV across replicates</li>
 </ul>
-<p>Compute the mean of CVs of the samples.</p>
-<pre class="r"><code>df_mean &lt;- with(ENSG_cv_adj,
-              cbind(rowMeans(log10(cbind(NA19098.r1$cv,
-                                        NA19098.r3$cv)^2) ),
-                    rowMeans(log10(cbind(ENSG_cv_adj$NA19101.r1$cv,
-                                         ENSG_cv_adj$NA19101.r2$cv,
-                                         ENSG_cv_adj$NA19101.r3$cv )^2) ),
-                    rowMeans(log10(cbind(ENSG_cv_adj$NA19239.r1$cv,
-                                         ENSG_cv_adj$NA19239.r2$cv,
-                                         ENSG_cv_adj$NA19239.r3$cv )^2) ) ) )
+<p>First we make PCA of each individual samples to evaluate whether replicate is a main source of variation. If replicate is not a main source of variation, we will combine the replicates to perform between indvidual comparisons.</p>
+<pre class="r"><code>temp &lt;- molecules_ENSG[, anno_qc_filter$individual == &quot;NA19098&quot;]
+anno_temp &lt;- anno_qc_filter[anno_qc_filter$individual == &quot;NA19098&quot;,]
+pca_temp &lt;- prcomp( t(temp - rowMeans(temp)) )
+(pca_temp$sdev^2)[1:3]/sum(pca_temp$sdev^2)</code></pre>
+<pre><code>[1] 0.315561188 0.009256323 0.008720065</code></pre>
+<pre class="r"><code>xy &lt;- cbind(pca_temp$x[,1], pca_temp$x[,2] )
 
-friedman_results &lt;- friedman.test(df_mean)
-friedman_results</code></pre>
+ggplot(data.frame(pc1 = pca_temp$x[,1],
+                  pc2 = pca_temp$x[,2],
+                  replicate = anno_temp$replicate),
+       aes(x = pc1, y = pc2, col = replicate)) +
+  geom_point() +
+  ggtitle(&quot;NA19098&quot;)</code></pre>
+<p><img src="figure/cv-adjusted-transcriptome-wide.Rmd/unnamed-chunk-12-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>par(mfrow = c(1,2))
+plot(x = rowMeans(temp), y = pca_temp$rotation[ ,1],
+     xlab = &quot;mean molecule counts&quot;, ylab = &quot;first PC loadings&quot;)
+plot(x = rowMeans(temp), y = pca_temp$rotation[ ,2],
+     xlab = &quot;mean molecule counts&quot;, ylab = &quot;second PC loadings&quot;)
+title(main = &quot;NA19098&quot;, outer = TRUE, line = -1)</code></pre>
+<p><img src="figure/cv-adjusted-transcriptome-wide.Rmd/unnamed-chunk-12-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>cor(rowMeans(temp), pca_temp$rotation[ ,1], method = &quot;spearman&quot;)</code></pre>
+<pre><code>[1] -0.7830804</code></pre>
+<pre class="r"><code>temp &lt;- molecules_ENSG[, anno_qc_filter$individual == &quot;NA19101&quot;]
+anno_temp &lt;- anno_qc_filter[anno_qc_filter$individual == &quot;NA19101&quot;,]
+pca_temp &lt;- prcomp( t(temp - rowMeans(temp)))
+(pca_temp$sdev^2)[1:3]/sum(pca_temp$sdev^2)</code></pre>
+<pre><code>[1] 0.270240229 0.009211124 0.006948316</code></pre>
+<pre class="r"><code>xy &lt;- cbind(pca_temp$x[,1], pca_temp$x[,2] )
+
+ggplot(data.frame(pc1 = pca_temp$x[,1],
+                  pc2 = pca_temp$x[,2],
+                  replicate = anno_temp$replicate),
+       aes(x = pc1, y = pc2, col = replicate)) +
+  geom_point() +
+  ggtitle(&quot;NA19101&quot;)</code></pre>
+<p><img src="figure/cv-adjusted-transcriptome-wide.Rmd/unnamed-chunk-13-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>par(mfrow = c(1,2))
+plot(x = rowMeans(temp), y = pca_temp$rotation[ ,1],
+     xlab = &quot;mean molecule counts&quot;, ylab = &quot;first PC loadings&quot;)
+plot(x = rowMeans(temp), y = pca_temp$rotation[ ,2],
+     xlab = &quot;mean molecule counts&quot;, ylab = &quot;second PC loadings&quot;)
+title(main = &quot;NA19101&quot;, outer = TRUE)</code></pre>
+<p><img src="figure/cv-adjusted-transcriptome-wide.Rmd/unnamed-chunk-13-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>cor(rowMeans(temp), pca_temp$rotation[ ,1], method = &quot;spearman&quot;)</code></pre>
+<pre><code>[1] -0.8169503</code></pre>
+<pre class="r"><code>temp &lt;- molecules_ENSG[, anno_qc_filter$individual == &quot;NA19239&quot;]
+anno_temp &lt;- anno_qc_filter[anno_qc_filter$individual == &quot;NA19239&quot;,]
+pca_temp &lt;- prcomp( t(temp - rowMeans(temp)), retx = TRUE, center = TRUE, scale = TRUE )
+(pca_temp$sdev^2)[1:3]/sum(pca_temp$sdev^2)</code></pre>
+<pre><code>[1] 0.337030868 0.008642591 0.006365698</code></pre>
+<pre class="r"><code>xy &lt;- cbind(pca_temp$x[,1], pca_temp$x[,2] )
+
+ggplot(data.frame(pc1 = pca_temp$x[,1],
+                  pc2 = pca_temp$x[,2],
+                  replicate = anno_temp$replicate),
+       aes(x = pc1, y = pc2, col = replicate)) +
+  geom_point() +
+  ggtitle(&quot;NA19239&quot;)</code></pre>
+<p><img src="figure/cv-adjusted-transcriptome-wide.Rmd/unnamed-chunk-14-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>par(mfrow = c(1,2))
+plot(x = rowMeans(temp), y = pca_temp$rotation[ ,1],
+     xlab = &quot;mean molecule counts&quot;, ylab = &quot;first PC loadings&quot;)
+plot(x = rowMeans(temp), y = pca_temp$rotation[ ,2],
+     xlab = &quot;mean molecule counts&quot;, ylab = &quot;second PC loadings&quot;)
+title(main = &quot;NA19239&quot;, outer = TRUE)</code></pre>
+<p><img src="figure/cv-adjusted-transcriptome-wide.Rmd/unnamed-chunk-14-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>Compute CV across replicates.</p>
+<pre class="r"><code>cv_individual &lt;- lapply(1:3, function(ii_individual) {
+    individuals &lt;- unique(anno_qc_filter$individual)
+    counts &lt;- molecules_ENSG[ , anno_qc_filter$individual == individuals [ii_individual]]
+    means &lt;- apply(counts, 1, mean)
+    sds &lt;- apply(counts, 1, sd)
+    cv &lt;- sds/means
+    return(cv)
+})
+names(cv_individual) &lt;- unique(anno_qc_filter$individual)
+cv_individual &lt;- do.call(cbind, cv_individual)
+friedman.test(cv_individual)</code></pre>
 <pre><code>
     Friedman rank sum test
 
-data:  df_mean
-Friedman chi-squared = 2311.8, df = 2, p-value &lt; 2.2e-16</code></pre>
+data:  cv_individual
+Friedman chi-squared = 2330, df = 2, p-value &lt; 2.2e-16</code></pre>
 </div>
 </div>
 <div id="session-information" class="section level2">
@@ -434,8 +514,9 @@ attached base packages:
 [8] base     
 
 other attached packages:
-[1] zoo_1.7-12       ggplot2_1.0.1    edgeR_3.10.2     limma_3.24.9    
-[5] dplyr_0.4.2      data.table_1.9.4 knitr_1.10.5    
+[1] matrixStats_0.14.0 zoo_1.7-12         ggplot2_1.0.1     
+[4] edgeR_3.10.2       limma_3.24.9       dplyr_0.4.2       
+[7] data.table_1.9.4   knitr_1.10.5      
 
 loaded via a namespace (and not attached):
  [1] Rcpp_0.12.0      magrittr_1.5     MASS_7.3-40      munsell_0.4.2   
@@ -444,7 +525,8 @@ loaded via a namespace (and not attached):
 [13] gtable_0.1.2     DBI_0.3.1        htmltools_0.2.6  yaml_2.1.13     
 [17] digest_0.6.8     assertthat_0.1   reshape2_1.4.1   formatR_1.2     
 [21] bitops_1.0-6     RCurl_1.95-4.6   evaluate_0.7     rmarkdown_0.6.1 
-[25] stringi_0.4-1    scales_0.2.4     chron_2.3-45     proto_0.3-10    </code></pre>
+[25] labeling_0.3     stringi_0.4-1    scales_0.2.4     chron_2.3-45    
+[29] proto_0.3-10    </code></pre>
 </div>
 
 

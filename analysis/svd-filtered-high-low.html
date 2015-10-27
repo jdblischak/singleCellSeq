@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+<meta name="author" content="Joyce Hsiao" />
+
+<meta name="date" content="2015-10-26" />
+
+<title>Compare high/low-CV genes between individuals</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Compare high/low-CV genes between individuals</h1>
+<h4 class="author"><em>Joyce Hsiao</em></h4>
+<h4 class="date"><em>2015-10-26</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#objective">Objective</a></li>
+<li><a href="#set-up">Set up</a></li>
+<li><a href="#prepare-data">Prepare data</a></li>
+<li><a href="#remove-the-first-pc">Remove the first PC</a></li>
+<li><a href="#compute-cv-of-the-filtered-data">Compute CV of the filtered data</a></li>
+<li><a href="#plot-cvs-between-indivdiuals">Plot CVs between indivdiuals</a></li>
+<li><a href="#why-cvs-are-orthogonal-between-individuals">Why CVs are orthogonal between individuals??</a></li>
+<li><a href="#go-analysis">GO analysis</a><ul>
+<li><a href="#high-cv">High CV</a></li>
+<li><a href="#na19098">NA19098</a></li>
+<li><a href="#na19101">NA19101</a></li>
+<li><a href="#na19239">NA19239</a></li>
+<li><a href="#low-cv">Low CV</a></li>
+</ul></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2015-10-27</p>
+<p><strong>Code version:</strong> f4be18c104f70809fbbd1acf23293745e7a0e69d</p>
+<div id="objective" class="section level2">
+<h2>Objective</h2>
+<p>Based on the data filtered of PC1, we computed CVs of each individual and identified genes of high/low coefficients of variation.</p>
+</div>
+<div id="set-up" class="section level2">
+<h2>Set up</h2>
+<pre class="r"><code>library(&quot;data.table&quot;)
+library(&quot;dplyr&quot;)
+library(&quot;limma&quot;)
+library(&quot;edgeR&quot;)
+library(&quot;ggplot2&quot;)
+library(&quot;grid&quot;)
+theme_set(theme_bw(base_size = 12))
+source(&quot;functions.R&quot;)</code></pre>
+</div>
+<div id="prepare-data" class="section level2">
+<h2>Prepare data</h2>
+<p>Input annotation of only QC-filtered single cells. Remove NA19098.r2</p>
+<pre class="r"><code>anno_qc &lt;- read.table(&quot;../data/annotation-filter.txt&quot;, header = TRUE,
+                   stringsAsFactors = FALSE)
+is_include &lt;- anno_qc$batch != &quot;NA19098.r2&quot;
+anno_qc_filter &lt;- anno_qc[which(is_include), ]</code></pre>
+<p>Import endogeneous gene molecule counts that are QC-filtered, CPM-normalized, ERCC-normalized, and also processed to remove unwanted variation from batch effet. ERCC genes are removed from this file.</p>
+<pre class="r"><code>molecules_ENSG &lt;- read.table(&quot;../data/molecules-final.txt&quot;, header = TRUE, stringsAsFactors = FALSE)
+molecules_ENSG &lt;- molecules_ENSG[ , is_include]</code></pre>
+<p>Input moleclule counts before log2 CPM transformation. This file is used to compute percent zero-count cells per sample.</p>
+<pre class="r"><code>molecules_sparse &lt;- read.table(&quot;../data/molecules-filter.txt&quot;, header = TRUE, stringsAsFactors = FALSE)
+
+molecules_sparse &lt;- molecules_sparse[grep(&quot;ENSG&quot;, rownames(molecules_sparse)), ]
+stopifnot( all.equal(rownames(molecules_ENSG), rownames(molecules_sparse)) )</code></pre>
+</div>
+<div id="remove-the-first-pc" class="section level2">
+<h2>Remove the first PC</h2>
+<pre class="r"><code>library(matrixStats)
+centered_ENSG &lt;- molecules_ENSG - rowMeans(molecules_ENSG)
+svd_all &lt;- svd( centered_ENSG )
+filtered_data &lt;- with(svd_all, u %*% diag( c(0, d[-1]) ) %*% t(v))</code></pre>
+</div>
+<div id="compute-cv-of-the-filtered-data" class="section level2">
+<h2>Compute CV of the filtered data</h2>
+<pre class="r"><code>cv_filtered &lt;- lapply(1:3, function(ii_individual) {
+    individuals &lt;- unique(anno_qc_filter$individual)
+    counts &lt;- filtered_data[ , anno_qc_filter$individual == individuals [ii_individual]]
+    means &lt;- apply(counts, 1, mean)
+    sds &lt;- apply(counts, 1, sd)
+    cv &lt;- sds/means
+    return(cv)
+})
+names(cv_filtered) &lt;- unique(anno_qc_filter$individual)
+cv_filtered &lt;- do.call(cbind, cv_filtered)</code></pre>
+</div>
+<div id="plot-cvs-between-indivdiuals" class="section level2">
+<h2>Plot CVs between indivdiuals</h2>
+<pre class="r"><code>par(mfrow = c(2,2))
+plot(x = cv_filtered[,1], y = cv_filtered[,2], pch = 16, cex = .6)
+plot(x = cv_filtered[,3], y = cv_filtered[,2], pch = 16, cex = .6)
+plot(x = cv_filtered[,1], y = cv_filtered[,3], pch = 16, cex = .6)</code></pre>
+<p><img src="figure/svd-filtered-high-low.Rmd/unnamed-chunk-7-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>High CVs</p>
+<p>No genes with CV high in all individuals.</p>
+<pre class="r"><code>means_cv &lt;- mean(unlist(cv_filtered))
+sds_cv &lt;- sd(unlist(cv_filtered))
+ii_high_2 &lt;- lapply(1:3, function(ii_individual) {
+                which(cv_filtered[ ,ii_individual] &gt; means_cv + 2*sds_cv) })
+length(Reduce(intersect, ii_high_2))</code></pre>
+<pre><code>[1] 0</code></pre>
+<pre class="r"><code>length(Reduce(union, ii_high_2))</code></pre>
+<pre><code>[1] 27</code></pre>
+<pre class="r"><code>ii_high_all &lt;- Reduce(union, ii_high_2)
+par(mfrow = c(2,2))
+plot(x = cv_filtered[,1], y = cv_filtered[,2], pch = 16, cex = .6, 
+     xlim = c(0, max(cv_filtered[,1])), ylim = c(0, max(cv_filtered[,2])))
+points(x = cv_filtered[ii_high_all, 1], 
+       y = cv_filtered[ii_high_all, 2], pch = 1, cex = .8, col = &quot;red&quot;)
+
+plot(x = cv_filtered[,3], y = cv_filtered[,2], pch = 16, cex = .6, 
+     xlim = c(0, max(cv_filtered[,3])), ylim = c(0, max(cv_filtered[,2])))
+points(x = cv_filtered[ii_high_all, 3], 
+       y = cv_filtered[ii_high_all, 2], pch = 1, cex = .8, col = &quot;red&quot;)
+
+plot(x = cv_filtered[,1], y = cv_filtered[,3], pch = 16, cex = .6, 
+     xlim = c(0, max(cv_filtered[,1])), ylim = c(0, max(cv_filtered[,3])))
+points(x = cv_filtered[ii_high_all, 1], 
+       y = cv_filtered[ii_high_all, 3], pch = 1, cex = .8, col = &quot;red&quot;)</code></pre>
+<p><img src="figure/svd-filtered-high-low.Rmd/unnamed-chunk-8-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>Outliers..</p>
+<pre class="r"><code>par(mfrow = c(2,2))
+plot(density(filtered_data[ which.max(cv_filtered[,1]), 
+                            anno_qc_filter$individual == &quot;NA19098&quot;]))
+plot(density(filtered_data[ which.max(cv_filtered[,2]), 
+                            anno_qc_filter$individual == &quot;NA19101&quot;]))
+plot(density(filtered_data[ which.max(cv_filtered[,3]), 
+                            anno_qc_filter$individual == &quot;NA19239&quot;]))</code></pre>
+<p><img src="figure/svd-filtered-high-low.Rmd/unnamed-chunk-9-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>Low CVs</p>
+<p>No genes with CV high in all individuals.</p>
+<pre class="r"><code>means_cv &lt;- mean(unlist(cv_filtered))
+sds_cv &lt;- sd(unlist(cv_filtered))
+ii_low_2 &lt;- lapply(1:3, function(ii_individual) {
+                which(cv_filtered[ ,ii_individual] &lt; means_cv - 2*sds_cv) })
+length(Reduce(intersect, ii_low_2))</code></pre>
+<pre><code>[1] 0</code></pre>
+<pre class="r"><code>length(Reduce(union, ii_low_2))</code></pre>
+<pre><code>[1] 31</code></pre>
+<pre class="r"><code>ii_low_all &lt;- Reduce(union, ii_low_2)
+
+par(mfrow = c(2,2))
+plot(x = cv_filtered[,1], y = cv_filtered[,2], pch = 16, cex = .6, 
+     xlim = c(0, max(cv_filtered[,1])), ylim = c(0, max(cv_filtered[,2])))
+points(x = cv_filtered[ii_low_all, 1], 
+       y = cv_filtered[ii_low_all, 2], pch = 1, cex = .8, col = &quot;red&quot;)
+
+plot(x = cv_filtered[,3], y = cv_filtered[,2], pch = 16, cex = .6, 
+     xlim = c(0, max(cv_filtered[,3])), ylim = c(0, max(cv_filtered[,2])))
+points(x = cv_filtered[ii_low_all, 3], 
+       y = cv_filtered[ii_low_all, 2], pch = 1, cex = .8, col = &quot;red&quot;)
+
+plot(x = cv_filtered[,1], y = cv_filtered[,3], pch = 16, cex = .6, 
+     xlim = c(0, max(cv_filtered[,1])), ylim = c(0, max(cv_filtered[,3])))
+points(x = cv_filtered[ii_low_all, 1], 
+       y = cv_filtered[ii_low_all, 3], pch = 1, cex = .8, col = &quot;red&quot;)</code></pre>
+<p><img src="figure/svd-filtered-high-low.Rmd/unnamed-chunk-10-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>Outliers..</p>
+<pre class="r"><code>par(mfrow = c(2,2))
+plot(density(filtered_data[ which.min(cv_filtered[,1]), 
+                            anno_qc_filter$individual == &quot;NA19098&quot;]))
+plot(density(filtered_data[ which.min(cv_filtered[,2]), 
+                            anno_qc_filter$individual == &quot;NA19101&quot;]))
+plot(density(filtered_data[ which.min(cv_filtered[,3]), 
+                            anno_qc_filter$individual == &quot;NA19239&quot;]))</code></pre>
+<p><img src="figure/svd-filtered-high-low.Rmd/unnamed-chunk-11-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="why-cvs-are-orthogonal-between-individuals" class="section level2">
+<h2>Why CVs are orthogonal between individuals??</h2>
+<p>Compute CV before filtering PC1</p>
+<pre class="r"><code>cv_data &lt;- lapply(1:3, function(ii_individual) {
+    individuals &lt;- unique(anno_qc_filter$individual)
+    counts &lt;- molecules_ENSG[ , anno_qc_filter$individual == individuals [ii_individual]]
+    means &lt;- apply(counts, 1, mean)
+    sds &lt;- apply(counts, 1, sd)
+    cv &lt;- sds/means
+    return(cv)
+})
+names(cv_data) &lt;- unique(anno_qc_filter$individual)
+cv_data &lt;- do.call(cbind, cv_data)
+
+par(mfrow = c(2,2))
+plot(x = cv_data[,1], y = cv_data[,2], pch = 16, cex = .6,
+     xlim = c(0, 1), ylim = c(0, 1))
+plot(x = cv_data[,3], y = cv_data[,2], pch = 16, cex = .6,
+     xlim = c(0, 1), ylim = c(0, 1))
+plot(x = cv_data[,1], y = cv_data[,3], pch = 16, cex = .6,
+     xlim = c(0, 1), ylim = c(0, 1))
+title(main = &quot;CV before PC1 removal&quot;, outer = TRUE, line = -1)</code></pre>
+<p><img src="figure/svd-filtered-high-low.Rmd/unnamed-chunk-12-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>Mean gene expression level before removing PC1.</p>
+<pre class="r"><code>means_data &lt;- lapply(1:3, function(ii_individual) {
+    individuals &lt;- unique(anno_qc_filter$individual)
+    counts &lt;- molecules_ENSG[ , anno_qc_filter$individual == individuals [ii_individual]]
+    means &lt;- apply(counts, 1, mean)
+    return(means)
+})
+names(means_data) &lt;- unique(anno_qc_filter$individual)
+means_data &lt;- do.call(cbind, means_data)
+
+par(mfrow = c(2,2))
+plot(x = means_data[,1], y = means_data[,2], pch = 16, cex = .6)
+plot(x = means_data[,3], y = means_data[,2], pch = 16, cex = .6)
+plot(x = means_data[,1], y = means_data[,3], pch = 16, cex = .6)
+title(main = &quot;Means before PC1 removal&quot;, outer = TRUE, line = -1)</code></pre>
+<p><img src="figure/svd-filtered-high-low.Rmd/unnamed-chunk-13-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="go-analysis" class="section level2">
+<h2>GO analysis</h2>
+<div id="high-cv" class="section level3">
+<h3>High CV</h3>
+<pre class="r"><code>if (file.exists(&quot;rda/svd-filtered-high-low/go-high.rda&quot;)) {
+  load(&quot;rda/svd-filtered-high-low/go-high.rda&quot;)  
+} else {
+  library(Humanzee)
+  go_high &lt;- lapply(1: 3, function(ii_individual) {
+      
+    go_list &lt;- GOtest(my_ensembl_gene_universe = rownames(molecules_ENSG),
+                      my_ensembl_gene_test = rownames(molecules_ENSG)[ii_high_2[[ii_individual]]],
+                      pval_cutoff = 1, ontology=c(&quot;BP&quot;,&quot;CC&quot;,&quot;MF&quot;) )
+  
+    # Biological process
+    goterms_bp &lt;- summary(go_list$GO$BP, pvalue = 1)
+    goterms_bp &lt;- data.frame(ID = goterms_bp[[1]],
+                             Pvalue = goterms_bp[[2]],
+                             Terms = goterms_bp[[7]])
+    goterms_bp &lt;- goterms_bp[order(goterms_bp$Pvalue), ]
+    
+    # Cellular component
+    goterms_cc &lt;- summary(go_list$GO$CC, pvalue = 1)
+    goterms_cc &lt;- data.frame(ID = goterms_cc[[1]],
+                             Pvalue = goterms_cc[[2]],
+                             Terms = goterms_cc[[7]])
+    goterms_cc &lt;- goterms_cc[order(goterms_cc$Pvalue), ]
+  
+    # Molecular function
+    goterms_mf &lt;- summary(go_list$GO$MF, pvalue = 1)
+    goterms_mf &lt;- data.frame(ID = goterms_mf[[1]],
+                             Pvalue = goterms_mf[[2]],
+                             Terms = goterms_mf[[7]])
+    goterms_mf &lt;- goterms_mf[order(goterms_mf$Pvalue), ]
+    
+    return(list(goterms_bp = goterms_bp,
+                goterms_cc = goterms_cc,
+                goterms_mf = goterms_mf))
+  })
+  save(go_high, file = &quot;rda/svd-filtered-high-low/go-high.rda&quot;)  
+}</code></pre>
+<p>Use <a href="http://revigo.irb.hr/">REVIGO</a> to summarize and visualize GO terms…</p>
+<p>The size of the node indicates the p-vlaue of the GO term. The width of the edges indicates degree of similarity between the GO terms.</p>
+</div>
+<div id="na19098" class="section level3">
+<h3>NA19098</h3>
+<ul>
+<li>Biological process</li>
+</ul>
+<p><img src="figure/svd-filtered-high-low.Rmd/high-NA19098-bp.png" alt="NA19098-BP" /></p>
+<ul>
+<li>Cellular component</li>
+</ul>
+<p><img src="figure/svd-filtered-high-low.Rmd/high-NA19098-cc.png" alt="NA19098-CC" /></p>
+<ul>
+<li>Molecular function</li>
+</ul>
+<p><img src="figure/svd-filtered-high-low.Rmd/high-NA19098-cc.png" alt="NA19098-CC" /></p>
+</div>
+<div id="na19101" class="section level3">
+<h3>NA19101</h3>
+<ul>
+<li>Biological process</li>
+</ul>
+<p><img src="figure/svd-filtered-high-low.Rmd/high-NA19101-bp.png" alt="NA19101-BP" /></p>
+<ul>
+<li>Cellular component</li>
+</ul>
+<p><img src="figure/svd-filtered-high-low.Rmd/high-NA19101-cc.png" alt="NA19101-CC" /></p>
+<ul>
+<li>Molecular function</li>
+</ul>
+<p><img src="figure/svd-filtered-high-low.Rmd/high-NA19101-cc.png" alt="NA19101-CC" /></p>
+</div>
+<div id="na19239" class="section level3">
+<h3>NA19239</h3>
+<ul>
+<li>Biological process</li>
+</ul>
+<p><img src="figure/svd-filtered-high-low.Rmd/high-NA19239-bp.png" alt="NA19239-BP" /></p>
+<ul>
+<li>Cellular component</li>
+</ul>
+<p><img src="figure/svd-filtered-high-low.Rmd/high-NA19239-cc.png" alt="NA19239-CC" /></p>
+<ul>
+<li>Molecular function</li>
+</ul>
+<p><img src="figure/svd-filtered-high-low.Rmd/high-NA19239-cc.png" alt="NA19239-CC" /></p>
+</div>
+<div id="low-cv" class="section level3">
+<h3>Low CV</h3>
+<pre class="r"><code>if (file.exists(&quot;rda/svd-filtered-high-low/go-low.rda&quot;)) {
+  load(&quot;rda/svd-filtered-high-low/go-low.rda&quot;)  
+} else {
+library(Humanzee)
+go_low &lt;- lapply(1: 3, function(ii_individual) {
+    
+  go_list &lt;- GOtest(my_ensembl_gene_universe = rownames(molecules_ENSG),
+                    my_ensembl_gene_test = rownames(molecules_ENSG)[ii_low_2[[ii_individual]]],
+                    pval_cutoff = 1, ontology=c(&quot;BP&quot;,&quot;CC&quot;,&quot;MF&quot;) )
+
+  # Biological process
+  goterms_bp &lt;- summary(go_list$GO$BP, pvalue = 1)
+  goterms_bp &lt;- data.frame(ID = goterms_bp[[1]],
+                           Pvalue = goterms_bp[[2]],
+                           Terms = goterms_bp[[7]])
+  goterms_bp &lt;- goterms_bp[order(goterms_bp$Pvalue), ]
+  
+  # Cellular component
+  goterms_cc &lt;- summary(go_list$GO$CC, pvalue = 1)
+  goterms_cc &lt;- data.frame(ID = goterms_cc[[1]],
+                           Pvalue = goterms_cc[[2]],
+                           Terms = goterms_cc[[7]])
+  goterms_cc &lt;- goterms_cc[order(goterms_cc$Pvalue), ]
+
+  # Molecular function
+  goterms_mf &lt;- summary(go_list$GO$MF, pvalue = 1)
+  goterms_mf &lt;- data.frame(ID = goterms_mf[[1]],
+                           Pvalue = goterms_mf[[2]],
+                           Terms = goterms_mf[[7]])
+  goterms_mf &lt;- goterms_mf[order(goterms_mf$Pvalue), ]
+  
+  return(list(goterms_bp = goterms_bp,
+              goterms_cc = goterms_cc,
+              goterms_mf = goterms_mf))
+})
+  save(go_low, file = &quot;rda/svd-filtered-high-low/go-low.rda&quot;)  
+}</code></pre>
+</div>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] grid      stats     graphics  grDevices utils     datasets  methods  
+[8] base     
+
+other attached packages:
+[1] matrixStats_0.14.0 ggplot2_1.0.1      edgeR_3.10.2      
+[4] limma_3.24.9       dplyr_0.4.2        data.table_1.9.4  
+[7] knitr_1.10.5      
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.12.0      magrittr_1.5     MASS_7.3-40      munsell_0.4.2   
+ [5] colorspace_1.2-6 R6_2.1.1         stringr_1.0.0    httr_0.6.1      
+ [9] plyr_1.8.3       tools_3.2.0      parallel_3.2.0   gtable_0.1.2    
+[13] DBI_0.3.1        htmltools_0.2.6  yaml_2.1.13      digest_0.6.8    
+[17] assertthat_0.1   reshape2_1.4.1   formatR_1.2      bitops_1.0-6    
+[21] RCurl_1.95-4.6   evaluate_0.7     rmarkdown_0.6.1  stringi_0.4-1   
+[25] scales_0.2.4     chron_2.3-45     proto_0.3-10    </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+
+</body>
+</html>
