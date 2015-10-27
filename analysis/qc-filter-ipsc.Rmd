@@ -186,25 +186,6 @@ ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cel
        labs(x = "unmapped reads/ total reads", title = "Unmapped reads")
 ```
 
-## Total molecule counts
-```{r total-mol}
-## calculate total gene molecule counts
-summary_per_sample_reads_single_qc$total_gene_molecule <- colSums(molecules_rm[grep("ENSG", rownames(molecules_rm)),])
-
-## look for outiers
-ggplot(summary_per_sample_reads_single_qc, aes(x = concentration, y = total_gene_molecule / 10^3,
-  color = as.factor(cell_number))) +
-  geom_text(aes(label = cell_number)) +
-  labs(x = "Concentration", y = "", title = "Gene molecules (thousands)") +
-  scale_color_brewer(palette = "Dark2") +
-  theme(legend.position = "none")
-
-outliers <- summary_per_sample_reads_single_qc %>% filter(cell_number == 1, concentration < 1.25, concentration > .15,
-                                   total_gene_molecule > 140000)
-outliers %>% dplyr::select(sample_id)
-```
-
-
 ## ERCC percentage 
 ```{r ercc-percentage}
 ## calculate ercc reads percentage
@@ -231,11 +212,55 @@ ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cel
        labs(x = "ERCC reads / total mapped reads", title = "ERCC reads percentage")
 ```
 
-## Mitochondrial genes
-```{r mito-gene}
+## Number of genes detected 
+```{r gene-number}
 ## endogenous genes
 reads_rm_gene <- reads_rm[grep("ENSG", rownames(reads_rm)), ]
 
+## number of genes detected 
+summary_per_sample_reads_single_qc$gene_number <- colSums(reads_rm_gene >= 1)
+
+## cut off 
+cut_off_genes <- quantile(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0,"gene_number"], 0.95)
+
+cut_off_genes
+
+summary_per_sample_reads_single_qc$cut_off_genes <- summary_per_sample_reads_single_qc$gene_number > cut_off_genes
+
+## numbers of cells 
+sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, "gene_number"] > cut_off_genes)
+
+sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, "gene_number"] <= cut_off_genes)
+
+## density plots
+ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0 |
+                                           summary_per_sample_reads_single_qc$cell_number == 1 , ],
+       aes(x = gene_number, fill = as.factor(cell_number))) + 
+       geom_density(alpha = 0.5) +
+       geom_vline(xintercept = cut_off_genes, colour="grey", linetype = "longdash") +
+       labs(x = "gene numbers detected", title = "Numbers of detected genes")
+```
+
+## Total molecule counts
+```{r total-mol}
+## calculate total gene molecule counts
+summary_per_sample_reads_single_qc$total_gene_molecule <- colSums(molecules_rm[grep("ENSG", rownames(molecules_rm)),])
+
+## look for outiers
+ggplot(summary_per_sample_reads_single_qc, aes(x = concentration, y = total_gene_molecule / 10^3,
+  color = as.factor(cell_number))) +
+  geom_text(aes(label = cell_number)) +
+  labs(x = "Concentration", y = "", title = "Gene molecules (thousands)") +
+  scale_color_brewer(palette = "Dark2") +
+  theme(legend.position = "none")
+
+outliers <- summary_per_sample_reads_single_qc %>% filter(cell_number == 1, concentration < 1.25, concentration > .15,
+                                   total_gene_molecule > 140000)
+outliers %>% dplyr::select(sample_id)
+```
+
+## Mitochondrial genes
+```{r mito-gene}
 ## create a list of mitochondrial genes (13 protein-coding genes)
 ## MT-ATP6, MT-CYB, MT-ND1, MT-ND4, MT-ND4L, MT-ND5, MT-ND6, MT-CO2, MT-CO1, MT-ND2, MT-ATP8, MT-CO3, MT-ND3
 mtgene <- c("ENSG00000198899", "ENSG00000198727", "ENSG00000198888", "ENSG00000198886", "ENSG00000212907", "ENSG00000198786", "ENSG00000198695", "ENSG00000198712", "ENSG00000198804", "ENSG00000198763","ENSG00000228253", "ENSG00000198938", "ENSG00000198840")
@@ -249,40 +274,31 @@ stopifnot(colnames(reads_rm) == rownames(summary_per_sample_reads_single_qc$samp
 summary_per_sample_reads_single_qc$mt_reads <- apply(mt_reads, 2, sum)
 summary_per_sample_reads_single_qc$mt_reads_ratio <- summary_per_sample_reads_single_qc$mt_reads /summary_per_sample_reads_single_qc$total_mapped
 
-## cut off 
-cut_off_mito <- quantile(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0,"mt_reads_ratio"], 0.95)
-
-cut_off_mito
-
-summary_per_sample_reads_single_qc$cut_off_mito <- summary_per_sample_reads_single_qc$mt_reads_ratio > cut_off_mito
-
-## numbers of cells 
-sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, "mt_reads_ratio"] > cut_off_mito)
-
-sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, "mt_reads_ratio"] <= cut_off_mito)
-
 ## density plots
 ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0 |
                                            summary_per_sample_reads_single_qc$cell_number == 1 , ],
        aes(x = mt_reads_ratio, fill = as.factor(cell_number))) + 
        geom_density(alpha = 0.5) +
-       geom_vline(xintercept = cut_off_mito, colour="grey", linetype = "longdash") +
        labs(x = "mitochondrial gene reads / total reads", title = "Mitochondrial gene reads ratios")
+
+## vs. total mapped reads
+ggplot(summary_per_sample_reads_single_qc,
+       aes(x = total_mapped, y = mt_reads_ratio, 
+       color = as.factor(cell_number))) +
+       geom_text(aes(label = cell_number)) +
+       labs(x = "Total mapped reads", y = "Mitochondrial ratio") +
+       scale_color_brewer(palette = "Dark2") +
+       theme(legend.position = "none")
+
+## vs. total gene molecules
+ggplot(summary_per_sample_reads_single_qc,
+       aes(x = total_gene_molecule, y = mt_reads_ratio, 
+       color = as.factor(cell_number))) +
+       geom_text(aes(label = cell_number)) +
+       labs(x = "Total gene molecules", y = "Mitochondrial ratio") +
+       scale_color_brewer(palette = "Dark2") +
+       theme(legend.position = "none")
 ```
-
-## Number of genes detected 
-```{r gene-number}
-## number of genes detected 
-summary_per_sample_reads_single_qc$gene_number <- colSums(reads_rm_gene >= 1)
-
-## density plots
-ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0 |
-                                           summary_per_sample_reads_single_qc$cell_number == 1 , ],
-       aes(x = gene_number, fill = as.factor(cell_number))) + 
-       geom_density(alpha = 0.5) +
-       labs(x = "gene numbers detected", title = "Numbers of detected genes")
-```
-
 
 ## Session information
 
