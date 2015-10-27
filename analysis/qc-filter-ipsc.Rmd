@@ -170,12 +170,12 @@ cut_off_unmapped <- quantile(summary_per_sample_reads_single_qc[summary_per_samp
 
 cut_off_unmapped
 
-summary_per_sample_reads_single_qc$cut_off_unmapped <- summary_per_sample_reads_single_qc$unmapped_ratios > cut_off_unmapped
+summary_per_sample_reads_single_qc$cut_off_unmapped <- summary_per_sample_reads_single_qc$unmapped_ratios < cut_off_unmapped
 
 ## numbers of cells 
-sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, "unmapped_ratios"] > cut_off_unmapped)
+sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, "unmapped_ratios"] >= cut_off_unmapped)
 
-sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, "unmapped_ratios"] <= cut_off_unmapped)
+sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, "unmapped_ratios"] < cut_off_unmapped)
 
 ## density plots
 ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0 |
@@ -196,12 +196,12 @@ cut_off_ercc <- quantile(summary_per_sample_reads_single_qc[summary_per_sample_r
 
 cut_off_ercc
 
-summary_per_sample_reads_single_qc$cut_off_ercc <- summary_per_sample_reads_single_qc$ercc_percentage > cut_off_ercc
+summary_per_sample_reads_single_qc$cut_off_ercc <- summary_per_sample_reads_single_qc$ercc_percentage < cut_off_ercc
 
 ## numbers of cells 
-sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, "ercc_percentage"] > cut_off_ercc)
+sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, "ercc_percentage"] >= cut_off_ercc)
 
-sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, "ercc_percentage"] <= cut_off_ercc)
+sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, "ercc_percentage"] < cut_off_ercc)
 
 ## density plots
 ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0 |
@@ -256,7 +256,13 @@ ggplot(summary_per_sample_reads_single_qc, aes(x = concentration, y = total_gene
 
 outliers <- summary_per_sample_reads_single_qc %>% filter(cell_number == 1, concentration < 1.25, concentration > .15,
                                    total_gene_molecule > 140000)
+
 outliers %>% dplyr::select(sample_id)
+
+summary_per_sample_reads_single_qc$molecule_outlier <- summary_per_sample_reads_single_qc$cell_number == 1 &
+  summary_per_sample_reads_single_qc$concentration < 1.25 &
+  summary_per_sample_reads_single_qc$concentration > .15 &
+  summary_per_sample_reads_single_qc$total_gene_molecule > 140000
 ```
 
 ## Mitochondrial genes
@@ -274,19 +280,12 @@ stopifnot(colnames(reads_rm) == rownames(summary_per_sample_reads_single_qc$samp
 summary_per_sample_reads_single_qc$mt_reads <- apply(mt_reads, 2, sum)
 summary_per_sample_reads_single_qc$mt_reads_ratio <- summary_per_sample_reads_single_qc$mt_reads /summary_per_sample_reads_single_qc$total_mapped
 
-## density plots
-ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0 |
-                                           summary_per_sample_reads_single_qc$cell_number == 1 , ],
-       aes(x = mt_reads_ratio, fill = as.factor(cell_number))) + 
-       geom_density(alpha = 0.5) +
-       labs(x = "mitochondrial gene reads / total reads", title = "Mitochondrial gene reads ratios")
-
-## vs. total mapped reads
+## vs. number of genes detected
 ggplot(summary_per_sample_reads_single_qc,
-       aes(x = total_mapped, y = mt_reads_ratio, 
+       aes(x = gene_number, y = mt_reads_ratio, 
        color = as.factor(cell_number))) +
        geom_text(aes(label = cell_number)) +
-       labs(x = "Total mapped reads", y = "Mitochondrial ratio") +
+       labs(x = "Number of genes", y = "Mitochondrial ratio") +
        scale_color_brewer(palette = "Dark2") +
        theme(legend.position = "none")
 
@@ -297,6 +296,50 @@ ggplot(summary_per_sample_reads_single_qc,
        geom_text(aes(label = cell_number)) +
        labs(x = "Total gene molecules", y = "Mitochondrial ratio") +
        scale_color_brewer(palette = "Dark2") +
+       theme(legend.position = "none")
+```
+
+## Filter
+
+### Final list
+```{r filter}
+## all filter
+summary_per_sample_reads_single_qc$filter_all <- summary_per_sample_reads_single_qc$cell_number == 1 &
+                                                 summary_per_sample_reads_single_qc$cut_off_reads &
+                                                 summary_per_sample_reads_single_qc$cut_off_unmapped &
+                                                 summary_per_sample_reads_single_qc$cut_off_ercc &
+                                                 summary_per_sample_reads_single_qc$cut_off_genes &
+                                                 summary_per_sample_reads_single_qc$molecule_outlier == "FALSE"
+                                                 
+table(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$filter_all,
+                           c("individual", "batch")])    
+```
+
+```{r output}
+stopifnot(nrow(summary_per_sample_reads_single_qc) == nrow(anno_single_rm))
+quality_single_cells <- anno_single_rm %>%
+  filter(summary_per_sample_reads_single_qc$filter_all) %>%
+  select(sample_id)
+
+#write.table(quality_single_cells,
+#            file = "../data/quality-single-cells.txt", quote = FALSE,
+#            sep = "\t", row.names = FALSE, col.names = FALSE)
+
+```
+
+```{r mito-filter}
+ggplot(summary_per_sample_reads_single_qc,
+       aes(x = factor(filter_all), y = mt_reads_ratio,
+           fill = factor(filter_all)), height = 600, width = 2000) +
+geom_violin(alpha = .5) + 
+geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+labs(x = "Quality", y = "Mitochonrial ratio")
+
+ggplot(summary_per_sample_reads_single_qc,
+       aes(x = gene_number, y = mt_reads_ratio, 
+       color = as.factor(filter_all))) +
+       geom_text(aes(label = cell_number)) +
+       labs(x = "Number of genes", y = "Mitochondrial ratio") +
        theme(legend.position = "none")
 ```
 
