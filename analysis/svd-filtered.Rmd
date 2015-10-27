@@ -1,0 +1,389 @@
+---
+title: "Compare CVs between individuals, remove PCs"
+author: "Joyce Hsiao"
+date: 2015-10-26
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+
+library(knitr)
+opts_chunk$set(message = FALSE, warning = FALSE, eval = TRUE, 
+               echo = TRUE)
+```
+
+
+## Objective
+
+We filted the first PC from the data and computed per gene CVs based on the filtered data. We observed that the adjusted CV profiles differed significantly between the three individuals. 
+
+Also, interestingly, pairwise comparisons revealed that the adjusted CV profile of individual 19239 is is significantly different from the other two individuals (19239 vs. 19098: p < 1e-9;  19239 vs. 19101: p < .007; 19098 vs. 19101: p = .0474. Note that individual 19239 is the one outlier in the PCA plots. Coincidently, PC2 separates 19239 from the other two individuals. However, we observed little correlations between PC2 gene loadings and data-wide CV (before/after filter the first PC), suggesting that factors other than coefficient of variation affects PC2. 
+
+
+
+## Set up
+
+```{r, message=FALSE, warning=FALSE}
+library("data.table")
+library("dplyr")
+library("limma")
+library("edgeR")
+library("ggplot2")
+library("grid")
+theme_set(theme_bw(base_size = 12))
+source("functions.R")
+```
+
+
+## Prepare data
+
+Input annotation of only QC-filtered single cells. Remove NA19098.r2
+
+```{r}
+anno_qc <- read.table("../data/annotation-filter.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+is_include <- anno_qc$batch != "NA19098.r2"
+anno_qc_filter <- anno_qc[which(is_include), ]
+```
+
+
+Import endogeneous gene molecule counts that are QC-filtered, CPM-normalized, ERCC-normalized, and also processed to remove unwanted variation from batch effet. ERCC genes are removed from this file.
+
+```{r}
+molecules_ENSG <- read.table("../data/molecules-final.txt", header = TRUE, stringsAsFactors = FALSE)
+molecules_ENSG <- molecules_ENSG[ , is_include]
+```
+
+Input moleclule counts before log2 CPM transformation. This file is used to compute percent zero-count cells per sample.
+
+```{r}
+molecules_sparse <- read.table("../data/molecules-filter.txt", header = TRUE, stringsAsFactors = FALSE)
+
+molecules_sparse <- molecules_sparse[grep("ENSG", rownames(molecules_sparse)), ]
+stopifnot( all.equal(rownames(molecules_ENSG), rownames(molecules_sparse)) )
+```
+
+
+## SVD/PCA
+
+
+```{r}
+library(matrixStats)
+centered_ENSG <- molecules_ENSG - rowMeans(molecules_ENSG)
+svd_all <- svd( centered_ENSG )
+head( (svd_all$d^2)/(sum(svd_all$d^2) ) )
+
+# reproduce SVD results with PCA
+# pca_results <- prcomp( t(centered_ENSG) )
+# head((pca_results$sdev^2)/(sum(pca_results$sdev^2)) )
+
+par(mfrow = c(2,2))
+plot(x = rowMeans(molecules_ENSG), y = svd_all$u[ ,1],
+     xlab = "mean molecule counts", ylab = "first eigen-cell", cex = .4)
+plot(x = rowMeans(molecules_ENSG), y = svd_all$u[ ,2],
+     xlab = "mean molecule counts", ylab = "second eigen-cell", cex = .4)
+plot(x = rowMeans(molecules_ENSG), y = svd_all$u[ ,3],
+     xlab = "mean molecule counts", ylab = "third eigen-cell", cex = .4)
+plot(x = rowMeans(molecules_ENSG), y = svd_all$u[ ,4],
+     xlab = "mean molecule counts", ylab = "third eigen-cell", cex = .4)
+
+cor(rowMeans(molecules_ENSG), y = svd_all$u[ ,1], method ="spearman")
+```
+
+1. First PC ~ mean gene expression levels/percent genes detected
+2. Second PC ?
+3. Third PC ~ differences between the three individuals...
+
+```{r, fig.width=12, fig.height=6}
+library(gridExtra)
+p1 <- ggplot(data.frame(pc1 = svd_all$v[,1],
+                        pc2 = svd_all$v[,2],
+                        individual = anno_qc_filter$individual),
+              aes(x = pc1, y = pc2, col = individual)) +
+        geom_point()
+
+p2 <- ggplot(data.frame(pc2 = svd_all$v[,2],
+                        pc3 = svd_all$v[,3],
+                        individual = anno_qc_filter$individual),
+            aes(x = pc3, y = pc2, col = individual) ) +
+        geom_point() 
+
+grid.arrange(p1, p2, ncol = 2)
+```
+
+
+## Remove the first PC
+
+```{r}
+filtered_data <- with(svd_all, u %*% diag( c(0, d[-1]) ) %*% t(v))
+```
+
+## Compute CV of the filtered data
+
+```{r}
+cv_filtered <- lapply(1:3, function(ii_individual) {
+    individuals <- unique(anno_qc_filter$individual)
+    counts <- filtered_data[ , anno_qc_filter$individual == individuals [ii_individual]]
+    means <- apply(counts, 1, mean)
+    sds <- apply(counts, 1, sd)
+    cv <- sds/means
+    return(cv)
+})
+names(cv_filtered) <- unique(anno_qc_filter$individual)
+cv_filtered <- do.call(cbind, cv_filtered)
+rownames(cv_filtered) <- rownames(molecules_ENSG)
+friedman.test(cv_filtered)
+
+friedman.test(cv_filtered[ , c(1,2)])
+friedman.test(cv_filtered[ , c(1,3)])
+friedman.test(cv_filtered[ , c(2,3)])
+```
+
+
+## Cell-cycle genes
+
+Import cell-cycle genes.
+
+```{r}
+cellcycle_genes <- read.table("../data/cellcyclegenes.txt", sep = "\t",
+                              header = TRUE)
+dim(cellcycle_genes)
+```
+
+
+```{r}
+ii_cellcycle <- rownames(cv_filtered) %in% unlist(cellcycle_genes)
+friedman.test(cv_filtered[which(ii_cellcycle), ])
+```
+
+Non-cell-cycle genes
+
+```{r}
+friedman.test(cv_filtered[which(!ii_cellcycle), ] )
+```
+
+
+## Pluripotent genes
+
+```{r}
+pluripotent_genes <- read.table("../data/pluripotency-genes.txt", sep = "\t",
+                                header = TRUE)$To
+```
+
+Friedman test.
+
+```{r}
+ii_pluripotent <- (rownames(cv_filtered) %in% unlist(pluripotent_genes))
+pca_all_pluripotent <- cv_filtered[which(ii_pluripotent), ]
+friedman.test(pca_all_pluripotent)
+```
+
+
+## Find driving genes of PC2
+
+```{r}
+# compute data-wide cv
+data_cv <- apply(molecules_ENSG, 1, sd)/apply(molecules_ENSG, 1, mean)
+par(mfrow = c(2,2))
+plot(x = data_cv, y = svd_all$u[ ,1])
+plot(x = data_cv, y = svd_all$u[ ,2])
+plot(x = data_cv, y = svd_all$u[ ,3])
+plot(x = data_cv, y = svd_all$u[ ,4])
+
+# compute data-wide cv based on the filtered data
+filtered_data_cv <- apply(filtered_data, 1, sd)/apply(filtered_data, 1, mean)
+par(mfrow = c(2,2))
+plot(x = filtered_data_cv, y = svd_all$u[ ,1])
+plot(x = filtered_data_cv, y = svd_all$u[ ,2])
+plot(x = filtered_data_cv, y = svd_all$u[ ,3])
+plot(x = filtered_data_cv, y = svd_all$u[ ,4])
+```
+
+```{r}
+pc2_genes <- svd_all$u[,2]
+
+# find genes outside of 3 mean +/- sd
+mean_pc2 <- mean(pc2_genes)
+sd_pc2 <- sd(pc2_genes)
+ii_extreme <- which( (pc2_genes > mean_pc2 + 3*sd_pc2)|(pc2_genes < mean_pc2 - 3*sd_pc2) )
+length(ii_extreme)
+
+library(broman)
+par(mfrow = c(1,1))
+xy <- cbind(c(1:length(pc2_genes)), pc2_genes)
+plot(xy, cex = .4, pch = 16,
+     main = paste("PC2 gene loadings \n", 
+                  length(ii_extreme), "genes"), xlab = "genes", ylab = "PC2 loadings")
+points(xy[ii_extreme, ], pch = 1, cex = .7, col = brocolors("crayon")["Red Orange"])
+```
+
+Annotation
+
+```{r}
+library("biomaRt")
+ensembl <- useMart(host = "grch37.ensembl.org",
+                   biomart = "ENSEMBL_MART_ENSEMBL",
+                   dataset = "hsapiens_gene_ensembl")
+pc2_gene_info <- getBM(attributes = c("ensembl_gene_id", "chromosome_name",
+                                       "external_gene_name", "transcript_count",
+                                       "description"),
+                        filters = "ensembl_gene_id",
+                        values = rownames(molecules_ENSG[ii_extreme, ]),
+                        mart = ensembl)
+kable(pc2_gene_info[ , c(1, 2, 3, 5)])
+```
+
+
+```{r}
+if (file.exists("rda/svd-filtered/pc2-cv.rda")) {
+  load("rda/svd-filtered/pc2-cv.rda")  
+} else {
+  library(Humanzee)
+  go_pc2 <- GOtest(my_ensembl_gene_universe = rownames(molecules_ENSG),
+                my_ensembl_gene_test = rownames(molecules_ENSG)[ii_extreme],
+                pval_cutoff = 1, ontology=c("BP","CC","MF") )
+  save(go_pc2, file = "rda/svd-filtered/pc2-cv.rda")
+}
+```
+
+Extract terms
+
+```{r}
+if (file.exists("rda/svd-filtered/go-pc2-terms.rda")) {
+  load("rda/svd-filtered/go-pc2-terms.rda")  
+} else {
+  # Biological process
+  goterms_bp <- summary(go_pc2$GO$BP, pvalue = 1)
+  goterms_bp <- data.frame(ID = goterms_bp[[1]],
+                           Pvalue = goterms_bp[[2]],
+                           Terms = goterms_bp[[7]])
+  goterms_bp <- goterms_bp[order(goterms_bp$Pvalue), ]
+  
+  # Cellular component
+  goterms_cc <- summary(go_pc2$GO$CC, pvalue = 1)
+  goterms_cc <- data.frame(ID = goterms_cc[[1]],
+                           Pvalue = goterms_cc[[2]],
+                           Terms = goterms_cc[[7]])
+  goterms_cc <- goterms_cc[order(goterms_cc$Pvalue), ]
+
+  # Molecular function
+  goterms_mf <- summary(go_pc2$GO$MF, pvalue = 1)
+  goterms_mf <- data.frame(ID = goterms_mf[[1]],
+                           Pvalue = goterms_mf[[2]],
+                           Terms = goterms_mf[[7]])
+  goterms_mf <- goterms_mf[order(goterms_mf$Pvalue), ]
+
+  save(goterms_bp, goterms_cc, goterms_mf, 
+       file = "rda/svd-filtered/go-pc2-terms.rda")
+}
+```
+
+
+```{r}
+head(goterms_bp, 20)
+head(goterms_cc, 20)
+head(goterms_mf, 20)
+```
+
+
+
+
+
+## Find driving genes of PC3
+
+```{r}
+pc3_genes <- svd_all$u[ ,3]
+
+# find genes outside of 3 mean +/- sd
+mean_pc3 <- mean(pc3_genes)
+sd_pc3 <- sd(pc3_genes)
+ii_extreme <- which( (pc3_genes > mean_pc2 + 3*sd_pc2)|(pc3_genes < mean_pc2 - 3*sd_pc2) )
+length(ii_extreme)
+
+library(broman)
+par(mfrow = c(1,1))
+xy <- cbind(c(1:length(pc3_genes)), pc3_genes)
+plot(xy, cex = .4, pch = 16,
+     main = paste("PC3 gene loadings \n", 
+                  length(ii_extreme), "genes"), xlab = "genes", ylab = "PC3 loadings")
+points(xy[ii_extreme, ], pch = 1, cex = .7, col = brocolors("crayon")["Shamrock"])
+```
+
+Annotation
+
+```{r}
+library("biomaRt")
+ensembl <- useMart(host = "grch37.ensembl.org",
+                   biomart = "ENSEMBL_MART_ENSEMBL",
+                   dataset = "hsapiens_gene_ensembl")
+pc3_gene_info <- getBM(attributes = c("ensembl_gene_id", "chromosome_name",
+                                       "external_gene_name", "transcript_count",
+                                       "description"),
+                        filters = "ensembl_gene_id",
+                        values = rownames(molecules_ENSG[ii_extreme, ]),
+                        mart = ensembl)
+kable(pc3_gene_info[ , c(1, 2, 3, 5)])
+```
+
+
+```{r}
+if (file.exists("rda/svd-filtered/pc3-cv.rda")) {
+  load("rda/svd-filtered/pc3-cv.rda")  
+} else {
+  library(Humanzee)
+  go_pc3 <- GOtest(my_ensembl_gene_universe = rownames(molecules_ENSG),
+                my_ensembl_gene_test = rownames(molecules_ENSG)[ii_extreme],
+                pval_cutoff = 1, ontology=c("BP","CC","MF") )
+  save(go_pc3, file = "rda/svd-filtered/pc2-cv.rda")
+}
+```
+
+Extract terms
+
+```{r}
+if (file.exists("rda/svd-filtered/go-pc3-terms.rda")) {
+  load("rda/svd-filtered/go-pc3-terms.rda")  
+} else {
+  # Biological process
+  goterms_bp <- summary(go_pc3$GO$BP, pvalue = 1)
+  goterms_bp <- data.frame(ID = goterms_bp[[1]],
+                           Pvalue = goterms_bp[[2]],
+                           Terms = goterms_bp[[7]])
+  goterms_bp <- goterms_bp[order(goterms_bp$Pvalue), ]
+  
+  # Cellular component
+  goterms_cc <- summary(go_pc3$GO$CC, pvalue = 1)
+  goterms_cc <- data.frame(ID = goterms_cc[[1]],
+                           Pvalue = goterms_cc[[2]],
+                           Terms = goterms_cc[[7]])
+  goterms_cc <- goterms_cc[order(goterms_cc$Pvalue), ]
+
+  # Molecular function
+  goterms_mf <- summary(go_pc3$GO$MF, pvalue = 1)
+  goterms_mf <- data.frame(ID = goterms_mf[[1]],
+                           Pvalue = goterms_mf[[2]],
+                           Terms = goterms_mf[[7]])
+  goterms_mf <- goterms_mf[order(goterms_mf$Pvalue), ]
+
+  save(goterms_bp, goterms_cc, goterms_mf, 
+       file = "rda/svd-filtered/go-pc3-terms.rda")
+}
+```
+
+
+```{r}
+head(goterms_bp, 20)
+head(goterms_cc, 20)
+head(goterms_mf, 20)
+```
+
+
+## Session information
+
+```{r info}
+sessionInfo()
+```
