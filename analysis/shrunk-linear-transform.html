@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+
+<meta name="date" content="2015-10-20" />
+
+<title>Shrunk linear transformation</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Shrunk linear transformation</h1>
+<h4 class="date"><em>2015-10-20</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#load-data">Load data</a></li>
+<li><a href="#linear-transformation-with-ercc-controls">Linear transformation with ERCC controls</a></li>
+<li><a href="#shrunk-linear-transformation">Shrunk linear transformation</a><ul>
+<li><a href="#anova-for-batch-and-individual-effects">ANOVA for batch and individual effects</a></li>
+</ul></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2015-10-27</p>
+<p><strong>Code version:</strong> 2731e3da36a10c5f0f07801b2e0859caf7e4b05f</p>
+<pre class="r"><code>library(&quot;biomaRt&quot;)
+library(&quot;data.table&quot;)
+library(&quot;dplyr&quot;)
+library(&quot;limma&quot;)
+library(&quot;edgeR&quot;)
+library(&quot;ggplot2&quot;)
+library(&quot;grid&quot;)
+#library(&quot;cowplot&quot;)
+theme_set(theme_bw(base_size = 12))
+source(&quot;functions.R&quot;)
+source(&quot;../code/multitask_regression/multitask_regression.R&quot;)
+require(doMC)
+registerDoMC(7)</code></pre>
+<div id="load-data" class="section level2">
+<h2>Load data</h2>
+<pre class="r"><code>anno=read.table(&quot;../data/annotation.txt&quot;,header=T,stringsAsFactors=F)
+quality_single_cells &lt;- scan(&quot;../data/quality-single-cells.txt&quot;,
+                             what = &quot;character&quot;)
+anno_filter &lt;- anno %&gt;% filter(sample_id %in% quality_single_cells)
+
+molecules_cpm_ercc = fread( &quot;../data/molecules-cpm-ercc.txt&quot;, header = TRUE,
+                   stringsAsFactors = FALSE)
+setDF(molecules_cpm_ercc)
+rownames(molecules_cpm_ercc)=molecules_cpm_ercc$V1
+molecules_cpm_ercc$V1=NULL
+molecules_cpm_ercc=as.matrix(molecules_cpm_ercc)
+
+molecules_cpm = fread( &quot;../data/molecules-cpm.txt&quot;, header = TRUE,
+                   stringsAsFactors = FALSE)</code></pre>
+<pre><code>
+Read 95.4% of 10483 rows
+Read 10483 rows and 579 (of 579) columns from 0.051 GB file in 00:00:03</code></pre>
+<pre class="r"><code>setDF(molecules_cpm)
+rownames(molecules_cpm)=molecules_cpm$V1
+molecules_cpm$V1=NULL 
+molecules_cpm=as.matrix(molecules_cpm)
+
+ercc &lt;- read.table(&quot;../data/expected-ercc-molecules.txt&quot;, header = TRUE,
+                   stringsAsFactors = FALSE)
+head(ercc)</code></pre>
+<pre><code>          id conc_mix1 ercc_molecules_well
+1 ERCC-00130 30000.000          4877.93485
+2 ERCC-00004  7500.000          1219.48371
+3 ERCC-00136  1875.000           304.87093
+4 ERCC-00108   937.500           152.43546
+5 ERCC-00116   468.750            76.21773
+6 ERCC-00092   234.375            38.10887</code></pre>
+<pre class="r"><code>cbPalette &lt;- c(&quot;#999999&quot;, &quot;#E69F00&quot;, &quot;#56B4E9&quot;, &quot;#009E73&quot;, &quot;#F0E442&quot;, &quot;#0072B2&quot;, &quot;#D55E00&quot;, &quot;#CC79A7&quot;)</code></pre>
+</div>
+<div id="linear-transformation-with-ercc-controls" class="section level2">
+<h2>Linear transformation with ERCC controls</h2>
+<p>First let’s repeat John’s linear transformation.</p>
+<p>We need to filter the 92 ERCC genes to only include those that passed the expression filters.</p>
+<pre class="r"><code>ercc &lt;- ercc[ercc$id %in% rownames(molecules_cpm_ercc), ]
+ercc &lt;- ercc[order(ercc$id), ]
+stopifnot(ercc$id == rownames(molecules_cpm_ercc))</code></pre>
+<p>Because the molecule counts have been converted to log<sub>2</sub> cpm, we also convert the expected ERCC molecule counts to log<sub>2</sub> cpm.</p>
+<pre class="r"><code>ercc$log2_cpm &lt;- cpm(ercc$ercc_molecules_well, log = TRUE)</code></pre>
+<p>We perform the linear transformation per single cell.</p>
+<pre class="r"><code>molecules_cpm_trans &lt;- molecules_cpm
+molecules_cpm_trans[, ] &lt;- NA
+intercept &lt;- numeric(length = ncol(molecules_cpm_trans))
+slope &lt;- numeric(length = ncol(molecules_cpm_trans))
+for (i in 1:ncol(molecules_cpm_trans)) {
+  fit &lt;- lm(molecules_cpm_ercc[, i] ~ ercc$log2_cpm)
+  intercept[i] &lt;- fit$coefficients[1]
+  slope[i] &lt;- fit$coefficients[2]
+  # Y = mX + b -&gt; X = (Y - b) / m
+  molecules_cpm_trans[, i] &lt;- (molecules_cpm[, i] - intercept[i]) / slope[i]
+}
+stopifnot(!is.na(molecules_cpm_trans))</code></pre>
+<p>Here is a visualization of what happened using the first single cell</p>
+<pre class="r"><code>plotTransform &lt;- function(ind,...) {
+  plot(ercc$log2_cpm, molecules_cpm_ercc[, ind],
+     xlab = &quot;Expected log2 cpm&quot;, ylab = &quot;Observed log2 cpm&quot;,
+     ...)
+  abline(intercept[ind], slope[ind])
+  points(molecules_cpm_trans[, ind], molecules_cpm[, ind], col = &quot;red&quot;)
+}
+plotTransform(1,main = &quot;Example linear transformation - endogenous genes in red&quot;)</code></pre>
+<p><img src="figure/shrunk-linear-transform.Rmd/linear-transformation-example-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p>and then the most outlying intercepts and slopes.</p>
+<pre class="r"><code>par(mfrow=c(2,2))
+plotTransform(which.min(intercept), main = &quot;Smallest intercept&quot;)
+plotTransform(which.max(intercept), main = &quot;Largest intercept&quot;)
+plotTransform(which.min(slope), main = &quot;Smallest slope&quot;)
+plotTransform(which.max(slope), main = &quot;Largest slope&quot;)</code></pre>
+<p><img src="figure/shrunk-linear-transform.Rmd/outlying-slopes-intercepts-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>par(mfrow=c(1,1))</code></pre>
+<p>The transformed data vs. the raw data:</p>
+<pre class="r"><code>ggplot(data.frame(x=as.numeric(molecules_cpm),y=as.numeric(molecules_cpm_trans)),aes(x,y)) + stat_binhex()+scale_fill_gradientn(colours=c(&quot;white&quot;,&quot;blue&quot;),name = &quot;Frequency&quot;,na.value=NA) + xlab(&quot;raw&quot;) + ylab(&quot;transformed&quot;) + geom_abline(intercept=0,slope=1) + stat_smooth(method=&quot;lm&quot;)</code></pre>
+<p><img src="figure/shrunk-linear-transform.Rmd/transformed-vs-raw-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
+<div id="shrunk-linear-transformation" class="section level2">
+<h2>Shrunk linear transformation</h2>
+<p>Within each batch we fit the linear transformation jointly, shrinking using a learnt prior. This takes a little while (5 minutes-ish on my laptop).</p>
+<pre class="r"><code>intercept_shrunk &lt;- numeric(length = ncol(molecules_cpm))
+slope_shrunk &lt;- numeric(length = ncol(molecules_cpm))
+batches &lt;- unique(anno_filter$batch)
+for (batch in batches) {
+  cellsInBatch &lt;- which(anno_filter$batch==batch)
+  y &lt;- lapply( as.list(cellsInBatch), function(i) molecules_cpm_ercc[, i] )
+  x &lt;- lapply( as.list(cellsInBatch), function(i) cbind(1,ercc$log2_cpm) )
+  sink(&quot;temp.txt&quot;) # this outputs a lot of uninteresting stuff, so sink it
+  fit &lt;- foreach(j=1:5) %do% multitask_regression(x,y)
+  sink()
+  fit_best &lt;- fit[[ which.max(unlist(lapply(fit,function(g) g$value))) ]]
+  intercept_shrunk[ cellsInBatch ] &lt;- fit_best$par$coeffs[1,]
+  slope_shrunk[ cellsInBatch ] &lt;- fit_best$par$coeffs[2,]
+}
+
+molecules_cpm_trans_shrunk &lt;- sweep( sweep( molecules_cpm, 2, intercept_shrunk, &quot;-&quot;), 2, slope_shrunk, &quot;/&quot; )</code></pre>
+<p>Here is a visualization of what happened using the first single cell as an example.</p>
+<pre class="r"><code>plotTransform &lt;- function(ind) {
+  plot(ercc$log2_cpm, molecules_cpm_ercc[, ind],
+     xlab = &quot;Expected log2 cpm&quot;, ylab = &quot;Observed log2 cpm&quot;,
+     main = &quot;Example linear transformation - endogenous genes in red&quot;)
+  abline(intercept_shrunk[ind], slope_shrunk[ind])
+  points(molecules_cpm_trans_shrunk[, ind], molecules_cpm[, ind], col = &quot;red&quot;)
+}
+plotTransform(1)</code></pre>
+<p><img src="figure/shrunk-linear-transform.Rmd/shrunk-transformation-example-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p>Compare the intercepts and slopes with and without shrinkage: you can see shrinkage pulls the estimates towards the mean for the experiment.</p>
+<pre class="r"><code>transformation_intercepts &lt;- rbind( data.frame( intercept=intercept, shrinkage=F, batch=anno_filter$batch ),  data.frame( intercept=intercept_shrunk, shrinkage=T, batch=anno_filter$batch ) )
+ggplot(transformation_intercepts, aes(batch, intercept, col=shrinkage)) + geom_boxplot() + theme_bw(base_size = 16) + theme(axis.text.x = element_text(angle = 90, hjust = 1)) + scale_colour_manual(values=cbPalette)</code></pre>
+<p><img src="figure/shrunk-linear-transform.Rmd/linear-transformation-intercept-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>transformation_slopes &lt;- rbind( data.frame( slope=slope, shrinkage=F, batch=anno_filter$batch ),  data.frame( slope=slope_shrunk, shrinkage=T, batch=anno_filter$batch ) )
+ggplot(transformation_slopes, aes(batch, slope, col=shrinkage)) + geom_boxplot() + theme_bw(base_size = 16) + theme(axis.text.x = element_text(angle = 90, hjust = 1)) + scale_colour_manual(values=cbPalette)</code></pre>
+<p><img src="figure/shrunk-linear-transform.Rmd/linear-transformation-slope-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p>PCA of raw cpms, transformed and shrunk transform.</p>
+<pre class="r"><code>make_pca_plot &lt;- function(x) {
+  pca_res &lt;- run_pca(x)
+  plot_pca(pca_res$PCs, explained = pca_res$explained,
+           metadata = anno_filter, color = &quot;individual&quot;,
+           shape = &quot;replicate&quot;) 
+  }
+
+cpm_mats &lt;- list( raw=molecules_cpm, transform=molecules_cpm_trans, shrunk_transform=molecules_cpm_trans_shrunk)
+
+foreach(n=names(cpm_mats)) %do%
+  { make_pca_plot(cpm_mats[[n]]) + labs(title=paste0(&quot;PCA (&quot;,n,&quot;)&quot;)) + scale_colour_manual(values=cbPalette) }</code></pre>
+<pre><code>[[1]]</code></pre>
+<p><img src="figure/shrunk-linear-transform.Rmd/pca-molecules-cpm-trans-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre><code>
+[[2]]</code></pre>
+<p><img src="figure/shrunk-linear-transform.Rmd/pca-molecules-cpm-trans-2.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre><code>
+[[3]]</code></pre>
+<p><img src="figure/shrunk-linear-transform.Rmd/pca-molecules-cpm-trans-3.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<div id="anova-for-batch-and-individual-effects" class="section level3">
+<h3>ANOVA for batch and individual effects</h3>
+<p>Next look at whether the batch and individual effects are more or less significant under the different normalization approaches using a per gene ANOVA.</p>
+<pre class="r"><code>anovas &lt;- lapply(cpm_mats, function(x) {
+  foreach(i=1:nrow(x)) %dopar% anova(lm(x[i,] ~ anno_filter$replicate + anno_filter$individual))
+  })</code></pre>
+<p>First let’s look at the proportion of variance explained by batch or individual across genes using the different normalizations.</p>
+<pre class="r"><code>variance_components &lt;- lapply( as.list(names(anovas)), function(name) {
+  ss=do.call(rbind,foreach(a=anovas[[name]]) %do% a[,&quot;Sum Sq&quot;] )
+  colnames(ss)=c(&quot;batch&quot;,&quot;individual&quot;,&quot;residual&quot;)
+  data.frame(sweep(ss,1,rowSums(ss),&quot;/&quot;), method=name)
+} )
+names(variance_components)=names(cpm_mats)
+
+ggplot( do.call(rbind,variance_components), aes(batch, individual, col=method)) + geom_point() + theme_bw(base_size = 16) + labs(title=&quot;Variance proportions&quot;)+ scale_colour_manual(values=cbPalette)</code></pre>
+<p><img src="figure/shrunk-linear-transform.Rmd/variance-components-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p>Another way to look at this is with the ANOVA p-values</p>
+<pre class="r"><code>anova_pvals &lt;- lapply( as.list(names(anovas)), function(name) {
+  ps=do.call(rbind,foreach(a=anovas[[name]]) %do% a[,&quot;Pr(&gt;F)&quot;] )
+  colnames(ps)=c(&quot;batch&quot;,&quot;individual&quot;,&quot;residual&quot;)
+  data.frame(ps, method=name)
+} )
+names(anova_pvals)=names(anovas)
+
+ggplot( do.call( rbind, anova_pvals ), aes(-log10(batch), -log10(individual), col=method)) + geom_point() + theme_bw(base_size = 16) + labs(title=&quot;ANOVA p-values&quot;)+ scale_colour_manual(values=cbPalette)</code></pre>
+<p><img src="figure/shrunk-linear-transform.Rmd/anova-pvals-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p>This is quite hard to parse, so let’s look at the proportion of variance explained by batch out of the explainable proportion (batch + individual):</p>
+<pre class="r"><code>batch_over_explained &lt;- lapply( as.list(names(anovas)), function(name) {
+  ss=do.call(rbind,foreach(a=anovas[[name]]) %do% a[1:2,&quot;Sum Sq&quot;] )
+  colnames(ss)=c(&quot;batch&quot;,&quot;individual&quot;)
+  data.frame( prop_batch=ss[,&quot;batch&quot;] / rowSums(ss), method=name)
+} )
+names(batch_over_explained) = names(cpm_mats)
+
+qplot(batch_over_explained$transform$prop_batch,batch_over_explained$shrunk_transform$prop_batch) + stat_binhex() +scale_fill_gradientn(colours=c(&quot;white&quot;,&quot;blue&quot;),name = &quot;Frequency&quot;,na.value=NA) + geom_abline(intercept=0,slope=1) + stat_smooth(method=&quot;lm&quot;)</code></pre>
+<p><img src="figure/shrunk-linear-transform.Rmd/batch_over_explained-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p>The relative variance coming from batch or individual is very similar with or without the transformation. However, the raw data is pretty different:</p>
+<pre class="r"><code>qplot(batch_over_explained$raw$prop_batch,batch_over_explained$shrunk_transform$prop_batch) + stat_binhex() +scale_fill_gradientn(colours=c(&quot;white&quot;,&quot;blue&quot;),name = &quot;Frequency&quot;,na.value=NA) + geom_abline(intercept=0,slope=1) + stat_smooth(method=&quot;lm&quot;)</code></pre>
+<p><img src="figure/shrunk-linear-transform.Rmd/batch_over_explained_raw_vs_transformed-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p>It’s easier to look at a histogram of the proportion explained by batch.</p>
+<pre class="r"><code>ggplot( do.call(rbind,batch_over_explained), aes(prop_batch,col=method, fill=method)) + geom_histogram(alpha=0.2, position=&quot;identity&quot;) + xlab(&quot;variance_batch / (variance_batch + variance_individual)&quot;)</code></pre>
+<pre><code>stat_bin: binwidth defaulted to range/30. Use &#39;binwidth = x&#39; to adjust this.</code></pre>
+<p><img src="figure/shrunk-linear-transform.Rmd/batch_over_explained_density-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /> This clearly shows the advantage of the transformations: a higher proportion of the explainable variance is due to individual rather than batch.</p>
+<p>The main difference between the two transforms is how much variance ends up in the residual: more without the shrinkage.</p>
+<pre class="r"><code>qplot(1-variance_components$transform$residual,1-variance_components$shrunk_transform$residual)  + geom_abline(intercept=0,slope=1) + stat_smooth(method=&quot;lm&quot;) + xlab(&quot;proportion variance explained (transformed data)&quot;) + ylab(&quot;proportion variance explained (shrunk transform)&quot;)</code></pre>
+<p><img src="figure/shrunk-linear-transform.Rmd/proportion_explained_wo_shrinkage-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p>Comparing the raw and two transforms we see the residual variances are raw &gt; transform &gt; shrunk_transform.</p>
+<pre class="r"><code>ggplot( do.call(rbind,variance_components), aes(1-residual,col=method)) + geom_density() + xlab(&quot;proportion variance explained&quot;) + xlim(0,.5)+ scale_colour_manual(values=cbPalette)</code></pre>
+<pre><code>Warning: Removed 26 rows containing non-finite values (stat_density).</code></pre>
+<pre><code>Warning: Removed 11 rows containing non-finite values (stat_density).</code></pre>
+<pre><code>Warning: Removed 34 rows containing non-finite values (stat_density).</code></pre>
+<p><img src="figure/shrunk-linear-transform.Rmd/proportion_explained_hist-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p>Including shrinkage makes the batch effect look stronger, but this is really because without including shrinkage the residual variance is higher</p>
+<pre class="r"><code>qplot(-log10(anova_pvals$transform$batch), -log10(anova_pvals$shrunk_transform$batch)) + geom_point() + geom_abline(intercept=0,slope=1) + stat_smooth() </code></pre>
+<pre><code>geom_smooth: method=&quot;auto&quot; and size of largest group is &gt;=1000, so using gam with formula: y ~ s(x, bs = &quot;cs&quot;). Use &#39;method = x&#39; to change the smoothing method.</code></pre>
+<p><img src="figure/shrunk-linear-transform.Rmd/anova_batch_pvals_wo_shrinkage-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p>…and shrinkage therefore also makes the individual effect look stronger.</p>
+<pre class="r"><code>qplot(-log10(anova_pvals$transform$individual), -log10(anova_pvals$shrunk_transform$individual)) + geom_point() + geom_abline(intercept=0,slope=1)</code></pre>
+<p><img src="figure/shrunk-linear-transform.Rmd/anova_individual_pvals_wo_shrinkage-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p>We can also look at this relative to the raw data, for batch:</p>
+<pre class="r"><code>batch_p_all=rbind(data.frame(x=-log10(anova_pvals$raw$batch),y=-log10(anova_pvals$transform$batch),shrinkage=F),data.frame(x=-log10(anova_pvals$raw$batch),y=-log10(anova_pvals$shrunk_transform$batch),shrinkage=T))
+ggplot( batch_p_all[sample.int(nrow(batch_p_all)),], aes(x,y,col=shrinkage)) + geom_point() + geom_abline(intercept=0,slope=1) + theme_bw(base_size = 16) + xlab(&quot;-log10(p) for batch effect (raw cpm)&quot;) + ylab(&quot;-log10(p) for batch effect (transformed cpm)&quot;)+ scale_colour_manual(values=cbPalette)</code></pre>
+<p><img src="figure/shrunk-linear-transform.Rmd/batch_pvals_all-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p>and for individual:</p>
+<pre class="r"><code>individual_pvals_all=rbind(data.frame(x=-log10(anova_pvals$raw$individual),y=-log10(anova_pvals$transform$individual),shrinkage=F),data.frame(x=-log10(anova_pvals$raw$individual),y=-log10(anova_pvals$shrunk_transform$individual),shrinkage=T))
+ggplot( individual_pvals_all[sample.int(nrow(individual_pvals_all)),], aes(x,y,col=shrinkage)) + geom_point() + geom_abline(intercept=0,slope=1) + theme_bw(base_size = 16) + xlab(&quot;-log10(p) for individual effect (raw cpm)&quot;) + ylab(&quot;-log10(p) for individual effect (transformed cpm)&quot;)+ scale_colour_manual(values=cbPalette)</code></pre>
+<p><img src="figure/shrunk-linear-transform.Rmd/individual_pvals_all-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] parallel  grid      stats     graphics  grDevices utils     datasets 
+[8] methods   base     
+
+other attached packages:
+ [1] mgcv_1.8-6       nlme_3.1-120     testit_0.4       hexbin_1.27.0   
+ [5] doMC_1.3.4       iterators_1.0.7  foreach_1.4.2    rstan_2.8.0     
+ [9] Rcpp_0.12.0      ggplot2_1.0.1    edgeR_3.10.2     limma_3.24.9    
+[13] dplyr_0.4.2      data.table_1.9.4 biomaRt_2.24.0   knitr_1.10.5    
+
+loaded via a namespace (and not attached):
+ [1] compiler_3.2.0       formatR_1.2          GenomeInfoDb_1.4.0  
+ [4] plyr_1.8.3           bitops_1.0-6         tools_3.2.0         
+ [7] digest_0.6.8         lattice_0.20-31      RSQLite_1.0.0       
+[10] evaluate_0.7         gtable_0.1.2         Matrix_1.2-1        
+[13] DBI_0.3.1            yaml_2.1.13          proto_0.3-10        
+[16] gridExtra_2.0.0      httr_0.6.1           stringr_1.0.0       
+[19] S4Vectors_0.6.0      IRanges_2.2.4        stats4_3.2.0        
+[22] inline_0.3.14        Biobase_2.28.0       R6_2.1.1            
+[25] AnnotationDbi_1.30.1 XML_3.98-1.2         rmarkdown_0.6.1     
+[28] reshape2_1.4.1       magrittr_1.5         codetools_0.2-11    
+[31] scales_0.2.4         htmltools_0.2.6      BiocGenerics_0.14.0 
+[34] MASS_7.3-40          assertthat_0.1       colorspace_1.2-6    
+[37] labeling_0.3         stringi_0.4-1        lazyeval_0.1.10     
+[40] RCurl_1.95-4.6       munsell_0.4.2        chron_2.3-45        </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+
+</body>
+</html>

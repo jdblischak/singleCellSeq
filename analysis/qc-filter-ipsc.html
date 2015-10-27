@@ -134,12 +134,15 @@ img {
 <li><a href="#number-of-genes-detected">Number of genes detected</a></li>
 <li><a href="#total-molecule-counts">Total molecule counts</a></li>
 <li><a href="#mitochondrial-genes">Mitochondrial genes</a></li>
+<li><a href="#filter">Filter</a><ul>
+<li><a href="#final-list">Final list</a></li>
+</ul></li>
 <li><a href="#session-information">Session information</a></li>
 </ul>
 </div>
 
 <p><strong>Last updated:</strong> 2015-10-27</p>
-<p><strong>Code version:</strong> f4be18c104f70809fbbd1acf23293745e7a0e69d</p>
+<p><strong>Code version:</strong> 2731e3da36a10c5f0f07801b2e0859caf7e4b05f</p>
 <div id="input" class="section level2">
 <h2>Input</h2>
 <pre class="r"><code>library(&quot;dplyr&quot;)
@@ -276,12 +279,12 @@ cut_off_unmapped &lt;- quantile(summary_per_sample_reads_single_qc[summary_per_s
 cut_off_unmapped</code></pre>
 <pre><code>       5% 
 0.3746674 </code></pre>
-<pre class="r"><code>summary_per_sample_reads_single_qc$cut_off_unmapped &lt;- summary_per_sample_reads_single_qc$unmapped_ratios &gt; cut_off_unmapped
+<pre class="r"><code>summary_per_sample_reads_single_qc$cut_off_unmapped &lt;- summary_per_sample_reads_single_qc$unmapped_ratios &lt; cut_off_unmapped
 
 ## numbers of cells 
-sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, &quot;unmapped_ratios&quot;] &gt; cut_off_unmapped)</code></pre>
+sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, &quot;unmapped_ratios&quot;] &gt;= cut_off_unmapped)</code></pre>
 <pre><code>[1] 85</code></pre>
-<pre class="r"><code>sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, &quot;unmapped_ratios&quot;] &lt;= cut_off_unmapped)</code></pre>
+<pre class="r"><code>sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, &quot;unmapped_ratios&quot;] &lt; cut_off_unmapped)</code></pre>
 <pre><code>[1] 614</code></pre>
 <pre class="r"><code>## density plots
 ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0 |
@@ -303,12 +306,12 @@ cut_off_ercc &lt;- quantile(summary_per_sample_reads_single_qc[summary_per_sampl
 cut_off_ercc</code></pre>
 <pre><code>        5% 
 0.03223869 </code></pre>
-<pre class="r"><code>summary_per_sample_reads_single_qc$cut_off_ercc &lt;- summary_per_sample_reads_single_qc$ercc_percentage &gt; cut_off_ercc
+<pre class="r"><code>summary_per_sample_reads_single_qc$cut_off_ercc &lt;- summary_per_sample_reads_single_qc$ercc_percentage &lt; cut_off_ercc
 
 ## numbers of cells 
-sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, &quot;ercc_percentage&quot;] &gt; cut_off_ercc)</code></pre>
+sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, &quot;ercc_percentage&quot;] &gt;= cut_off_ercc)</code></pre>
 <pre><code>[1] 90</code></pre>
-<pre class="r"><code>sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, &quot;ercc_percentage&quot;] &lt;= cut_off_ercc)</code></pre>
+<pre class="r"><code>sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, &quot;ercc_percentage&quot;] &lt; cut_off_ercc)</code></pre>
 <pre><code>[1] 609</code></pre>
 <pre class="r"><code>## density plots
 ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0 |
@@ -364,6 +367,7 @@ ggplot(summary_per_sample_reads_single_qc, aes(x = concentration, y = total_gene
 <p><img src="figure/qc-filter-ipsc.Rmd/total-mol-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>outliers &lt;- summary_per_sample_reads_single_qc %&gt;% filter(cell_number == 1, concentration &lt; 1.25, concentration &gt; .15,
                                    total_gene_molecule &gt; 140000)
+
 outliers %&gt;% dplyr::select(sample_id)</code></pre>
 <pre><code>        sample_id
 1  NA19098.r3.B04
@@ -377,6 +381,10 @@ outliers %&gt;% dplyr::select(sample_id)</code></pre>
 9  NA19101.r3.F10
 10 NA19239.r2.A12
 11 NA19239.r2.B07</code></pre>
+<pre class="r"><code>summary_per_sample_reads_single_qc$molecule_outlier &lt;- summary_per_sample_reads_single_qc$cell_number == 1 &amp;
+  summary_per_sample_reads_single_qc$concentration &lt; 1.25 &amp;
+  summary_per_sample_reads_single_qc$concentration &gt; .15 &amp;
+  summary_per_sample_reads_single_qc$total_gene_molecule &gt; 140000</code></pre>
 </div>
 <div id="mitochondrial-genes" class="section level2">
 <h2>Mitochondrial genes</h2>
@@ -394,22 +402,15 @@ dim(mt_reads)</code></pre>
 summary_per_sample_reads_single_qc$mt_reads &lt;- apply(mt_reads, 2, sum)
 summary_per_sample_reads_single_qc$mt_reads_ratio &lt;- summary_per_sample_reads_single_qc$mt_reads /summary_per_sample_reads_single_qc$total_mapped
 
-## density plots
-ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0 |
-                                           summary_per_sample_reads_single_qc$cell_number == 1 , ],
-       aes(x = mt_reads_ratio, fill = as.factor(cell_number))) + 
-       geom_density(alpha = 0.5) +
-       labs(x = &quot;mitochondrial gene reads / total reads&quot;, title = &quot;Mitochondrial gene reads ratios&quot;)</code></pre>
-<p><img src="figure/qc-filter-ipsc.Rmd/mito-gene-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>## vs. total mapped reads
+## vs. number of genes detected
 ggplot(summary_per_sample_reads_single_qc,
-       aes(x = total_mapped, y = mt_reads_ratio, 
+       aes(x = gene_number, y = mt_reads_ratio, 
        color = as.factor(cell_number))) +
        geom_text(aes(label = cell_number)) +
-       labs(x = &quot;Total mapped reads&quot;, y = &quot;Mitochondrial ratio&quot;) +
+       labs(x = &quot;Number of genes&quot;, y = &quot;Mitochondrial ratio&quot;) +
        scale_color_brewer(palette = &quot;Dark2&quot;) +
        theme(legend.position = &quot;none&quot;)</code></pre>
-<p><img src="figure/qc-filter-ipsc.Rmd/mito-gene-2.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p><img src="figure/qc-filter-ipsc.Rmd/mito-gene-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>## vs. total gene molecules
 ggplot(summary_per_sample_reads_single_qc,
        aes(x = total_gene_molecule, y = mt_reads_ratio, 
@@ -418,7 +419,50 @@ ggplot(summary_per_sample_reads_single_qc,
        labs(x = &quot;Total gene molecules&quot;, y = &quot;Mitochondrial ratio&quot;) +
        scale_color_brewer(palette = &quot;Dark2&quot;) +
        theme(legend.position = &quot;none&quot;)</code></pre>
-<p><img src="figure/qc-filter-ipsc.Rmd/mito-gene-3.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p><img src="figure/qc-filter-ipsc.Rmd/mito-gene-2.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
+<div id="filter" class="section level2">
+<h2>Filter</h2>
+<div id="final-list" class="section level3">
+<h3>Final list</h3>
+<pre class="r"><code>## all filter
+summary_per_sample_reads_single_qc$filter_all &lt;- summary_per_sample_reads_single_qc$cell_number == 1 &amp;
+                                                 summary_per_sample_reads_single_qc$cut_off_reads &amp;
+                                                 summary_per_sample_reads_single_qc$cut_off_unmapped &amp;
+                                                 summary_per_sample_reads_single_qc$cut_off_ercc &amp;
+                                                 summary_per_sample_reads_single_qc$cut_off_genes &amp;
+                                                 summary_per_sample_reads_single_qc$molecule_outlier == &quot;FALSE&quot;
+                                                 
+table(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$filter_all,
+                           c(&quot;individual&quot;, &quot;batch&quot;)])    </code></pre>
+<pre><code>          batch
+individual  1  2  3
+     19098 86  0 57
+     19101 80 71 50
+     19239 78 68 80</code></pre>
+<pre class="r"><code>stopifnot(nrow(summary_per_sample_reads_single_qc) == nrow(anno_single_rm))
+quality_single_cells &lt;- anno_single_rm %&gt;%
+  filter(summary_per_sample_reads_single_qc$filter_all) %&gt;%
+  select(sample_id)
+
+#write.table(quality_single_cells,
+#            file = &quot;../data/quality-single-cells.txt&quot;, quote = FALSE,
+#            sep = &quot;\t&quot;, row.names = FALSE, col.names = FALSE)</code></pre>
+<pre class="r"><code>ggplot(summary_per_sample_reads_single_qc,
+       aes(x = factor(filter_all), y = mt_reads_ratio,
+           fill = factor(filter_all)), height = 600, width = 2000) +
+geom_violin(alpha = .5) + 
+geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+labs(x = &quot;Quality&quot;, y = &quot;Mitochonrial ratio&quot;)</code></pre>
+<p><img src="figure/qc-filter-ipsc.Rmd/mito-filter-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(summary_per_sample_reads_single_qc,
+       aes(x = gene_number, y = mt_reads_ratio, 
+       color = as.factor(filter_all))) +
+       geom_text(aes(label = cell_number)) +
+       labs(x = &quot;Number of genes&quot;, y = &quot;Mitochondrial ratio&quot;) +
+       theme(legend.position = &quot;none&quot;)</code></pre>
+<p><img src="figure/qc-filter-ipsc.Rmd/mito-filter-2.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
 </div>
 <div id="session-information" class="section level2">
 <h2>Session information</h2>
