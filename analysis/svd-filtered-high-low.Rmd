@@ -1,0 +1,384 @@
+---
+title: "Compare high/low-CV genes between individuals"
+author: "Joyce Hsiao"
+date: 2015-10-26
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+
+library(knitr)
+opts_chunk$set(message = FALSE, warning = FALSE, eval = TRUE, 
+               echo = TRUE)
+```
+
+
+## Objective
+
+Based on the data filtered of PC1, we computed CVs of each individual and identified genes of high/low coefficients of variation. 
+
+
+## Set up
+
+```{r, message=FALSE, warning=FALSE}
+library("data.table")
+library("dplyr")
+library("limma")
+library("edgeR")
+library("ggplot2")
+library("grid")
+theme_set(theme_bw(base_size = 12))
+source("functions.R")
+```
+
+
+## Prepare data
+
+Input annotation of only QC-filtered single cells. Remove NA19098.r2
+
+```{r}
+anno_qc <- read.table("../data/annotation-filter.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+is_include <- anno_qc$batch != "NA19098.r2"
+anno_qc_filter <- anno_qc[which(is_include), ]
+```
+
+
+Import endogeneous gene molecule counts that are QC-filtered, CPM-normalized, ERCC-normalized, and also processed to remove unwanted variation from batch effet. ERCC genes are removed from this file.
+
+```{r}
+molecules_ENSG <- read.table("../data/molecules-final.txt", header = TRUE, stringsAsFactors = FALSE)
+molecules_ENSG <- molecules_ENSG[ , is_include]
+```
+
+Input moleclule counts before log2 CPM transformation. This file is used to compute percent zero-count cells per sample.
+
+```{r}
+molecules_sparse <- read.table("../data/molecules-filter.txt", header = TRUE, stringsAsFactors = FALSE)
+
+molecules_sparse <- molecules_sparse[grep("ENSG", rownames(molecules_sparse)), ]
+stopifnot( all.equal(rownames(molecules_ENSG), rownames(molecules_sparse)) )
+```
+
+
+## Remove the first PC
+
+```{r}
+library(matrixStats)
+centered_ENSG <- molecules_ENSG - rowMeans(molecules_ENSG)
+svd_all <- svd( centered_ENSG )
+filtered_data <- with(svd_all, u %*% diag( c(0, d[-1]) ) %*% t(v))
+```
+
+## Compute CV of the filtered data
+
+```{r}
+cv_filtered <- lapply(1:3, function(ii_individual) {
+    individuals <- unique(anno_qc_filter$individual)
+    counts <- filtered_data[ , anno_qc_filter$individual == individuals [ii_individual]]
+    means <- apply(counts, 1, mean)
+    sds <- apply(counts, 1, sd)
+    cv <- sds/means
+    return(cv)
+})
+names(cv_filtered) <- unique(anno_qc_filter$individual)
+cv_filtered <- do.call(cbind, cv_filtered)
+```
+
+## Plot CVs between indivdiuals
+
+```{r}
+par(mfrow = c(2,2))
+plot(x = cv_filtered[,1], y = cv_filtered[,2], pch = 16, cex = .6)
+plot(x = cv_filtered[,3], y = cv_filtered[,2], pch = 16, cex = .6)
+plot(x = cv_filtered[,1], y = cv_filtered[,3], pch = 16, cex = .6)
+```
+
+
+High CVs
+
+No genes with CV high in all individuals.
+
+```{r}
+means_cv <- mean(unlist(cv_filtered))
+sds_cv <- sd(unlist(cv_filtered))
+ii_high_2 <- lapply(1:3, function(ii_individual) {
+                which(cv_filtered[ ,ii_individual] > means_cv + 2*sds_cv) })
+length(Reduce(intersect, ii_high_2))
+length(Reduce(union, ii_high_2))
+
+ii_high_all <- Reduce(union, ii_high_2)
+par(mfrow = c(2,2))
+plot(x = cv_filtered[,1], y = cv_filtered[,2], pch = 16, cex = .6, 
+     xlim = c(0, max(cv_filtered[,1])), ylim = c(0, max(cv_filtered[,2])))
+points(x = cv_filtered[ii_high_all, 1], 
+       y = cv_filtered[ii_high_all, 2], pch = 1, cex = .8, col = "red")
+
+plot(x = cv_filtered[,3], y = cv_filtered[,2], pch = 16, cex = .6, 
+     xlim = c(0, max(cv_filtered[,3])), ylim = c(0, max(cv_filtered[,2])))
+points(x = cv_filtered[ii_high_all, 3], 
+       y = cv_filtered[ii_high_all, 2], pch = 1, cex = .8, col = "red")
+
+plot(x = cv_filtered[,1], y = cv_filtered[,3], pch = 16, cex = .6, 
+     xlim = c(0, max(cv_filtered[,1])), ylim = c(0, max(cv_filtered[,3])))
+points(x = cv_filtered[ii_high_all, 1], 
+       y = cv_filtered[ii_high_all, 3], pch = 1, cex = .8, col = "red")
+```
+
+
+Outliers..
+
+```{r}
+par(mfrow = c(2,2))
+plot(density(filtered_data[ which.max(cv_filtered[,1]), 
+                            anno_qc_filter$individual == "NA19098"]))
+plot(density(filtered_data[ which.max(cv_filtered[,2]), 
+                            anno_qc_filter$individual == "NA19101"]))
+plot(density(filtered_data[ which.max(cv_filtered[,3]), 
+                            anno_qc_filter$individual == "NA19239"]))
+```
+
+
+
+Low CVs
+
+No genes with CV high in all individuals.
+
+```{r}
+means_cv <- mean(unlist(cv_filtered))
+sds_cv <- sd(unlist(cv_filtered))
+ii_low_2 <- lapply(1:3, function(ii_individual) {
+                which(cv_filtered[ ,ii_individual] < means_cv - 2*sds_cv) })
+length(Reduce(intersect, ii_low_2))
+length(Reduce(union, ii_low_2))
+ii_low_all <- Reduce(union, ii_low_2)
+
+par(mfrow = c(2,2))
+plot(x = cv_filtered[,1], y = cv_filtered[,2], pch = 16, cex = .6, 
+     xlim = c(0, max(cv_filtered[,1])), ylim = c(0, max(cv_filtered[,2])))
+points(x = cv_filtered[ii_low_all, 1], 
+       y = cv_filtered[ii_low_all, 2], pch = 1, cex = .8, col = "red")
+
+plot(x = cv_filtered[,3], y = cv_filtered[,2], pch = 16, cex = .6, 
+     xlim = c(0, max(cv_filtered[,3])), ylim = c(0, max(cv_filtered[,2])))
+points(x = cv_filtered[ii_low_all, 3], 
+       y = cv_filtered[ii_low_all, 2], pch = 1, cex = .8, col = "red")
+
+plot(x = cv_filtered[,1], y = cv_filtered[,3], pch = 16, cex = .6, 
+     xlim = c(0, max(cv_filtered[,1])), ylim = c(0, max(cv_filtered[,3])))
+points(x = cv_filtered[ii_low_all, 1], 
+       y = cv_filtered[ii_low_all, 3], pch = 1, cex = .8, col = "red")
+```
+
+
+Outliers..
+
+```{r}
+par(mfrow = c(2,2))
+plot(density(filtered_data[ which.min(cv_filtered[,1]), 
+                            anno_qc_filter$individual == "NA19098"]))
+plot(density(filtered_data[ which.min(cv_filtered[,2]), 
+                            anno_qc_filter$individual == "NA19101"]))
+plot(density(filtered_data[ which.min(cv_filtered[,3]), 
+                            anno_qc_filter$individual == "NA19239"]))
+
+```
+
+## Why CVs are orthogonal between individuals??
+
+Compute CV before filtering PC1
+
+```{r}
+cv_data <- lapply(1:3, function(ii_individual) {
+    individuals <- unique(anno_qc_filter$individual)
+    counts <- molecules_ENSG[ , anno_qc_filter$individual == individuals [ii_individual]]
+    means <- apply(counts, 1, mean)
+    sds <- apply(counts, 1, sd)
+    cv <- sds/means
+    return(cv)
+})
+names(cv_data) <- unique(anno_qc_filter$individual)
+cv_data <- do.call(cbind, cv_data)
+
+par(mfrow = c(2,2))
+plot(x = cv_data[,1], y = cv_data[,2], pch = 16, cex = .6,
+     xlim = c(0, 1), ylim = c(0, 1))
+plot(x = cv_data[,3], y = cv_data[,2], pch = 16, cex = .6,
+     xlim = c(0, 1), ylim = c(0, 1))
+plot(x = cv_data[,1], y = cv_data[,3], pch = 16, cex = .6,
+     xlim = c(0, 1), ylim = c(0, 1))
+title(main = "CV before PC1 removal", outer = TRUE, line = -1)
+```
+
+Mean gene expression level before removing PC1.
+
+```{r}
+means_data <- lapply(1:3, function(ii_individual) {
+    individuals <- unique(anno_qc_filter$individual)
+    counts <- molecules_ENSG[ , anno_qc_filter$individual == individuals [ii_individual]]
+    means <- apply(counts, 1, mean)
+    return(means)
+})
+names(means_data) <- unique(anno_qc_filter$individual)
+means_data <- do.call(cbind, means_data)
+
+par(mfrow = c(2,2))
+plot(x = means_data[,1], y = means_data[,2], pch = 16, cex = .6)
+plot(x = means_data[,3], y = means_data[,2], pch = 16, cex = .6)
+plot(x = means_data[,1], y = means_data[,3], pch = 16, cex = .6)
+title(main = "Means before PC1 removal", outer = TRUE, line = -1)
+```
+
+
+
+## GO analysis
+
+### High CV
+
+```{r}
+if (file.exists("rda/svd-filtered-high-low/go-high.rda")) {
+  load("rda/svd-filtered-high-low/go-high.rda")  
+} else {
+  library(Humanzee)
+  go_high <- lapply(1: 3, function(ii_individual) {
+      
+    go_list <- GOtest(my_ensembl_gene_universe = rownames(molecules_ENSG),
+                      my_ensembl_gene_test = rownames(molecules_ENSG)[ii_high_2[[ii_individual]]],
+                      pval_cutoff = 1, ontology=c("BP","CC","MF") )
+  
+    # Biological process
+    goterms_bp <- summary(go_list$GO$BP, pvalue = 1)
+    goterms_bp <- data.frame(ID = goterms_bp[[1]],
+                             Pvalue = goterms_bp[[2]],
+                             Terms = goterms_bp[[7]])
+    goterms_bp <- goterms_bp[order(goterms_bp$Pvalue), ]
+    
+    # Cellular component
+    goterms_cc <- summary(go_list$GO$CC, pvalue = 1)
+    goterms_cc <- data.frame(ID = goterms_cc[[1]],
+                             Pvalue = goterms_cc[[2]],
+                             Terms = goterms_cc[[7]])
+    goterms_cc <- goterms_cc[order(goterms_cc$Pvalue), ]
+  
+    # Molecular function
+    goterms_mf <- summary(go_list$GO$MF, pvalue = 1)
+    goterms_mf <- data.frame(ID = goterms_mf[[1]],
+                             Pvalue = goterms_mf[[2]],
+                             Terms = goterms_mf[[7]])
+    goterms_mf <- goterms_mf[order(goterms_mf$Pvalue), ]
+    
+    return(list(goterms_bp = goterms_bp,
+                goterms_cc = goterms_cc,
+                goterms_mf = goterms_mf))
+  })
+  save(go_high, file = "rda/svd-filtered-high-low/go-high.rda")  
+}
+
+```
+
+Use [REVIGO](http://revigo.irb.hr/) to summarize and visualize GO terms...
+
+The size of the node indicates the p-vlaue of the GO term. The width of the edges indicates degree of similarity between the GO terms.
+
+### NA19098
+
+* Biological process
+
+![NA19098-BP](figure/svd-filtered-high-low.Rmd/high-NA19098-bp.png)
+
+* Cellular component
+
+![NA19098-CC](figure/svd-filtered-high-low.Rmd/high-NA19098-cc.png)
+
+* Molecular function
+
+![NA19098-CC](figure/svd-filtered-high-low.Rmd/high-NA19098-cc.png)
+
+
+### NA19101
+
+* Biological process
+
+![NA19101-BP](figure/svd-filtered-high-low.Rmd/high-NA19101-bp.png)
+
+* Cellular component
+
+![NA19101-CC](figure/svd-filtered-high-low.Rmd/high-NA19101-cc.png)
+
+* Molecular function
+
+![NA19101-CC](figure/svd-filtered-high-low.Rmd/high-NA19101-cc.png)
+
+
+### NA19239
+
+* Biological process
+
+![NA19239-BP](figure/svd-filtered-high-low.Rmd/high-NA19239-bp.png)
+
+* Cellular component
+
+![NA19239-CC](figure/svd-filtered-high-low.Rmd/high-NA19239-cc.png)
+
+* Molecular function
+
+![NA19239-CC](figure/svd-filtered-high-low.Rmd/high-NA19239-cc.png)
+
+
+
+
+### Low CV
+
+```{r}
+if (file.exists("rda/svd-filtered-high-low/go-low.rda")) {
+  load("rda/svd-filtered-high-low/go-low.rda")  
+} else {
+library(Humanzee)
+go_low <- lapply(1: 3, function(ii_individual) {
+    
+  go_list <- GOtest(my_ensembl_gene_universe = rownames(molecules_ENSG),
+                    my_ensembl_gene_test = rownames(molecules_ENSG)[ii_low_2[[ii_individual]]],
+                    pval_cutoff = 1, ontology=c("BP","CC","MF") )
+
+  # Biological process
+  goterms_bp <- summary(go_list$GO$BP, pvalue = 1)
+  goterms_bp <- data.frame(ID = goterms_bp[[1]],
+                           Pvalue = goterms_bp[[2]],
+                           Terms = goterms_bp[[7]])
+  goterms_bp <- goterms_bp[order(goterms_bp$Pvalue), ]
+  
+  # Cellular component
+  goterms_cc <- summary(go_list$GO$CC, pvalue = 1)
+  goterms_cc <- data.frame(ID = goterms_cc[[1]],
+                           Pvalue = goterms_cc[[2]],
+                           Terms = goterms_cc[[7]])
+  goterms_cc <- goterms_cc[order(goterms_cc$Pvalue), ]
+
+  # Molecular function
+  goterms_mf <- summary(go_list$GO$MF, pvalue = 1)
+  goterms_mf <- data.frame(ID = goterms_mf[[1]],
+                           Pvalue = goterms_mf[[2]],
+                           Terms = goterms_mf[[7]])
+  goterms_mf <- goterms_mf[order(goterms_mf$Pvalue), ]
+  
+  return(list(goterms_bp = goterms_bp,
+              goterms_cc = goterms_cc,
+              goterms_mf = goterms_mf))
+})
+  save(go_low, file = "rda/svd-filtered-high-low/go-low.rda")  
+}
+
+```
+
+
+
+
+## Session information
+
+```{r info}
+sessionInfo()
+```
