@@ -39,9 +39,19 @@ Libraries, both from bulk and single cell samples, were assigned to lanes at ran
 Single-end reads of 100 bp were generated along with 8-bp index reads corresponding to the cell-specific barcodes. 
 
 ### Read mapping and quality control
-1. quality trim
-2. subread 
-3. umi tool
+
+We processed the sequencing data from the single cells and bulk samples through the same pipeline.
+To assess read quality, we ran FastQC ([http://www.bioinformatics.babraham.ac.uk/projects/fastqc][fastqc]) and observed a decrease in base quality at the 3' end of the reads.
+Thus we removed low quality bases from the 3' end of the reads using sickle with default settings [@Joshi2011] (Figure `r fig_supp_sickle`).
+To handle the UMI sequences at the 5' end of each read, we used umitools ([https://brwnj.github.io/umitools][umitools]) to find all reads with a UMI of the pattern NNNNNGGG.
+The UMI was cut from the 5' end of the read and added to the name of the sequence, and reads without UMIs were discarded.
+We then mapped reads to human genome hg19 (only including chromosomes 1-22, X, and Y, plus the ERCC sequences) with Subread [@Liao2013], discarding non-uniquely mapped reads (option -u) and breaking ties for best mapping location using Hamming distance (option -H).
+Post-mapping we combined all reads for a given single cell using samtools [@Li2009].
+We converted read counts to molecule counts using umitools, which keeps only one read for each UMI and start position combination.
+To obtain gene-level counts, we separately assigned reads or molecules to protein-coding genes (Ensembl GRCh37 release 82) and the ERCC spike-in genes using featureCounts [@Liao2014].
+
+[fastqc]: http://www.bioinformatics.babraham.ac.uk/projects/fastqc
+[umitools]: https://brwnj.github.io/umitools
 
 ### Normalization 
 1. linear shift
