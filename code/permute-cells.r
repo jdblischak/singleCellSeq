@@ -14,7 +14,7 @@ permute_cells <- function(log2counts, grouping_vector, num_permute) {
 #   num_permute <- 10
   num_cells <- dim(log2counts)[2]
 
-  permuted_log2counts <- lapply(1:num_permute) {
+  permuted_log2counts <- lapply(1:num_permute, function(ii_permute) {
     # creata a sequence of random numbers
     perm_labels <- sample(num_cells, replace = TRUE)
 
