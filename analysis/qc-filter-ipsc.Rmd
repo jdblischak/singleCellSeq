@@ -297,6 +297,15 @@ ggplot(summary_per_sample_reads_single_qc,
        labs(x = "Total gene molecules", y = "Mitochondrial ratio") +
        scale_color_brewer(palette = "Dark2") +
        theme(legend.position = "none")
+
+ggplot(summary_per_sample_reads_single_qc,
+                   aes(x = factor(batch_9), y = mt_reads_ratio,
+                   fill = factor(batch_9)), height = 600, width = 2000) +
+                   geom_violin(alpha = .5) + 
+                   geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+                   scale_fill_manual(values = great_color) + 
+                   labs(x = "batch", y = "Mitochondrial ratio") +
+                   theme(axis.text.x = element_text(hjust=1, angle = 45))
 ```
 
 ## Filter
@@ -327,20 +336,34 @@ quality_single_cells <- anno_single_rm %>%
 
 ```
 
+### Mito ratios
 ```{r mito-filter}
-ggplot(summary_per_sample_reads_single_qc,
-       aes(x = factor(filter_all), y = mt_reads_ratio,
-           fill = factor(filter_all)), height = 600, width = 2000) +
-geom_violin(alpha = .5) + 
-geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
-labs(x = "Quality", y = "Mitochonrial ratio")
-
 ggplot(summary_per_sample_reads_single_qc,
        aes(x = gene_number, y = mt_reads_ratio, 
        color = as.factor(filter_all))) +
        geom_text(aes(label = cell_number)) +
        labs(x = "Number of genes", y = "Mitochondrial ratio") +
        theme(legend.position = "none")
+
+ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1,],
+       aes(x = factor(filter_all), y = mt_reads_ratio,
+           fill = factor(filter_all)), height = 600, width = 2000) +
+geom_violin(alpha = .5) + 
+geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+labs(x = "Quality", y = "Mitochonrial ratio", title = "Mitochondrial ratio of libraries with 1 cell")
+
+## check the batch of those outliers
+mito_outliers <- summary_per_sample_reads_single_qc %>% filter(filter_all == "TRUE", mt_reads_ratio > .15)
+mito_outliers  %>% dplyr::select(sample_id, mt_reads_ratio)
+
+## check if 19098 have high mt genes
+ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$filter_all == "TRUE",],
+                   aes(x = factor(batch_9), y = mt_reads_ratio,
+                   fill = factor(batch_9)), height = 600, width = 2000) +
+                   geom_violin(alpha = .5) + 
+                   geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+                   labs(x = "batch", y = "Mitochondrial ratio") +
+                   theme(axis.text.x = element_text(hjust=1, angle = 45))
 ```
 
 ## Session information
