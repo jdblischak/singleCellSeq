@@ -1,5 +1,5 @@
 
-MARKDOWN := introduction.md methods.md results.md references.md
+MARKDOWN := introduction.md results.md methods.md references.md
 TARGETS := title.yaml $(MARKDOWN)
 NAME := paper
 BIBLIO := refs.bib
