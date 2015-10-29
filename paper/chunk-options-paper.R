@@ -12,6 +12,7 @@ fig_main_normalization <- "4"
 fig_main_noise <- "5"
 
 # Numbering for supplementary figures
+fig_supp_flowcell <- "S1"
 fig_supp_sickle <- "SX"
 
 # Import data
