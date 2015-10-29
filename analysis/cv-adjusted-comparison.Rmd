@@ -1,0 +1,170 @@
+---
+title: "Per gene comparison of CVs"
+author: "Joyce Hsiao"
+date: 2015-10-28
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+
+library(knitr)
+opts_chunk$set(message = FALSE, warning = FALSE, eval = TRUE, 
+               echo = TRUE)
+```
+
+
+## Objective
+
+Per gene analysis of individual differences in coefficients of variation. We first compute the deviation to the median for each individual's CV. Then, for each gene, we compute two meausures to quantify the variabilty of the CVs: sum of squared deviation and sum of absolute deviation. We computed empirical p-values for each gene's variability measure of CV.
+
+
+## Set up
+
+```{r, message=FALSE, warning=FALSE}
+library("data.table")
+library("dplyr")
+library("limma")
+library("edgeR")
+library("ggplot2")
+library("grid")
+theme_set(theme_bw(base_size = 12))
+source("functions.R")
+```
+
+
+## Prepare data
+
+Input annotation of only QC-filtered single cells. Remove NA19098.r2
+
+```{r}
+anno_qc <- read.table("../data/annotation-filter.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+is_include <- anno_qc$batch != "NA19098.r2"
+anno_qc_filter <- anno_qc[which(is_include), ]
+```
+
+
+Import endogeneous gene molecule counts that are QC-filtered, CPM-normalized, ERCC-normalized, and also processed to remove unwanted variation from batch effet. ERCC genes are removed from this file.
+
+```{r}
+molecules_ENSG <- read.table("../data/molecules-final.txt", header = TRUE, stringsAsFactors = FALSE)
+molecules_ENSG <- molecules_ENSG[ , is_include]
+```
+
+Input moleclule counts before log2 CPM transformation. This file is used to compute percent zero-count cells per sample.
+
+```{r}
+molecules_sparse <- read.table("../data/molecules-filter.txt", header = TRUE, stringsAsFactors = FALSE)
+
+molecules_sparse <- molecules_sparse[grep("ENSG", rownames(molecules_sparse)), ]
+stopifnot( all.equal(rownames(molecules_ENSG), rownames(molecules_sparse)) )
+```
+
+
+## Compute normalized CV 
+
+We compute squared CV across cells for each individual and then for each individual CV profile, account for mean dependency by computing distance with respect to the data-wide coefficient variation on the log10 scale. 
+
+```{r}
+source("../code/cv-functions.r")
+
+ENSG_cv <- compute_cv(log2counts = molecules_ENSG,
+                      grouping_vector = anno_qc_filter$individual)
+
+ENSG_cv_adj <- normalize_cv(group_cv = ENSG_cv, 
+                            log2counts = molecules_ENSG, 
+                            anno = anno_qc_filter)
+```
+
+## Compute summary measure of deviation 
+
+Standardize the each CV vectors
+
+```{r}
+df_cv <- data.frame(NA19098 = ENSG_cv_adj[[1]]$log10cv2_adj,
+                    NA19101 = ENSG_cv_adj[[2]]$log10cv2_adj,
+                    NA19239 = ENSG_cv_adj[[3]]$log10cv2_adj)
+
+library(matrixStats)
+df_norm <- sweep(df_cv, MARGIN = 2, STATS = colMeans(as.matrix(df_cv)), FUN = "-")
+df_norm <- sweep(df_norm, MARGIN = 2, STATS = sqrt(colVars(as.matrix(df_cv))), FUN = "/")
+```
+
+Consistent of gene adj-CVs before/after standardization.
+
+```{r}
+par(mfrow = c(1,2))
+plot(x = df_cv[[1]], y = df_cv[[2]], main = "Adjusted log10 CV^2",
+     xlab = "NA19238", ylab = "NA19101")
+points(x = df_cv[[1]][1:10], y = df_cv[[2]][1:10], col = "red", cex = .8, pch = 16)
+plot(x = df_norm[[1]], y = df_norm[[2]], main = "Adjusted log10 CV^2, standardized",
+     xlab = "NA19238", ylab = "NA19101")
+points(x = df_norm[[1]][1:10], y = df_norm[[2]][1:10], col = "red", cex = .8, pch = 16)
+```
+
+
+Compute distance
+
+```{r}
+library(matrixStats)
+df_norm$squared_dev <- rowSums( ( df_norm - rowMedians(as.matrix(df_norm)) )^2 )
+df_norm$abs_dev <- rowSums(abs( df_norm - rowMedians(as.matrix(df_norm)) ))
+```
+
+## Permutation-based reuslts
+
+Make permuted data sets. Choose 1000 samples.
+
+```{r, eval = FALSE}
+source("../code/permute-cells.r")
+permuted_data <- permute_cells(log2counts = molecules_ENSG, 
+                               grouping_vector = anno_qc_filter$individual, 
+                               num_permute = 10)
+save(permuted_data, file = "rda/permuted_data.rda")
+```
+
+Compute adjusted CV for the permuted data
+
+```{r}
+
+```
+
+Standardize the adjusted CVs 
+
+```{r}
+
+```
+
+Compute distance statistics for the permuted data
+
+```{r}
+
+```
+
+Compute empirical p-values
+
+```{r}
+
+```
+
+Distribution of empirical p-values
+
+
+```{r}
+
+```
+
+
+## Investigation...
+
+
+
+## Session information
+
+```{r info}
+sessionInfo()
+```
