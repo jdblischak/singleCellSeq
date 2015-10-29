@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+<meta name="author" content="Joyce Hsiao" />
+
+<meta name="date" content="2015-10-28" />
+
+<title>Per gene comparison of CVs</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Per gene comparison of CVs</h1>
+<h4 class="author"><em>Joyce Hsiao</em></h4>
+<h4 class="date"><em>2015-10-28</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#objective">Objective</a></li>
+<li><a href="#set-up">Set up</a></li>
+<li><a href="#prepare-data">Prepare data</a></li>
+<li><a href="#compute-normalized-cv">Compute normalized CV</a></li>
+<li><a href="#compute-summary-measure-of-deviation">Compute summary measure of deviation</a></li>
+<li><a href="#permutation-based-reuslts">Permutation-based reuslts</a></li>
+<li><a href="#investigation">Investigation…</a></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2015-10-28</p>
+<p><strong>Code version:</strong> 6139907e5256d9e88a1f483576032c5a8ab86d18</p>
+<div id="objective" class="section level2">
+<h2>Objective</h2>
+<p>Per gene analysis of individual differences in coefficients of variation. We first compute the deviation to the median for each individual’s CV. Then, for each gene, we compute two meausures to quantify the variabilty of the CVs: sum of squared deviation and sum of absolute deviation. We computed empirical p-values for each gene’s variability measure of CV.</p>
+</div>
+<div id="set-up" class="section level2">
+<h2>Set up</h2>
+<pre class="r"><code>library(&quot;data.table&quot;)
+library(&quot;dplyr&quot;)
+library(&quot;limma&quot;)
+library(&quot;edgeR&quot;)
+library(&quot;ggplot2&quot;)
+library(&quot;grid&quot;)
+theme_set(theme_bw(base_size = 12))
+source(&quot;functions.R&quot;)</code></pre>
+</div>
+<div id="prepare-data" class="section level2">
+<h2>Prepare data</h2>
+<p>Input annotation of only QC-filtered single cells. Remove NA19098.r2</p>
+<pre class="r"><code>anno_qc &lt;- read.table(&quot;../data/annotation-filter.txt&quot;, header = TRUE,
+                   stringsAsFactors = FALSE)
+is_include &lt;- anno_qc$batch != &quot;NA19098.r2&quot;
+anno_qc_filter &lt;- anno_qc[which(is_include), ]</code></pre>
+<p>Import endogeneous gene molecule counts that are QC-filtered, CPM-normalized, ERCC-normalized, and also processed to remove unwanted variation from batch effet. ERCC genes are removed from this file.</p>
+<pre class="r"><code>molecules_ENSG &lt;- read.table(&quot;../data/molecules-final.txt&quot;, header = TRUE, stringsAsFactors = FALSE)
+molecules_ENSG &lt;- molecules_ENSG[ , is_include]</code></pre>
+<p>Input moleclule counts before log2 CPM transformation. This file is used to compute percent zero-count cells per sample.</p>
+<pre class="r"><code>molecules_sparse &lt;- read.table(&quot;../data/molecules-filter.txt&quot;, header = TRUE, stringsAsFactors = FALSE)
+
+molecules_sparse &lt;- molecules_sparse[grep(&quot;ENSG&quot;, rownames(molecules_sparse)), ]
+stopifnot( all.equal(rownames(molecules_ENSG), rownames(molecules_sparse)) )</code></pre>
+</div>
+<div id="compute-normalized-cv" class="section level2">
+<h2>Compute normalized CV</h2>
+<p>We compute squared CV across cells for each individual and then for each individual CV profile, account for mean dependency by computing distance with respect to the data-wide coefficient variation on the log10 scale.</p>
+<pre class="r"><code>source(&quot;../code/cv-functions.r&quot;)
+
+ENSG_cv &lt;- compute_cv(log2counts = molecules_ENSG,
+                      grouping_vector = anno_qc_filter$individual)
+
+ENSG_cv_adj &lt;- normalize_cv(group_cv = ENSG_cv, 
+                            log2counts = molecules_ENSG, 
+                            anno = anno_qc_filter)</code></pre>
+</div>
+<div id="compute-summary-measure-of-deviation" class="section level2">
+<h2>Compute summary measure of deviation</h2>
+<p>Standardize the each CV vectors</p>
+<pre class="r"><code>df_cv &lt;- data.frame(NA19098 = ENSG_cv_adj[[1]]$log10cv2_adj,
+                    NA19101 = ENSG_cv_adj[[2]]$log10cv2_adj,
+                    NA19239 = ENSG_cv_adj[[3]]$log10cv2_adj)
+
+library(matrixStats)
+df_norm &lt;- sweep(df_cv, MARGIN = 2, STATS = colMeans(as.matrix(df_cv)), FUN = &quot;-&quot;)
+df_norm &lt;- sweep(df_norm, MARGIN = 2, STATS = sqrt(colVars(as.matrix(df_cv))), FUN = &quot;/&quot;)</code></pre>
+<p>Consistent of gene adj-CVs before/after standardization.</p>
+<pre class="r"><code>par(mfrow = c(1,2))
+plot(x = df_cv[[1]], y = df_cv[[2]], main = &quot;Adjusted log10 CV^2&quot;,
+     xlab = &quot;NA19238&quot;, ylab = &quot;NA19101&quot;)
+points(x = df_cv[[1]][1:10], y = df_cv[[2]][1:10], col = &quot;red&quot;, cex = .8, pch = 16)
+plot(x = df_norm[[1]], y = df_norm[[2]], main = &quot;Adjusted log10 CV^2, standardized&quot;,
+     xlab = &quot;NA19238&quot;, ylab = &quot;NA19101&quot;)
+points(x = df_norm[[1]][1:10], y = df_norm[[2]][1:10], col = &quot;red&quot;, cex = .8, pch = 16)</code></pre>
+<p><img src="figure/cv-adjusted-comparison.Rmd/unnamed-chunk-7-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>Compute distance</p>
+<pre class="r"><code>library(matrixStats)
+df_norm$squared_dev &lt;- rowSums( ( df_norm - rowMedians(as.matrix(df_norm)) )^2 )
+df_norm$abs_dev &lt;- rowSums(abs( df_norm - rowMedians(as.matrix(df_norm)) ))</code></pre>
+</div>
+<div id="permutation-based-reuslts" class="section level2">
+<h2>Permutation-based reuslts</h2>
+<p>Make permuted data sets. Choose 1000 samples.</p>
+<pre class="r"><code>source(&quot;../code/permute-cells.r&quot;)
+permuted_data &lt;- permute_cells(log2counts = molecules_ENSG, 
+                               grouping_vector = anno_qc_filter$individual, 
+                               num_permute = 10)
+save(permuted_data, file = &quot;rda/permuted_data.rda&quot;)</code></pre>
+<p>Compute adjusted CV for the permuted data</p>
+<p>Standardize the adjusted CVs</p>
+<p>Compute distance statistics for the permuted data</p>
+<p>Compute empirical p-values</p>
+<p>Distribution of empirical p-values</p>
+</div>
+<div id="investigation" class="section level2">
+<h2>Investigation…</h2>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] grid      stats     graphics  grDevices utils     datasets  methods  
+[8] base     
+
+other attached packages:
+[1] matrixStats_0.14.0 zoo_1.7-12         ggplot2_1.0.1     
+[4] edgeR_3.10.2       limma_3.24.9       dplyr_0.4.2       
+[7] data.table_1.9.4   knitr_1.10.5      
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.12.0      magrittr_1.5     MASS_7.3-40      munsell_0.4.2   
+ [5] lattice_0.20-31  colorspace_1.2-6 R6_2.1.1         stringr_1.0.0   
+ [9] httr_0.6.1       plyr_1.8.3       tools_3.2.0      parallel_3.2.0  
+[13] gtable_0.1.2     DBI_0.3.1        htmltools_0.2.6  yaml_2.1.13     
+[17] digest_0.6.8     assertthat_0.1   reshape2_1.4.1   formatR_1.2     
+[21] bitops_1.0-6     RCurl_1.95-4.6   evaluate_0.7     rmarkdown_0.6.1 
+[25] stringi_0.4-1    scales_0.2.4     chron_2.3-45     proto_0.3-10    </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+
+</body>
+</html>

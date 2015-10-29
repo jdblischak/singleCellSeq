@@ -1,0 +1,1517 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+<meta name="author" content="Joyce Hsiao" />
+
+<meta name="date" content="2015-10-23" />
+
+<title>Per gene individual differences in CV and mean</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Per gene individual differences in CV and mean</h1>
+<h4 class="author"><em>Joyce Hsiao</em></h4>
+<h4 class="date"><em>2015-10-23</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#objective">Objective</a></li>
+<li><a href="#set-up">Set up</a></li>
+<li><a href="#prepare-data">Prepare data</a></li>
+<li><a href="#normalize-coefficient-of-variation">Normalize coefficient of variation</a></li>
+<li><a href="#compare-coefficients-of-variations">Compare coefficients of variations</a><ul>
+<li><a href="#squared-cv-vs.mean-expression-level">Squared CV vs. mean expression level</a></li>
+<li><a href="#investigate">Investigate…</a></li>
+</ul></li>
+<li><a href="#annotation">Annotation</a><ul>
+<li><a href="#ensemble-database">ENSEMBLE database</a></li>
+<li><a href="#protein-protein-interaction">Protein-protein interaction</a></li>
+<li><a href="#go-analysis">GO analysis</a></li>
+</ul></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2015-10-27</p>
+<p><strong>Code version:</strong> 2731e3da36a10c5f0f07801b2e0859caf7e4b05f</p>
+<div id="objective" class="section level2">
+<h2>Objective</h2>
+<p>Previously, we compared normalized coefficient of variations across individuals. Here, we will also compare the mean gene expression across individuals, using single cell sequencing data and bulk RNA-seq data.</p>
+<p>It would be interesting to learn the possible overlap or non-overlap between the genes that we observed significant individual differences in coefficient of variations versus those different in mean gene expression levels across cells.</p>
+<p>From here on we will work with the filtered data without NA19098.r2.</p>
+</div>
+<div id="set-up" class="section level2">
+<h2>Set up</h2>
+<pre class="r"><code>library(&quot;data.table&quot;)
+library(&quot;dplyr&quot;)
+library(&quot;limma&quot;)
+library(&quot;edgeR&quot;)
+library(&quot;ggplot2&quot;)
+library(&quot;grid&quot;)
+theme_set(theme_bw(base_size = 12))
+source(&quot;functions.R&quot;)</code></pre>
+</div>
+<div id="prepare-data" class="section level2">
+<h2>Prepare data</h2>
+<p>Input annotation of only QC-filtered single cells. Remove NA19098.r2</p>
+<pre class="r"><code>anno_qc &lt;- read.table(&quot;../data/annotation-filter.txt&quot;, header = TRUE,
+                   stringsAsFactors = FALSE)
+is_include &lt;- anno_qc$batch != &quot;NA19098.r2&quot;
+anno_qc_filter &lt;- anno_qc[which(is_include), ]</code></pre>
+<p>Import endogeneous gene molecule counts that are QC-filtered, CPM-normalized, ERCC-normalized, and also processed to remove unwanted variation from batch effet. ERCC genes are removed from this file.</p>
+<pre class="r"><code>molecules_ENSG &lt;- read.table(&quot;../data/molecules-final.txt&quot;, header = TRUE, stringsAsFactors = FALSE)
+molecules_ENSG &lt;- molecules_ENSG[ , is_include]</code></pre>
+<p>Input moleclule counts before log2 CPM transformation. This file is used to compute percent zero-count cells per sample.</p>
+<pre class="r"><code>molecules_sparse &lt;- read.table(&quot;../data/molecules-filter.txt&quot;, header = TRUE, stringsAsFactors = FALSE)
+
+molecules_sparse &lt;- molecules_sparse[grep(&quot;ENSG&quot;, rownames(molecules_sparse)), ]
+stopifnot( all.equal(rownames(molecules_ENSG), rownames(molecules_sparse)) )</code></pre>
+</div>
+<div id="normalize-coefficient-of-variation" class="section level2">
+<h2>Normalize coefficient of variation</h2>
+<p>Compute coefficient of variation.</p>
+<pre class="r"><code># Compute CV and mean of normalized molecule counts (take 2^(log2-normalized count))
+
+molecules_cv_batch_ENSG &lt;- 
+  lapply(1:length(unique(anno_qc_filter$batch)), function(per_batch) {
+      molecules_per_batch &lt;- 2^molecules_ENSG[ , unique(anno_qc_filter$batch) == unique(anno_qc_filter$batch)[per_batch] ]
+      mean_per_gene &lt;- apply(molecules_per_batch, 1, mean, na.rm = TRUE)
+      sd_per_gene &lt;- apply(molecules_per_batch, 1, sd, na.rm = TRUE)
+      cv_per_gene &lt;- data.frame(mean = mean_per_gene,
+                                sd = sd_per_gene,
+                                cv = sd_per_gene/mean_per_gene)
+      rownames(cv_per_gene) &lt;- rownames(molecules_ENSG)
+  
+      # cv_per_gene &lt;- cv_per_gene[rowSums(is.na(cv_per_gene)) == 0, ]
+      cv_per_gene$batch &lt;- unique(anno_qc_filter$batch)[per_batch]
+      
+      # Add sparsity percent
+      molecules_sparse_per_batch &lt;- molecules_sparse[ , unique(anno_qc_filter$batch) == unique(anno_qc_filter$batch)[per_batch]]
+      cv_per_gene$sparse &lt;- rowMeans(as.matrix(molecules_sparse_per_batch) == 0)
+        
+      return(cv_per_gene)
+      }) 
+names(molecules_cv_batch_ENSG) &lt;- unique(anno_qc_filter$batch)</code></pre>
+<p>Merge summary data.frames.</p>
+<pre class="r"><code>df_ENSG &lt;- do.call(rbind, molecules_cv_batch_ENSG)</code></pre>
+<p>Compute rolling medians across all samples.</p>
+<pre class="r"><code>library(zoo)
+# Compute a data-wide coefficient of variation on CPM normalized counts.
+data_cv_ENSG &lt;- apply(2^molecules_ENSG, 1, sd)/apply(2^molecules_ENSG, 1, mean)
+
+# Order of genes by mean expression levels
+order_gene &lt;- order(apply(2^molecules_ENSG, 1, mean))
+
+# Rolling medians of log10 squared CV by mean expression levels
+roll_medians &lt;- rollapply(log10(data_cv_ENSG^2)[order_gene], width = 50, by = 25,
+                         FUN = median, fill = list(&quot;extend&quot;, &quot;extend&quot;, &quot;NA&quot;) )
+ii_na &lt;- which( is.na(roll_medians) )
+roll_medians[ii_na] &lt;- median( log10(data_cv_ENSG^2)[order_gene][ii_na] )
+
+names(roll_medians) &lt;- rownames(molecules_ENSG)[order_gene]
+
+
+# re-order rolling medians
+reorder_gene &lt;- match(rownames(molecules_ENSG), names(roll_medians) )
+roll_medians &lt;- roll_medians[ reorder_gene ]
+
+stopifnot( all.equal(names(roll_medians), rownames(molecules_ENSG) ) )</code></pre>
+<p>Compute adjusted coefficient of variation.</p>
+<pre class="r"><code># adjusted coefficient of variation on log10 scale
+log10cv2_adj_ENSG &lt;- 
+  lapply(1:length(molecules_cv_batch_ENSG), function(per_batch) {
+    foo &lt;- log10(molecules_cv_batch_ENSG[[per_batch]]$cv^2) - roll_medians
+    return(foo)
+})
+df_ENSG$log10cv2_adj_ENSG &lt;- do.call(c, log10cv2_adj_ENSG)</code></pre>
+</div>
+<div id="compare-coefficients-of-variations" class="section level2">
+<h2>Compare coefficients of variations</h2>
+<pre class="r"><code>library(limma)
+
+df_limma &lt;- matrix(df_ENSG$log10cv2_adj_ENSG, 
+                      nrow = nrow(molecules_ENSG), ncol = 8, byrow = FALSE)
+
+design &lt;- data.frame(individual = factor(rep(unique(anno_qc_filter$individual), each = 3) ),
+                     rep = factor(rep(c(1:3), times = 3)) )
+design &lt;- design[ with(design, !(individual == &quot;NA19098&quot; &amp; rep == &quot;2&quot;)), ]
+
+colnames(df_limma) &lt;- with(design, paste0(individual, rep))
+
+fit_limma &lt;- lmFit(df_limma, design = model.matrix( ~ individual, data = design))                      
+fit_limma &lt;- eBayes(fit_limma)</code></pre>
+<p>False discovery control adjustment.</p>
+<pre class="r"><code>F.p.adj &lt;- p.adjust(fit_limma$F.p.value, method = &quot;fdr&quot;)</code></pre>
+<p>Cutoffs</p>
+<pre class="r"><code>df_cuts &lt;- data.frame(cuts = c(.001, .01, .05, .1, .15, .2))
+df_cuts$sig_count &lt;- sapply(1:6, function(per_cut) {
+                    sum(F.p.adj &lt; df_cuts$cuts[per_cut] )
+                    })
+df_cuts</code></pre>
+<pre><code>   cuts sig_count
+1 0.001        18
+2 0.010        42
+3 0.050       103
+4 0.100       177
+5 0.150       328
+6 0.200       464</code></pre>
+<p>False discovery control adjutment.</p>
+<pre class="r"><code>F.p.adj &lt;- p.adjust(fit_limma$F.p.value, method = &quot;fdr&quot;)</code></pre>
+<div id="squared-cv-vs.mean-expression-level" class="section level3">
+<h3>Squared CV vs. mean expression level</h3>
+<p>We plotted out per gene average CVs across samples versus average expression level for the endogeneous genes, and identified the genes classifed as significantly different between individuals in coefficients of variation.</p>
+<pre class="r"><code>df_compare &lt;- 
+  data.frame(mean = rowMeans( as.matrix( 
+                      do.call(cbind, lapply(molecules_cv_batch_ENSG, &quot;[[&quot;, 1) ) ) ),
+             cv2 = rowMeans( as.matrix( 
+                      do.call(cbind, lapply(molecules_cv_batch_ENSG, &quot;[[&quot;, 3) ) )^2 ),
+             adj_cv2 = rowMeans( 10^as.matrix( 
+                      do.call(cbind, log10cv2_adj_ENSG) ) ) )
+             
+library(broman)
+crayon &lt;- brocolors(&quot;crayons&quot;)
+par(mar=c(5,5,3,1))
+with(df_compare, plot(x = log10(mean), y = cv2, pch = 1, cex = 1, col = &quot;grey50&quot;,
+                      lwd = .5,
+                      ylab = &quot;average squared coeffcient of variations \n across samples&quot;,
+                      xlab = &quot;log10 average of mean CPM across samples&quot;) )
+with(df_compare[F.p.adj &lt; .2, ], points(x = log10(mean), y = cv2, pch = 16, cex = .6,
+                                        col = crayon[&quot;Tumbleweed&quot;]) )
+with(df_compare[F.p.adj &lt; .1, ], points(x = log10(mean), y = cv2, pch = 16, cex = .6,
+                                        col = crayon[&quot;Orange&quot;]) )
+with(df_compare[F.p.adj &lt; .01, ], points(x = log10(mean), y = cv2, pch = 16, cex = .6,
+                                        col = crayon[&quot;Scarlet&quot;]) )
+title(main = &quot;Avg. Squred CV vs. log10(Avg. mean count)&quot;)
+legend(&quot;topright&quot;, pch = c(1, 16, 16, 16), 
+       legend = c(&quot;All genes&quot;, &quot;Adj p-value &lt; .2&quot;, 
+                  &quot;Adj p-value &lt; .1&quot;, &quot;Adj p-value &lt; .01&quot;),
+       col = c(&quot;grey50&quot;, crayon[c(&quot;Tumbleweed&quot;, &quot;Orange&quot;, &quot;Scarlet&quot;)]),
+       bty = &quot;n&quot;)</code></pre>
+<p><img src="figure/cv-annotation.Rmd/unnamed-chunk-13-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>par(mar=c(5,5,3,1))
+with(df_compare, plot(x = log10(mean), y = adj_cv2, pch = 1, cex = 1, col = &quot;grey50&quot;,
+                      lwd = .5,
+                      ylab = &quot;average squared coeffcient of variations \n across samples&quot;,
+                      xlab = &quot;log10 average of mean CPM across samples&quot;) )
+with(df_compare[F.p.adj &lt; .2, ], points(x = log10(mean), y = adj_cv2, pch = 16, cex = .6,
+                                        col = crayon[&quot;Tumbleweed&quot;]) )
+with(df_compare[F.p.adj &lt; .1, ], points(x = log10(mean), y = adj_cv2, pch = 16, cex = .6,
+                                        col = crayon[&quot;Orange&quot;]) )
+with(df_compare[F.p.adj &lt; .01, ], points(x = log10(mean), y = adj_cv2, pch = 16, cex = .6,
+                                        col = crayon[&quot;Scarlet&quot;]) )
+title(main = &quot;Avg. Adjusted Squred CV vs. log10(Avg. mean count)&quot;)
+legend(&quot;topright&quot;, pch = c(1, 16, 16, 16), 
+       legend = c(&quot;All genes&quot;, &quot;Adj p-value &lt; .2&quot;, 
+                  &quot;Adj p-value &lt; .1&quot;, &quot;Adj p-value &lt; .01&quot;),
+       col = c(&quot;grey50&quot;, crayon[c(&quot;Tumbleweed&quot;, &quot;Orange&quot;, &quot;Scarlet&quot;)]),
+       bty = &quot;n&quot;)</code></pre>
+<p><img src="figure/cv-annotation.Rmd/unnamed-chunk-14-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="investigate" class="section level3">
+<h3>Investigate…</h3>
+<p>Our naive analysis seems to pick up genes with different density between individuals.</p>
+<pre class="r"><code>library(gridExtra)
+order_low_cv &lt;- order(df_compare[F.p.adj &lt; .01, ]$cv)
+low_plots &lt;- lapply(1:6, function(i) {
+  ind &lt;- order_low_cv[i]
+  ggplot(data.frame(values = unlist(molecules_ENSG[ind, ]),
+                    individual = factor(anno_qc_filter$individual),
+                    replicate = factor(anno_qc_filter$replicate),
+                    batch = factor(anno_qc_filter$batch), check.rows = F), 
+         aes(x = values)) + 
+    geom_density(aes(group = batch, col = individual)) + 
+    ggtitle(paste(rownames(molecules_ENSG)[ind],
+                  &quot;;CV = &quot;, round(df_compare[F.p.adj &lt; .01, ]$cv[ind], 2) ) )
+})
+grid.arrange(grobs = low_plots, ncol = 2)</code></pre>
+<p><img src="figure/cv-annotation.Rmd/unnamed-chunk-15-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>order_high_cv &lt;- order(df_compare[F.p.adj &lt; .01, ]$cv, decreasing = TRUE)
+high_plots &lt;- lapply(1:6, function(i) {
+  ind &lt;- order_high_cv[i]
+  ggplot(data.frame(values = unlist(molecules_ENSG[ind, ]),
+                    individual = factor(anno_qc_filter$individual),
+                    replicate = factor(anno_qc_filter$replicate),
+                    batch = factor(anno_qc_filter$batch), check.rows = F), 
+         aes(x = values)) + 
+    geom_density(aes(group = batch, col = individual)) + 
+    ggtitle(paste(rownames(molecules_ENSG)[ind],
+                  &quot;;CV = &quot;, round(df_compare[F.p.adj &lt; .01, ]$cv[ind], 2) ) )
+})
+grid.arrange(grobs = high_plots, ncol = 2)</code></pre>
+<p><img src="figure/cv-annotation.Rmd/unnamed-chunk-16-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
+</div>
+</div>
+<div id="annotation" class="section level2">
+<h2>Annotation</h2>
+<div id="ensemble-database" class="section level3">
+<h3>ENSEMBLE database</h3>
+<pre class="r"><code>sig_cv &lt;- order(F.p.adj)[F.p.adj &lt; .05]
+library(&quot;biomaRt&quot;)
+ensembl &lt;- useMart(host = &quot;grch37.ensembl.org&quot;,
+                   biomart = &quot;ENSEMBL_MART_ENSEMBL&quot;,
+                   dataset = &quot;hsapiens_gene_ensembl&quot;)
+
+differential_CV_genes_info &lt;- getBM(attributes = c(&quot;ensembl_gene_id&quot;, &quot;chromosome_name&quot;,
+                                                   &quot;external_gene_name&quot;, &quot;transcript_count&quot;,
+                                                   &quot;description&quot;),
+                                    filters = &quot;ensembl_gene_id&quot;,
+                                    values = rownames(molecules_ENSG[sig_cv, ]),
+                                    mart = ensembl)
+differential_CV_genes_info</code></pre>
+<pre><code>    ensembl_gene_id chromosome_name external_gene_name transcript_count
+1   ENSG00000013288               4             MAN2B2                5
+2   ENSG00000013375               6               PGM3               14
+3   ENSG00000036549               1               ZZZ3               11
+4   ENSG00000048471              16              SNX29               10
+5   ENSG00000068400               X            GRIPAP1                9
+6   ENSG00000070669               7               ASNS               17
+7   ENSG00000073910              13                FRY                7
+8   ENSG00000074590              12              NUAK1                4
+9   ENSG00000075240              22             GRAMD4                7
+10  ENSG00000079819               6            EPB41L2               31
+11  ENSG00000089195              20              TRMT6                5
+12  ENSG00000092820               6                EZR                4
+13  ENSG00000100564              14               PIGH               12
+14  ENSG00000100968              14             NFATC4               33
+15  ENSG00000101945               X            SUV39H1                5
+16  ENSG00000102931              16             ARL2BP                4
+17  ENSG00000103042              16            SLC38A7               16
+18  ENSG00000103363              16              TCEB2                5
+19  ENSG00000104872              19             PIH1D1               24
+20  ENSG00000105229              19              PIAS4                6
+21  ENSG00000106366               7           SERPINE1                2
+22  ENSG00000106554               7             CHCHD3                9
+23  ENSG00000108091              10              CCDC6                3
+24  ENSG00000108479              17              GALK1               10
+25  ENSG00000108799              17               EZH1               25
+26  ENSG00000108840              17              HDAC5               13
+27  ENSG00000110756              11               HPS5               11
+28  ENSG00000112245               6             PTP4A1                5
+29  ENSG00000112339               6              HBS1L               18
+30  ENSG00000115808               2               STRN                3
+31  ENSG00000115816               2              CEBPZ                3
+32  ENSG00000118217               1               ATF6                2
+33  ENSG00000124067              16            SLC12A4               20
+34  ENSG00000125841              20              NRSN2                9
+35  ENSG00000127952               7             STYXL1               11
+36  ENSG00000130208              19              APOC1               10
+37  ENSG00000131653              16              TRAF7                7
+38  ENSG00000133424              22              LARGE               19
+39  ENSG00000135063               9           FAM189A2                6
+40  ENSG00000135250               7              SRPK2               15
+41  ENSG00000135315               6           KIAA1009                6
+42  ENSG00000136371              15              MTHFS                4
+43  ENSG00000137413               6               TAF8               10
+44  ENSG00000137710              11                RDX               18
+45  ENSG00000138750               4              NUP54               20
+46  ENSG00000139974              14            SLC38A6               21
+47  ENSG00000140905              16               GCSH                6
+48  ENSG00000142698               1            C1orf94                2
+49  ENSG00000143622               1               RIT1                6
+50  ENSG00000144120               2            TMEM177                6
+51  ENSG00000145388               4            METTL14                4
+52  ENSG00000149054              11             ZNF215                6
+53  ENSG00000149179              11           C11orf49               24
+54  ENSG00000149806              11                FAU                9
+55  ENSG00000150459              13              SAP18                7
+56  ENSG00000152359               5               POC5               15
+57  ENSG00000153044               5              CENPH                6
+58  ENSG00000153250               2              RBMS1               15
+59  ENSG00000156011               8               PSD3               18
+60  ENSG00000156531               X               PHF6                6
+61  ENSG00000158545              16             ZC3H18               12
+62  ENSG00000161021               5              MAML1                4
+63  ENSG00000162458               1             FBLIM1               16
+64  ENSG00000163714               3             U2SURP               18
+65  ENSG00000163950               4               SLBP                6
+66  ENSG00000164074               4            C4orf29                5
+67  ENSG00000165186               X             PTCHD1                2
+68  ENSG00000166822              16           TMEM170A                7
+69  ENSG00000168038               3               ULK4               12
+70  ENSG00000168610              17              STAT3               14
+71  ENSG00000170471              20            RALGAPB               10
+72  ENSG00000171466              19             ZNF562               12
+73  ENSG00000171603               1             CLSTN1                6
+74  ENSG00000171848               2               RRM2               10
+75  ENSG00000172113               3               NME6               21
+76  ENSG00000172534               X              HCFC1                5
+77  ENSG00000172831              16               CES2               12
+78  ENSG00000173486              11              FKBP2                6
+79  ENSG00000174238              17             PITPNA               11
+80  ENSG00000174744              11              BRMS1                9
+81  ENSG00000179195              12             ZNF664               14
+82  ENSG00000180398               2              MCFD2               17
+83  ENSG00000181038              17            METTL23               14
+84  ENSG00000183150              12              GPR19                5
+85  ENSG00000183684              17             ALYREF                5
+86  ENSG00000183889              16             NPIPA7               13
+87  ENSG00000185043              15               CIB1                1
+88  ENSG00000185475              11           TMEM179B                5
+89  ENSG00000185650              14            ZFP36L1                7
+90  ENSG00000187664              19             HAPLN4                2
+91  ENSG00000188636              22             LDOC1L                1
+92  ENSG00000188643               1            S100A16                5
+93  ENSG00000196267              19             ZNF836                6
+94  ENSG00000197451               5            HNRNPAB                8
+95  ENSG00000198513              14               ATL1               12
+96  ENSG00000198633              19             ZNF534                4
+97  ENSG00000204442              13            FAM155A                1
+98  ENSG00000204469               6             PRRC2A               14
+99  ENSG00000213903              14              LTB4R                5
+100 ENSG00000215114               8             UBXN2B                5
+101 ENSG00000219545               7           RPA3-AS1                7
+102 ENSG00000257093               7           KIAA1147                2
+103 ENSG00000270188               1          MTRNR2L11                1
+                                                                                                                    description
+1                                                         mannosidase, alpha, class 2B, member 2 [Source:HGNC Symbol;Acc:29623]
+2                                                                            phosphoglucomutase 3 [Source:HGNC Symbol;Acc:8907]
+3                                                              zinc finger, ZZ-type containing 3 [Source:HGNC Symbol;Acc:24523]
+4                                                                               sorting nexin 29 [Source:HGNC Symbol;Acc:30542]
+5                                                                     GRIP1 associated protein 1 [Source:HGNC Symbol;Acc:18706]
+6                                                    asparagine synthetase (glutamine-hydrolyzing) [Source:HGNC Symbol;Acc:753]
+7                                                                     furry homolog (Drosophila) [Source:HGNC Symbol;Acc:20367]
+8                                                               NUAK family, SNF1-like kinase, 1 [Source:HGNC Symbol;Acc:14311]
+9                                                                       GRAM domain containing 4 [Source:HGNC Symbol;Acc:29113]
+10                                                   erythrocyte membrane protein band 4.1-like 2 [Source:HGNC Symbol;Acc:3379]
+11                                              tRNA methyltransferase 6 homolog (S. cerevisiae) [Source:HGNC Symbol;Acc:20900]
+12                                                                                         ezrin [Source:HGNC Symbol;Acc:12691]
+13                                       phosphatidylinositol glycan anchor biosynthesis, class H [Source:HGNC Symbol;Acc:8964]
+14                      nuclear factor of activated T-cells, cytoplasmic, calcineurin-dependent 4 [Source:HGNC Symbol;Acc:7778]
+15                                          suppressor of variegation 3-9 homolog 1 (Drosophila) [Source:HGNC Symbol;Acc:11479]
+16                                                ADP-ribosylation factor-like 2 binding protein [Source:HGNC Symbol;Acc:17146]
+17                                                            solute carrier family 38, member 7 [Source:HGNC Symbol;Acc:25582]
+18                    transcription elongation factor B (SIII), polypeptide 2 (18kDa, elongin B) [Source:HGNC Symbol;Acc:11619]
+19                                                                      PIH1 domain containing 1 [Source:HGNC Symbol;Acc:26075]
+20                                                        protein inhibitor of activated STAT, 4 [Source:HGNC Symbol;Acc:17002]
+21  serpin peptidase inhibitor, clade E (nexin, plasminogen activator inhibitor type 1), member 1 [Source:HGNC Symbol;Acc:8583]
+22                                       coiled-coil-helix-coiled-coil-helix domain containing 3 [Source:HGNC Symbol;Acc:21906]
+23                                                               coiled-coil domain containing 6 [Source:HGNC Symbol;Acc:18782]
+24                                                                                galactokinase 1 [Source:HGNC Symbol;Acc:4118]
+25                                                       enhancer of zeste homolog 1 (Drosophila) [Source:HGNC Symbol;Acc:3526]
+26                                                                         histone deacetylase 5 [Source:HGNC Symbol;Acc:14068]
+27                                                                   Hermansky-Pudlak syndrome 5 [Source:HGNC Symbol;Acc:17022]
+28                                                protein tyrosine phosphatase type IVA, member 1 [Source:HGNC Symbol;Acc:9634]
+29                                                                      HBS1-like (S. cerevisiae) [Source:HGNC Symbol;Acc:4834]
+30                                                          striatin, calmodulin binding protein [Source:HGNC Symbol;Acc:11424]
+31                                                  CCAAT/enhancer binding protein (C/EBP), zeta [Source:HGNC Symbol;Acc:24218]
+32                                                               activating transcription factor 6 [Source:HGNC Symbol;Acc:791]
+33                           solute carrier family 12 (potassium/chloride transporter), member 4 [Source:HGNC Symbol;Acc:10913]
+34                                                                                   neurensin 2 [Source:HGNC Symbol;Acc:16229]
+35                                                  serine/threonine/tyrosine interacting-like 1 [Source:HGNC Symbol;Acc:18165]
+36                                                                              apolipoprotein C-I [Source:HGNC Symbol;Acc:607]
+37                                 TNF receptor-associated factor 7, E3 ubiquitin protein ligase [Source:HGNC Symbol;Acc:20456]
+38                                                                       like-glycosyltransferase [Source:HGNC Symbol;Acc:6511]
+39                                                family with sequence similarity 189, member A2 [Source:HGNC Symbol;Acc:24820]
+40                                                                         SRSF protein kinase 2 [Source:HGNC Symbol;Acc:11306]
+41                                                                                      KIAA1009 [Source:HGNC Symbol;Acc:21107]
+42               5,10-methenyltetrahydrofolate synthetase (5-formyltetrahydrofolate cyclo-ligase) [Source:HGNC Symbol;Acc:7437]
+43               TAF8 RNA polymerase II, TATA box binding protein (TBP)-associated factor, 43kDa [Source:HGNC Symbol;Acc:17300]
+44                                                                                        radixin [Source:HGNC Symbol;Acc:9944]
+45                                                                             nucleoporin 54kDa [Source:HGNC Symbol;Acc:17359]
+46                                                            solute carrier family 38, member 6 [Source:HGNC Symbol;Acc:19863]
+47                                        glycine cleavage system protein H (aminomethyl carrier) [Source:HGNC Symbol;Acc:4208]
+48                                                            chromosome 1 open reading frame 94 [Source:HGNC Symbol;Acc:28250]
+49                                                                       Ras-like without CAAX 1 [Source:HGNC Symbol;Acc:10023]
+50                                                                     transmembrane protein 177 [Source:HGNC Symbol;Acc:28143]
+51                                                                     methyltransferase like 14 [Source:HGNC Symbol;Acc:29330]
+52                                                                       zinc finger protein 215 [Source:HGNC Symbol;Acc:13007]
+53                                                           chromosome 11 open reading frame 49 [Source:HGNC Symbol;Acc:28720]
+54                    Finkel-Biskis-Reilly murine sarcoma virus (FBR-MuSV) ubiquitously expressed [Source:HGNC Symbol;Acc:3597]
+55                                                               Sin3A-associated protein, 18kDa [Source:HGNC Symbol;Acc:10530]
+56                                                                       POC5 centriolar protein [Source:HGNC Symbol;Acc:26658]
+57                                                                          centromere protein H [Source:HGNC Symbol;Acc:17268]
+58                                       RNA binding motif, single stranded interacting protein 1 [Source:HGNC Symbol;Acc:9907]
+59                                                       pleckstrin and Sec7 domain containing 3 [Source:HGNC Symbol;Acc:19093]
+60                                                                          PHD finger protein 6 [Source:HGNC Symbol;Acc:18145]
+61                                                           zinc finger CCCH-type containing 18 [Source:HGNC Symbol;Acc:25091]
+62                                                                mastermind-like 1 (Drosophila) [Source:HGNC Symbol;Acc:13632]
+63                                                                 filamin binding LIM protein 1 [Source:HGNC Symbol;Acc:24686]
+64                                                    U2 snRNP-associated SURP domain containing [Source:HGNC Symbol;Acc:30855]
+65                                                                     stem-loop binding protein [Source:HGNC Symbol;Acc:10904]
+66                                                            chromosome 4 open reading frame 29 [Source:HGNC Symbol;Acc:26111]
+67                                                                   patched domain containing 1 [Source:HGNC Symbol;Acc:26392]
+68                                                                    transmembrane protein 170A [Source:HGNC Symbol;Acc:29577]
+69                                                                          unc-51 like kinase 4 [Source:HGNC Symbol;Acc:15784]
+70              signal transducer and activator of transcription 3 (acute-phase response factor) [Source:HGNC Symbol;Acc:11364]
+71                                   Ral GTPase activating protein, beta subunit (non-catalytic) [Source:HGNC Symbol;Acc:29221]
+72                                                                       zinc finger protein 562 [Source:HGNC Symbol;Acc:25950]
+73                                                                                 calsyntenin 1 [Source:HGNC Symbol;Acc:17447]
+74                                                                   ribonucleotide reductase M2 [Source:HGNC Symbol;Acc:10452]
+75                                                      NME/NM23 nucleoside diphosphate kinase 6 [Source:HGNC Symbol;Acc:20567]
+76                                                   host cell factor C1 (VP16-accessory protein) [Source:HGNC Symbol;Acc:4839]
+77                                                                             carboxylesterase 2 [Source:HGNC Symbol;Acc:1864]
+78                                                                 FK506 binding protein 2, 13kDa [Source:HGNC Symbol;Acc:3718]
+79                                                   phosphatidylinositol transfer protein, alpha [Source:HGNC Symbol;Acc:9001]
+80                                                         breast cancer metastasis suppressor 1 [Source:HGNC Symbol;Acc:17262]
+81                                                                       zinc finger protein 664 [Source:HGNC Symbol;Acc:25406]
+82                                                      multiple coagulation factor deficiency 2 [Source:HGNC Symbol;Acc:18451]
+83                                                                     methyltransferase like 23 [Source:HGNC Symbol;Acc:26988]
+84                                                                  G protein-coupled receptor 19 [Source:HGNC Symbol;Acc:4473]
+85                                                                         Aly/REF export factor [Source:HGNC Symbol;Acc:19071]
+86                                                                         Protein PKD1P1  [Source:UniProtKB/TrEMBL;Acc:H0YEP2]
+87                                                     calcium and integrin binding 1 (calmyrin) [Source:HGNC Symbol;Acc:16920]
+88                                                                    transmembrane protein 179B [Source:HGNC Symbol;Acc:33744]
+89                                                               ZFP36 ring finger protein-like 1 [Source:HGNC Symbol;Acc:1107]
+90                                                    hyaluronan and proteoglycan link protein 4 [Source:HGNC Symbol;Acc:31357]
+91                                               leucine zipper, down-regulated in cancer 1-like [Source:HGNC Symbol;Acc:13343]
+92                                                              S100 calcium binding protein A16 [Source:HGNC Symbol;Acc:20441]
+93                                                                       zinc finger protein 836 [Source:HGNC Symbol;Acc:34333]
+94                                                    heterogeneous nuclear ribonucleoprotein A/B [Source:HGNC Symbol;Acc:5034]
+95                                                                             atlastin GTPase 1 [Source:HGNC Symbol;Acc:11231]
+96                                                                       zinc finger protein 534 [Source:HGNC Symbol;Acc:26337]
+97                                                 family with sequence similarity 155, member A [Source:HGNC Symbol;Acc:33877]
+98                                                                   proline-rich coiled-coil 2A [Source:HGNC Symbol;Acc:13918]
+99                                                                        leukotriene B4 receptor [Source:HGNC Symbol;Acc:6713]
+100                                                                        UBX domain protein 2B [Source:HGNC Symbol;Acc:27035]
+101                                                                         RPA3 antisense RNA 1 [Source:HGNC Symbol;Acc:48955]
+102                                                                                     KIAA1147 [Source:HGNC Symbol;Acc:29472]
+103                                                                 MT-RNR2-like 11 (pseudogene) [Source:HGNC Symbol;Acc:37168]</code></pre>
+</div>
+<div id="protein-protein-interaction" class="section level3">
+<h3>Protein-protein interaction</h3>
+<p>Export significant genes.</p>
+<pre class="r"><code>write.table(rownames(molecules_ENSG[F.p.adj &lt; .05, ]), 
+            file = &quot;../data/genelist-cv-sig.txt&quot;, 
+            row.names = FALSE, col.names = FALSE, quote = FALSE)</code></pre>
+<p>Use <a href="http://string-db.org">string analysis</a> data base to look for protein protein interaction of these differential CV genes.</p>
+<p>This is the confidence view. Stronger associations are represented by thicker lines. <img src="figure/cv-annotation.Rmd/string1-new.png" alt="This is the confidence view" /></p>
+<p>This is the evidence view. Different line colors represent the types of evidence for the association. <img src="figure/cv-annotation.Rmd/string2-new.png" alt="This is the evidence view" /></p>
+</div>
+<div id="go-analysis" class="section level3">
+<h3>GO analysis</h3>
+<p>[Description and steps are copied from my work with Sidney]</p>
+<p>GOstats performed Hypergeometric test for gene set enrichment. The test can take account into the conditional relationship between GO terms. Standard GOstats output contains the following information:</p>
+<ol style="list-style-type: decimal">
+<li>GPID: GO term ID number</li>
+<li>Pvalue: p-vlaue of the Hypergeometric test for over-representation</li>
+<li>OddsRatio: effect size</li>
+<li>ExpCount: expected number of genes</li>
+<li>Count: observed number of genes</li>
+<li>Size: number of possible genes given the defined gene universe</li>
+</ol>
+<p>GO analysis workflow is consisted of two major steps. First, we identified GO terms significant enriched given a p-value cutoff, which we set to 1 so that all possible GO terms associated with the genes can be included. We do this to eliminate false negatives. Then, we take the union of the GO terms across functional categories of interest (e.g., translation attentuation and post-translational buffering). The GO terms that are significant in at least one of the four functional categories are presented in the results.</p>
+<p>Note. The following heatmaps are generated based on the p-values of the gene sets.</p>
+<pre class="r"><code>if (file.exists(&quot;rda/cv-annotation/go-cv.rda&quot;)) {
+  load(&quot;rda/cv-annotation/go-cv.rda&quot;)  
+} else {
+go_sig_cv &lt;- GOtest(my_ensembl_gene_universe = rownames(molecules_ENSG),
+              my_ensembl_gene_test = rownames(molecules_ENSG)[F.p.adj &lt; .05],
+              pval_cutoff = 1, ontology=c(&quot;BP&quot;,&quot;CC&quot;,&quot;MF&quot;) )
+save(molecules_ENSG,
+     F.p.adj, go_sig_cv, file = &quot;rda/cv-annotation/go-cv.rda&quot;)
+}</code></pre>
+<p>Extract terms</p>
+<pre class="r"><code>if (file.exists(&quot;rda/cv-annotation/go-cv-terms.rda&quot;)) {
+  load(&quot;rda/cv-annotation/go-cv-terms.rda&quot;)  
+} else {
+  # Biological process
+  goterms_bp &lt;- summary(go_sig_cv$GO$BP, pvalue = 1)
+  goterms_bp &lt;- data.frame(ID = goterms_bp[[1]],
+                           Pvalue = goterms_bp[[2]],
+                           Terms = goterms_bp[[7]])
+  goterms_bp &lt;- goterms_bp[order(goterms_bp$Pvalue), ]
+  
+  # Cellular component
+  goterms_cc &lt;- summary(go_sig_cv$GO$CC, pvalue = 1)
+  goterms_cc &lt;- data.frame(ID = goterms_cc[[1]],
+                           Pvalue = goterms_cc[[2]],
+                           Terms = goterms_cc[[7]])
+  goterms_cc &lt;- goterms_cc[order(goterms_cc$Pvalue), ]
+
+  # Molecular function
+  goterms_mf &lt;- summary(go_sig_cv$GO$MF, pvalue = 1)
+  goterms_mf &lt;- data.frame(ID = goterms_mf[[1]],
+                           Pvalue = goterms_mf[[2]],
+                           Terms = goterms_mf[[7]])
+  goterms_mf &lt;- goterms_mf[order(goterms_mf$Pvalue), ]
+
+  save(goterms_bp, goterms_cc, goterms_mf, 
+       file = &quot;rda/cv-annotation/go-cv-terms.rda&quot;)
+}</code></pre>
+<p>*Biological process</p>
+<pre class="r"><code>dim(goterms_bp)</code></pre>
+<pre><code>[1] 1899    3</code></pre>
+<pre class="r"><code>kable(goterms_bp[1:50, ])</code></pre>
+<table>
+<thead>
+<tr class="header">
+<th align="left">ID</th>
+<th align="right">Pvalue</th>
+<th align="left">Terms</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left"><a href="GO:0071294" class="uri">GO:0071294</a></td>
+<td align="right">0.0000000</td>
+<td align="left">cellular response to zinc ion</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0010043" class="uri">GO:0010043</a></td>
+<td align="right">0.0000000</td>
+<td align="left">response to zinc ion</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0071276" class="uri">GO:0071276</a></td>
+<td align="right">0.0000000</td>
+<td align="left">cellular response to cadmium ion</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0046686" class="uri">GO:0046686</a></td>
+<td align="right">0.0000043</td>
+<td align="left">response to cadmium ion</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0071248" class="uri">GO:0071248</a></td>
+<td align="right">0.0000050</td>
+<td align="left">cellular response to metal ion</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:1990267" class="uri">GO:1990267</a></td>
+<td align="right">0.0000079</td>
+<td align="left">response to transition metal nanoparticle</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0071241" class="uri">GO:0071241</a></td>
+<td align="right">0.0000120</td>
+<td align="left">cellular response to inorganic substance</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0045926" class="uri">GO:0045926</a></td>
+<td align="right">0.0000139</td>
+<td align="left">negative regulation of growth</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0010950" class="uri">GO:0010950</a></td>
+<td align="right">0.0001659</td>
+<td align="left">positive regulation of endopeptidase activity</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0010952" class="uri">GO:0010952</a></td>
+<td align="right">0.0003076</td>
+<td align="left">positive regulation of peptidase activity</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0036017" class="uri">GO:0036017</a></td>
+<td align="right">0.0004702</td>
+<td align="left">response to erythropoietin</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0036018" class="uri">GO:0036018</a></td>
+<td align="right">0.0004702</td>
+<td align="left">cellular response to erythropoietin</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0045091" class="uri">GO:0045091</a></td>
+<td align="right">0.0004702</td>
+<td align="left">regulation of single stranded viral RNA replication via double stranded DNA intermediate</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0043280" class="uri">GO:0043280</a></td>
+<td align="right">0.0007251</td>
+<td align="left">positive regulation of cysteine-type endopeptidase activity involved in apoptotic process</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0040008" class="uri">GO:0040008</a></td>
+<td align="right">0.0008488</td>
+<td align="left">regulation of growth</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:2001056" class="uri">GO:2001056</a></td>
+<td align="right">0.0009056</td>
+<td align="left">positive regulation of cysteine-type endopeptidase activity</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0039692" class="uri">GO:0039692</a></td>
+<td align="right">0.0011619</td>
+<td align="left">single stranded viral RNA replication via double stranded DNA intermediate</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0071371" class="uri">GO:0071371</a></td>
+<td align="right">0.0011619</td>
+<td align="left">cellular response to gonadotropin stimulus</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0009611" class="uri">GO:0009611</a></td>
+<td align="right">0.0012159</td>
+<td align="left">response to wounding</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0045862" class="uri">GO:0045862</a></td>
+<td align="right">0.0012961</td>
+<td align="left">positive regulation of proteolysis</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0070979" class="uri">GO:0070979</a></td>
+<td align="right">0.0013827</td>
+<td align="left">protein K11-linked ubiquitination</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0052548" class="uri">GO:0052548</a></td>
+<td align="right">0.0013872</td>
+<td align="left">regulation of endopeptidase activity</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0070316" class="uri">GO:0070316</a></td>
+<td align="right">0.0016172</td>
+<td align="left">regulation of G0 to G1 transition</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0010038" class="uri">GO:0010038</a></td>
+<td align="right">0.0017304</td>
+<td align="left">response to metal ion</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0001101" class="uri">GO:0001101</a></td>
+<td align="right">0.0019230</td>
+<td align="left">response to acid chemical</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0052547" class="uri">GO:0052547</a></td>
+<td align="right">0.0019253</td>
+<td align="left">regulation of peptidase activity</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0045023" class="uri">GO:0045023</a></td>
+<td align="right">0.0021437</td>
+<td align="left">G0 to G1 transition</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0071345" class="uri">GO:0071345</a></td>
+<td align="right">0.0033358</td>
+<td align="left">cellular response to cytokine stimulus</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0034698" class="uri">GO:0034698</a></td>
+<td align="right">0.0034054</td>
+<td align="left">response to gonadotropin</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0035456" class="uri">GO:0035456</a></td>
+<td align="right">0.0034054</td>
+<td align="left">response to interferon-beta</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0039694" class="uri">GO:0039694</a></td>
+<td align="right">0.0034054</td>
+<td align="left">viral RNA genome replication</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0039703" class="uri">GO:0039703</a></td>
+<td align="right">0.0034054</td>
+<td align="left">RNA replication</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0006978" class="uri">GO:0006978</a></td>
+<td align="right">0.0041380</td>
+<td align="left">DNA damage response, signal transduction by p53 class mediator resulting in transcription of p21 class mediator</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0043065" class="uri">GO:0043065</a></td>
+<td align="right">0.0044896</td>
+<td align="left">positive regulation of apoptotic process</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0043068" class="uri">GO:0043068</a></td>
+<td align="right">0.0047411</td>
+<td align="left">positive regulation of programmed cell death</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0042772" class="uri">GO:0042772</a></td>
+<td align="right">0.0049369</td>
+<td align="left">DNA damage response, signal transduction resulting in transcription</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0046688" class="uri">GO:0046688</a></td>
+<td align="right">0.0049369</td>
+<td align="left">response to copper ion</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0071229" class="uri">GO:0071229</a></td>
+<td align="right">0.0054035</td>
+<td align="left">cellular response to acid chemical</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0048519" class="uri">GO:0048519</a></td>
+<td align="right">0.0056520</td>
+<td align="left">negative regulation of biological process</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0060337" class="uri">GO:0060337</a></td>
+<td align="right">0.0057822</td>
+<td align="left">type I interferon signaling pathway</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0071357" class="uri">GO:0071357</a></td>
+<td align="right">0.0057822</td>
+<td align="left">cellular response to type I interferon</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0072210" class="uri">GO:0072210</a></td>
+<td align="right">0.0058007</td>
+<td align="left">metanephric nephron development</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0010942" class="uri">GO:0010942</a></td>
+<td align="right">0.0059608</td>
+<td align="left">positive regulation of cell death</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0044707" class="uri">GO:0044707</a></td>
+<td align="right">0.0060654</td>
+<td align="left">single-multicellular organism process</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0034340" class="uri">GO:0034340</a></td>
+<td align="right">0.0061873</td>
+<td align="left">response to type I interferon</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:1903900" class="uri">GO:1903900</a></td>
+<td align="right">0.0065011</td>
+<td align="left">regulation of viral life cycle</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0045069" class="uri">GO:0045069</a></td>
+<td align="right">0.0066088</td>
+<td align="left">regulation of viral genome replication</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0043281" class="uri">GO:0043281</a></td>
+<td align="right">0.0067085</td>
+<td align="left">regulation of cysteine-type endopeptidase activity involved in apoptotic process</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0001975" class="uri">GO:0001975</a></td>
+<td align="right">0.0067283</td>
+<td align="left">response to amphetamine</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0040007" class="uri">GO:0040007</a></td>
+<td align="right">0.0068687</td>
+<td align="left">growth</td>
+</tr>
+</tbody>
+</table>
+<p>*Cellular component</p>
+<pre class="r"><code>dim(goterms_cc)</code></pre>
+<pre><code>[1] 230   3</code></pre>
+<pre class="r"><code>kable(goterms_cc[1:50, ])</code></pre>
+<table>
+<thead>
+<tr class="header">
+<th align="left">ID</th>
+<th align="right">Pvalue</th>
+<th align="left">Terms</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left"><a href="GO:0000152" class="uri">GO:0000152</a></td>
+<td align="right">0.0029964</td>
+<td align="left">nuclear ubiquitin ligase complex</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0032797" class="uri">GO:0032797</a></td>
+<td align="right">0.0045608</td>
+<td align="left">SMN complex</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0097504" class="uri">GO:0097504</a></td>
+<td align="right">0.0045608</td>
+<td align="left">Gemini of coiled bodies</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0031519" class="uri">GO:0031519</a></td>
+<td align="right">0.0053634</td>
+<td align="left">PcG protein complex</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0019035" class="uri">GO:0019035</a></td>
+<td align="right">0.0094132</td>
+<td align="left">viral integration complex</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0035098" class="uri">GO:0035098</a></td>
+<td align="right">0.0096514</td>
+<td align="left">ESC/E(Z) complex</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0034719" class="uri">GO:0034719</a></td>
+<td align="right">0.0108718</td>
+<td align="left">SMN-Sm protein complex</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0005680" class="uri">GO:0005680</a></td>
+<td align="right">0.0149138</td>
+<td align="left">anaphase-promoting complex</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0000151" class="uri">GO:0000151</a></td>
+<td align="right">0.0177601</td>
+<td align="left">ubiquitin ligase complex</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0008043" class="uri">GO:0008043</a></td>
+<td align="right">0.0187388</td>
+<td align="left">intracellular ferritin complex</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0009330" class="uri">GO:0009330</a></td>
+<td align="right">0.0187388</td>
+<td align="left">DNA topoisomerase complex (ATP-hydrolyzing)</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0070288" class="uri">GO:0070288</a></td>
+<td align="right">0.0187388</td>
+<td align="left">ferritin complex</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0001740" class="uri">GO:0001740</a></td>
+<td align="right">0.0279776</td>
+<td align="left">Barr body</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0097440" class="uri">GO:0097440</a></td>
+<td align="right">0.0279776</td>
+<td align="left">apical dendrite</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0043204" class="uri">GO:0043204</a></td>
+<td align="right">0.0341473</td>
+<td align="left">perikaryon</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0061200" class="uri">GO:0061200</a></td>
+<td align="right">0.0371304</td>
+<td align="left">clathrin-sculpted gamma-aminobutyric acid transport vesicle</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0061202" class="uri">GO:0061202</a></td>
+<td align="right">0.0371304</td>
+<td align="left">clathrin-sculpted gamma-aminobutyric acid transport vesicle membrane</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0072562" class="uri">GO:0072562</a></td>
+<td align="right">0.0448923</td>
+<td align="left">blood microparticle</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0000805" class="uri">GO:0000805</a></td>
+<td align="right">0.0461979</td>
+<td align="left">X chromosome</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0060198" class="uri">GO:0060198</a></td>
+<td align="right">0.0461979</td>
+<td align="left">clathrin-sculpted vesicle</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0000276" class="uri">GO:0000276</a></td>
+<td align="right">0.0551810</td>
+<td align="left">mitochondrial proton-transporting ATP synthase complex, coupling factor F(o)</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0000974" class="uri">GO:0000974</a></td>
+<td align="right">0.0551810</td>
+<td align="left">Prp19 complex</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0030870" class="uri">GO:0030870</a></td>
+<td align="right">0.0551810</td>
+<td align="left">Mre11 complex</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0031461" class="uri">GO:0031461</a></td>
+<td align="right">0.0556633</td>
+<td align="left">cullin-RING ubiquitin ligase complex</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0005681" class="uri">GO:0005681</a></td>
+<td align="right">0.0571076</td>
+<td align="left">spliceosomal complex</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0035102" class="uri">GO:0035102</a></td>
+<td align="right">0.0640804</td>
+<td align="left">PRC1 complex</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0015030" class="uri">GO:0015030</a></td>
+<td align="right">0.0642553</td>
+<td align="left">Cajal body</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0048471" class="uri">GO:0048471</a></td>
+<td align="right">0.0781674</td>
+<td align="left">perinuclear region of cytoplasm</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0000790" class="uri">GO:0000790</a></td>
+<td align="right">0.0868045</td>
+<td align="left">nuclear chromatin</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0045263" class="uri">GO:0045263</a></td>
+<td align="right">0.0988565</td>
+<td align="left">proton-transporting ATP synthase complex, coupling factor F(o)</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0031011" class="uri">GO:0031011</a></td>
+<td align="right">0.1073490</td>
+<td align="left">Ino80 complex</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0033202" class="uri">GO:0033202</a></td>
+<td align="right">0.1073490</td>
+<td align="left">DNA helicase complex</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0043025" class="uri">GO:0043025</a></td>
+<td align="right">0.1100471</td>
+<td align="left">neuronal cell body</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0030018" class="uri">GO:0030018</a></td>
+<td align="right">0.1123741</td>
+<td align="left">Z disc</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0008076" class="uri">GO:0008076</a></td>
+<td align="right">0.1157623</td>
+<td align="left">voltage-gated potassium channel complex</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0005912" class="uri">GO:0005912</a></td>
+<td align="right">0.1219669</td>
+<td align="left">adherens junction</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0034705" class="uri">GO:0034705</a></td>
+<td align="right">0.1240971</td>
+<td align="left">potassium channel complex</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0035097" class="uri">GO:0035097</a></td>
+<td align="right">0.1247547</td>
+<td align="left">histone methyltransferase complex</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0070161" class="uri">GO:0070161</a></td>
+<td align="right">0.1327431</td>
+<td align="left">anchoring junction</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0031674" class="uri">GO:0031674</a></td>
+<td align="right">0.1342464</td>
+<td align="left">I band</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0000785" class="uri">GO:0000785</a></td>
+<td align="right">0.1405080</td>
+<td align="left">chromatin</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0031093" class="uri">GO:0031093</a></td>
+<td align="right">0.1486384</td>
+<td align="left">platelet alpha granule lumen</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0033177" class="uri">GO:0033177</a></td>
+<td align="right">0.1486384</td>
+<td align="left">proton-transporting two-sector ATPase complex, proton-transporting domain</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0035861" class="uri">GO:0035861</a></td>
+<td align="right">0.1486384</td>
+<td align="left">site of double-strand break</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0034774" class="uri">GO:0034774</a></td>
+<td align="right">0.1566668</td>
+<td align="left">secretory granule lumen</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0000228" class="uri">GO:0000228</a></td>
+<td align="right">0.1581837</td>
+<td align="left">nuclear chromosome</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0097346" class="uri">GO:0097346</a></td>
+<td align="right">0.1646203</td>
+<td align="left">INO80-type complex</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0044297" class="uri">GO:0044297</a></td>
+<td align="right">0.1691931</td>
+<td align="left">cell body</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:1902494" class="uri">GO:1902494</a></td>
+<td align="right">0.1702408</td>
+<td align="left">catalytic complex</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0005925" class="uri">GO:0005925</a></td>
+<td align="right">0.1704578</td>
+<td align="left">focal adhesion</td>
+</tr>
+</tbody>
+</table>
+<p>*Molecular function</p>
+<pre class="r"><code>dim(goterms_mf)</code></pre>
+<pre><code>[1] 285   3</code></pre>
+<pre class="r"><code>kable(goterms_mf[1:50, ])</code></pre>
+<table>
+<thead>
+<tr class="header">
+<th align="left">ID</th>
+<th align="right">Pvalue</th>
+<th align="left">Terms</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left"><a href="GO:0005520" class="uri">GO:0005520</a></td>
+<td align="right">0.0041803</td>
+<td align="left">insulin-like growth factor binding</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0004556" class="uri">GO:0004556</a></td>
+<td align="right">0.0082278</td>
+<td align="left">alpha-amylase activity</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0004595" class="uri">GO:0004595</a></td>
+<td align="right">0.0082278</td>
+<td align="left">pantetheine-phosphate adenylyltransferase activity</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0004949" class="uri">GO:0004949</a></td>
+<td align="right">0.0082278</td>
+<td align="left">cannabinoid receptor activity</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0016160" class="uri">GO:0016160</a></td>
+<td align="right">0.0082278</td>
+<td align="left">amylase activity</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0008270" class="uri">GO:0008270</a></td>
+<td align="right">0.0089991</td>
+<td align="left">zinc ion binding</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0061631" class="uri">GO:0061631</a></td>
+<td align="right">0.0093864</td>
+<td align="left">ubiquitin conjugating enzyme activity</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0061650" class="uri">GO:0061650</a></td>
+<td align="right">0.0104352</td>
+<td align="left">ubiquitin-like protein conjugating enzyme activity</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0046914" class="uri">GO:0046914</a></td>
+<td align="right">0.0112368</td>
+<td align="left">transition metal ion binding</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0008201" class="uri">GO:0008201</a></td>
+<td align="right">0.0119451</td>
+<td align="left">heparin binding</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0005178" class="uri">GO:0005178</a></td>
+<td align="right">0.0130937</td>
+<td align="left">integrin binding</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0003883" class="uri">GO:0003883</a></td>
+<td align="right">0.0163887</td>
+<td align="left">CTP synthase activity</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0004140" class="uri">GO:0004140</a></td>
+<td align="right">0.0163887</td>
+<td align="left">dephospho-CoA kinase activity</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0016900" class="uri">GO:0016900</a></td>
+<td align="right">0.0163887</td>
+<td align="left">oxidoreductase activity, acting on the CH-OH group of donors, disulfide as acceptor</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0032090" class="uri">GO:0032090</a></td>
+<td align="right">0.0163887</td>
+<td align="left">Pyrin domain binding</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0047057" class="uri">GO:0047057</a></td>
+<td align="right">0.0163887</td>
+<td align="left">vitamin-K-epoxide reductase (warfarin-sensitive) activity</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:1990254" class="uri">GO:1990254</a></td>
+<td align="right">0.0163887</td>
+<td align="left">keratin filament binding</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0005539" class="uri">GO:0005539</a></td>
+<td align="right">0.0220635</td>
+<td align="left">glycosaminoglycan binding</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0004322" class="uri">GO:0004322</a></td>
+<td align="right">0.0244834</td>
+<td align="left">ferroxidase activity</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0005251" class="uri">GO:0005251</a></td>
+<td align="right">0.0244834</td>
+<td align="left">delayed rectifier potassium channel activity</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0008199" class="uri">GO:0008199</a></td>
+<td align="right">0.0244834</td>
+<td align="left">ferric iron binding</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0016724" class="uri">GO:0016724</a></td>
+<td align="right">0.0244834</td>
+<td align="left">oxidoreductase activity, oxidizing metal ions, oxygen as acceptor</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:1990050" class="uri">GO:1990050</a></td>
+<td align="right">0.0244834</td>
+<td align="left">phosphatidic acid transporter activity</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0000774" class="uri">GO:0000774</a></td>
+<td align="right">0.0325124</td>
+<td align="left">adenyl-nucleotide exchange factor activity</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0003918" class="uri">GO:0003918</a></td>
+<td align="right">0.0325124</td>
+<td align="left">DNA topoisomerase type II (ATP-hydrolyzing) activity</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0005212" class="uri">GO:0005212</a></td>
+<td align="right">0.0325124</td>
+<td align="left">structural constituent of eye lens</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0061505" class="uri">GO:0061505</a></td>
+<td align="right">0.0325124</td>
+<td align="left">DNA topoisomerase II activity</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0003696" class="uri">GO:0003696</a></td>
+<td align="right">0.0404761</td>
+<td align="left">satellite DNA binding</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0008494" class="uri">GO:0008494</a></td>
+<td align="right">0.0404761</td>
+<td align="left">translation activator activity</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0055131" class="uri">GO:0055131</a></td>
+<td align="right">0.0404761</td>
+<td align="left">C3HC4-type RING finger domain binding</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0003916" class="uri">GO:0003916</a></td>
+<td align="right">0.0483751</td>
+<td align="left">DNA topoisomerase activity</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0019215" class="uri">GO:0019215</a></td>
+<td align="right">0.0483751</td>
+<td align="left">intermediate filament binding</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0030368" class="uri">GO:0030368</a></td>
+<td align="right">0.0483751</td>
+<td align="left">interleukin-17 receptor activity</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0070087" class="uri">GO:0070087</a></td>
+<td align="right">0.0483751</td>
+<td align="left">chromo shadow domain binding</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0008083" class="uri">GO:0008083</a></td>
+<td align="right">0.0485652</td>
+<td align="left">growth factor activity</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0050839" class="uri">GO:0050839</a></td>
+<td align="right">0.0540124</td>
+<td align="left">cell adhesion molecule binding</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0044877" class="uri">GO:0044877</a></td>
+<td align="right">0.0550545</td>
+<td align="left">macromolecular complex binding</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0019237" class="uri">GO:0019237</a></td>
+<td align="right">0.0562100</td>
+<td align="left">centromeric DNA binding</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:1901681" class="uri">GO:1901681</a></td>
+<td align="right">0.0605070</td>
+<td align="left">sulfur compound binding</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0008144" class="uri">GO:0008144</a></td>
+<td align="right">0.0635227</td>
+<td align="left">drug binding</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0004862" class="uri">GO:0004862</a></td>
+<td align="right">0.0639812</td>
+<td align="left">cAMP-dependent protein kinase inhibitor activity</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0008139" class="uri">GO:0008139</a></td>
+<td align="right">0.0639812</td>
+<td align="left">nuclear localization sequence binding</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0042826" class="uri">GO:0042826</a></td>
+<td align="right">0.0680492</td>
+<td align="left">histone deacetylase binding</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0008301" class="uri">GO:0008301</a></td>
+<td align="right">0.0716892</td>
+<td align="left">DNA binding, bending</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0090079" class="uri">GO:0090079</a></td>
+<td align="right">0.0716892</td>
+<td align="left">translation regulator activity, nucleic acid binding</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0048038" class="uri">GO:0048038</a></td>
+<td align="right">0.0793346</td>
+<td align="left">quinone binding</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0051787" class="uri">GO:0051787</a></td>
+<td align="right">0.0793346</td>
+<td align="left">misfolded protein binding</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0061630" class="uri">GO:0061630</a></td>
+<td align="right">0.0846794</td>
+<td align="left">ubiquitin protein ligase activity</td>
+</tr>
+<tr class="odd">
+<td align="left"><a href="GO:0008656" class="uri">GO:0008656</a></td>
+<td align="right">0.0869178</td>
+<td align="left">cysteine-type endopeptidase activator activity involved in apoptotic process</td>
+</tr>
+<tr class="even">
+<td align="left"><a href="GO:0016722" class="uri">GO:0016722</a></td>
+<td align="right">0.0869178</td>
+<td align="left">oxidoreductase activity, oxidizing metal ions</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] grid      stats     graphics  grDevices utils     datasets  methods  
+[8] base     
+
+other attached packages:
+ [1] biomaRt_2.24.0   gridExtra_2.0.0  broman_0.59-5    zoo_1.7-12      
+ [5] ggplot2_1.0.1    edgeR_3.10.2     limma_3.24.9     dplyr_0.4.2     
+ [9] data.table_1.9.4 knitr_1.10.5    
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.12.0          highr_0.5            GenomeInfoDb_1.4.0  
+ [4] formatR_1.2          plyr_1.8.3           bitops_1.0-6        
+ [7] tools_3.2.0          digest_0.6.8         RSQLite_1.0.0       
+[10] evaluate_0.7         gtable_0.1.2         lattice_0.20-31     
+[13] DBI_0.3.1            yaml_2.1.13          parallel_3.2.0      
+[16] proto_0.3-10         httr_0.6.1           stringr_1.0.0       
+[19] IRanges_2.2.4        S4Vectors_0.6.0      stats4_3.2.0        
+[22] Biobase_2.28.0       R6_2.1.1             AnnotationDbi_1.30.1
+[25] XML_3.98-1.2         rmarkdown_0.6.1      reshape2_1.4.1      
+[28] magrittr_1.5         BiocGenerics_0.14.0  scales_0.2.4        
+[31] htmltools_0.2.6      MASS_7.3-40          assertthat_0.1      
+[34] colorspace_1.2-6     labeling_0.3         stringi_0.4-1       
+[37] RCurl_1.95-4.6       munsell_0.4.2        chron_2.3-45        </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+
+</body>
+</html>

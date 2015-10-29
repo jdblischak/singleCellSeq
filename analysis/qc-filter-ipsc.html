@@ -136,13 +136,15 @@ img {
 <li><a href="#mitochondrial-genes">Mitochondrial genes</a></li>
 <li><a href="#filter">Filter</a><ul>
 <li><a href="#final-list">Final list</a></li>
+<li><a href="#mito-ratios">Mito ratios</a></li>
+<li><a href="#plots">plots</a></li>
 </ul></li>
 <li><a href="#session-information">Session information</a></li>
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-10-27</p>
-<p><strong>Code version:</strong> 2731e3da36a10c5f0f07801b2e0859caf7e4b05f</p>
+<p><strong>Last updated:</strong> 2015-10-28</p>
+<p><strong>Code version:</strong> 6139907e5256d9e88a1f483576032c5a8ab86d18</p>
 <div id="input" class="section level2">
 <h2>Input</h2>
 <pre class="r"><code>library(&quot;dplyr&quot;)
@@ -420,6 +422,15 @@ ggplot(summary_per_sample_reads_single_qc,
        scale_color_brewer(palette = &quot;Dark2&quot;) +
        theme(legend.position = &quot;none&quot;)</code></pre>
 <p><img src="figure/qc-filter-ipsc.Rmd/mito-gene-2.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(summary_per_sample_reads_single_qc,
+                   aes(x = factor(batch_9), y = mt_reads_ratio,
+                   fill = factor(batch_9)), height = 600, width = 2000) +
+                   geom_violin(alpha = .5) + 
+                   geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+                   scale_fill_manual(values = great_color) + 
+                   labs(x = &quot;batch&quot;, y = &quot;Mitochondrial ratio&quot;) +
+                   theme(axis.text.x = element_text(hjust=1, angle = 45))</code></pre>
+<p><img src="figure/qc-filter-ipsc.Rmd/mito-gene-3.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 </div>
 <div id="filter" class="section level2">
 <h2>Filter</h2>
@@ -445,23 +456,70 @@ quality_single_cells &lt;- anno_single_rm %&gt;%
   filter(summary_per_sample_reads_single_qc$filter_all) %&gt;%
   select(sample_id)
 
-#write.table(quality_single_cells,
-#            file = &quot;../data/quality-single-cells.txt&quot;, quote = FALSE,
-#            sep = &quot;\t&quot;, row.names = FALSE, col.names = FALSE)</code></pre>
-<pre class="r"><code>ggplot(summary_per_sample_reads_single_qc,
-       aes(x = factor(filter_all), y = mt_reads_ratio,
-           fill = factor(filter_all)), height = 600, width = 2000) +
-geom_violin(alpha = .5) + 
-geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
-labs(x = &quot;Quality&quot;, y = &quot;Mitochonrial ratio&quot;)</code></pre>
-<p><img src="figure/qc-filter-ipsc.Rmd/mito-filter-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+write.table(quality_single_cells,
+            file = &quot;../data/quality-single-cells.txt&quot;, quote = FALSE,
+            sep = &quot;\t&quot;, row.names = FALSE, col.names = FALSE)</code></pre>
+</div>
+<div id="mito-ratios" class="section level3">
+<h3>Mito ratios</h3>
 <pre class="r"><code>ggplot(summary_per_sample_reads_single_qc,
        aes(x = gene_number, y = mt_reads_ratio, 
        color = as.factor(filter_all))) +
        geom_text(aes(label = cell_number)) +
        labs(x = &quot;Number of genes&quot;, y = &quot;Mitochondrial ratio&quot;) +
        theme(legend.position = &quot;none&quot;)</code></pre>
+<p><img src="figure/qc-filter-ipsc.Rmd/mito-filter-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1,],
+       aes(x = factor(filter_all), y = mt_reads_ratio,
+           fill = factor(filter_all)), height = 600, width = 2000) +
+geom_violin(alpha = .5) + 
+geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+labs(x = &quot;Quality&quot;, y = &quot;Mitochonrial ratio&quot;, title = &quot;Mitochondrial ratio of libraries with 1 cell&quot;)</code></pre>
 <p><img src="figure/qc-filter-ipsc.Rmd/mito-filter-2.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>## check the batch of those outliers
+mito_outliers &lt;- summary_per_sample_reads_single_qc %&gt;% filter(filter_all == &quot;TRUE&quot;, mt_reads_ratio &gt; .15)
+mito_outliers  %&gt;% dplyr::select(sample_id, mt_reads_ratio)</code></pre>
+<pre><code>       sample_id mt_reads_ratio
+1 NA19098.r1.D07      0.1738694
+2 NA19098.r3.A05      0.2086959
+3 NA19098.r3.G03      0.1736603
+4 NA19098.r3.G04      0.1646779
+5 NA19101.r3.A09      0.1881994
+6 NA19239.r3.A11      0.1504436</code></pre>
+<pre class="r"><code>## check if 19098 have high mt genes
+ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$filter_all == &quot;TRUE&quot;,],
+                   aes(x = factor(batch_9), y = mt_reads_ratio,
+                   fill = factor(batch_9)), height = 600, width = 2000) +
+                   geom_violin(alpha = .5) + 
+                   geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+                   labs(x = &quot;batch&quot;, y = &quot;Mitochondrial ratio&quot;) +
+                   theme(axis.text.x = element_text(hjust=1, angle = 45))</code></pre>
+<p><img src="figure/qc-filter-ipsc.Rmd/mito-filter-3.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
+<div id="plots" class="section level3">
+<h3>plots</h3>
+<pre class="r"><code>## for figure 1
+reads_unmapped &lt;-  ggplot(summary_per_sample_reads_single_qc,
+                   aes(x = total_mapped, y = unmapped_ratios * 100,
+                   col = as.factor(individual), shape = as.factor(batch), height = 600, width = 2000)) +
+                   geom_point(size = 3, alpha = 0.25) + 
+                   geom_vline(xintercept = cut_off_reads, colour=&quot;grey&quot;, linetype = &quot;longdash&quot;) +
+                   geom_hline(yintercept = cut_off_unmapped * 100, colour=&quot;grey&quot;, linetype = &quot;longdash&quot;) +
+                   labs(x = &quot;Total mapped reads&quot;, y = &quot;Unmapped reads percentage (%)&quot;) 
+
+reads_ercc &lt;-  ggplot(summary_per_sample_reads_single_qc,
+                   aes(x = total_mapped, y = ercc_percentage * 100,
+                   col = as.factor(individual), shape = as.factor(batch), height = 600, width = 2000)) +
+                   geom_point(size = 3, alpha = 0.25) + 
+                   geom_vline(xintercept = cut_off_reads, colour=&quot;grey&quot;, linetype = &quot;longdash&quot;) +
+                   geom_hline(yintercept = cut_off_ercc * 100, colour=&quot;grey&quot;, linetype = &quot;longdash&quot;) +
+                   labs(x = &quot;Total mapped reads&quot;, y = &quot;ERCC reads percentage (%)&quot;) 
+
+theme_set(theme_bw(base_size = 10))
+plot_grid(reads_unmapped + theme(legend.position = &quot;none&quot;), 
+          reads_ercc + theme(legend.position = &quot;none&quot;),
+          labels = LETTERS[1:2])</code></pre>
+<p><img src="figure/qc-filter-ipsc.Rmd/plots-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 </div>
 </div>
 <div id="session-information" class="section level2">
