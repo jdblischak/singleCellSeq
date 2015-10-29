@@ -55,58 +55,56 @@ make_subsample <- function(counts, anno,
 }
 
 
-#' Compute coefficient of variation for each batch (per individual, per replicate)
+#' Compute coefficient of variation 
+#' 
+#' Compute CV across cells belong to each level of the grouping variable.
 #'
-#' @param counts Count matrix of gene by cell.
-#' @param anno Annotation matrix labeling each cell according to individual,
-#'        batch, replicate, well ID, etc.
+#' @param log2counts log2 count matrix of gene by cell.
+#' @param grouping_vector Compute per gene CV for cells belonging to each level of
+#'        the grouping vector.
 #'
 #' @export
 #'
 #' @examples
 #' compute_cv()
 #'
-compute_cv <- function(counts, anno) {
-  # Compute CV for each batch
-  batch_cv <- lapply( unique(anno$batch), function(per_batch) {
+compute_cv <- function(log2counts, grouping_vector) {
+
+  group_cv <- lapply( unique(grouping_vector), function(per_group) {
     # Convert log2cpm to counts
-    counts_per_batch <- 2^counts[ , anno$batch == per_batch ]
-    anno_per_batch <- anno[ anno$batch == per_batch, ]
-    mean_per_gene <- apply(counts_per_batch, 1, mean, na.rm = TRUE)
-    sd_per_gene <- apply(counts_per_batch, 1, sd, na.rm = TRUE)
+    counts_per_group <- 2^log2counts[ , grouping_vector == per_group ]
+    mean_per_gene <- apply(counts_per_group, 1, mean, na.rm = TRUE)
+    sd_per_gene <- apply(counts_per_group, 1, sd, na.rm = TRUE)
     cv_per_gene <- data.frame(mean = mean_per_gene,
                               sd = sd_per_gene,
                               cv = sd_per_gene/mean_per_gene,
-                              individual = unique(anno_per_batch$individual),
-                              replicate = unique(anno_per_batch$replicate),
-                              batch = unique(anno_per_batch$batch) )
-    rownames(cv_per_gene) <- rownames(counts_per_batch)
+                              group = rep(per_group, dim(counts_per_group)[1]) )
+    rownames(cv_per_gene) <- rownames(counts_per_group)
 
     return(cv_per_gene)
   })
-  names(batch_cv) <- unique(anno$batch)
-  batch_cv
+  names(group_cv) <- unique(grouping_vector)
+  group_cv
 }
 
-#' Subsample molecule count (or read count) data
+
+#' Normalize coefficients of variation
 #'
-#' @param batch_cv CVs per batch computed use compute_cv().
-#' @param counts Count matrix of gene by cell.
-#' @param anno Annotation matrix labeling each cell according to individual,
-#'        batch, replicate, well ID, etc.
-#'
+#' @param group_cv CVs per batch computed use compute_cv().
+#' @param log2counts log2 count matrix of gene by cell.
+#' 
 #' @export
 #'
 #' @examples
 #' normalize_cv()
 #'
-normalize_cv <- function(batch_cv, counts, anno) {
+normalize_cv <- function(group_cv, log2counts, anno) {
   library(zoo)
   # Compute a data-wide coefficient of variation on counts.
-  data_cv <- apply(2^counts, 1, sd)/apply(2^counts, 1, mean)
+  data_cv <- apply(2^log2counts, 1, sd)/apply(2^log2counts, 1, mean)
 
   # Order genes by mean expression levels
-  order_gene <- order(apply(2^counts, 1, mean))
+  order_gene <- order(apply(2^log2counts, 1, mean))
 
   # Rolling medians of log10 squared CV by mean expression levels
   # Avoid warning message introduced by NA in the rollapply results,
@@ -121,17 +119,17 @@ normalize_cv <- function(batch_cv, counts, anno) {
   names(roll_medians) <- rownames(molecules_ENSG)[order_gene]
 
   # Order rolling medians according to the count matrix
-  reorder_gene <- match(rownames(counts), names(roll_medians) )
+  reorder_gene <- match(rownames(log2counts), names(roll_medians) )
   roll_medians <- roll_medians[ reorder_gene ]
-  stopifnot( all.equal(names(roll_medians), rownames(counts) ) )
+  stopifnot( all.equal(names(roll_medians), rownames(log2counts) ) )
 
-  batch_cv_adj <- lapply(1:length(batch_cv), function(ii_batch) {
+  group_cv_adj <- lapply(1:length(group_cv), function(ii_batch) {
     # Adjusted coefficient of variation on log10 scale
-    log10cv2_adj <- log10(batch_cv[[ii_batch]]$cv^2) - roll_medians
+    log10cv2_adj <- log10(group_cv[[ii_batch]]$cv^2) - roll_medians
     # combine the adjusted cv with the unadjusted cv
-    data.frame(batch_cv[[ii_batch]],
+    data.frame(group_cv[[ii_batch]],
                log10cv2_adj = log10cv2_adj )
   })
-  names(batch_cv_adj) <- names(batch_cv)
-  batch_cv_adj
+  names(group_cv_adj) <- names(group_cv)
+  group_cv_adj
 }

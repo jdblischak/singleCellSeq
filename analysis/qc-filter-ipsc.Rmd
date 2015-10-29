@@ -88,12 +88,13 @@ summary_per_sample_single_reads$batch_9 <- anno_single$batch
 stopifnot(colnames(reads) == summary_per_sample_single_reads$sample_id )
 
 summary_per_sample_single_reads$ERCC_reads <- apply(reads[grep("ERCC", rownames(reads)), ],2,sum)
-summary_per_sample_single_reads$ERCC_molecules <- apply(reads[grep("ERCC", rownames(molecules)), ],2,sum)
+summary_per_sample_single_reads$ERCC_molecules <- apply(molecules[grep("ERCC", rownames(molecules)), ],2,sum)
 ```
 
 ```{r sad-ercc-plot, fig.width=12, fig.height=8}
 ## create a color palette with one color per individual and different shades for repplicates
 great_color <- c("#CC3300", "#FF9966", "#FFCC99", "#006633", "#009900", "#99FF99", "#3366FF", "#6699FF", "#66CCFF")
+great_color_8 <- c("#CC3300", "#FF9966", "#006633", "#009900", "#99FF99", "#3366FF", "#6699FF", "#66CCFF")
 
 ercc_reads_plot <- ggplot(summary_per_sample_single_reads,
                    aes(x = factor(batch_9), y = ERCC_reads,
@@ -152,7 +153,7 @@ sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_n
 sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, "total_mapped"] <= cut_off_reads)
 
 ## density plots
-ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0 |
+plot_reads <- ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0 |
                                            summary_per_sample_reads_single_qc$cell_number == 1 , ],
        aes(x = total_mapped, fill = as.factor(cell_number))) + 
        geom_density(alpha = 0.5) +
@@ -170,20 +171,20 @@ cut_off_unmapped <- quantile(summary_per_sample_reads_single_qc[summary_per_samp
 
 cut_off_unmapped
 
-summary_per_sample_reads_single_qc$cut_off_unmapped <- summary_per_sample_reads_single_qc$unmapped_ratios > cut_off_unmapped
+summary_per_sample_reads_single_qc$cut_off_unmapped <- summary_per_sample_reads_single_qc$unmapped_ratios < cut_off_unmapped
 
 ## numbers of cells 
-sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, "unmapped_ratios"] > cut_off_unmapped)
+sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, "unmapped_ratios"] >= cut_off_unmapped)
 
-sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, "unmapped_ratios"] <= cut_off_unmapped)
+sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, "unmapped_ratios"] < cut_off_unmapped)
 
 ## density plots
-ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0 |
+plot_unmapped <- ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0 |
                                            summary_per_sample_reads_single_qc$cell_number == 1 , ],
-       aes(x = unmapped_ratios, fill = as.factor(cell_number))) + 
+       aes(x = unmapped_ratios *100, fill = as.factor(cell_number))) + 
        geom_density(alpha = 0.5) +
-       geom_vline(xintercept = cut_off_unmapped, colour="grey", linetype = "longdash") +
-       labs(x = "unmapped reads/ total reads", title = "Unmapped reads")
+       geom_vline(xintercept = cut_off_unmapped *100, colour="grey", linetype = "longdash") +
+       labs(x = "unmapped reads/ total reads", title = "Unmapped reads percentage")
 ```
 
 ## ERCC percentage 
@@ -196,19 +197,19 @@ cut_off_ercc <- quantile(summary_per_sample_reads_single_qc[summary_per_sample_r
 
 cut_off_ercc
 
-summary_per_sample_reads_single_qc$cut_off_ercc <- summary_per_sample_reads_single_qc$ercc_percentage > cut_off_ercc
+summary_per_sample_reads_single_qc$cut_off_ercc <- summary_per_sample_reads_single_qc$ercc_percentage < cut_off_ercc
 
 ## numbers of cells 
-sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, "ercc_percentage"] > cut_off_ercc)
+sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, "ercc_percentage"] >= cut_off_ercc)
 
-sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, "ercc_percentage"] <= cut_off_ercc)
+sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, "ercc_percentage"] < cut_off_ercc)
 
 ## density plots
-ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0 |
+plot_ercc <- ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0 |
                                            summary_per_sample_reads_single_qc$cell_number == 1 , ],
-       aes(x = ercc_percentage, fill = as.factor(cell_number))) + 
+       aes(x = ercc_percentage *100, fill = as.factor(cell_number))) + 
        geom_density(alpha = 0.5) +
-       geom_vline(xintercept = cut_off_ercc, colour="grey", linetype = "longdash") +
+       geom_vline(xintercept = cut_off_ercc *100, colour="grey", linetype = "longdash") +
        labs(x = "ERCC reads / total mapped reads", title = "ERCC reads percentage")
 ```
 
@@ -233,12 +234,21 @@ sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_n
 sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, "gene_number"] <= cut_off_genes)
 
 ## density plots
-ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0 |
+plot_gene <- ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0 |
                                            summary_per_sample_reads_single_qc$cell_number == 1 , ],
        aes(x = gene_number, fill = as.factor(cell_number))) + 
        geom_density(alpha = 0.5) +
        geom_vline(xintercept = cut_off_genes, colour="grey", linetype = "longdash") +
-       labs(x = "gene numbers detected", title = "Numbers of detected genes")
+       labs(x = "gene numbers", title = "Numbers of detected genes")
+```
+
+```{r density plots}
+theme_set(theme_bw(base_size = 10))
+plot_grid(plot_reads + theme(legend.position = "none"), 
+          plot_unmapped + theme(legend.position = "none"),
+          plot_ercc + theme(legend.position = "none"), 
+          plot_gene + theme(legend.position = "none"),
+          labels = LETTERS[1:4])
 ```
 
 ## Total molecule counts
@@ -250,13 +260,130 @@ summary_per_sample_reads_single_qc$total_gene_molecule <- colSums(molecules_rm[g
 ggplot(summary_per_sample_reads_single_qc, aes(x = concentration, y = total_gene_molecule / 10^3,
   color = as.factor(cell_number))) +
   geom_text(aes(label = cell_number)) +
-  labs(x = "Concentration", y = "", title = "Gene molecules (thousands)") +
+  labs(x = "Concentration", y = "Gene molecules (thousands)") +
   scale_color_brewer(palette = "Dark2") +
   theme(legend.position = "none")
 
 outliers <- summary_per_sample_reads_single_qc %>% filter(cell_number == 1, concentration < 1.25, concentration > .15,
                                    total_gene_molecule > 140000)
+
 outliers %>% dplyr::select(sample_id)
+
+summary_per_sample_reads_single_qc$molecule_outlier <- summary_per_sample_reads_single_qc$cell_number == 1 &
+  summary_per_sample_reads_single_qc$concentration < 1.25 &
+  summary_per_sample_reads_single_qc$concentration > .15 &
+  summary_per_sample_reads_single_qc$total_gene_molecule > 140000
+```
+
+### Linear Discriminat Analysis
+```{r lda}
+library(MASS)
+## create 3 groups according to cell number
+group_3 <- rep("two",dim(summary_per_sample_reads_single_qc)[1])
+         group_3[grep("0", summary_per_sample_reads_single_qc$cell_number)] <- "no"
+         group_3[grep("1", summary_per_sample_reads_single_qc$cell_number)] <- "one"
+
+## create data frame
+data_lda <- data.frame(anno_single_rm,
+                       cell_number = summary_per_sample_reads_single_qc$cell_number,
+                       concentration = summary_per_sample_reads_single_qc$concentration,
+                       total_gene_molecule = summary_per_sample_reads_single_qc$total_gene_molecule,
+                       group = group_3)
+
+## remove 19098.r1
+data_con <- data_lda %>% filter(batch != "NA19098.r1")
+plot_before <- ggplot(data_con, aes(x = concentration, y = total_gene_molecule / 10^3,
+               color = as.factor(group))) +
+               geom_text(aes(label = cell_number)) +
+               labs(x = "Concentration", y = "Gene molecules (thousands)") +
+               scale_color_brewer(palette = "Dark2") +
+               theme(legend.position = "none")
+
+## perform lda
+data_con_lda <- lda(group ~ concentration + total_gene_molecule,
+                    data = data_con)
+data_con_lda_p <- predict(data_con_lda, 
+                          newdata = data_con[,c("concentration", "total_gene_molecule")])$class
+
+## determine how well the model fix
+table(data_con_lda_p, data_con[, "group"])
+data_con$data_con_lda_p <- data_con_lda_p
+
+plot_after <- ggplot(data_con, aes(x = concentration, y = total_gene_molecule / 10^3,
+               color = as.factor(data_con_lda_p))) +
+               geom_text(aes(label = cell_number)) +
+               labs(x = "Concentration", y = "Gene molecules (thousands)") +
+               scale_color_brewer(palette = "Dark2") +
+               theme(legend.position = "none")
+
+## identify the outlier 
+outliers_lda <- data_con %>% filter(cell_number == 1, data_con_lda_p == "two")
+outliers_lda$sample_id
+
+## the results are the same!!
+stopifnot(outliers %>% dplyr::select(sample_id) == outliers_lda$sample_id)
+
+theme_set(theme_bw(base_size = 10))
+plot_grid(plot_before + theme(legend.position = "none"), 
+          plot_after + theme(legend.position = "none"),
+          labels = LETTERS[1:2])
+```
+
+## Reads to molecule conversion
+```{r convertion}
+## calculate convertion
+summary_per_sample_reads_single_qc$ERCC_conversion <- summary_per_sample_reads_single_qc$ERCC_molecules / summary_per_sample_reads_single_qc$ERCC_reads
+
+summary_per_sample_reads_single_qc$conversion <- summary_per_sample_reads_single_qc$total_gene_molecule /  colSums(reads_rm[grep("ENSG", rownames(reads_rm)),])
+
+ggplot(summary_per_sample_reads_single_qc, aes(x = ERCC_conversion, y = conversion,
+  color = as.factor(cell_number))) +
+  geom_text(aes(label = cell_number)) +
+  labs(x = "Convertion of ERCC", y = "Conversion of genes") +
+  scale_color_brewer(palette = "Dark2") +
+  theme(legend.position = "none")
+
+out_ercc_con <- summary_per_sample_reads_single_qc %>% filter(cell_number == "1", ERCC_conversion > .094)
+
+## try lda
+data_lda$conversion <- summary_per_sample_reads_single_qc$conversion
+data_ercc_lda <- lda(group ~ ERCC_conversion + conversion,
+                    data = data_lda)
+data_ercc_lda_p <- predict(data_ercc_lda, 
+                          newdata = data_lda[,c("ERCC_conversion", "conversion")])$class
+table(data_con_lda_p, data_con[, "group"])
+
+data_lda$data_ercc_lda_p <- data_ercc_lda_p
+
+## identify the outlier 
+outliers_ercc <- data_lda %>% filter(cell_number == 1, data_ercc_lda_p == "two")
+outliers_ercc$sample_id
+
+## cutoff
+out_ercc_con <- summary_per_sample_reads_single_qc %>% filter(cell_number == "1", ERCC_conversion > .094)
+stopifnot(out_ercc_con %>% dplyr::select(sample_id) == outliers_ercc$sample_id)
+
+summary_per_sample_reads_single_qc$conversion_outlier <- summary_per_sample_reads_single_qc$cell_number == 1 &
+                                                         summary_per_sample_reads_single_qc$ERCC_conversion > .094
+
+plot_ercc_before <- ggplot(data_lda, aes(x = ERCC_conversion, y = conversion,
+               color = as.factor(group))) +
+               geom_text(aes(label = cell_number)) +
+               labs(x = "Convertion of ERCC", y = "Conversion of genes") +
+               scale_color_brewer(palette = "Dark2") +
+               theme(legend.position = "none")
+
+plot_ercc_after <- ggplot(data_lda, aes(x = ERCC_conversion, y = conversion,
+               color = as.factor(data_ercc_lda_p))) +
+               geom_text(aes(label = cell_number)) +
+               labs(x = "Convertion of ERCC", y = "Conversion of genes") +
+               scale_color_brewer(palette = "Dark2") +
+               theme(legend.position = "none")
+
+theme_set(theme_bw(base_size = 10))
+plot_grid(plot_ercc_before + theme(legend.position = "none"), 
+          plot_ercc_after + theme(legend.position = "none"),
+          labels = LETTERS[1:2])
 ```
 
 ## Mitochondrial genes
@@ -274,31 +401,119 @@ stopifnot(colnames(reads_rm) == rownames(summary_per_sample_reads_single_qc$samp
 summary_per_sample_reads_single_qc$mt_reads <- apply(mt_reads, 2, sum)
 summary_per_sample_reads_single_qc$mt_reads_ratio <- summary_per_sample_reads_single_qc$mt_reads /summary_per_sample_reads_single_qc$total_mapped
 
-## density plots
-ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0 |
-                                           summary_per_sample_reads_single_qc$cell_number == 1 , ],
-       aes(x = mt_reads_ratio, fill = as.factor(cell_number))) + 
-       geom_density(alpha = 0.5) +
-       labs(x = "mitochondrial gene reads / total reads", title = "Mitochondrial gene reads ratios")
-
-## vs. total mapped reads
+## vs. number of genes detected
 ggplot(summary_per_sample_reads_single_qc,
-       aes(x = total_mapped, y = mt_reads_ratio, 
+       aes(x = gene_number, y = mt_reads_ratio, 
        color = as.factor(cell_number))) +
        geom_text(aes(label = cell_number)) +
-       labs(x = "Total mapped reads", y = "Mitochondrial ratio") +
-       scale_color_brewer(palette = "Dark2") +
-       theme(legend.position = "none")
-
-## vs. total gene molecules
-ggplot(summary_per_sample_reads_single_qc,
-       aes(x = total_gene_molecule, y = mt_reads_ratio, 
-       color = as.factor(cell_number))) +
-       geom_text(aes(label = cell_number)) +
-       labs(x = "Total gene molecules", y = "Mitochondrial ratio") +
+       labs(x = "Number of genes", y = "Mitochondrial ratio") +
        scale_color_brewer(palette = "Dark2") +
        theme(legend.position = "none")
 ```
+
+## Filter
+
+### Final list
+```{r filter}
+## all filter
+summary_per_sample_reads_single_qc$filter_all <- summary_per_sample_reads_single_qc$cell_number == 1 &
+                                                 summary_per_sample_reads_single_qc$cut_off_reads &
+                                                 summary_per_sample_reads_single_qc$cut_off_unmapped &
+                                                 summary_per_sample_reads_single_qc$cut_off_ercc &
+                                                 summary_per_sample_reads_single_qc$cut_off_genes &
+                                                 summary_per_sample_reads_single_qc$molecule_outlier == "FALSE" &
+                                                 summary_per_sample_reads_single_qc$conversion_outlier == "FALSE"
+                                                 
+table(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$filter_all,
+                           c("individual", "batch")])    
+```
+
+```{r output}
+stopifnot(nrow(summary_per_sample_reads_single_qc) == nrow(anno_single_rm))
+quality_single_cells <- anno_single_rm %>%
+  filter(summary_per_sample_reads_single_qc$filter_all) %>%
+  dplyr :: select(sample_id)
+
+write.table(quality_single_cells,
+            file = "../data/quality-single-cells.txt", quote = FALSE,
+            sep = "\t", row.names = FALSE, col.names = FALSE)
+
+```
+
+### Mito ratios
+```{r mito-filter}
+ggplot(summary_per_sample_reads_single_qc,
+       aes(x = gene_number, y = mt_reads_ratio, 
+       color = as.factor(filter_all))) +
+       geom_text(aes(label = cell_number)) +
+       labs(x = "Number of genes", y = "Mitochondrial ratio") +
+       theme(legend.position = "none")
+
+ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1,],
+       aes(x = factor(filter_all), y = mt_reads_ratio,
+           fill = factor(filter_all)), height = 600, width = 2000) +
+geom_violin(alpha = .5) + 
+geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+labs(x = "Quality", y = "Mitochonrial ratio", title = "Mitochondrial ratio of libraries with 1 cell")
+
+## check the batch of those outliers
+mito_outliers <- summary_per_sample_reads_single_qc %>% filter(filter_all == "TRUE", mt_reads_ratio > .15)
+mito_outliers  %>% dplyr::select(sample_id, mt_reads_ratio)
+
+## check if 19098 have high mt genes
+ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$filter_all == "TRUE",],
+                   aes(x = factor(batch_9), y = mt_reads_ratio,
+                   fill = factor(batch_9)), height = 600, width = 2000) +
+                   geom_violin(alpha = .5) + 
+                   geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+                   scale_fill_manual(values = great_color_8) +  
+                   labs(x = "batch", y = "Mitochondrial ratio") +
+                   theme(axis.text.x = element_text(hjust=1, angle = 45))
+```
+
+### plots
+```{r plots}
+## for figure 1
+genes_unmapped <-  ggplot(summary_per_sample_reads_single_qc,
+                   aes(x = gene_number, y = unmapped_ratios * 100,
+                   col = as.factor(individual), shape = as.factor(batch), height = 600, width = 2000)) +
+                   geom_point(size = 3, alpha = 0.3) + 
+                   geom_vline(xintercept = cut_off_genes, colour="grey", linetype = "longdash") +
+                   geom_hline(yintercept = cut_off_unmapped * 100, colour="grey", linetype = "longdash") +
+                   labs(x = "Number of genes", y = "Unmapped reads percentage (%)") 
+
+genes_ercc <-  ggplot(summary_per_sample_reads_single_qc,
+                   aes(x = gene_number, y = ercc_percentage * 100,
+                   col = as.factor(individual), shape = as.factor(batch), height = 600, width = 2000)) +
+                   geom_point(size = 3, alpha = 0.3) +
+                   geom_vline(xintercept = cut_off_genes, colour="grey", linetype = "longdash") +
+                   geom_hline(yintercept = cut_off_ercc * 100, colour="grey", linetype = "longdash") +
+                   labs(x = "Number of genes", y = "ERCC reads percentage (%)") 
+
+reads_unmapped_num <-  ggplot(summary_per_sample_reads_single_qc,
+                   aes(x = total_mapped, y = unmapped_ratios * 100,
+                   col = as.factor(individual), label = as.character(cell_number), height = 600, width = 2000)) +
+                   geom_text(fontface = 3, alpha = 0.5) + 
+                   geom_vline(xintercept = cut_off_reads, colour="grey", linetype = "longdash") +
+                   geom_hline(yintercept = cut_off_unmapped * 100, colour="grey", linetype = "longdash") +
+                   labs(x = "Total mapped reads", y = "Unmapped reads percentage (%)") 
+
+reads_ercc_num <-  ggplot(summary_per_sample_reads_single_qc,
+                   aes(x = total_mapped, y = ercc_percentage * 100,
+                   col = as.factor(individual), label = as.character(cell_number), height = 600, width = 2000)) +
+                   geom_text(fontface = 3, alpha = 0.5) + 
+                   geom_vline(xintercept = cut_off_reads, colour="grey", linetype = "longdash") +
+                   geom_hline(yintercept = cut_off_ercc * 100, colour="grey", linetype = "longdash") +
+                   labs(x = "Total mapped reads", y = "ERCC reads percentage (%)") 
+
+theme_set(theme_bw(base_size = 10))
+plot_grid(genes_unmapped + theme(legend.position = "none"), 
+          genes_ercc + theme(legend.position = "none"),
+          reads_unmapped_num + theme(legend.position = "none"), 
+          reads_ercc_num + theme(legend.position = "none"),
+          labels = LETTERS[1:4])
+```
+
 
 ## Session information
 
