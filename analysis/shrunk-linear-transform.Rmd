@@ -125,7 +125,21 @@ ggplot(data.frame(x=as.numeric(molecules_cpm),y=as.numeric(molecules_cpm_trans))
 
 ## Shrunk linear transformation
 
-Within each batch we fit the linear transformation jointly, shrinking using a learnt prior. This takes a little while (5 minutes-ish on my laptop). 
+Within each batch we fit the linear transformation jointly, shrinking using a learnt prior. The per cell linear regression is
+$$ y_{cn} = \beta_c x_{nc} + \mu_c + \epsilon_{cn} $$
+where $y_{cn}$ is the log cpm for ERCC $n$ in cell $c$, $\beta$ is the slope, $\mu$ is the intercept, and 
+$$ \epsilon_{cn} \sim N(0,\sigma^2) $$
+is noise (currently I assume the same noise variance in each cell). For notational convenience let $\tilde{\beta}_c = [ \beta_c, \mu_c ]^T$ and $\tilde{x}_{nc} = [ x_{nc}, 1 ]^T$, then
+$$ y_{cn} = \tilde{\beta}_c \tilde{x}_{nc} + \epsilon_{cn} $$
+We put a bivariate normal prior on $\tilde{\beta}$, i.e.
+$$ \tilde{\beta} \sim N( m, S )$$
+where $m$ is the shared transformation coefficients across the batch, and the covariance matrix $S$ controls the spread around that mean. Integrating over $\epsilon$ and $\tilde{\beta}$ we have
+$$ y_{c:} \sim N(m^T \tilde{x}_{:c}, \tilde{x}_{:c}^T S \tilde{x}_{:c} + \sigma^2 I_{N\times N} ) $$
+Numerical optimization (LBFGS) is used to get maximum likelihood estimates of $m$, $S$ and $\sigma^2$. Given these estimates, the posterior expectation of $\tilde{\beta}_c$ is
+$$ \mathbb{E}[\beta_c] = ( S^{-1} +  \tilde{x}_{:c}^T \tilde{x}_{:c}/\sigma^2 )^{-1} (S^{-1}m + \tilde{x}_{:c}^T y_{cn}/\sigma^2) $$
+This expected value is then used to linearly transform the real gene cpm values, as before. 
+
+This takes a little while (5 minutes-ish on my laptop). 
 
 ```{r learn-shrunk-estimates}
 intercept_shrunk <- numeric(length = ncol(molecules_cpm))
