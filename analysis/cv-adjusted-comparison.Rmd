@@ -1,7 +1,7 @@
 ---
 title: "Per gene comparison of CVs"
 author: "Joyce Hsiao"
-date: 2015-10-28
+date: 2015-10-29
 ---
 
 **Last updated:** `r Sys.Date()`
@@ -19,7 +19,7 @@ opts_chunk$set(message = FALSE, warning = FALSE, eval = TRUE,
 
 ## Objective
 
-Per gene analysis of individual differences in coefficients of variation. We first compute the deviation to the median for each individual's CV. Then, for each gene, we compute two meausures to quantify the variabilty of the CVs: sum of squared deviation and sum of absolute deviation. We computed empirical p-values for each gene's variability measure of CV.
+Per gene analysis of individual differences in coefficients of variation. We first compute the deviation to the median for each individual's CV. Then, for each gene, we compute two meausures to quantify the variabilty of the CVs: sum of squared deviation and sum of absolute deviation. Then, to get a confidence of this estimate, we perform bootstraping within each individual; this step perserves the individual differences in mean and yet allow us to get a sample estimate of the variances. 
 
 
 ## Set up
@@ -92,9 +92,12 @@ df_cv <- data.frame(NA19098 = ENSG_cv_adj[[1]]$log10cv2_adj,
 library(matrixStats)
 df_norm <- sweep(df_cv, MARGIN = 2, STATS = colMeans(as.matrix(df_cv)), FUN = "-")
 df_norm <- sweep(df_norm, MARGIN = 2, STATS = sqrt(colVars(as.matrix(df_cv))), FUN = "/")
+colnames(df_norm) <- names(ENSG_cv_adj)
 ```
 
-Consistent of gene adj-CVs before/after standardization.
+Compare gene adj-CVs before/after standardization.
+
+Genes marked red rank top 10 in the standardized DM (deviation-from-the-median), which is also referred to as adjusted coefficient of variation.
 
 ```{r}
 par(mfrow = c(1,2))
@@ -111,43 +114,122 @@ Compute distance
 
 ```{r}
 library(matrixStats)
+
+df_norm <- as.data.frame(df_norm)
 df_norm$squared_dev <- rowSums( ( df_norm - rowMedians(as.matrix(df_norm)) )^2 )
 df_norm$abs_dev <- rowSums(abs( df_norm - rowMedians(as.matrix(df_norm)) ))
 ```
 
-## Permutation-based reuslts
+*Gene with the largest SSM (Sum-of-Squared-Deviation-from-the-median). 
 
-Make permuted data sets. Choose 1000 samples.
+```{r}
+library(broman)
+crayon <- brocolors("crayon")
+library(scales)
+
+gene <- rownames(molecules_ENSG)[ order(df_norm$squared_dev, decreasing = TRUE)[1]]
+
+# Compute density for individual gene expression 
+dens <- lapply(1:3, function(ii_individual) {
+   density( unlist(molecules_ENSG[ rownames(molecules_ENSG) == gene,
+        anno_qc_filter$individual == unique(anno_qc_filter$individual)[ii_individual]]) )
+  })
+names(dens) <- unique(anno_qc_filter$individual)
+xlims <- c(range( sapply(dens, "[[", 1) ) )
+ylims <- c(0, max( sapply(dens, "[[", 2) ) )
+
+par(mfrow = c(1,1))
+plot(0, pch = "", 
+     xlab = "log2 gene expression", main = "",
+     ylab = "Density", axes = F, xlim = xlims, ylim = ylims)
+axis(1); axis(2)
+polygon(dens[[1]], col = alpha( crayon["Blue Bell"], .3), lwd = .5 )
+polygon(dens[[2]], col = alpha( crayon["Fern"], .3), lwd = .5)
+polygon(dens[[3]], col = alpha( crayon["Sunglow"], .2), lwd = .5 )
+title("")
+
+
+```
+
+## Permutatoin
+
+Permute cell labels. An idea for hypothesis testing..
 
 ```{r, eval = FALSE}
-source("../code/permute-cells.r")
+source("../code/bootstrap-cells.r")
+
+# Make permuted data sets
 permuted_data <- permute_cells(log2counts = molecules_ENSG, 
                                grouping_vector = anno_qc_filter$individual, 
-                               num_permute = 10)
-save(permuted_data, file = "rda/permuted_data.rda")
+                               num_permute = 5)
+
+# Compute adjusted CV for the permuted data
+source("../code/cv-functions.r")
+
+permuted_cv_adj <- lapply(permuted_data, function(per_data) {
+  perm_cv <- compute_cv(log2counts = per_data,
+                      grouping_vector = anno_qc_filter$individual)
+
+  perm_cv_adj <- normalize_cv(group_cv = perm_cv, 
+                            log2counts = per_data, 
+                            anno = anno_qc_filter)
+  
+  df_perm <- cbind(perm_cv_adj[[1]]$log10cv2_adj, 
+                   perm_cv_adj[[2]]$log10cv2_adj,
+                   perm_cv_adj[[3]]$log10cv2_adj)
+  
+  # Standardize CVs
+  df_norm <- sweep(df_perm, MARGIN = 2, STATS = colMeans(as.matrix(df_perm)), FUN = "-")
+  df_norm <- sweep(df_perm, MARGIN = 2, STATS = sqrt(colVars(as.matrix(df_perm))), FUN = "/")
+  return(df_norm)
+})
+
+
+permuted_distance <- lapply(permuted_cv_adj, function(per_data) {
+  squared_dev <- rowSums( ( per_data - rowMedians(as.matrix(per_data)) )^2 )
+  abs_dev <- rowSums(abs( per_data - rowMedians(as.matrix(per_data)) ))
+  list(squared_dev = squared_dev,
+       abs_dev = abs_dev)
+})
 ```
 
-Compute adjusted CV for the permuted data
+Individual means/variances in each permuted data set.
+
 
 ```{r}
+permuted_summary <- lapply(permuted_data, function(per_data) {
+  sum_info <- lapply(1:dim(per_data)[1], function(ii_gene) {
+        gene_mean <- aggregate(as.matrix(per_data)[ii_gene, ] ~ anno_qc_filter$individual,
+                              FUN = mean)
+        gene_sd <- aggregate(as.matrix(per_data)[ii_gene, ] ~ anno_qc_filter$individual,
+                              FUN = sd)
+        list(gene_mean = gene_mean, gene_sd = gene_sd)
+})
+  means <- do.call(rbind, means)  
+  means
+}
+  per_data[ , anno_qc_filter$individual == unique(anno_qc_filter$individual)[p]]
+}
+ggplot(data.frame(do.call(rbind, permuted_cv_adj[[1]]),
+        aes(x = log10(mean), y = log10(cv^2))) +
+   geom_point(aes(col = individual)) +
+   ggtitle("Permutation-based CV")
 
-```
-
-Standardize the adjusted CVs 
-
-```{r}
-
-```
-
-Compute distance statistics for the permuted data
-
-```{r}
+ggplot(data.frame(do.call(rbind, permuted_cv_adj[[1]]),
+       aes(x = log10(mean), y = log10cv2_adj)) +
+   geom_point(aes(col = individual)) +
+   ggtitle("Permutation-based adjusted CV")
 
 ```
 
 Compute empirical p-values
 
 ```{r}
+load("rda/permuted_data.rda")
+
+df_norm$squared_dev
+df_norm$abs_dev
+
 
 ```
 
