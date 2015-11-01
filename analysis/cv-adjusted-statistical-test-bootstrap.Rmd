@@ -19,9 +19,11 @@ opts_chunk$set(message = FALSE, warning = FALSE, eval = TRUE,
 
 ## Objective
 
-Quantify statistical significance of individual differences between adjusted CVs. Here we will focus on the bootstrapped We computed similarity metrics to quantify similarity between individuals in coefficients of variation (after accounting for mean dependenc): 1) Sum-of-Squared-Deviation-from-the-Meidan (SSM), and 2) Sum-of-Absolute-Deviation-from-the-Median (SAM). We ordered genes by these metrics and described genes with high and low similarity between individual adjusted-CV. 
+Quantify statistical significance of individual differences between adjusted CVs. Here we focus on bootstrapped CIs of individual CVs.
 
-We first compute the deviation to the median for each individual's CV. Then, for each gene, we compute two meausures to quantify the variabilty of the CVs: sum of squared deviation and sum of absolute deviation. Then, to get a confidence of this estimate, we perform bootstraping within each individual; this step perserves the individual differences in mean and yet allow us to get a sample estimate of the variances. 
+For cells within each individual cell line, we constructed 1000 samples with replacment and then computed 95% confidence interval. This method resulted in narrow confidence interval. 
+
+Since sample size is a major factor in the width of confidence interval, instead of the entire set of cells for each individual, we sample a subset of the cells with replacement; the number of the sample is set to be 90, close to the number of wells on each C1 plate.
 
 
 ## Set up
@@ -108,15 +110,7 @@ df_norm <- sweep(df_norm, MARGIN = 2, STATS = sqrt(colVars(as.matrix(df_cv))), F
 colnames(df_norm) <- names(ENSG_cv_adj)
 ```
 
-* Adj-CVs before/after standardization.
-
-
-```{r}
-# ggplot(data.frame(adj_cv = rbind(ENSG_cv_adj[[1]]$log10cv2_adj) ))
-boxplot(df_cv)
-boxplot(df_norm)
-```
-
+* SSM and SAM
 
 Compute metrics for quantifying similarity between the three individual coefficients of variation. 
 
@@ -128,176 +122,51 @@ df_norm$squared_dev <- rowSums( ( df_norm - rowMedians(as.matrix(df_norm)) )^2 )
 df_norm$abs_dev <- rowSums(abs( df_norm - rowMedians(as.matrix(df_norm)) ))
 ```
 
+## Bootstrapped CIs
 
-*Gene with the largest SSM (Sum-of-Squared-Deviation-from-the-median). 
+### Sample size is the orignal sample size
+
+```{r}
+load("rda/cv-adjusted-statistical-test-bootstrap/bootstrap-ci.rda")
+rownames(abs_dev_pnt) <- rownames(molecules_ENSG)
+rownames(squared_dev_pnt) <- rownames(molecules_ENSG)
+
+head(cbind(squared_dev_pnt, df_norm$squared_dev))
+head(cbind(abs_dev_pnt, df_norm$abs_dev))
+```
+
+Genes with SSM outside of the 95% boostrapped CI are consistented to be statistical significant.
+
+```{r}
+sig_gene_CI_squared_dev <- df_norm$squared_dev > squared_dev_pnt[, 2] | df_norm$squared_dev < squared_dev_pnt[, 1]
+
+sig_gene_CI_abs_dev <- df_norm$abs_dev > abs_dev_pnt[, 2] | df_norm$abs_dev < abs_dev_pnt[, 1]
+```
+
 
 ```{r}
 library(broman)
 crayon <- brocolors("crayon")
-library(scales)
-
-gene <- rownames(molecules_ENSG)[ order(df_norm$squared_dev, decreasing = TRUE)[1]]
-
-# Compute density for individual gene expression 
-dens <- lapply(1:3, function(ii_individual) {
-   density( unlist(molecules_ENSG[ rownames(molecules_ENSG) == gene,
-        anno_filter$individual == unique(anno_filter$individual)[ii_individual]]) )
-  })
-names(dens) <- unique(anno_filter$individual)
-xlims <- c(range( sapply(dens, "[[", 1) ) )
-ylims <- c(0, max( sapply(dens, "[[", 2) ) )
-
-par(mfrow = c(1,1))
-plot(0, pch = "", 
-     xlab = "log2 gene expression", main = "",
-     ylab = "Density", axes = F, xlim = xlims, ylim = ylims)
-axis(1); axis(2)
-polygon(dens[[1]], col = alpha( crayon["Blue Bell"], .3), lwd = .5 )
-polygon(dens[[2]], col = alpha( crayon["Fern"], .3), lwd = .5)
-polygon(dens[[3]], col = alpha( crayon["Sunglow"], .2), lwd = .5 )
-title(with(gene_info, external_gene_name[ensembl_gene_id == gene]) )
+ggplot(data.frame(index = c(mean(sig_gene_CI_squared_dev == 0), 
+                            mean(sig_gene_CI_squared_dev == 1),
+                            mean(sig_gene_CI_abs_dev == 0 ),
+                            mean(sig_gene_CI_abs_dev == 1) ),
+                  type = factor( rep(c(0,1), times = 2),
+                                 labels = c("Non-sig.", "Sig.") ),
+                  metric = rep( c("SSM", "SAM"), each = 2)  ),
+      aes(x = metric, y = 100*index, fill = type) ) +
+  geom_bar(stat = "identity", colour = "white") +
+  scale_fill_manual(values = c("orange", "grey80")) +
+  ylab("Percent") + xlab("Similarity metric") 
 ```
 
 
-## Establish statistical significance of the CVs
-
-We would like to address the statistical significance of the similarity metrics (Sum-of-Squared-Deviation-from-the-Median and Sum-of-Absolute-Deviation-from-the-Median). The null hypothesis is that the "adjusted" coefficients of variation are the same for each individual. 
-
-### Permutation
-
-Permute cell labels. An idea for hypothesis testing. 
+Correspondance of SSM and SAM results.
 
 ```{r}
-if (file.exists("rda/permuted_distance.rda")) {
-  load("rda/permuted_distance.rda")
-} else {
-  stop("Permuted_distance.rda does not exist")
-}
-```
-
-Make permuted data sets. The following codes are run on the cluster; they are displayed here for documentation.
-
-```{r, eval = FALSE}
-permuted_data <- permute_cells(log2counts = molecules_ENSG, 
-                               grouping_vector = anno_qc_filter$individual, 
-                               num_permute = 5)
-
-# Compute adjusted CV for the permuted data
-source("../code/cv-functions.r")
-permuted_cv_adj <- lapply(permuted_data, function(per_data) {
-  perm_cv <- compute_cv(log2counts = per_data,
-                      grouping_vector = anno_qc_filter$individual)
-
-  perm_cv_adj <- normalize_cv(group_cv = perm_cv, 
-                            log2counts = per_data, 
-                            anno = anno_qc_filter)
-  
-  df_perm <- cbind(perm_cv_adj[[1]]$log10cv2_adj, 
-                   perm_cv_adj[[2]]$log10cv2_adj,
-                   perm_cv_adj[[3]]$log10cv2_adj)
-  
-  # Standardize CVs
-  df_norm <- sweep(df_perm, MARGIN = 2, STATS = colMeans(as.matrix(df_perm)), FUN = "-")
-  df_norm <- sweep(df_perm, MARGIN = 2, STATS = sqrt(colVars(as.matrix(df_perm))), FUN = "/")
-  return(df_norm)
-})
-
-save(permuted_data, permuted_cv_adj,
-     file = "rda/cv-adjusted-comparison/permuted-data.rda")
-
-permuted_distance <- lapply(permuted_cv_adj, function(per_data) {
-  squared_dev <- rowSums( ( per_data - rowMedians(as.matrix(per_data)) )^2 )
-  abs_dev <- rowSums(abs( per_data - rowMedians(as.matrix(per_data)) ))
-  list(squared_dev = squared_dev,
-       abs_dev = abs_dev)
-})
-save(permuted_distance, 
-     file = "rda/cv-adjusted-comparison/permuted-distance.rda")
-```
-
-
-Individual means/variances in each permuted data set.
-
-
-```{r}
-permuted_summary <- lapply(permuted_data, function(per_data) {
-  sum_info <- lapply(1:dim(per_data)[1], function(ii_gene) {
-        gene_mean <- aggregate(as.matrix(per_data)[ii_gene, ] ~ anno_qc_filter$individual,
-                              FUN = mean)
-        gene_sd <- aggregate(as.matrix(per_data)[ii_gene, ] ~ anno_qc_filter$individual,
-                              FUN = sd)
-        list(gene_mean = gene_mean, gene_sd = gene_sd)
-})
-  means <- do.call(rbind, means)  
-  means
-}
-  per_data[ , anno_qc_filter$individual == unique(anno_qc_filter$individual)[p]]
-}
-ggplot(data.frame(do.call(rbind, permuted_cv_adj[[1]]),
-        aes(x = log10(mean), y = log10(cv^2))) +
-   geom_point(aes(col = individual)) +
-   ggtitle("Permutation-based CV")
-
-ggplot(data.frame(do.call(rbind, permuted_cv_adj[[1]]),
-       aes(x = log10(mean), y = log10cv2_adj)) +
-   geom_point(aes(col = individual)) +
-   ggtitle("Permutation-based adjusted CV")
-
-```
-
-Compute empirical p-values
-
-```{r}
-load("rda/permuted_data.rda")
-
-df_norm$squared_dev
-df_norm$abs_dev
-
-
-```
-
-Distribution of empirical p-values
-
-
-```{r}
-
-```
-
-
-### Bootstrapping
-
-Bootstrap for cell lables within each individual. 
-
-```{r}
-if (file.exists("rda/bootstrap_distance.rda")) {
-  load("rda/bootstrap_distance.rda")
-} else {
-  stop("bootstrap_distance.rda does not exist")
-}
-```
-
-Make bootstrapped data sets. The following codes are run on the cluster; they are displayed here for documentation.
-
-```{r, eval = FALSE}
-require(Humanzee)
-bootstrap_output <- Humanzee::bootstrap_cv_test(
-                        log2counts = molecules_ENSG, 
-                        grouping_vector = anno_filter$individual,
-                        anno = anno_qc_filter,
-                        num_bootstrap = 1000,
-                        output_rda = FALSE,
-                        do_parallel = TRUE, 
-                        number_cores = 2
-                        )
-# save rda for computing on the cluster
-save(molecules_ENSG, anno_filter, 
-     file = "./rda/cv-adjusted-comparison/bootstrap-cv-test.rda")
-```
-
-
-```{r}
-load("rda/cv-adjusted-comparison/bootstrap-data.rda")
-load("rda/cv-adjusted-comparison/bootstrap-distance.rda")
+library(gplots)
+venn(list(SSM = rownames(molecules_ENSG)[which(sig_gene_CI_squared_dev)],
+          SAM = rownames(molecules_ENSG)[which(sig_gene_CI_abs_dev)] ))
 ```
 
 
