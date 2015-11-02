@@ -1,7 +1,7 @@
 ---
 title: "Profile individual adjusted CVs"
 author: "Joyce Hsiao"
-date: 2015-10-27
+date: 2015-10-29
 ---
 
 **Last updated:** `r Sys.Date()`
@@ -18,6 +18,8 @@ opts_chunk$set(message = FALSE, warning = FALSE, eval = TRUE,
 
 
 ## Objective
+
+We computed the adjusted CV for each individual and observed that genes with extreme CVs are  unique to each individual, while genes with extreme means are likey to be shared across individuals. Moreover, the extreme genes are not more likely to be cell cycle genes than the non-extreme genes; in fact, we can see from the scatter plots that cell cycle genes tend to be small in our adjusted CV than the non-cell-cycle genes. 
 
 
 
@@ -111,7 +113,8 @@ ggplot(do.call(rbind, ENSG_cv_adj),
 
 ## Gene ranks venn diagrams
 
-*Extreme genes as in top/bottom 50
+
+### Extreme genes as in top/bottom 50
 
 ```{r}
 extreme_genes_50 <- lapply(ENSG_cv_adj, function(xx) {
@@ -173,7 +176,12 @@ venn( list(genes[extreme_genes_50[[1]]$low_mean],
 
 
 
-*Extreme genes as in top/bottom 200
+
+
+
+
+
+### Extreme genes as in top/bottom 200
 
 ```{r}
 extreme_genes_200 <- lapply(ENSG_cv_adj, function(xx) {
@@ -393,242 +401,73 @@ ggplot(do.call(rbind, ENSG_cv_adj),
 
 
 
-*Top 50 in adjusted CV
+
+## Cell cycle
+
+*Import cell-cycle gene list
+
+```{r}
+cellcycle_genes <- read.table("../data/cellcyclegenes.txt", sep = "\t",
+                              header = TRUE, stringsAsFactors = FALSE)
+str(cellcycle_genes)
+```
+
+
+```{r}
+genes <- rownames(extreme_genes_50[[1]])
+ii_cellcycle_genes <- lapply(1:3, function(per_individual) {
+  genes %in% unlist(cellcycle_genes)
+})
+names(ii_cellcycle_genes) <- names(extreme_genes_50)
+ii_cellcycle_genes <- do.call(c, ii_cellcycle_genes)
+```
+
 
 ```{r}
 ggplot(do.call(rbind, ENSG_cv_adj),
        aes(x = log10(mean), y = log10cv2_adj)) +
-  geom_point(aes(col = group), cex = .8) + facet_wrap( ~ group) +
-  ggtitle("Adj-CV top 50, NA19098") + 
-  geom_point(data = subset(do.call(rbind, ENSG_cv_adj), extreme_genes_50[[1]]$high_cv), 
-             colour = "grey20")
-
-ggplot(do.call(rbind, ENSG_cv_adj),
-       aes(x = log10(mean), y = log10cv2_adj)) +
-  geom_point(aes(col = group), cex = .8) + facet_wrap( ~ group) +
-  ggtitle("Adj-CV top 50, NA19101") + 
-  geom_point(data = subset(do.call(rbind, ENSG_cv_adj), extreme_genes_50[[2]]$high_cv), 
-             colour = "grey20")
-
-ggplot(do.call(rbind, ENSG_cv_adj),
-       aes(x = log10(mean), y = log10cv2_adj)) +
-  geom_point(aes(col = group), cex = .8) + facet_wrap( ~ group) +
-  ggtitle("Adj-CV top 50, NA19239") + 
-  geom_point(data = subset(do.call(rbind, ENSG_cv_adj), extreme_genes_50[[3]]$high_cv), 
-             colour = "grey20")
+  geom_point(aes(col = group), cex = 1.2) + facet_wrap( ~ group) +
+  ggtitle("Cellcycle genes") + 
+  geom_point(data = subset(do.call(rbind, ENSG_cv_adj), 
+                           ii_cellcycle_genes), 
+             colour = "grey20", cex = 1.2)
 ```
 
 
-*Top 200 in adjusted CV
+
+## Pluripotent genes
+
+*Import pluripotent gene list
+
+```{r}
+pluripotent_genes <- read.table("../data/pluripotency-genes.txt", sep = "\t",
+                              header = TRUE, stringsAsFactors = FALSE)
+str(pluripotent_genes)
+```
+
+
+```{r}
+genes <- rownames(extreme_genes_50[[1]])
+ii_pluripotent_genes <- lapply(1:3, function(per_individual) {
+  genes %in% unlist(pluripotent_genes$To)
+})
+names(ii_pluripotent_genes) <- names(extreme_genes_50)
+ii_pluripotent_genes <- do.call(c, ii_pluripotent_genes)
+```
+
 
 ```{r}
 ggplot(do.call(rbind, ENSG_cv_adj),
        aes(x = log10(mean), y = log10cv2_adj)) +
-  geom_point(aes(col = group), cex = .8) + facet_wrap( ~ group) +
-  ggtitle("Adj-CV top 50, NA19098") + 
-  geom_point(data = subset(do.call(rbind, ENSG_cv_adj), extreme_genes_200[[1]]$high_mean), 
-             colour = "grey20")
-
-ggplot(do.call(rbind, ENSG_cv_adj),
-       aes(x = log10(mean), y = log10cv2_adj)) +
-  geom_point(aes(col = group), cex = .8) + facet_wrap( ~ group) +
-  ggtitle("Adj-CV top 50, NA19101") + 
-  geom_point(data = subset(do.call(rbind, ENSG_cv_adj), extreme_genes_200[[2]]$high_mean), 
-             colour = "grey20")
-
-ggplot(do.call(rbind, ENSG_cv_adj),
-       aes(x = log10(mean), y = log10cv2_adj)) +
-  geom_point(aes(col = group), cex = .8) + facet_wrap( ~ group) +
-  ggtitle("Adj-CV top 50, NA19239") + 
-  geom_point(data = subset(do.call(rbind, ENSG_cv_adj), extreme_genes_200[[3]]$high_mean), 
-             colour = "grey20")
-```
-
-
-*Bottom 50 in adjusted CV
-
-```{r}
-ggplot(do.call(rbind, ENSG_cv_adj),
-       aes(x = log10(mean), y = log10cv2_adj)) +
-  geom_point(aes(col = group), cex = .8) + facet_wrap( ~ group) +
-  ggtitle("Adj-CV top 50, NA19098") + 
-  geom_point(data = subset(do.call(rbind, ENSG_cv_adj), extreme_genes_50[[1]]$low_mean), 
-             colour = "grey20")
-
-ggplot(do.call(rbind, ENSG_cv_adj),
-       aes(x = log10(mean), y = log10cv2_adj)) +
-  geom_point(aes(col = group), cex = .8) + facet_wrap( ~ group) +
-  ggtitle("Adj-CV top 50, NA19101") + 
-  geom_point(data = subset(do.call(rbind, ENSG_cv_adj), extreme_genes_50[[2]]$low_mean), 
-             colour = "grey20")
-
-ggplot(do.call(rbind, ENSG_cv_adj),
-       aes(x = log10(mean), y = log10cv2_adj)) +
-  geom_point(aes(col = group), cex = .8) + facet_wrap( ~ group) +
-  ggtitle("Adj-CV top 50, NA19239") + 
-  geom_point(data = subset(do.call(rbind, ENSG_cv_adj), extreme_genes_50[[3]]$low_mean), 
-             colour = "grey20")
+  geom_point(aes(col = group), cex = 1.2) + facet_wrap( ~ group) +
+  ggtitle("Pluripotent genes") + 
+  geom_point(data = subset(do.call(rbind, ENSG_cv_adj), 
+                           ii_pluripotent_genes), 
+             colour = "grey20", cex = 1.2)
 ```
 
 
 
-
-*Bottom 200 in mean
-
-```{r}
-ggplot(do.call(rbind, ENSG_cv_adj),
-       aes(x = log10(mean), y = log10cv2_adj)) +
-  geom_point(aes(col = group), cex = .8) + facet_wrap( ~ group) +
-  ggtitle("Adj-CV top 50, NA19098") + 
-  geom_point(data = subset(do.call(rbind, ENSG_cv_adj), extreme_genes_200[[1]]$low_mean), 
-             colour = "grey20")
-
-ggplot(do.call(rbind, ENSG_cv_adj),
-       aes(x = log10(mean), y = log10cv2_adj)) +
-  geom_point(aes(col = group), cex = .8) + facet_wrap( ~ group) +
-  ggtitle("Adj-CV top 50, NA19101") + 
-  geom_point(data = subset(do.call(rbind, ENSG_cv_adj), extreme_genes_200[[2]]$low_mean), 
-             colour = "grey20")
-
-ggplot(do.call(rbind, ENSG_cv_adj),
-       aes(x = log10(mean), y = log10cv2_adj)) +
-  geom_point(aes(col = group), cex = .8) + facet_wrap( ~ group) +
-  ggtitle("Adj-CV top 50, NA19239") + 
-  geom_point(data = subset(do.call(rbind, ENSG_cv_adj), extreme_genes_200[[3]]$low_mean), 
-             colour = "grey20")
-```
-
-
-
-## Annotation
-
-GOseq
-
-```{r}
-require(Humanzee)
-if (file.exists("rda/cv-adjusted-profile/go-cv-NA19098.rda")) {
-  load("rda/cv-adjusted-profile/go-cv-NA19098.rda")  
-} else {
-go_cv_high <- GOtest(my_ensembl_gene_universe = rownames(molecules_ENSG),
-                      my_ensembl_gene_test = rownames(molecules_ENSG)[extreme_genes_50[[1]]$high_cv],
-                      pval_cutoff = 1, ontology=c("BP") )
-go_cv_low <- GOtest(my_ensembl_gene_universe = rownames(molecules_ENSG),
-                      my_ensembl_gene_test = rownames(molecules_ENSG)[extreme_genes_50[[1]]$low_cv],
-                      pval_cutoff = 1, ontology=c("BP") )
-
-go_mean_high <- GOtest(my_ensembl_gene_universe = rownames(molecules_ENSG),
-                      my_ensembl_gene_test = rownames(molecules_ENSG)[extreme_genes_50[[1]]$high_mean],
-                      pval_cutoff = 1, ontology=c("BP") )
-go_mean_low <- GOtest(my_ensembl_gene_universe = rownames(molecules_ENSG),
-                      my_ensembl_gene_test = rownames(molecules_ENSG)[extreme_genes_50[[1]]$low_mean],
-                      pval_cutoff = 1, ontology=c("BP") )
-save(ENSG_cv_adj, extreme_genes_50,
-     go_cv_high, go_cv_low, go_mean_high, go_mean_low,
-     file = "rda/cv-adjusted-profile/go-cv-NA19098.rda")
-}
-
-if (file.exists("rda/cv-adjusted-profile/go-cv-NA19101.rda")) {
-  load("rda/cv-adjusted-profile/go-cv-NA19101.rda")  
-} else {
-go_cv_high <- GOtest(my_ensembl_gene_universe = rownames(molecules_ENSG),
-                      my_ensembl_gene_test = rownames(molecules_ENSG)[extreme_genes_50[[2]]$high_cv],
-                      pval_cutoff = 1, ontology=c("BP") )
-go_cv_low <- GOtest(my_ensembl_gene_universe = rownames(molecules_ENSG),
-                      my_ensembl_gene_test = rownames(molecules_ENSG)[extreme_genes_50[[2]]$low_cv],
-                      pval_cutoff = 1, ontology=c("BP") )
-
-go_mean_high <- GOtest(my_ensembl_gene_universe = rownames(molecules_ENSG),
-                      my_ensembl_gene_test = rownames(molecules_ENSG)[extreme_genes_50[[2]]$high_mean],
-                      pval_cutoff = 1, ontology=c("BP") )
-go_mean_low <- GOtest(my_ensembl_gene_universe = rownames(molecules_ENSG),
-                      my_ensembl_gene_test = rownames(molecules_ENSG)[extreme_genes_50[[2]]$low_mean],
-                      pval_cutoff = 1, ontology=c("BP") )
-save(ENSG_cv_adj, extreme_genes_50,
-     go_cv_high, go_cv_low, go_mean_high, go_mean_low,
-     file = "rda/cv-adjusted-profile/go-cv-NA19101.rda")
-}
-
-
-if (file.exists("rda/cv-adjusted-profile/go-cv-NA19239.rda")) {
-  load("rda/cv-adjusted-profile/go-cv-NA19101.rda")  
-} else {
-go_cv_high <- GOtest(my_ensembl_gene_universe = rownames(molecules_ENSG),
-                      my_ensembl_gene_test = rownames(molecules_ENSG)[extreme_genes_50[[3]]$high_cv],
-                      pval_cutoff = 1, ontology=c("BP") )
-go_cv_low <- GOtest(my_ensembl_gene_universe = rownames(molecules_ENSG),
-                      my_ensembl_gene_test = rownames(molecules_ENSG)[extreme_genes_50[[3]]$low_cv],
-                      pval_cutoff = 1, ontology=c("BP") )
-
-go_mean_high <- GOtest(my_ensembl_gene_universe = rownames(molecules_ENSG),
-                      my_ensembl_gene_test = rownames(molecules_ENSG)[extreme_genes_50[[3]]$high_mean],
-                      pval_cutoff = 1, ontology=c("BP") )
-go_mean_low <- GOtest(my_ensembl_gene_universe = rownames(molecules_ENSG),
-                      my_ensembl_gene_test = rownames(molecules_ENSG)[extreme_genes_50[[3]]$low_mean],
-                      pval_cutoff = 1, ontology=c("BP") )
-save(ENSG_cv_adj, extreme_genes_50,
-     go_cv_low, go_cv_high,
-     go_mean_high, go_mean_low, file = "rda/cv-adjusted-profile/go-cv-NA19239.rda")
-}
-```
-
-* NA19098
-
-```{r, eval = F}
-load(file = "rda/cv-adjusted-profile/go-cv-NA19098.rda")
-goterms_cv_high <- summary(go_cv_high$GO$BP, pvalue = .05)
-goterms_cv_high <- data.frame(ID = goterms_cv_high[[1]],
-                             Pvalue = goterms_cv_high[[2]],
-                             Terms = goterms_cv_high[[7]])
-goterms_cv_high <- goterms_cv_high[order(goterms_cv_high$Pvalue), ]
-head(goterms_cv_high)
-
-goterms_cv_low <- summary(go_cv_low$GO$BP, pvalue = .05)
-goterms_cv_low <- data.frame(ID = goterms_cv_low[[1]],
-                             Pvalue = goterms_cv_low[[2]],
-                             Terms = goterms_cv_low[[7]])
-goterms_cv_low <- goterms_cv_high[order(goterms_cv_low$Pvalue), ]
-head(goterms_cv_low)
-```
-
-
-* NA19101
-
-```{r, eval = F}
-load(file = "rda/cv-adjusted-profile/go-cv-NA19101.rda")
-goterms_cv_high <- summary(go_cv_high$GO$BP, pvalue = .05)
-goterms_cv_high <- data.frame(ID = goterms_cv_high[[1]],
-                             Pvalue = goterms_cv_high[[2]],
-                             Terms = goterms_cv_high[[7]])
-goterms_cv_high <- goterms_cv_high[order(goterms_cv_high$Pvalue), ]
-head(goterms_cv_high)
-
-goterms_cv_low <- summary(go_cv_low$GO$BP, pvalue = .05)
-goterms_cv_low <- data.frame(ID = goterms_cv_low[[1]],
-                             Pvalue = goterms_cv_low[[2]],
-                             Terms = goterms_cv_low[[7]])
-goterms_cv_low <- goterms_cv_high[order(goterms_cv_low$Pvalue), ]
-head(goterms_cv_low)
-```
-
-
-* NA19239
-
-```{r, eval = F}
-load(file = "rda/cv-adjusted-profile/go-cv-NA19239.rda")
-goterms_cv_high <- summary(go_cv_high$GO$BP, pvalue = .05)
-goterms_cv_high <- data.frame(ID = goterms_cv_high[[1]],
-                             Pvalue = goterms_cv_high[[2]],
-                             Terms = goterms_cv_high[[7]])
-goterms_cv_high <- goterms_cv_high[order(goterms_cv_high$Pvalue), ]
-head(goterms_cv_high)
-
-goterms_cv_low <- summary(go_cv_low$GO$BP, pvalue = .05)
-goterms_cv_low <- data.frame(ID = goterms_cv_low[[1]],
-                             Pvalue = goterms_cv_low[[2]],
-                             Terms = goterms_cv_low[[7]])
-goterms_cv_low <- goterms_cv_high[order(goterms_cv_low$Pvalue), ]
-head(goterms_cv_low)
-```
 
 
 ## Session information

@@ -1,0 +1,257 @@
+---
+title: "Profile individual adjusted CVs, per gene density plots"
+author: "Joyce Hsiao"
+date: 2015-10-29
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+
+library(knitr)
+opts_chunk$set(message = FALSE, warning = FALSE, eval = TRUE, 
+               echo = TRUE)
+```
+
+
+## Objective
+
+
+
+## Set up
+
+```{r, message=FALSE, warning=FALSE}
+library("data.table")
+library("dplyr")
+library("limma")
+library("edgeR")
+library("ggplot2")
+library("grid")
+theme_set(theme_bw(base_size = 12))
+source("functions.R")
+```
+
+
+## Prepare data
+
+Input annotation of only QC-filtered single cells. Remove NA19098.r2
+
+```{r}
+anno_qc <- read.table("../data/annotation-filter.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+is_include <- anno_qc$batch != "NA19098.r2"
+anno_qc_filter <- anno_qc[which(is_include), ]
+```
+
+
+Import endogeneous gene molecule counts that are QC-filtered, CPM-normalized, ERCC-normalized, and also processed to remove unwanted variation from batch effet. ERCC genes are removed from this file.
+
+```{r}
+molecules_ENSG <- read.table("../data/molecules-final.txt", header = TRUE, stringsAsFactors = FALSE)
+molecules_ENSG <- molecules_ENSG[ , is_include]
+```
+
+Input moleclule counts before log2 CPM transformation. This file is used to compute percent zero-count cells per sample.
+
+```{r}
+molecules_sparse <- read.table("../data/molecules-filter.txt", header = TRUE, stringsAsFactors = FALSE)
+
+molecules_sparse <- molecules_sparse[grep("ENSG", rownames(molecules_sparse)), ]
+stopifnot( all.equal(rownames(molecules_ENSG), rownames(molecules_sparse)) )
+```
+
+
+## Compute normalized CV 
+
+We compute squared CV across cells for each individual and then for each individual CV profile, account for mean dependency by computing distance with respect to the data-wide coefficient variation on the log10 scale. 
+
+```{r}
+source("../code/cv-functions.r")
+
+ENSG_cv <- compute_cv(log2counts = molecules_ENSG,
+                      grouping_vector = anno_qc_filter$individual)
+
+ENSG_cv_adj <- normalize_cv(group_cv = ENSG_cv, 
+                            log2counts = molecules_ENSG, 
+                            anno = anno_qc_filter)
+```
+
+
+
+### Extreme genes as in top/bottom 50
+
+```{r}
+extreme_genes_50 <- lapply(ENSG_cv_adj, function(xx) {
+  low_mean <- rank(xx$mean) < 50
+  high_mean <- rank(xx$mean) > (length(xx$mean) - 50)
+  low_cv <-  rank(xx$log10cv2_adj) < 50
+  high_cv <- rank(xx$log10cv2_adj) > (length(xx$log10cv2_adj) - 50)
+  res <- data.frame(high_mean = high_mean,
+                    low_mean = low_mean,
+                    high_cv = high_cv,
+                    low_cv = low_cv)
+  rownames(res) <- rownames(ENSG_cv_adj[[1]])
+  res
+})
+```
+
+*Top 50 in adjusted CV
+
+```{r}
+genes <- rownames(extreme_genes_50[[1]])
+library(gplots)
+venn( list(genes[extreme_genes_50[[1]]$high_cv],
+            genes[extreme_genes_50[[2]]$high_cv],
+            genes[extreme_genes_50[[3]]$high_cv] ) )
+```
+
+*Bottom 50 in adjusted CV
+
+```{r}
+genes <- rownames(extreme_genes_50[[1]])
+library(gplots)
+venn( list(genes[extreme_genes_50[[1]]$low_cv],
+            genes[extreme_genes_50[[2]]$low_cv],
+            genes[extreme_genes_50[[3]]$low_cv] ) )
+```
+
+
+*Top 50 in mean
+
+```{r}
+genes <- rownames(extreme_genes_50[[1]])
+library(gplots)
+venn( list(genes[extreme_genes_50[[1]]$high_mean],
+            genes[extreme_genes_50[[2]]$high_mean],
+            genes[extreme_genes_50[[3]]$high_mean] ) )
+```
+
+
+*Bottom 50 in mean
+
+```{r}
+genes <- rownames(extreme_genes_50[[1]])
+library(gplots)
+venn( list(genes[extreme_genes_50[[1]]$low_mean],
+            genes[extreme_genes_50[[2]]$low_mean],
+            genes[extreme_genes_50[[3]]$low_mean] ) )
+```
+
+
+
+
+
+
+
+
+
+### Extreme genes as in top/bottom 200
+
+```{r}
+extreme_genes_200 <- lapply(ENSG_cv_adj, function(xx) {
+  low_mean <- rank(xx$mean) < 200
+  high_mean <- rank(xx$mean) > (length(xx$mean) - 200)
+  low_cv <-  rank(xx$log10cv2_adj) < 200
+  high_cv <- rank(xx$log10cv2_adj) > (length(xx$log10cv2_adj) - 200)
+  res <- data.frame(high_mean = high_mean,
+                    low_mean = low_mean,
+                    high_cv = high_cv,
+                    low_cv = low_cv)
+  rownames(res) <- rownames(ENSG_cv_adj[[1]])
+  res
+})
+```
+
+*Top 200 in adjusted CV
+
+```{r}
+genes <- rownames(extreme_genes_200[[1]])
+library(gplots)
+venn( list(genes[extreme_genes_200[[1]]$high_cv],
+            genes[extreme_genes_200[[2]]$high_cv],
+            genes[extreme_genes_200[[3]]$high_cv] ) )
+```
+
+*Bottom 200 in adjusted CV
+
+```{r}
+genes <- rownames(extreme_genes_200[[1]])
+library(gplots)
+venn( list(genes[extreme_genes_200[[1]]$low_cv],
+            genes[extreme_genes_200[[2]]$low_cv],
+            genes[extreme_genes_200[[3]]$low_cv] ) )
+```
+
+
+*Top 200 in mean
+
+```{r}
+genes <- rownames(extreme_genes_200[[1]])
+library(gplots)
+venn( list(genes[extreme_genes_200[[1]]$high_mean],
+            genes[extreme_genes_200[[2]]$high_mean],
+            genes[extreme_genes_200[[3]]$high_mean] ) )
+```
+
+
+
+
+## Per gene plots
+
+```{r}
+library(RColorBrewer)
+library(gplots)
+heatmap.2(as.matrix(molecules_ENSG), 
+          col = cols <- brewer.pal(9,"Purples"),
+          trace = "none", density.info = "none",
+          dendrogram = "none")
+```
+
+```{r}
+library(broman)
+crayon <- brocolors("crayon")
+gene <- rownames(molecules_ENSG)[which(extreme_genes_50[[1]]$low_cv)[5]]
+dens <- density( unlist(molecules_ENSG[ rownames(molecules_ENSG) == gene,
+                         anno_qc_filter$individual == "NA19101"]))
+plot(dens, 
+     xlab = "log2 gene expression", main = "",
+     ylab = "Density", axes = F)
+polygon(dens, col = crayon["Blue Bell"])
+title()
+axis(1); axis(2)
+
+
+dens <- density( unlist(molecules_ENSG[ rownames(molecules_ENSG) == gene,
+                         anno_qc_filter$individual == "NA19239"]))
+plot(dens, 
+     xlab = "log2 gene expression", main = "",
+     ylab = "Density", axes = F)
+polygon(dens, col = crayon["Thistle"])
+title()
+axis(1); axis(2)
+
+
+dens <- density( unlist(molecules_ENSG[ rownames(molecules_ENSG) == gene,
+                         anno_qc_filter$individual == "NA19098"]))
+plot(dens, 
+     xlab = "log2 gene expression", main = "",
+     ylab = "Density", axes = F)
+polygon(dens, col = crayon["Blizzard Blue"])
+title()
+axis(1); axis(2)
+
+```
+
+
+
+
+
+
+## Session information
+
+```{r info}
+sessionInfo()
+```

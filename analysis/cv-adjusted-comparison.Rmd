@@ -1,7 +1,7 @@
 ---
-title: "Per gene comparison of CVs"
+title: "Quantify similarity between CVs"
 author: "Joyce Hsiao"
-date: 2015-10-28
+date: 2015-10-31
 ---
 
 **Last updated:** `r Sys.Date()`
@@ -19,7 +19,7 @@ opts_chunk$set(message = FALSE, warning = FALSE, eval = TRUE,
 
 ## Objective
 
-Per gene analysis of individual differences in coefficients of variation. We first compute the deviation to the median for each individual's CV. Then, for each gene, we compute two meausures to quantify the variabilty of the CVs: sum of squared deviation and sum of absolute deviation. We computed empirical p-values for each gene's variability measure of CV.
+We computed similarity metrics to quantify similarity between individuals in coefficients of variation (after accounting for mean dependenc): 1) Sum-of-Squared-Deviation-from-the-Meidan (SSM), and 2) Sum-of-Absolute-Deviation-from-the-Median (SAM). We ordered genes by these metrics and described genes with high and low similarity between individual adjusted-CV. 
 
 
 ## Set up
@@ -31,6 +31,7 @@ library("limma")
 library("edgeR")
 library("ggplot2")
 library("grid")
+library("Humanzee")
 theme_set(theme_bw(base_size = 12))
 source("functions.R")
 ```
@@ -38,30 +39,40 @@ source("functions.R")
 
 ## Prepare data
 
+Input quality single cells
+
+```{r}
+quality_single_cells <- read.table("../data/quality-single-cells.txt", 
+                                  header = TRUE,
+                                  stringsAsFactors = FALSE)
+str(quality_single_cells)
+```
+
 Input annotation of only QC-filtered single cells. Remove NA19098.r2
 
 ```{r}
-anno_qc <- read.table("../data/annotation-filter.txt", header = TRUE,
-                   stringsAsFactors = FALSE)
-is_include <- anno_qc$batch != "NA19098.r2"
-anno_qc_filter <- anno_qc[which(is_include), ]
+anno <- read.table("../data/annotation.txt", 
+                    header = TRUE,
+                    stringsAsFactors = FALSE)
+anno_filter <- anno[ which(anno$sample_id %in% quality_single_cells[[1]]), ]
+dim(anno_filter)
 ```
-
 
 Import endogeneous gene molecule counts that are QC-filtered, CPM-normalized, ERCC-normalized, and also processed to remove unwanted variation from batch effet. ERCC genes are removed from this file.
 
 ```{r}
-molecules_ENSG <- read.table("../data/molecules-final.txt", header = TRUE, stringsAsFactors = FALSE)
-molecules_ENSG <- molecules_ENSG[ , is_include]
+molecules_ENSG <- read.table("../data/molecules-final.txt", 
+                             header = TRUE, stringsAsFactors = FALSE)
+stopifnot(NCOL(molecules_ENSG) == NROW(anno_filter))
 ```
 
-Input moleclule counts before log2 CPM transformation. This file is used to compute percent zero-count cells per sample.
+
+## Import gene symbols
 
 ```{r}
-molecules_sparse <- read.table("../data/molecules-filter.txt", header = TRUE, stringsAsFactors = FALSE)
-
-molecules_sparse <- molecules_sparse[grep("ENSG", rownames(molecules_sparse)), ]
-stopifnot( all.equal(rownames(molecules_ENSG), rownames(molecules_sparse)) )
+gene_info <- read.table("../data/gene-info.txt", sep = "\t",
+                        header = TRUE, stringsAsFactors = FALSE)
+str(gene_info)
 ```
 
 
@@ -70,19 +81,21 @@ stopifnot( all.equal(rownames(molecules_ENSG), rownames(molecules_sparse)) )
 We compute squared CV across cells for each individual and then for each individual CV profile, account for mean dependency by computing distance with respect to the data-wide coefficient variation on the log10 scale. 
 
 ```{r}
-source("../code/cv-functions.r")
+ENSG_cv <- Humanzee::compute_cv(log2counts = molecules_ENSG,
+                      grouping_vector = anno_filter$individual)
 
-ENSG_cv <- compute_cv(log2counts = molecules_ENSG,
-                      grouping_vector = anno_qc_filter$individual)
-
-ENSG_cv_adj <- normalize_cv(group_cv = ENSG_cv, 
+ENSG_cv_adj <- Humanzee::normalize_cv(group_cv = ENSG_cv, 
                             log2counts = molecules_ENSG, 
-                            anno = anno_qc_filter)
+                            anno = anno_filter)
 ```
+
+
 
 ## Compute summary measure of deviation 
 
-Standardize the each CV vectors
+* Standardize the each CV vectors
+
+Individual CV vectors are standarized for individual CV mean and coefficients of variation across genes. 
 
 ```{r}
 df_cv <- data.frame(NA19098 = ENSG_cv_adj[[1]]$log10cv2_adj,
@@ -92,74 +105,193 @@ df_cv <- data.frame(NA19098 = ENSG_cv_adj[[1]]$log10cv2_adj,
 library(matrixStats)
 df_norm <- sweep(df_cv, MARGIN = 2, STATS = colMeans(as.matrix(df_cv)), FUN = "-")
 df_norm <- sweep(df_norm, MARGIN = 2, STATS = sqrt(colVars(as.matrix(df_cv))), FUN = "/")
+colnames(df_norm) <- names(ENSG_cv_adj)
+
+#save(df_norm, file="./rda/cv-adjusted-comparison/adj-cv.rda")
 ```
 
-Consistent of gene adj-CVs before/after standardization.
+* Adj-CVs before/after standardization.
+
+CVs are similar between individuals. 
 
 ```{r}
-par(mfrow = c(1,2))
-plot(x = df_cv[[1]], y = df_cv[[2]], main = "Adjusted log10 CV^2",
-     xlab = "NA19238", ylab = "NA19101")
-points(x = df_cv[[1]][1:10], y = df_cv[[2]][1:10], col = "red", cex = .8, pch = 16)
-plot(x = df_norm[[1]], y = df_norm[[2]], main = "Adjusted log10 CV^2, standardized",
-     xlab = "NA19238", ylab = "NA19101")
-points(x = df_norm[[1]][1:10], y = df_norm[[2]][1:10], col = "red", cex = .8, pch = 16)
+ggplot(data.frame(cv = c(t(rbind( ENSG_cv_adj[[1]]$cv,
+                                  ENSG_cv_adj[[2]]$cv,
+                                  ENSG_cv_adj[[3]]$cv) )),
+                  source = factor(rep(colnames(df_cv), each = dim(df_cv)[1]) )),
+        aes(x = source, y = log10(cv^2), fill = source) ) +
+  geom_violin(alpha = .5) + geom_boxplot(alpha = .2, width = .2) +
+  xlab ("Cell line") + ylab("log10 squared CV") +
+  ggtitle("log10 CV^2")
+```
+
+The distributions of the adjusted squared CVs are not the same in their medians. 
+This may cause an unfair comparison of the adj. CV^2 scores between individuals.
+
+```{r}
+ggplot(data.frame(adj_cv = c(t(rbind( ENSG_cv_adj[[1]]$log10cv2_adj,
+                                  ENSG_cv_adj[[2]]$log10cv2_adj,
+                                  ENSG_cv_adj[[3]]$log10cv2_adj) )),
+                  source = factor(rep(colnames(df_cv), each = dim(df_cv)[1]) )),
+        aes(x = source, y = adj_cv, fill = source) ) +
+  geom_violin(alpha = .5) + geom_boxplot(alpha = .2, width = .2) +
+  xlab ("Cell line") + ylab("log10 adjusted coefficient of variation") +
+  ggtitle("log10 adjusted CV")
+```
+
+We normlized the log10 adj. CV^2 by standardizing indivdual CVs over the mean and standard deviation across genes. Note the change in CV distribution from log10 adj CV^2 to normalized log10 adj CV^2. After accounting for differences in variability of the log10 adj. CV62, we observed that NA19098 spans an obviously smaller range of normalized adj CV^2 values than the other two cell lines, probably a consequence of the small number of 
+cells in NA19098 (n = 141) compared to the others (NA19101: 201 cells; NA19239: 225 cells).
+
+
+```{r}
+ggplot(data.frame(norm_cv = c(t( df_norm )),
+                  source = factor(rep(colnames(df_cv), each = dim(df_cv)[1]) )),
+        aes(x = source, y = norm_cv, fill = source) ) +
+  geom_violin(alpha = .5) + geom_boxplot(alpha = .2, width = .2) +
+  xlab ("Cell line") + ylab("log10 standardized adj. CV^2") +
+  ggtitle("log10 standardized adj. CV^2")
 ```
 
 
-Compute distance
+* Compute metrics for quantifying similarity between the three individual coefficients of variation. 
 
 ```{r}
 library(matrixStats)
+df_norm <- as.data.frame(df_norm)
 df_norm$squared_dev <- rowSums( ( df_norm - rowMedians(as.matrix(df_norm)) )^2 )
 df_norm$abs_dev <- rowSums(abs( df_norm - rowMedians(as.matrix(df_norm)) ))
 ```
 
-## Permutation-based reuslts
+## Compare the two metrics
 
-Make permuted data sets. Choose 1000 samples.
-
-```{r, eval = FALSE}
-source("../code/permute-cells.r")
-permuted_data <- permute_cells(log2counts = molecules_ENSG, 
-                               grouping_vector = anno_qc_filter$individual, 
-                               num_permute = 10)
-save(permuted_data, file = "rda/permuted_data.rda")
-```
-
-Compute adjusted CV for the permuted data
+Box plots
 
 ```{r}
-
+ggplot(data.frame(dist = c(unlist(df_norm$squared_dev),
+                           unlist(df_norm$abs_dev)),
+                  source = factor(rep(c(1:2), each = dim(df_norm)[1]),
+                                  labels = c("log10 SSM", "log10 SAM"))),
+       aes(x = source, y = log10(dist), fill = source)) +
+  geom_violin(alpha = .5) + geom_boxplot(alpha = .2, width = .2) +
+  xlab("Similarity metric") + ylab("Distance") +
+  ggtitle("Similarity between individual standardized log10 adj. CV^2")
 ```
 
-Standardize the adjusted CVs 
+Density plots
 
 ```{r}
+library(broman)
+crayon <- brocolors("crayon")
+library(scales)
 
+dens <- list( density(log10(df_norm$squared_dev)),
+              density(log10(df_norm$abs_dev)) )
+names(dens) <- c("SSM", "SAM")
+xlims <- c(range( sapply(dens, "[[", 1) ) )
+ylims <- c(0, max( sapply(dens, "[[", 2) ) )
+  
+par(mfrow = c(1,1))
+plot(0, pch = "", 
+     xlab = "log10 distance", main = "",
+     ylab = "Density", axes = F, xlim = xlims, ylim = ylims)
+axis(1); axis(2)
+polygon(dens[[1]], col = alpha( crayon["Blue Bell"], .3), lwd = .5 )
+polygon(dens[[2]], col = alpha( crayon["Fern"], .3), lwd = .5)
+legend("topleft", legend = c("SSM", "SAM"), bty="n",
+       pch = 19, cex = 1, 
+       col = c(alpha( crayon["Blue Bell"], .8),
+               alpha( crayon["Fern"], .8) ) )  
 ```
 
-Compute distance statistics for the permuted data
+
+Gene rankings based on SSM (Sum-of-Squared-Deviation-from-the-Median)
+and SAM (Sum-of-Absolute-Deviation-from-the-Median). 
 
 ```{r}
-
+ggplot(df_norm,
+       aes(x = rank(squared_dev), y = rank(abs_dev)) ) +
+  geom_point() + geom_abline(col = "blue") +
+  ggtitle("Gene rankings") +
+  xlab("Rank order based on SSM") +
+  ylab("Rank order based on SAM")
 ```
 
-Compute empirical p-values
+*Look at the gene with low ranking in SSM (small difference) but
+high ranking in SAM (large difference).
+
 
 ```{r}
+library(broman)
+crayon <- brocolors("crayon")
+library(scales)
 
+index <- rank(df_norm$squared_dev) < 1000 & rank(df_norm$abs_dev) > 8000
+sum(index)
+
+ggplot(df_norm,
+       aes(x = rank(squared_dev), y = rank(abs_dev)) ) +
+  geom_point() + geom_abline(col = "blue") +
+#   ggtitle("Gene rankings") +
+#   xlab("Rank order based on SSM") +
+#   ylab("Rank order based on SAM") +
+  geom_point(data = data.frame(x = rank(df_norm$squared_dev[which(index)]),
+                               y = rank(df_norm$abs_dev)[which(index)]), 
+             aes(x = x, y = y, col = "red", cex = 1.5) ) 
+
+
+# Find gene symbol
+gene_ENSG <- rownames(molecules_ENSG)[which(index)]
+gene_name <- sapply(gene_ENSG, function(per_gene) {
+    if ( sum(gene_info$ensembl_gene_id == per_gene) == 0 ) {
+      return(NA)
+    } 
+    if ( sum(gene_info$ensembl_gene_id == per_gene) > 0  ) {
+      gene_info$external_gene_name[which(gene_info$ensembl_gene_id == per_gene) ]
+    }
+})
+gene_name
+
+# Plot density for individual gene expression 
+for (i in 1: length(gene_name)) {
+  
+  dens <- lapply(1:3, function(ii_individual) {
+     density( unlist(molecules_ENSG[ which(index)[i],
+          anno_filter$individual == unique(anno_filter$individual)[ii_individual]]) )
+    })
+  names(dens) <- unique(anno_filter$individual)
+  xlims <- c(range( sapply(dens, "[[", 1) ) )
+  ylims <- c(0, max( sapply(dens, "[[", 2) ) )
+  
+  par(mfrow = c(1,1))
+  plot(0, pch = "", 
+       xlab = "log2 gene expression", main = "",
+       ylab = "Density", axes = F, xlim = xlims, ylim = ylims)
+  axis(1); axis(2)
+  polygon(dens[[1]], col = alpha( crayon["Blue Bell"], .3), lwd = .5 )
+  polygon(dens[[2]], col = alpha( crayon["Fern"], .3), lwd = .5)
+  polygon(dens[[3]], col = alpha( crayon["Sunglow"], .2), lwd = .5 )
+  title( ifelse(is.na(gene_name[i]), names(gene_name)[i], gene_name[i] ) )
+}
 ```
 
-Distribution of empirical p-values
+Print out CV values. Recall that these are standardized values (z-scores); hence, vlaues 
+outside of mean +/- standard deviation are quite large.
+
+```{r}
+df_norm[which(index), ]
+```
+
+Ranks of the three individuals are consistent for the three genes selected here.
 
 
 ```{r}
-
+library(matrixStats)
+matplot(t(df_norm[which(index), 1:3]), type = "p", axes = F,
+        xlab = "Cell line", ylab = "")
+axis(1, at = c(1:3), labels = colnames(df_norm)[1:3] )
+axis(2)
 ```
 
-
-## Investigation...
 
 
 
