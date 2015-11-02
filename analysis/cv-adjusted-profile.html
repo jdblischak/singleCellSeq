@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+<meta name="author" content="Joyce Hsiao" />
+
+<meta name="date" content="2015-10-29" />
+
+<title>Profile individual adjusted CVs</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Profile individual adjusted CVs</h1>
+<h4 class="author"><em>Joyce Hsiao</em></h4>
+<h4 class="date"><em>2015-10-29</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#objective">Objective</a></li>
+<li><a href="#set-up">Set up</a></li>
+<li><a href="#prepare-data">Prepare data</a></li>
+<li><a href="#compute-normalized-cv">Compute normalized CV</a></li>
+<li><a href="#gene-ranks-venn-diagrams">Gene ranks venn diagrams</a><ul>
+<li><a href="#extreme-genes-as-in-topbottom-50">Extreme genes as in top/bottom 50</a></li>
+<li><a href="#extreme-genes-as-in-topbottom-200">Extreme genes as in top/bottom 200</a></li>
+</ul></li>
+<li><a href="#gene-ranks-plot">Gene ranks plot</a></li>
+<li><a href="#cell-cycle">Cell cycle</a></li>
+<li><a href="#pluripotent-genes">Pluripotent genes</a></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2015-11-02</p>
+<p><strong>Code version:</strong> f451005068e895a03d350370f836e185da999881</p>
+<div id="objective" class="section level2">
+<h2>Objective</h2>
+<p>We computed the adjusted CV for each individual and observed that genes with extreme CVs are unique to each individual, while genes with extreme means are likey to be shared across individuals. Moreover, the extreme genes are not more likely to be cell cycle genes than the non-extreme genes; in fact, we can see from the scatter plots that cell cycle genes tend to be small in our adjusted CV than the non-cell-cycle genes.</p>
+</div>
+<div id="set-up" class="section level2">
+<h2>Set up</h2>
+<pre class="r"><code>library(&quot;data.table&quot;)
+library(&quot;dplyr&quot;)
+library(&quot;limma&quot;)
+library(&quot;edgeR&quot;)
+library(&quot;ggplot2&quot;)
+library(&quot;grid&quot;)
+theme_set(theme_bw(base_size = 12))
+source(&quot;functions.R&quot;)</code></pre>
+</div>
+<div id="prepare-data" class="section level2">
+<h2>Prepare data</h2>
+<p>Input annotation of only QC-filtered single cells. Remove NA19098.r2</p>
+<pre class="r"><code>anno_qc &lt;- read.table(&quot;../data/annotation-filter.txt&quot;, header = TRUE,
+                   stringsAsFactors = FALSE)
+is_include &lt;- anno_qc$batch != &quot;NA19098.r2&quot;
+anno_qc_filter &lt;- anno_qc[which(is_include), ]</code></pre>
+<p>Import endogeneous gene molecule counts that are QC-filtered, CPM-normalized, ERCC-normalized, and also processed to remove unwanted variation from batch effet. ERCC genes are removed from this file.</p>
+<pre class="r"><code>molecules_ENSG &lt;- read.table(&quot;../data/molecules-final.txt&quot;, header = TRUE, stringsAsFactors = FALSE)
+molecules_ENSG &lt;- molecules_ENSG[ , is_include]</code></pre>
+<p>Input moleclule counts before log2 CPM transformation. This file is used to compute percent zero-count cells per sample.</p>
+<pre class="r"><code>molecules_sparse &lt;- read.table(&quot;../data/molecules-filter.txt&quot;, header = TRUE, stringsAsFactors = FALSE)
+
+molecules_sparse &lt;- molecules_sparse[grep(&quot;ENSG&quot;, rownames(molecules_sparse)), ]
+stopifnot( all.equal(rownames(molecules_ENSG), rownames(molecules_sparse)) )</code></pre>
+</div>
+<div id="compute-normalized-cv" class="section level2">
+<h2>Compute normalized CV</h2>
+<p>We compute squared CV across cells for each individual and then for each individual CV profile, account for mean dependency by computing distance with respect to the data-wide coefficient variation on the log10 scale.</p>
+<pre class="r"><code>source(&quot;../code/cv-functions.r&quot;)
+
+ENSG_cv &lt;- compute_cv(log2counts = molecules_ENSG,
+                      grouping_vector = anno_qc_filter$individual)
+
+ENSG_cv_adj &lt;- normalize_cv(group_cv = ENSG_cv, 
+                            log2counts = molecules_ENSG, 
+                            anno = anno_qc_filter)</code></pre>
+<p>*Some plotting</p>
+<p>Mark genes with black dots if log10(cv^2) &gt; .5.</p>
+<p>Distance to the data-wise CV (adjusted CV): small CV values are more variable in terms their distance to the data-wise CV value; hence we see a large distance to the data-wise CV for the small CVs than the large CVs.</p>
+<pre class="r"><code>high_cv &lt;- subset(do.call(rbind, ENSG_cv_adj), log10(cv^2) &gt; .5)
+ggplot(do.call(rbind, ENSG_cv_adj),
+       aes(x = log10(mean), y = log10(cv^2))) +
+  geom_point(aes(col = group)) + facet_wrap( ~ group) +
+  ggtitle(&quot;CV-mean relationship&quot;) +
+  geom_point(data = high_cv, colour = &quot;black&quot;)</code></pre>
+<p><img src="figure/cv-adjusted-profile.Rmd/unnamed-chunk-6-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(do.call(rbind, ENSG_cv_adj),
+       aes(x = log10(mean), y = log10cv2_adj)) +
+  geom_point(aes(col = group)) + facet_wrap( ~ group) +
+  ggtitle(&quot;Adjusted CV and mean relationship&quot;) +
+  geom_point(data = high_cv, colour = &quot;black&quot;)</code></pre>
+<p><img src="figure/cv-adjusted-profile.Rmd/unnamed-chunk-6-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(do.call(rbind, ENSG_cv_adj),
+       aes(x = log10(cv^2), y = log10cv2_adj)) +
+  geom_point(aes(col = group)) + facet_wrap( ~ group) +
+  ggtitle(&quot;CV before versus after adjustment&quot;) +
+  geom_point(data = high_cv, colour = &quot;black&quot;)</code></pre>
+<p><img src="figure/cv-adjusted-profile.Rmd/unnamed-chunk-6-3.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="gene-ranks-venn-diagrams" class="section level2">
+<h2>Gene ranks venn diagrams</h2>
+<div id="extreme-genes-as-in-topbottom-50" class="section level3">
+<h3>Extreme genes as in top/bottom 50</h3>
+<pre class="r"><code>extreme_genes_50 &lt;- lapply(ENSG_cv_adj, function(xx) {
+  low_mean &lt;- rank(xx$mean) &lt; 50
+  high_mean &lt;- rank(xx$mean) &gt; (length(xx$mean) - 50)
+  low_cv &lt;-  rank(xx$log10cv2_adj) &lt; 50
+  high_cv &lt;- rank(xx$log10cv2_adj) &gt; (length(xx$log10cv2_adj) - 50)
+  res &lt;- data.frame(high_mean = high_mean,
+                    low_mean = low_mean,
+                    high_cv = high_cv,
+                    low_cv = low_cv)
+  rownames(res) &lt;- rownames(ENSG_cv_adj[[1]])
+  res
+})</code></pre>
+<p>*Top 50 in adjusted CV</p>
+<pre class="r"><code>genes &lt;- rownames(extreme_genes_50[[1]])
+library(gplots)
+venn( list(genes[extreme_genes_50[[1]]$high_cv],
+            genes[extreme_genes_50[[2]]$high_cv],
+            genes[extreme_genes_50[[3]]$high_cv] ) )</code></pre>
+<p><img src="figure/cv-adjusted-profile.Rmd/unnamed-chunk-8-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>*Bottom 50 in adjusted CV</p>
+<pre class="r"><code>genes &lt;- rownames(extreme_genes_50[[1]])
+library(gplots)
+venn( list(genes[extreme_genes_50[[1]]$low_cv],
+            genes[extreme_genes_50[[2]]$low_cv],
+            genes[extreme_genes_50[[3]]$low_cv] ) )</code></pre>
+<p><img src="figure/cv-adjusted-profile.Rmd/unnamed-chunk-9-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>*Top 50 in mean</p>
+<pre class="r"><code>genes &lt;- rownames(extreme_genes_50[[1]])
+library(gplots)
+venn( list(genes[extreme_genes_50[[1]]$high_mean],
+            genes[extreme_genes_50[[2]]$high_mean],
+            genes[extreme_genes_50[[3]]$high_mean] ) )</code></pre>
+<p><img src="figure/cv-adjusted-profile.Rmd/unnamed-chunk-10-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>*Bottom 50 in mean</p>
+<pre class="r"><code>genes &lt;- rownames(extreme_genes_50[[1]])
+library(gplots)
+venn( list(genes[extreme_genes_50[[1]]$low_mean],
+            genes[extreme_genes_50[[2]]$low_mean],
+            genes[extreme_genes_50[[3]]$low_mean] ) )</code></pre>
+<p><img src="figure/cv-adjusted-profile.Rmd/unnamed-chunk-11-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="extreme-genes-as-in-topbottom-200" class="section level3">
+<h3>Extreme genes as in top/bottom 200</h3>
+<pre class="r"><code>extreme_genes_200 &lt;- lapply(ENSG_cv_adj, function(xx) {
+  low_mean &lt;- rank(xx$mean) &lt; 200
+  high_mean &lt;- rank(xx$mean) &gt; (length(xx$mean) - 200)
+  low_cv &lt;-  rank(xx$log10cv2_adj) &lt; 200
+  high_cv &lt;- rank(xx$log10cv2_adj) &gt; (length(xx$log10cv2_adj) - 200)
+  res &lt;- data.frame(high_mean = high_mean,
+                    low_mean = low_mean,
+                    high_cv = high_cv,
+                    low_cv = low_cv)
+  rownames(res) &lt;- rownames(ENSG_cv_adj[[1]])
+  res
+})</code></pre>
+<p>*Top 200 in adjusted CV</p>
+<pre class="r"><code>genes &lt;- rownames(extreme_genes_200[[1]])
+library(gplots)
+venn( list(genes[extreme_genes_200[[1]]$high_cv],
+            genes[extreme_genes_200[[2]]$high_cv],
+            genes[extreme_genes_200[[3]]$high_cv] ) )</code></pre>
+<p><img src="figure/cv-adjusted-profile.Rmd/unnamed-chunk-13-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>*Bottom 200 in adjusted CV</p>
+<pre class="r"><code>genes &lt;- rownames(extreme_genes_200[[1]])
+library(gplots)
+venn( list(genes[extreme_genes_200[[1]]$low_cv],
+            genes[extreme_genes_200[[2]]$low_cv],
+            genes[extreme_genes_200[[3]]$low_cv] ) )</code></pre>
+<p><img src="figure/cv-adjusted-profile.Rmd/unnamed-chunk-14-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>*Top 200 in mean</p>
+<pre class="r"><code>genes &lt;- rownames(extreme_genes_200[[1]])
+library(gplots)
+venn( list(genes[extreme_genes_200[[1]]$high_mean],
+            genes[extreme_genes_200[[2]]$high_mean],
+            genes[extreme_genes_200[[3]]$high_mean] ) )</code></pre>
+<p><img src="figure/cv-adjusted-profile.Rmd/unnamed-chunk-15-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>*Extreme genes as in top/bottom 500</p>
+<pre class="r"><code>extreme_genes_500 &lt;- lapply(ENSG_cv_adj, function(xx) {
+  low_mean &lt;- rank(xx$mean) &lt; 500
+  high_mean &lt;- rank(xx$mean) &gt; (length(xx$mean) - 500)
+  low_cv &lt;-  rank(xx$log10cv2_adj) &lt; 500
+  high_cv &lt;- rank(xx$log10cv2_adj) &gt; (length(xx$log10cv2_adj) - 500)
+  res &lt;- data.frame(high_mean = high_mean,
+                    low_mean = low_mean,
+                    high_cv = high_cv,
+                    low_cv = low_cv)
+  rownames(res) &lt;- rownames(ENSG_cv_adj[[1]])
+  res
+})</code></pre>
+<p>*Top 500 in adjusted CV</p>
+<pre class="r"><code>genes &lt;- rownames(extreme_genes_500[[1]])
+library(gplots)
+venn( list(genes[extreme_genes_500[[1]]$high_cv],
+            genes[extreme_genes_500[[2]]$high_cv],
+            genes[extreme_genes_500[[3]]$high_cv] ) )</code></pre>
+<p><img src="figure/cv-adjusted-profile.Rmd/unnamed-chunk-17-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>*Bottom 200 in adjusted CV</p>
+<pre class="r"><code>genes &lt;- rownames(extreme_genes_500[[1]])
+library(gplots)
+venn( list(genes[extreme_genes_500[[1]]$low_cv],
+            genes[extreme_genes_500[[2]]$low_cv],
+            genes[extreme_genes_500[[3]]$low_cv] ) )</code></pre>
+<p><img src="figure/cv-adjusted-profile.Rmd/unnamed-chunk-18-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>*Top 200 in mean</p>
+<pre class="r"><code>genes &lt;- rownames(extreme_genes_500[[1]])
+library(gplots)
+venn( list(genes[extreme_genes_500[[1]]$high_mean],
+            genes[extreme_genes_500[[2]]$high_mean],
+            genes[extreme_genes_500[[3]]$high_mean] ) )</code></pre>
+<p><img src="figure/cv-adjusted-profile.Rmd/unnamed-chunk-19-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>*Bottom 200 in mean</p>
+<pre class="r"><code>genes &lt;- rownames(extreme_genes_500[[1]])
+library(gplots)
+venn( list(genes[extreme_genes_500[[1]]$low_mean],
+            genes[extreme_genes_500[[2]]$low_mean],
+            genes[extreme_genes_500[[3]]$low_mean] ) )</code></pre>
+<p><img src="figure/cv-adjusted-profile.Rmd/unnamed-chunk-20-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+</div>
+<div id="gene-ranks-plot" class="section level2">
+<h2>Gene ranks plot</h2>
+<p>*Top 50 in adjusted CV</p>
+<pre class="r"><code>ggplot(do.call(rbind, ENSG_cv_adj),
+       aes(x = log10(mean), y = log10cv2_adj)) +
+  geom_point(aes(col = group), cex = .8) + facet_wrap( ~ group) +
+  ggtitle(&quot;Adj-CV top 50, NA19098&quot;) + 
+  geom_point(data = subset(do.call(rbind, ENSG_cv_adj), extreme_genes_50[[1]]$high_cv), 
+             colour = &quot;grey20&quot;)</code></pre>
+<p><img src="figure/cv-adjusted-profile.Rmd/unnamed-chunk-21-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(do.call(rbind, ENSG_cv_adj),
+       aes(x = log10(mean), y = log10cv2_adj)) +
+  geom_point(aes(col = group), cex = .8) + facet_wrap( ~ group) +
+  ggtitle(&quot;Adj-CV top 50, NA19101&quot;) + 
+  geom_point(data = subset(do.call(rbind, ENSG_cv_adj), extreme_genes_50[[2]]$high_cv), 
+             colour = &quot;grey20&quot;)</code></pre>
+<p><img src="figure/cv-adjusted-profile.Rmd/unnamed-chunk-21-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(do.call(rbind, ENSG_cv_adj),
+       aes(x = log10(mean), y = log10cv2_adj)) +
+  geom_point(aes(col = group), cex = .8) + facet_wrap( ~ group) +
+  ggtitle(&quot;Adj-CV top 50, NA19239&quot;) + 
+  geom_point(data = subset(do.call(rbind, ENSG_cv_adj), extreme_genes_50[[3]]$high_cv), 
+             colour = &quot;grey20&quot;)</code></pre>
+<p><img src="figure/cv-adjusted-profile.Rmd/unnamed-chunk-21-3.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>*Top 200 in adjusted CV</p>
+<pre class="r"><code>ggplot(do.call(rbind, ENSG_cv_adj),
+       aes(x = log10(mean), y = log10cv2_adj)) +
+  geom_point(aes(col = group), cex = .8) + facet_wrap( ~ group) +
+  ggtitle(&quot;Adj-CV top 50, NA19098&quot;) + 
+  geom_point(data = subset(do.call(rbind, ENSG_cv_adj), extreme_genes_200[[1]]$high_cv), 
+             colour = &quot;grey20&quot;)</code></pre>
+<p><img src="figure/cv-adjusted-profile.Rmd/unnamed-chunk-22-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(do.call(rbind, ENSG_cv_adj),
+       aes(x = log10(mean), y = log10cv2_adj)) +
+  geom_point(aes(col = group), cex = .8) + facet_wrap( ~ group) +
+  ggtitle(&quot;Adj-CV top 50, NA19101&quot;) + 
+  geom_point(data = subset(do.call(rbind, ENSG_cv_adj), extreme_genes_200[[2]]$high_cv), 
+             colour = &quot;grey20&quot;)</code></pre>
+<p><img src="figure/cv-adjusted-profile.Rmd/unnamed-chunk-22-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(do.call(rbind, ENSG_cv_adj),
+       aes(x = log10(mean), y = log10cv2_adj)) +
+  geom_point(aes(col = group), cex = .8) + facet_wrap( ~ group) +
+  ggtitle(&quot;Adj-CV top 50, NA19239&quot;) + 
+  geom_point(data = subset(do.call(rbind, ENSG_cv_adj), extreme_genes_200[[3]]$high_cv), 
+             colour = &quot;grey20&quot;)</code></pre>
+<p><img src="figure/cv-adjusted-profile.Rmd/unnamed-chunk-22-3.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>*Bottom 50 in adjusted CV</p>
+<pre class="r"><code>ggplot(do.call(rbind, ENSG_cv_adj),
+       aes(x = log10(mean), y = log10cv2_adj)) +
+  geom_point(aes(col = group), cex = .8) + facet_wrap( ~ group) +
+  ggtitle(&quot;Adj-CV top 50, NA19098&quot;) + 
+  geom_point(data = subset(do.call(rbind, ENSG_cv_adj), extreme_genes_50[[1]]$low_cv), 
+             colour = &quot;grey20&quot;)</code></pre>
+<p><img src="figure/cv-adjusted-profile.Rmd/unnamed-chunk-23-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(do.call(rbind, ENSG_cv_adj),
+       aes(x = log10(mean), y = log10cv2_adj)) +
+  geom_point(aes(col = group), cex = .8) + facet_wrap( ~ group) +
+  ggtitle(&quot;Adj-CV top 50, NA19101&quot;) + 
+  geom_point(data = subset(do.call(rbind, ENSG_cv_adj), extreme_genes_50[[2]]$low_cv), 
+             colour = &quot;grey20&quot;)</code></pre>
+<p><img src="figure/cv-adjusted-profile.Rmd/unnamed-chunk-23-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(do.call(rbind, ENSG_cv_adj),
+       aes(x = log10(mean), y = log10cv2_adj)) +
+  geom_point(aes(col = group), cex = .8) + facet_wrap( ~ group) +
+  ggtitle(&quot;Adj-CV top 50, NA19239&quot;) + 
+  geom_point(data = subset(do.call(rbind, ENSG_cv_adj), extreme_genes_50[[3]]$low_cv), 
+             colour = &quot;grey20&quot;)</code></pre>
+<p><img src="figure/cv-adjusted-profile.Rmd/unnamed-chunk-23-3.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>*Bottom 200 in adjusted CV</p>
+<pre class="r"><code>ggplot(do.call(rbind, ENSG_cv_adj),
+       aes(x = log10(mean), y = log10cv2_adj)) +
+  geom_point(aes(col = group), cex = .8) + facet_wrap( ~ group) +
+  ggtitle(&quot;Adj-CV top 50, NA19098&quot;) + 
+  geom_point(data = subset(do.call(rbind, ENSG_cv_adj), extreme_genes_200[[1]]$low_cv), 
+             colour = &quot;grey20&quot;)</code></pre>
+<p><img src="figure/cv-adjusted-profile.Rmd/unnamed-chunk-24-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(do.call(rbind, ENSG_cv_adj),
+       aes(x = log10(mean), y = log10cv2_adj)) +
+  geom_point(aes(col = group), cex = .8) + facet_wrap( ~ group) +
+  ggtitle(&quot;Adj-CV top 50, NA19101&quot;) + 
+  geom_point(data = subset(do.call(rbind, ENSG_cv_adj), extreme_genes_200[[2]]$low_cv), 
+             colour = &quot;grey20&quot;)</code></pre>
+<p><img src="figure/cv-adjusted-profile.Rmd/unnamed-chunk-24-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(do.call(rbind, ENSG_cv_adj),
+       aes(x = log10(mean), y = log10cv2_adj)) +
+  geom_point(aes(col = group), cex = .8) + facet_wrap( ~ group) +
+  ggtitle(&quot;Adj-CV top 50, NA19239&quot;) + 
+  geom_point(data = subset(do.call(rbind, ENSG_cv_adj), extreme_genes_200[[3]]$low_cv), 
+             colour = &quot;grey20&quot;)</code></pre>
+<p><img src="figure/cv-adjusted-profile.Rmd/unnamed-chunk-24-3.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="cell-cycle" class="section level2">
+<h2>Cell cycle</h2>
+<p>*Import cell-cycle gene list</p>
+<pre class="r"><code>cellcycle_genes &lt;- read.table(&quot;../data/cellcyclegenes.txt&quot;, sep = &quot;\t&quot;,
+                              header = TRUE, stringsAsFactors = FALSE)
+str(cellcycle_genes)</code></pre>
+<pre><code>&#39;data.frame&#39;:   151 obs. of  5 variables:
+ $ G1.S: chr  &quot;ENSG00000102977&quot; &quot;ENSG00000119640&quot; &quot;ENSG00000154734&quot; &quot;ENSG00000088448&quot; ...
+ $ S   : chr  &quot;ENSG00000114770&quot; &quot;ENSG00000144827&quot; &quot;ENSG00000180071&quot; &quot;ENSG00000105011&quot; ...
+ $ G2.M: chr  &quot;ENSG00000011426&quot; &quot;ENSG00000065000&quot; &quot;ENSG00000213390&quot; &quot;ENSG00000122644&quot; ...
+ $ M   : chr  &quot;ENSG00000135541&quot; &quot;ENSG00000135334&quot; &quot;ENSG00000154945&quot; &quot;ENSG00000011426&quot; ...
+ $ M.G1: chr  &quot;ENSG00000173744&quot; &quot;ENSG00000160216&quot; &quot;ENSG00000170776&quot; &quot;ENSG00000218624&quot; ...</code></pre>
+<pre class="r"><code>genes &lt;- rownames(extreme_genes_50[[1]])
+ii_cellcycle_genes &lt;- lapply(1:3, function(per_individual) {
+  genes %in% unlist(cellcycle_genes)
+})
+names(ii_cellcycle_genes) &lt;- names(extreme_genes_50)
+ii_cellcycle_genes &lt;- do.call(c, ii_cellcycle_genes)</code></pre>
+<pre class="r"><code>ggplot(do.call(rbind, ENSG_cv_adj),
+       aes(x = log10(mean), y = log10cv2_adj)) +
+  geom_point(aes(col = group), cex = 1.2) + facet_wrap( ~ group) +
+  ggtitle(&quot;Cellcycle genes&quot;) + 
+  geom_point(data = subset(do.call(rbind, ENSG_cv_adj), 
+                           ii_cellcycle_genes), 
+             colour = &quot;grey20&quot;, cex = 1.2)</code></pre>
+<p><img src="figure/cv-adjusted-profile.Rmd/unnamed-chunk-27-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="pluripotent-genes" class="section level2">
+<h2>Pluripotent genes</h2>
+<p>*Import pluripotent gene list</p>
+<pre class="r"><code>pluripotent_genes &lt;- read.table(&quot;../data/pluripotency-genes.txt&quot;, sep = &quot;\t&quot;,
+                              header = TRUE, stringsAsFactors = FALSE)
+str(pluripotent_genes)</code></pre>
+<pre><code>&#39;data.frame&#39;:   27 obs. of  4 variables:
+ $ From     : chr  &quot;GDF3&quot; &quot;ZFP42&quot; &quot;NR6A1&quot; &quot;SOX2&quot; ...
+ $ To       : chr  &quot;ENSG00000184344&quot; &quot;ENSG00000179059&quot; &quot;ENSG00000148200&quot; &quot;ENSG00000181449&quot; ...
+ $ Species  : chr  &quot;Homo sapiens&quot; &quot;Homo sapiens&quot; &quot;Homo sapiens&quot; &quot;Homo sapiens&quot; ...
+ $ Gene.Name: chr  &quot;growth differentiation factor 3&quot; &quot;zinc finger protein 42 homolog (mouse)&quot; &quot;nuclear receptor subfamily 6, group A, member 1&quot; &quot;SRY (sex determining region Y)-box 2&quot; ...</code></pre>
+<pre class="r"><code>genes &lt;- rownames(extreme_genes_50[[1]])
+ii_pluripotent_genes &lt;- lapply(1:3, function(per_individual) {
+  genes %in% unlist(pluripotent_genes$To)
+})
+names(ii_pluripotent_genes) &lt;- names(extreme_genes_50)
+ii_pluripotent_genes &lt;- do.call(c, ii_pluripotent_genes)</code></pre>
+<pre class="r"><code>ggplot(do.call(rbind, ENSG_cv_adj),
+       aes(x = log10(mean), y = log10cv2_adj)) +
+  geom_point(aes(col = group), cex = 1.2) + facet_wrap( ~ group) +
+  ggtitle(&quot;Pluripotent genes&quot;) + 
+  geom_point(data = subset(do.call(rbind, ENSG_cv_adj), 
+                           ii_pluripotent_genes), 
+             colour = &quot;grey20&quot;, cex = 1.2)</code></pre>
+<p><img src="figure/cv-adjusted-profile.Rmd/unnamed-chunk-30-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] grid      stats     graphics  grDevices utils     datasets  methods  
+[8] base     
+
+other attached packages:
+[1] gplots_2.17.0    zoo_1.7-12       ggplot2_1.0.1    edgeR_3.10.2    
+[5] limma_3.24.9     dplyr_0.4.2      data.table_1.9.4 knitr_1.10.5    
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.12.0        formatR_1.2        plyr_1.8.3        
+ [4] bitops_1.0-6       tools_3.2.0        digest_0.6.8      
+ [7] evaluate_0.7       gtable_0.1.2       lattice_0.20-31   
+[10] DBI_0.3.1          yaml_2.1.13        parallel_3.2.0    
+[13] proto_0.3-10       httr_0.6.1         stringr_1.0.0     
+[16] caTools_1.17.1     gtools_3.5.0       R6_2.1.1          
+[19] rmarkdown_0.6.1    gdata_2.16.1       reshape2_1.4.1    
+[22] magrittr_1.5       scales_0.2.4       htmltools_0.2.6   
+[25] MASS_7.3-40        assertthat_0.1     colorspace_1.2-6  
+[28] labeling_0.3       KernSmooth_2.23-14 stringi_0.4-1     
+[31] RCurl_1.95-4.6     munsell_0.4.2      chron_2.3-45      </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+
+</body>
+</html>

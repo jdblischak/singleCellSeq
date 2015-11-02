@@ -8,11 +8,11 @@
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
 <meta name="generator" content="pandoc" />
 
-<meta name="author" content="Joyce Hsiao" />
+<meta name="author" content="Joyce Hsiao &amp; PoYuan Tung" />
 
 <meta name="date" content="2015-10-23" />
 
-<title>Batch effects of conversion rates</title>
+<title>Batch effects of conversion efficiency</title>
 
 <script src="libs/jquery-1.11.0/jquery.min.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -119,8 +119,8 @@ img {
 </div><!--/.navbar -->
 
 <div id="header">
-<h1 class="title">Batch effects of conversion rates</h1>
-<h4 class="author"><em>Joyce Hsiao</em></h4>
+<h1 class="title">Batch effects of conversion efficiency</h1>
+<h4 class="author"><em>Joyce Hsiao &amp; PoYuan Tung</em></h4>
 <h4 class="date"><em>2015-10-23</em></h4>
 </div>
 
@@ -128,7 +128,7 @@ img {
 <ul>
 <li><a href="#objective">Objective</a></li>
 <li><a href="#input">Input</a></li>
-<li><a href="#reads-to-molecule-conversion-rate">Reads to molecule conversion rate</a></li>
+<li><a href="#reads-to-molecule-conversion-efficiency">Reads to molecule conversion efficiency</a></li>
 <li><a href="#compare-variances-of-conversion-rates-between-batches">Compare variances of conversion rates between batches</a><ul>
 <li><a href="#ensg">ENSG</a></li>
 <li><a href="#ercc">ERCC</a></li>
@@ -138,11 +138,12 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-10-26</p>
-<p><strong>Code version:</strong> 972bb96e0aaadb60cece679ebd7f25f961a30df5</p>
+<p><strong>Last updated:</strong> 2015-11-02</p>
+<p><strong>Code version:</strong> f451005068e895a03d350370f836e185da999881</p>
 <div id="objective" class="section level2">
 <h2>Objective</h2>
-<p>Compute conversion rates of each cell using the filerted set of cells. Compare conversion rates between batches: is there an individual effect or batch effect of coversion rate?</p>
+<p>Compute conversion efficiency of each cell using the filerted set of cells. Compare conversion efficiency between batches: is there an individual effect or batch effect of coversion efficiency?</p>
+<p>The definition of conversion efficiency: total molecule counts/ total read counts</p>
 <p>Note that we will remove the NA19098 batch 2 in the following analyses.</p>
 <p>We will use analysis of variance to test whether conversion rates are significantly different between individuals. Results below are described at an alpha level of .05.</p>
 </div>
@@ -155,62 +156,69 @@ theme_set(theme_bw(base_size = 16))
 library(&quot;edgeR&quot;)
 source(&quot;functions.R&quot;)</code></pre>
 <p>Input annotation.</p>
-<pre class="r"><code>anno_filter &lt;- read.table(&quot;../data/annotation-filter.txt&quot;, header = TRUE,
+<pre class="r"><code>anno &lt;- read.table(&quot;../data/annotation.txt&quot;, header = TRUE,
                    stringsAsFactors = FALSE)
-select_individual &lt;- anno_filter$batch != &quot;NA19098.r2&quot;
-anno_filter &lt;- anno_filter[select_individual, ]
-head(anno_filter)</code></pre>
+head(anno)</code></pre>
 <pre><code>  individual replicate well      batch      sample_id
 1    NA19098        r1  A01 NA19098.r1 NA19098.r1.A01
 2    NA19098        r1  A02 NA19098.r1 NA19098.r1.A02
-3    NA19098        r1  A04 NA19098.r1 NA19098.r1.A04
-4    NA19098        r1  A05 NA19098.r1 NA19098.r1.A05
-5    NA19098        r1  A06 NA19098.r1 NA19098.r1.A06
-6    NA19098        r1  A07 NA19098.r1 NA19098.r1.A07</code></pre>
+3    NA19098        r1  A03 NA19098.r1 NA19098.r1.A03
+4    NA19098        r1  A04 NA19098.r1 NA19098.r1.A04
+5    NA19098        r1  A05 NA19098.r1 NA19098.r1.A05
+6    NA19098        r1  A06 NA19098.r1 NA19098.r1.A06</code></pre>
 <p>Input read counts.</p>
-<pre class="r"><code>reads_filter &lt;- read.table(&quot;../data/reads-filter.txt&quot;, header = TRUE,
-                    stringsAsFactors = FALSE)
-reads_filter &lt;- reads_filter[ , select_individual]
-reads_ENSG &lt;- reads_filter[grep(&quot;ERCC&quot;, rownames(reads_filter), invert = TRUE), ]
-reads_ERCC &lt;- reads_filter[grep(&quot;ERCC&quot;, rownames(reads_filter), invert = FALSE), ]</code></pre>
+<pre class="r"><code>reads &lt;- read.table(&quot;../data/reads.txt&quot;, header = TRUE,
+                    stringsAsFactors = FALSE)</code></pre>
 <p>Input molecule counts.</p>
-<pre class="r"><code>molecules_filter &lt;- read.table(&quot;../data/molecules-filter.txt&quot;, header = TRUE,
-                    stringsAsFactors = FALSE)
-molecules_filter &lt;- molecules_filter[ , select_individual]
-molecules_ENSG &lt;- molecules_filter[grep(&quot;ERCC&quot;, rownames(molecules_filter), invert = TRUE), ]
-molecules_ERCC &lt;- molecules_filter[grep(&quot;ERCC&quot;, rownames(molecules_filter), invert = FALSE), ]</code></pre>
+<pre class="r"><code>molecules &lt;- read.table(&quot;../data/molecules.txt&quot;, header = TRUE,
+                    stringsAsFactors = FALSE)</code></pre>
+<p>Input list of quality single cells.</p>
+<pre class="r"><code>quality_single_cells &lt;- scan(&quot;../data/quality-single-cells.txt&quot;,
+                             what = &quot;character&quot;)</code></pre>
+<p>Keep only the single cells that passed the <a href="qc-filter-ipsc.html">QC filters</a>.</p>
+<pre class="r"><code>reads &lt;- reads[, colnames(reads) %in% quality_single_cells]
+molecules &lt;- molecules[, colnames(molecules) %in% quality_single_cells]
+anno &lt;- anno[anno$sample_id %in% quality_single_cells, ]
+stopifnot(dim(reads) == dim(molecules),
+          nrow(anno) == ncol(reads))</code></pre>
+<p>Seperate ERCC and endogenous genes</p>
+<pre class="r"><code>reads_ENSG &lt;- reads[grep(&quot;ERCC&quot;, rownames(reads), invert = TRUE), ]
+reads_ERCC &lt;- reads[grep(&quot;ERCC&quot;, rownames(reads), invert = FALSE), ]
+
+molecules_ENSG &lt;- molecules[grep(&quot;ERCC&quot;, rownames(molecules), invert = TRUE), ]
+molecules_ERCC &lt;- molecules[grep(&quot;ERCC&quot;, rownames(molecules), invert = FALSE), ]</code></pre>
 </div>
-<div id="reads-to-molecule-conversion-rate" class="section level2">
-<h2>Reads to molecule conversion rate</h2>
+<div id="reads-to-molecule-conversion-efficiency" class="section level2">
+<h2>Reads to molecule conversion efficiency</h2>
 <pre class="r"><code>total_counts_ERCC &lt;- data.frame(total_reads = colSums(reads_ERCC),
                                 total_molecules = colSums(molecules_ERCC))
 total_counts_ERCC$conversion &lt;- with(total_counts_ERCC,
-                                     total_reads/total_molecules)
+                                     total_molecules/total_reads)
 summary(total_counts_ERCC)</code></pre>
-<pre><code>  total_reads    total_molecules   conversion    
- Min.   :  899   Min.   :178.0   Min.   : 4.534  
- 1st Qu.: 7554   1st Qu.:319.0   1st Qu.:21.252  
- Median : 9627   Median :363.0   Median :25.587  
- Mean   : 9777   Mean   :383.7   Mean   :25.411  
- 3rd Qu.:11660   3rd Qu.:449.0   3rd Qu.:29.903  
- Max.   :24537   Max.   :707.0   Max.   :43.263  </code></pre>
+<pre><code>  total_reads    total_molecules   conversion     
+ Min.   :10720   Min.   : 839    Min.   :0.02450  
+ 1st Qu.:31360   1st Qu.:1274    1st Qu.:0.03362  
+ Median :38633   Median :1416    Median :0.03865  
+ Mean   :39422   Mean   :1534    Mean   :0.04092  
+ 3rd Qu.:46087   3rd Qu.:1814    3rd Qu.:0.04630  
+ Max.   :87655   Max.   :2687    Max.   :0.09229  </code></pre>
 <pre class="r"><code>total_counts_ENSG &lt;- data.frame(total_reads = colSums(reads_ENSG),
                                 total_molecules = colSums(molecules_ENSG))
 total_counts_ENSG$conversion &lt;- with(total_counts_ENSG,
-                                     total_reads/total_molecules)
+                                     total_molecules/total_reads)
 summary(total_counts_ENSG)</code></pre>
-<pre><code>  total_reads      total_molecules    conversion   
- Min.   : 736808   Min.   : 45254   Min.   : 7.27  
- 1st Qu.:1805278   1st Qu.: 79457   1st Qu.:19.87  
- Median :2211026   Median : 93452   Median :23.00  
- Mean   :2157945   Mean   : 95740   Mean   :22.80  
- 3rd Qu.:2506770   3rd Qu.:111337   3rd Qu.:25.76  
- Max.   :3870013   Max.   :195757   Max.   :33.50  </code></pre>
+<pre><code>  total_reads      total_molecules    conversion     
+ Min.   : 848534   Min.   : 43633   Min.   :0.02964  
+ 1st Qu.:2025098   1st Qu.: 86051   1st Qu.:0.03789  
+ Median :2477972   Median :102548   Median :0.04249  
+ Mean   :2417688   Mean   :103274   Mean   :0.04348  
+ 3rd Qu.:2818138   3rd Qu.:120559   3rd Qu.:0.04824  
+ Max.   :4169020   Max.   :173620   Max.   :0.07259  </code></pre>
 <pre class="r"><code>## create a color palette with one color per individual and different shades for repplicates
 great_color &lt;- c(&quot;#CC3300&quot;, &quot;#FF9966&quot;, &quot;#006633&quot;, &quot;#009900&quot;, &quot;#99FF99&quot;, &quot;#3366FF&quot;, &quot;#6699FF&quot;, &quot;#66CCFF&quot;)
 
 depth_plot_ensg &lt;- ggplot(data.frame(total_counts_ENSG,
-                  batch = anno_filter$batch), 
+                  batch = anno$batch), 
        aes(x = total_reads/10^6, y = total_molecules/10^3, col = factor(batch))) +
   geom_point() +
   scale_color_manual(values = great_color) +
@@ -221,7 +229,7 @@ depth_plot_ensg &lt;- ggplot(data.frame(total_counts_ENSG,
 depth_plot_ensg</code></pre>
 <p><img src="figure/compare-reads-v-molecules-per-batch-test.Rmd/plot-convertion-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>depth_plot_ercc &lt;- ggplot(data.frame(total_counts_ERCC,
-                  batch = anno_filter$batch), 
+                  batch = anno$batch), 
        aes(x = total_reads/10^6, y = total_molecules/10^3, col = factor(batch))) +
   geom_point() +
   scale_color_manual(values = great_color) +
@@ -237,13 +245,13 @@ depth_plot_ercc</code></pre>
 <div id="ensg" class="section level3">
 <h3>ENSG</h3>
 <pre class="r"><code>convertion_ensg &lt;- ggplot(data.frame(total_counts_ENSG,
-                  batch = anno_filter$batch),
+                  batch = anno$batch),
        aes(x = factor(batch), y = conversion,
            fill = factor(batch)), height = 600, width = 2000) +
 geom_violin(alpha = .5) + 
 geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
   scale_fill_manual(values = great_color) +
-labs(x = &quot;batch&quot;, y = &quot;conversion rate&quot;, title = &quot;ENSG batch effect of conversion rate&quot;) +
+labs(x = &quot;batch&quot;, y = &quot;conversion efficiency&quot;, title = &quot;ENSG batch effect of conversion efficiency&quot;) +
 theme(axis.text.x = element_text(hjust=1, angle = 45))
 
 convertion_ensg</code></pre>
@@ -253,9 +261,9 @@ convertion_ensg</code></pre>
 <p><br /><span class="math"><em>Y</em><sub><em>i</em><em>j</em><em>k</em></sub> = <em>μ</em><sub><em>i</em></sub> + <em>b</em><sub><em>i</em><em>j</em></sub> + <em>ϵ</em><sub><em>i</em><em>j</em><em>k</em></sub></span><br /></p>
 <p>where <span class="math"><em>i</em> = 1, 2, 3</span>, <span class="math"><em>j</em> = 1, 2, 3</span>, and <span class="math"><em>k</em> = 1, 2, …, <em>n</em><sub><em>i</em><em>j</em></sub></span>.</p>
 <pre class="r"><code>df_ENSG &lt;- data.frame(total_counts_ENSG,
-                      individual = factor(anno_filter$individual),
-                      replicate = factor(anno_filter$replicate),
-                      batch = factor(anno_filter$batch))
+                      individual = factor(anno$individual),
+                      replicate = factor(anno$replicate),
+                      batch = factor(anno$batch))
 
 library(lme4)</code></pre>
 <pre><code>Loading required package: Matrix</code></pre>
@@ -269,126 +277,61 @@ anova(lmer_ENSG_null, lmer_ENSG_full)</code></pre>
 Models:
 lmer_ENSG_null: conversion ~ 1 + (1 | individual:replicate)
 lmer_ENSG_full: conversion ~ individual + (1 | individual:replicate)
-               Df    AIC    BIC  logLik deviance  Chisq Chi Df Pr(&gt;Chisq)
-lmer_ENSG_null  3 2814.6 2827.6 -1404.3   2808.6                         
-lmer_ENSG_full  5 2800.8 2822.4 -1395.4   2790.8 17.843      2  0.0001335
+               Df     AIC     BIC logLik deviance  Chisq Chi Df Pr(&gt;Chisq)
+lmer_ENSG_null  3 -4597.8 -4584.8 2301.9  -4603.8                         
+lmer_ENSG_full  5 -4612.0 -4590.3 2311.0  -4622.0 18.248      2   0.000109
                   
 lmer_ENSG_null    
 lmer_ENSG_full ***
 ---
 Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
 <p>*For each individual, between batches.</p>
-<pre class="r"><code>for (i in 1:length(unique(anno_filter$individual))) {
-  print(unique(anno_filter$individual)[i])
-  select_individual &lt;- with(anno_filter, individual == unique(individual)[i])
+<pre class="r"><code>for (i in 1:length(unique(anno$individual))) {
+  print(unique(anno$individual)[i])
+  select_individual &lt;- with(anno, individual == unique(individual)[i])
   print( summary(aov(conversion ~ batch, 
                      data = df_ENSG[select_individual, ]) ) )
 }</code></pre>
 <pre><code>[1] &quot;NA19098&quot;
-             Df Sum Sq Mean Sq F value   Pr(&gt;F)    
-batch         1   92.3   92.32   19.24 2.25e-05 ***
-Residuals   140  671.8    4.80                     
+             Df   Sum Sq   Mean Sq F value   Pr(&gt;F)    
+batch         1 0.000538 0.0005379   20.43 1.31e-05 ***
+Residuals   140 0.003686 0.0000263                     
 ---
 Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
 [1] &quot;NA19101&quot;
-             Df Sum Sq Mean Sq F value Pr(&gt;F)  
-batch         2   92.1   46.05   3.383  0.036 *
-Residuals   194 2640.9   13.61                 
+             Df    Sum Sq   Mean Sq F value  Pr(&gt;F)   
+batch         2 0.0001421 7.107e-05   5.764 0.00369 **
+Residuals   198 0.0024412 1.233e-05                   
 ---
 Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
 [1] &quot;NA19239&quot;
-             Df Sum Sq Mean Sq F value   Pr(&gt;F)    
-batch         2  285.2  142.58   26.69 4.15e-11 ***
-Residuals   221 1180.7    5.34                     
+             Df   Sum Sq  Mean Sq F value Pr(&gt;F)    
+batch         2 0.001286 0.000643    45.9 &lt;2e-16 ***
+Residuals   222 0.003110 0.000014                   
 ---
 Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
-<pre class="r"><code># 19098
-summary(lm(conversion ~ replicate, data = df_ENSG[df_ENSG$individual== &quot;NA19098&quot;,]))</code></pre>
-<pre><code>
-Call:
-lm(formula = conversion ~ replicate, data = df_ENSG[df_ENSG$individual == 
-    &quot;NA19098&quot;, ])
-
-Residuals:
-     Min       1Q   Median       3Q      Max 
--11.1261  -0.8933   0.1579   0.9474   7.4636 
-
-Coefficients:
-            Estimate Std. Error t value Pr(&gt;|t|)    
-(Intercept)  18.3957     0.2376  77.420  &lt; 2e-16 ***
-replicater3   1.6449     0.3750   4.386 2.25e-05 ***
----
-Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
-
-Residual standard error: 2.191 on 140 degrees of freedom
-Multiple R-squared:  0.1208,    Adjusted R-squared:  0.1145 
-F-statistic: 19.24 on 1 and 140 DF,  p-value: 2.254e-05</code></pre>
-<pre class="r"><code># 19101
-summary(lm(conversion ~ replicate, data = df_ENSG[df_ENSG$individual== &quot;NA19101&quot;,]))</code></pre>
-<pre><code>
-Call:
-lm(formula = conversion ~ replicate, data = df_ENSG[df_ENSG$individual == 
-    &quot;NA19101&quot;, ])
-
-Residuals:
-     Min       1Q   Median       3Q      Max 
--18.1985  -1.0879   0.7014   2.0830   7.8304 
-
-Coefficients:
-            Estimate Std. Error t value Pr(&gt;|t|)    
-(Intercept)  25.6677     0.4205  61.046   &lt;2e-16 ***
-replicater2   1.1481     0.6140   1.870    0.063 .  
-replicater3  -0.5399     0.6622  -0.815    0.416    
----
-Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
-
-Residual standard error: 3.69 on 194 degrees of freedom
-Multiple R-squared:  0.0337,    Adjusted R-squared:  0.02374 
-F-statistic: 3.383 on 2 and 194 DF,  p-value: 0.03596</code></pre>
-<pre class="r"><code># 19239
-summary(lm(conversion ~ replicate, data = df_ENSG[df_ENSG$individual== &quot;NA19239&quot;,]))</code></pre>
-<pre><code>
-Call:
-lm(formula = conversion ~ replicate, data = df_ENSG[df_ENSG$individual == 
-    &quot;NA19239&quot;, ])
-
-Residuals:
-     Min       1Q   Median       3Q      Max 
--13.7961  -0.9565   0.4097   1.4549   5.0439 
-
-Coefficients:
-            Estimate Std. Error t value Pr(&gt;|t|)    
-(Intercept)  20.9429     0.2617  80.021  &lt; 2e-16 ***
-replicater2   1.8286     0.3850   4.749 3.67e-06 ***
-replicater3   2.6393     0.3690   7.153 1.23e-11 ***
----
-Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
-
-Residual standard error: 2.311 on 221 degrees of freedom
-Multiple R-squared:  0.1945,    Adjusted R-squared:  0.1872 
-F-statistic: 26.69 on 2 and 221 DF,  p-value: 4.154e-11</code></pre>
 </div>
 <div id="ercc" class="section level3">
 <h3>ERCC</h3>
 <pre class="r"><code>convertion_ercc &lt;- ggplot(data.frame(total_counts_ERCC,
-                  batch = anno_filter$batch),
+                  batch = anno$batch),
        aes(x = factor(batch), y = conversion,
            fill = factor(batch)), height = 600, width = 2000) +
 geom_violin(alpha = .5) + 
 geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
   scale_fill_manual(values = great_color) +
-labs(x = &quot;batch&quot;, y = &quot;conversion rate&quot;, title = &quot;ERCC batch effect of conversion rate&quot;) +
+labs(x = &quot;batch&quot;, y = &quot;conversion efficiency&quot;, title = &quot;ERCC batch effect of conversion efficiency&quot;) +
 theme(axis.text.x = element_text(hjust=1, angle = 45))
 
 convertion_ercc</code></pre>
-<p><img src="figure/compare-reads-v-molecules-per-batch-test.Rmd/unnamed-chunk-5-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="figure/compare-reads-v-molecules-per-batch-test.Rmd/unnamed-chunk-4-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <ul>
 <li>Between individuals</li>
 </ul>
 <pre class="r"><code>df_ERCC &lt;- data.frame(total_counts_ERCC,
-                      individual = factor(anno_filter$individual),
-                      replicate = factor(anno_filter$replicate),
-                      batch = factor(anno_filter$batch))
+                      individual = factor(anno$individual),
+                      replicate = factor(anno$replicate),
+                      batch = factor(anno$batch))
 
 library(lme4)
 lmer_ERCC_full &lt;- lmer(conversion ~ individual + (1| individual:replicate), 
@@ -401,109 +344,43 @@ anova(lmer_ERCC_null, lmer_ERCC_full)</code></pre>
 Models:
 lmer_ERCC_null: conversion ~ 1 + (1 | individual:replicate)
 lmer_ERCC_full: conversion ~ individual + (1 | individual:replicate)
-               Df    AIC    BIC  logLik deviance  Chisq Chi Df Pr(&gt;Chisq)
-lmer_ERCC_null  3 3556.1 3569.1 -1775.0   3550.1                         
-lmer_ERCC_full  5 3543.4 3565.1 -1766.7   3533.4 16.662      2  0.0002409
+               Df     AIC     BIC logLik deviance  Chisq Chi Df Pr(&gt;Chisq)
+lmer_ERCC_null  3 -3764.3 -3751.2 1885.1  -3770.3                         
+lmer_ERCC_full  5 -3780.5 -3758.8 1895.2  -3790.5 20.229      2   4.05e-05
                   
 lmer_ERCC_null    
 lmer_ERCC_full ***
 ---
 Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
 <p>*For each individual, between batches.</p>
-<pre class="r"><code>for (i in 1:length(unique(anno_filter$individual))) {
-  print(unique(anno_filter$individual)[i])
-  select_individual &lt;- with(anno_filter, individual == unique(individual)[i])
+<pre class="r"><code>for (i in 1:length(unique(anno$individual))) {
+  print(unique(anno$individual)[i])
+  select_individual &lt;- with(anno, individual == unique(individual)[i])
   print( summary(aov(conversion ~ batch, 
                      data = df_ERCC[select_individual, ]) ) )
 }</code></pre>
 <pre><code>[1] &quot;NA19098&quot;
-             Df Sum Sq Mean Sq F value Pr(&gt;F)
-batch         1     10    9.87   0.394  0.531
-Residuals   140   3507   25.05               
+             Df   Sum Sq   Mean Sq F value Pr(&gt;F)
+batch         1 0.000015 1.534e-05   0.128  0.721
+Residuals   140 0.016821 1.202e-04               
 [1] &quot;NA19101&quot;
-             Df Sum Sq Mean Sq F value Pr(&gt;F)
-batch         2    145   72.48   1.925  0.149
-Residuals   194   7303   37.65               
+             Df   Sum Sq   Mean Sq F value Pr(&gt;F)
+batch         2 0.000060 2.987e-05   0.869  0.421
+Residuals   198 0.006805 3.437e-05               
 [1] &quot;NA19239&quot;
-             Df Sum Sq Mean Sq F value   Pr(&gt;F)    
-batch         2    691   345.4   12.36 8.14e-06 ***
-Residuals   221   6174    27.9                     
+             Df   Sum Sq   Mean Sq F value   Pr(&gt;F)    
+batch         2 0.001791 0.0008956   11.57 1.66e-05 ***
+Residuals   222 0.017189 0.0000774                     
 ---
 Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
-<pre class="r"><code># 19098
-summary(lm(conversion ~ replicate, data = df_ERCC[df_ERCC$individual== &quot;NA19098&quot;,]))</code></pre>
-<pre><code>
-Call:
-lm(formula = conversion ~ replicate, data = df_ERCC[df_ERCC$individual == 
-    &quot;NA19098&quot;, ])
-
-Residuals:
-     Min       1Q   Median       3Q      Max 
--16.1854  -3.2298   0.1855   2.9322  15.3908 
-
-Coefficients:
-            Estimate Std. Error t value Pr(&gt;|t|)    
-(Intercept)  21.3964     0.5429  39.413   &lt;2e-16 ***
-replicater3  -0.5378     0.8569  -0.628    0.531    
----
-Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
-
-Residual standard error: 5.005 on 140 degrees of freedom
-Multiple R-squared:  0.002806,  Adjusted R-squared:  -0.004316 
-F-statistic: 0.394 on 1 and 140 DF,  p-value: 0.5312</code></pre>
-<pre class="r"><code># 19101
-summary(lm(conversion ~ replicate, data = df_ERCC[df_ERCC$individual== &quot;NA19101&quot;,]))</code></pre>
-<pre><code>
-Call:
-lm(formula = conversion ~ replicate, data = df_ERCC[df_ERCC$individual == 
-    &quot;NA19101&quot;, ])
-
-Residuals:
-     Min       1Q   Median       3Q      Max 
--23.8485  -2.8927   0.9391   3.8309  15.2357 
-
-Coefficients:
-            Estimate Std. Error t value Pr(&gt;|t|)    
-(Intercept)  29.4077     0.6992  42.057   &lt;2e-16 ***
-replicater2   0.8317     1.0211   0.815    0.416    
-replicater3  -1.3804     1.1013  -1.253    0.212    
----
-Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
-
-Residual standard error: 6.136 on 194 degrees of freedom
-Multiple R-squared:  0.01946,   Adjusted R-squared:  0.009352 
-F-statistic: 1.925 on 2 and 194 DF,  p-value: 0.1486</code></pre>
-<pre class="r"><code># 19239
-summary(lm(conversion ~ replicate, data = df_ERCC[df_ERCC$individual== &quot;NA19239&quot;,]))</code></pre>
-<pre><code>
-Call:
-lm(formula = conversion ~ replicate, data = df_ERCC[df_ERCC$individual == 
-    &quot;NA19239&quot;, ])
-
-Residuals:
-     Min       1Q   Median       3Q      Max 
--19.0096  -3.6807   0.0515   3.7629  13.0844 
-
-Coefficients:
-            Estimate Std. Error t value Pr(&gt;|t|)    
-(Intercept)  22.8673     0.5985  38.209  &lt; 2e-16 ***
-replicater2   1.1424     0.8804   1.298    0.196    
-replicater3   4.0759     0.8437   4.831 2.54e-06 ***
----
-Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
-
-Residual standard error: 5.286 on 221 degrees of freedom
-Multiple R-squared:  0.1006,    Adjusted R-squared:  0.09249 
-F-statistic: 12.36 on 2 and 221 DF,  p-value: 8.138e-06</code></pre>
 </div>
 </div>
 <div id="summary-plots" class="section level2">
 <h2>Summary plots</h2>
-<pre class="r"><code>library(gridExtra)</code></pre>
-<pre><code>Loading required package: grid</code></pre>
-<pre class="r"><code>grid.arrange(
+<pre class="r"><code>library(gridExtra)
+grid.arrange(
   ggplot(data.frame(total_counts_ERCC,
-                    batch = anno_filter$batch),
+                    batch = anno$batch),
          aes(x = factor(batch), y = conversion,
              fill = factor(batch)), height = 600, width = 2000) +
   geom_violin(alpha = .5) + 
@@ -513,7 +390,7 @@ F-statistic: 12.36 on 2 and 221 DF,  p-value: 8.138e-06</code></pre>
   theme(axis.text.x = element_text(hjust=1, angle = 45))
   ,
   ggplot(data.frame(total_counts_ENSG,
-                    batch = anno_filter$batch),
+                    batch = anno$batch),
          aes(x = factor(batch), y = conversion,
              fill = factor(batch)), height = 600, width = 2000) +
   geom_violin(alpha = .5) + 
@@ -523,7 +400,7 @@ F-statistic: 12.36 on 2 and 221 DF,  p-value: 8.138e-06</code></pre>
   theme(axis.text.x = element_text(hjust=1, angle = 45)),
   ncol = 2
 )</code></pre>
-<p><img src="figure/compare-reads-v-molecules-per-batch-test.Rmd/unnamed-chunk-9-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
+<p><img src="figure/compare-reads-v-molecules-per-batch-test.Rmd/unnamed-chunk-7-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>theme_set(theme_bw(base_size = 8))
 plot_grid(depth_plot_ensg + theme(legend.position = &quot;none&quot;), 
           convertion_ensg + theme(legend.position = &quot;none&quot;),
@@ -547,11 +424,10 @@ locale:
 [11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
 
 attached base packages:
-[1] grid      stats     graphics  grDevices utils     datasets  methods  
-[8] base     
+[1] stats     graphics  grDevices utils     datasets  methods   base     
 
 other attached packages:
-[1] gridExtra_0.9.1 lme4_1.1-10     Matrix_1.2-1    edgeR_3.10.2   
+[1] gridExtra_2.0.0 lme4_1.1-10     Matrix_1.2-1    edgeR_3.10.2   
 [5] limma_3.24.9    cowplot_0.3.1   ggplot2_1.0.1   dplyr_0.4.2    
 [9] knitr_1.10.5   
 
@@ -560,10 +436,11 @@ loaded via a namespace (and not attached):
  [5] bitops_1.0-6     tools_3.2.0      digest_0.6.8     evaluate_0.7    
  [9] gtable_0.1.2     nlme_3.1-120     lattice_0.20-31  DBI_0.3.1       
 [13] yaml_2.1.13      parallel_3.2.0   proto_0.3-10     httr_0.6.1      
-[17] stringr_1.0.0    R6_2.1.1         rmarkdown_0.6.1  minqa_1.2.4     
-[21] reshape2_1.4.1   magrittr_1.5     scales_0.2.4     htmltools_0.2.6 
-[25] MASS_7.3-40      splines_3.2.0    assertthat_0.1   colorspace_1.2-6
-[29] labeling_0.3     stringi_0.4-1    RCurl_1.95-4.6   munsell_0.4.2   </code></pre>
+[17] stringr_1.0.0    grid_3.2.0       R6_2.1.1         rmarkdown_0.6.1 
+[21] minqa_1.2.4      reshape2_1.4.1   magrittr_1.5     scales_0.2.4    
+[25] htmltools_0.2.6  MASS_7.3-40      splines_3.2.0    assertthat_0.1  
+[29] colorspace_1.2-6 labeling_0.3     stringi_0.4-1    RCurl_1.95-4.6  
+[33] munsell_0.4.2   </code></pre>
 </div>
 
 

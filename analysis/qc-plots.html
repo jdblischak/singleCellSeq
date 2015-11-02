@@ -135,8 +135,8 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-10-24</p>
-<p><strong>Code version:</strong> d99925d21498748ab56d2b7fc33447f186fe50ac</p>
+<p><strong>Last updated:</strong> 2015-11-02</p>
+<p><strong>Code version:</strong> f451005068e895a03d350370f836e185da999881</p>
 <div id="input" class="section level2">
 <h2>Input</h2>
 <pre class="r"><code>library(&quot;biomaRt&quot;)
@@ -180,7 +180,7 @@ head(anno)</code></pre>
 <p>Input list of quality single cells.</p>
 <pre class="r"><code>quality_single_cells &lt;- scan(&quot;../data/quality-single-cells.txt&quot;,
                              what = &quot;character&quot;)</code></pre>
-<p>Keep only the single cells that passed the <a href="qc-cell-ipsc.html">QC filters</a>.</p>
+<p>Keep only the single cells that passed the <a href="qc-filter-ipsc.html">QC filters</a>.</p>
 <pre class="r"><code>reads &lt;- reads[, colnames(reads) %in% quality_single_cells]
 molecules &lt;- molecules[, colnames(molecules) %in% quality_single_cells]
 anno &lt;- anno[anno$sample_id %in% quality_single_cells, ]
@@ -198,8 +198,8 @@ distribution &lt;- data.frame(reads_mean, molecules_mean)
 ## correlation between reads and molecules
 cor(distribution)</code></pre>
 <pre><code>               reads_mean molecules_mean
-reads_mean      1.0000000      0.9708677
-molecules_mean  0.9708677      1.0000000</code></pre>
+reads_mean      1.0000000      0.9712009
+molecules_mean  0.9712009      1.0000000</code></pre>
 <pre class="r"><code>## select ERCC
 distribution$type &lt;- ifelse(grepl(&quot;ERCC&quot;, rownames(distribution)), &quot;ERCC&quot;, &quot;gene&quot;)
 
@@ -210,7 +210,7 @@ cbPalette &lt;- c(&quot;#0000FF&quot;, &quot;#999999&quot;, &quot;#990033&quot;,
 plot_mean_log &lt;- ggplot(distribution, aes(x = molecules_mean, y = reads_mean, col = type)) + 
   geom_point(size = 3, alpha = 0.5) +  
   scale_colour_manual(values=cbPalette) + 
-  labs(x = &quot;mean molecule&quot;, y = &quot;mean reads&quot;, title = &quot;ERCC capture efficiency - log transformed&quot;) + 
+  labs(x = &quot;mean molecule&quot;, y = &quot;mean reads&quot;, title = &quot;Reads vs. Molecules - log scale&quot;) + 
   scale_x_log10() + 
   scale_y_log10()
 
@@ -219,7 +219,7 @@ plot_mean_log</code></pre>
 <pre class="r"><code>plot_mean &lt;- ggplot(distribution, aes(x = molecules_mean, y = reads_mean, col = type)) + 
   geom_point(size = 3, alpha = 0.5) +  
   scale_colour_manual(values=cbPalette) + 
-  labs(x = &quot;mean molecule&quot;, y = &quot;mean reads&quot;, title = &quot;ERCC capture efficiency&quot;) +
+  labs(x = &quot;mean molecule&quot;, y = &quot;mean reads&quot;, title = &quot;Reads vs. Molecules&quot;) +
   geom_smooth(method = &quot;lm&quot;)
 
 plot_mean</code></pre>
@@ -261,8 +261,8 @@ ercc_plot &lt;- as.data.frame(ercc_list, stringsAsFactors = FALSE)
 str(ercc_plot)</code></pre>
 <pre><code>&#39;data.frame&#39;:   50 obs. of  4 variables:
  $ id           : chr  &quot;ERCC-00130&quot; &quot;ERCC-00004&quot; &quot;ERCC-00136&quot; &quot;ERCC-00108&quot; ...
- $ observed_mean: num  481.073 87.391 31.49 21.566 0.325 ...
- $ observed_sem : num  14.1687 2.8826 1.1007 0.7198 0.0367 ...
+ $ observed_mean: num  430.368 77.572 27.699 19.259 0.278 ...
+ $ observed_sem : num  4.0635 0.8912 0.3991 0.3302 0.0332 ...
  $ expected     : num  4877.9 1219.5 304.9 152.4 76.2 ...</code></pre>
 <pre class="r"><code>p_efficiency &lt;- ggplot(ercc_plot, aes(x = expected, y = observed_mean)) +
   geom_point(col = &quot;red&quot;) +
@@ -276,21 +276,22 @@ p_efficiency</code></pre>
 <p><img src="figure/qc-plots.Rmd/ercc-capture-efficiency-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>p_efficiency_plot &lt;- p_efficiency + scale_x_log10() +
   scale_y_log10() +
-  labs(x = &quot;log10 Expected ERCC molecules&quot;,
-       y = &quot;log10 Observed ERCC molecules\n(mean +/- sem)&quot;,
-       title = &quot;ERCC capture efficiency - log transformed&quot;)
+  labs(x = &quot;Expected ERCC molecules&quot;,
+       y = &quot;Observed ERCC molecules\n(mean +/- sem)&quot;,
+       title = &quot;ERCC capture efficiency - log scale&quot;)
 
 p_efficiency_plot</code></pre>
 <p><img src="figure/qc-plots.Rmd/ercc-capture-efficiency-2.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 </div>
 <div id="qc-plots" class="section level2">
 <h2>QC plots</h2>
-<pre class="r"><code>plot_grid(plot_mean + theme(legend.position = &quot;none&quot;),
+<pre class="r"><code>theme_set(theme_bw(base_size = 10))
+plot_grid(plot_mean + theme(legend.position = &quot;none&quot;),
           plot_mean_log + theme(legend.position = &quot;none&quot;),
           p_efficiency + theme(legend.position = &quot;none&quot;),
           p_efficiency_plot + theme(legend.position = &quot;none&quot;),
           labels = LETTERS[1:4])</code></pre>
-<p><img src="figure/qc-plots.Rmd/plots-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="figure/qc-plots.Rmd/plots-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
 </div>
 <div id="session-information" class="section level2">
 <h2>Session information</h2>

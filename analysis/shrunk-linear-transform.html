@@ -133,8 +133,8 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-10-27</p>
-<p><strong>Code version:</strong> 2731e3da36a10c5f0f07801b2e0859caf7e4b05f</p>
+<p><strong>Last updated:</strong> 2015-11-02</p>
+<p><strong>Code version:</strong> f451005068e895a03d350370f836e185da999881</p>
 <pre class="r"><code>library(&quot;biomaRt&quot;)
 library(&quot;data.table&quot;)
 library(&quot;dplyr&quot;)
@@ -165,8 +165,8 @@ molecules_cpm_ercc=as.matrix(molecules_cpm_ercc)
 molecules_cpm = fread( &quot;../data/molecules-cpm.txt&quot;, header = TRUE,
                    stringsAsFactors = FALSE)</code></pre>
 <pre><code>
-Read 95.4% of 10483 rows
-Read 10483 rows and 579 (of 579) columns from 0.051 GB file in 00:00:03</code></pre>
+Read 94.7% of 10564 rows
+Read 10564 rows and 569 (of 569) columns from 0.050 GB file in 00:00:03</code></pre>
 <pre class="r"><code>setDF(molecules_cpm)
 rownames(molecules_cpm)=molecules_cpm$V1
 molecules_cpm$V1=NULL 
@@ -230,7 +230,8 @@ plotTransform(which.max(slope), main = &quot;Largest slope&quot;)</code></pre>
 </div>
 <div id="shrunk-linear-transformation" class="section level2">
 <h2>Shrunk linear transformation</h2>
-<p>Within each batch we fit the linear transformation jointly, shrinking using a learnt prior. This takes a little while (5 minutes-ish on my laptop).</p>
+<p>Within each batch we fit the linear transformation jointly, shrinking using a learnt prior. The per cell linear regression is <br /><span class="math"><em>y</em><sub><em>c</em><em>n</em></sub> = <em>β</em><sub><em>c</em></sub><em>x</em><sub><em>n</em><em>c</em></sub> + <em>μ</em><sub><em>c</em></sub> + <em>ϵ</em><sub><em>c</em><em>n</em></sub></span><br /> where <span class="math"><em>y</em><sub><em>c</em><em>n</em></sub></span> is the log cpm for ERCC <span class="math"><em>n</em></span> in cell <span class="math"><em>c</em></span>, <span class="math"><em>β</em></span> is the slope, <span class="math"><em>μ</em></span> is the intercept, and <br /><span class="math"><em>ϵ</em><sub><em>c</em><em>n</em></sub> ∼ <em>N</em>(0, <em>σ</em><sup>2</sup>)</span><br /> is noise (currently I assume the same noise variance in each cell). For notational convenience let <span class="math">$\tilde{\beta}_c = [ \beta_c, \mu_c ]^T$</span> and <span class="math">$\tilde{x}_{nc} = [ x_{nc}, 1 ]^T$</span>, then <br /><span class="math">$$ y_{cn} = \tilde{\beta}_c \tilde{x}_{nc} + \epsilon_{cn} $$</span><br /> We put a bivariate normal prior on <span class="math">$\tilde{\beta}$</span>, i.e. <br /><span class="math">$$ \tilde{\beta} \sim N( m, S )$$</span><br /> where <span class="math"><em>m</em></span> is the shared transformation coefficients across the batch, and the covariance matrix <span class="math"><em>S</em></span> controls the spread around that mean. Integrating over <span class="math"><em>ϵ</em></span> and <span class="math">$\tilde{\beta}$</span> we have <br /><span class="math">$$ y_{c:} \sim N(m^T \tilde{x}_{:c}, \tilde{x}_{:c}^T S \tilde{x}_{:c} + \sigma^2 I_{N\times N} ) $$</span><br /> Numerical optimization (LBFGS) is used to get maximum likelihood estimates of <span class="math"><em>m</em></span>, <span class="math"><em>S</em></span> and <span class="math"><em>σ</em><sup>2</sup></span>. Given these estimates, the posterior expectation of <span class="math">$\tilde{\beta}_c$</span> is <br /><span class="math">$$ \mathbb{E}[\beta_c] = ( S^{-1} +  \tilde{x}_{:c}^T \tilde{x}_{:c}/\sigma^2 )^{-1} (S^{-1}m + \tilde{x}_{:c}^T y_{cn}/\sigma^2) $$</span><br /> This expected value is then used to linearly transform the real gene cpm values, as before.</p>
+<p>This takes a little while (5 minutes-ish on my laptop).</p>
 <pre class="r"><code>intercept_shrunk &lt;- numeric(length = ncol(molecules_cpm))
 slope_shrunk &lt;- numeric(length = ncol(molecules_cpm))
 batches &lt;- unique(anno_filter$batch)
@@ -332,9 +333,9 @@ qplot(batch_over_explained$transform$prop_batch,batch_over_explained$shrunk_tran
 <p><img src="figure/shrunk-linear-transform.Rmd/proportion_explained_wo_shrinkage-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <p>Comparing the raw and two transforms we see the residual variances are raw &gt; transform &gt; shrunk_transform.</p>
 <pre class="r"><code>ggplot( do.call(rbind,variance_components), aes(1-residual,col=method)) + geom_density() + xlab(&quot;proportion variance explained&quot;) + xlim(0,.5)+ scale_colour_manual(values=cbPalette)</code></pre>
-<pre><code>Warning: Removed 26 rows containing non-finite values (stat_density).</code></pre>
-<pre><code>Warning: Removed 11 rows containing non-finite values (stat_density).</code></pre>
-<pre><code>Warning: Removed 34 rows containing non-finite values (stat_density).</code></pre>
+<pre><code>Warning: Removed 25 rows containing non-finite values (stat_density).</code></pre>
+<pre><code>Warning: Removed 15 rows containing non-finite values (stat_density).</code></pre>
+<pre><code>Warning: Removed 25 rows containing non-finite values (stat_density).</code></pre>
 <p><img src="figure/shrunk-linear-transform.Rmd/proportion_explained_hist-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <p>Including shrinkage makes the batch effect look stronger, but this is really because without including shrinkage the residual variance is higher</p>
 <pre class="r"><code>qplot(-log10(anova_pvals$transform$batch), -log10(anova_pvals$shrunk_transform$batch)) + geom_point() + geom_abline(intercept=0,slope=1) + stat_smooth() </code></pre>
