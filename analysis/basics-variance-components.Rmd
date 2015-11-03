@@ -1,0 +1,153 @@
+---
+title: "BASiCS - 40,000 iterations"
+date: 2015-08-10
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+```
+
+
+```bash
+echo "Rscript -e 'library(rmarkdown); render(\"basics.Rmd\")'" | \
+  qsub -l h_vmem=32g -cwd -V -j y -o ~/log/ -N basics
+```
+
+```{r packages}
+library("data.table")
+source("functions.R")
+library("ggplot2")
+theme_set(theme_bw(base_size = 16))
+library("tidyr")
+library("edgeR")
+require(doMC)
+```
+
+##  Input
+
+Below is the description of the data from the BASiCS vignette, interspersed with my code to load the data.
+
+> The input dataset for BASiCS must contain the following 3 elements:
+
+> * `Counts`: a matrix of raw expression counts with dimensions $q$ times $n$. First $q_0$ rows must correspond to biological genes. Last $q-q_0$ rows must correspond to technical spike-in genes.
+
+Input annotation.
+
+```{r input-annotation}
+anno_filter <- read.table("../data/annotation-filter.txt", header = TRUE,
+                          stringsAsFactors = FALSE)
+```
+
+Input molecule counts.
+
+```{r input-molecule-counts}
+molecules_cpm = read.table("../data/molecules-cpm.txt", header = TRUE, stringsAsFactors = FALSE)
+molecules_cpm_trans = read.table("../data/molecules-cpm-trans.txt", header = TRUE, stringsAsFactors = FALSE)
+molecules_cpm_trans_shrunk = read.table("../data/molecules-cpm-trans-shrunk.txt", header = TRUE, stringsAsFactors = FALSE)
+```
+
+Remove outlier batch NA19098.r2.
+
+```{r remove-NA19098.r2}
+tokeep=anno_filter$batch != "NA19098.r2"
+anno_filter <- anno_filter[tokeep, ]
+molecules_cpm <- molecules_cpm[,tokeep]
+molecules_cpm_trans <- molecules_cpm_trans[,tokeep]
+molecules_cpm_trans_shrunk <- molecules_cpm_trans_shrunk[,tokeep]
+```
+
+## Denoised data
+
+Remove technical noise
+
+```{r denoised-counts}
+denoised <- read.table("../data/basics-denoised.txt", header = TRUE,
+                          stringsAsFactors = FALSE)
+denoised_rates <- read.table("../data/basics-denoised-rates.txt", header = TRUE,
+                          stringsAsFactors = FALSE)
+```
+
+### PCA - BASiCS Denoised
+
+Both the raw and the cpm versions of the BASiCS denoised data appear similar to the result with the [non-normalized cpm data](#pca-non-normalized-cpm).
+This does not change substantially when increasing the iterations from a few thousands to a few tens of thousands.
+
+```{r basics-cpm}
+denoised_cpm <- cpm(denoised, log = TRUE,
+                    lib.size = colSums(denoised) *
+                               calcNormFactors(denoised, method = "TMM"))
+denoised_rates_cpm <- cpm(denoised_rates, log = TRUE,
+                    lib.size = colSums(denoised_rates) *
+                               calcNormFactors(denoised_rates, method = "TMM"))
+```
+
+```{r pca-basics}
+
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+
+make_pca_plot <- function(x) {
+  pca_res <- run_pca(x)
+  plot_pca(pca_res$PCs, explained = pca_res$explained,
+           metadata = anno_filter, color = "individual",
+           shape = "replicate") 
+  }
+
+cpm_mats <- list( raw=molecules_cpm, transform=molecules_cpm_trans, shrunk_transform=molecules_cpm_trans_shrunk, basics_denoised_rates=log(denoised_rates), basics_denoised_cpm=denoised_cpm, basics_denoised_rates_cpm=denoised_rates_cpm)
+
+cpm_mats <- lapply(cpm_mats, as.matrix)
+common_genes=Reduce(intersect, lapply(cpm_mats,rownames))
+common_cells=Reduce(intersect, lapply(cpm_mats,colnames))
+cpm_mats <- lapply(cpm_mats, function(g) g[common_genes,common_cells])
+rownames(anno_filter)=anno_filter$sample_id
+anno_filter=anno_filter[common_cells,]
+
+foreach(n=names(cpm_mats)) %do%
+  { make_pca_plot(cpm_mats[[n]]) + labs(title=paste0("PCA (",n,")")) + scale_colour_manual(values=cbPalette) }
+```
+
+### ANOVA
+
+Next look at whether the batch and individual effects are more or less significant under the different normalization approaches using a per gene ANOVA. 
+
+```{r run-anovas}
+anovas <- lapply(cpm_mats, function(x) {
+  foreach(i=1:nrow(x)) %dopar% anova(lm(x[i,] ~ anno_filter$replicate + anno_filter$individual))
+  })
+
+variance_components <- lapply( as.list(names(anovas)), function(name) {
+  ss=do.call(rbind,foreach(a=anovas[[name]]) %do% a[,"Sum Sq"] )
+  colnames(ss)=c("batch","individual","residual")
+  data.frame(sweep(ss,1,rowSums(ss),"/"), method=name)
+} )
+names(variance_components)=names(cpm_mats)
+
+batch_over_explained <- lapply( as.list(names(anovas)), function(name) {
+  ss=do.call(rbind,foreach(a=anovas[[name]]) %do% a[1:2,"Sum Sq"] )
+  colnames(ss)=c("batch","individual")
+  data.frame( prop_batch=ss[,"batch"] / rowSums(ss), method=name)
+} )
+names(batch_over_explained) = names(cpm_mats)
+
+```
+
+The histogram of the proportion explained by batch. 
+```{r batch_over_explained_density}
+ggplot( do.call(rbind,batch_over_explained), aes(prop_batch,col=method)) + geom_density() + xlab("variance_batch / (variance_batch + variance_individual)")
+```
+
+And the proportion of variance explained by either batch or individual. 
+```{r proportion_explained_hist}
+ggplot( do.call(rbind,variance_components), aes(1-residual,col=method)) + geom_density() + xlab("proportion variance explained") + xlim(0,.5)+ scale_colour_manual(values=cbPalette)
+```
+
+Any version of the BASICS normalized data behaves basically (sic) like the raw data. 
+
+## Session information
+
+```{r info}
+sessionInfo()
+```
