@@ -118,9 +118,30 @@ The results of our analyses are viewable at [https://jdblischak.github.io/single
 [repo]: https://github.com/jdblischak/singleCellSeq
 [site]: https://jdblischak.github.io/singleCellSeq/analysis
 
-### Mixed effect model to correct for batch effect
 
-### Analysis of cell-cell variability within and between individual
+### Remove batch effect due to within-plate cell-to-cell gene expression variability
+
+Our last normalization step adjusts the transformed log2 gene expression levels for cell-to-cell correlation within each C1 plate. The algorithm follows a method developed for adjusting within-replicate correlation in microarray data [@Smyth2005]. We assumed for each gene $g$, cells that belong to the same batch, say $j$, are correlated, for batches $j = 1, \dots, 8$. The batch effect is specific to the plates and independent of biological variation across cell lines. We fit a linear mixed model for each gene $g$ including a fixed effect of individual cell lines and a random effect for within-batch variance attributed to cell-to-cell correlation: 
+
+$$ y_{g,ijk} = \mu_{g} + \alpha_{g,i} + b_{g,j} + \epsilon_{g,ijk}, $$
+
+where $y_{g,ijk}$ is gene $g$ log2 counts-per-million (cpm) for 
+individual $i$, batch $j$, and cell $k$, $i = NA19098, NA19101, NA19239$,
+$j = 1, \dots, 8$, and $k = 1, \dots, n_{g,j}$, $n_{g,j}$ denotes the number of cells in batch $j$; $\mu_g$ describes gene-specific expression level across cells, $\alpha_{g,i}$ quantifies individual specific gene expression level across replicates, $b_{g,j}$ models within-batch variability due to cell-to-cell correlation, and $\epsilon_{g,ijk}$ describes residual expression variation. We assumed $b_{g,j}$ follows a normal distribution with $b_{g,j} \sim N(0, \sigma^2_{g,b})$ for $j = 1, \dots, 8$, and $\epsilon_{g,ijk} \sim N(0, \sigma^2_\epsilon_{g})$. 
+
+We applied the gls.series function of the limma package [@limma] and computed the batch-corrected expression as:
+
+$$ \hat{y}_{g,ijk} = \hat{\mu}_g + \hat{\alpha}_{g,i} + \hat{\epsilon}_{g,ijk}, $$
+
+where $\hat{mu}_{g}$, $\hat{\alpha}_{g,i}$, and $\hat{\epsilon}_{g,ijk}$ are computed while accounting for batch-specific cell-to-cell variance in gene expression. Finally, we assumed the batch-specific cell-to-cell variance is constant across genes and can be estimated with the mean of gene-specific cell-to-cell variances.  
+
+
+
+### Analysis of cell-to-cell variability within and between individual
+
+For coefficents of variation across genes, remove mean dependency following the algorithm described in Kolodziejczyk et al., 2015 [Kolodziejczyk2015].
+
+
 
 ### Description of technologies used
 
