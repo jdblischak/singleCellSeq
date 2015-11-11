@@ -1,7 +1,7 @@
 ---
-title: "Per gene statistical comparison of CVs"
+title: "Per gene statistical comparison of CVs: permutation-based p-values"
 author: "Joyce Hsiao"
-date: 2015-11-01
+date: 2015-11-04
 ---
 
 **Last updated:** `r Sys.Date()`
@@ -19,12 +19,7 @@ opts_chunk$set(message = FALSE, warning = FALSE, eval = TRUE,
 
 ## Objective
 
-Quantify statistical significance of individual differences between adjusted CVs. Here we focus on bootstrapped CIs of individual CVs.
-
-For cells within each individual cell line, we constructed 1000 samples with replacment and then computed 95% confidence interval. This method resulted in narrow confidence interval. 
-
-Since sample size is a major factor in the width of confidence interval, instead of the entire set of cells for each individual, we sample a subset of the cells with replacement; the number of the sample is set to be 90, close to the number of wells on each C1 plate.
-
+Quantify statistical significance of individual differences between adjusted CVs. Here we will focus on empirical p-values computed from permuted samples.
 
 ## Set up
 
@@ -122,51 +117,32 @@ df_norm$squared_dev <- rowSums( ( df_norm - rowMedians(as.matrix(df_norm)) )^2 )
 df_norm$abs_dev <- rowSums(abs( df_norm - rowMedians(as.matrix(df_norm)) ))
 ```
 
-## Bootstrapped CIs
-
-### Sample size is the orignal sample size
+## Permtued p-vals
 
 ```{r}
-load("rda/cv-adjusted-statistical-test-bootstrap/bootstrap-ci.rda")
-rownames(abs_dev_pnt) <- rownames(molecules_ENSG)
-rownames(squared_dev_pnt) <- rownames(molecules_ENSG)
-
-head(cbind(squared_dev_pnt, df_norm$squared_dev))
-head(cbind(abs_dev_pnt, df_norm$abs_dev))
-```
-
-Genes with SSM outside of the 95% boostrapped CI are consistented to be statistical significant.
-
-```{r}
-sig_gene_CI_squared_dev <- df_norm$squared_dev > squared_dev_pnt[, 2] | df_norm$squared_dev < squared_dev_pnt[, 1]
-
-sig_gene_CI_abs_dev <- df_norm$abs_dev > abs_dev_pnt[, 2] | df_norm$abs_dev < abs_dev_pnt[, 1]
+load("rda/cv-adjusted-statistical-test-permute/permuted-pval.rda")
+permuted_pval$squared_dev[which.max(df_norm$squared_dev)]
+permuted_pval$squared_dev[order(df_norm$squared_dev, decreasing = T)[3]]
 ```
 
 
 ```{r}
-library(broman)
-crayon <- brocolors("crayon")
-ggplot(data.frame(index = c(mean(sig_gene_CI_squared_dev == 0), 
-                            mean(sig_gene_CI_squared_dev == 1),
-                            mean(sig_gene_CI_abs_dev == 0 ),
-                            mean(sig_gene_CI_abs_dev == 1) ),
-                  type = factor( rep(c(0,1), times = 2),
-                                 labels = c("Non-sig.", "Sig.") ),
-                  metric = rep( c("SSM", "SAM"), each = 2)  ),
-      aes(x = metric, y = 100*index, fill = type) ) +
-  geom_bar(stat = "identity", colour = "white") +
-  scale_fill_manual(values = c("orange", "grey80")) +
-  ylab("Percent") + xlab("Similarity metric") 
+library(ggplot2)
+ggplot(data.frame(pvals = permuted_pval$squared_dev,
+                  dist = df_norm$squared_dev),
+       aes(x = dist, y = -log10(pvals))) +
+  geom_point()
 ```
 
-
-Correspondance of SSM and SAM results.
-
 ```{r}
-library(gplots)
-venn(list(SSM = rownames(molecules_ENSG)[which(sig_gene_CI_squared_dev)],
-          SAM = rownames(molecules_ENSG)[which(sig_gene_CI_abs_dev)] ))
+ggplot(do.call(rbind, ENSG_cv_adj),
+       aes(x = log10(mean), y = log10cv2_adj)) +
+  geom_point(aes(col = group), cex = .8) + facet_wrap( ~ group) +
+  ggtitle("p < .001") + 
+  geom_point(data = subset(do.call(rbind, ENSG_cv_adj), 
+                           c(1:NROW(ENSG_cv_adj[[1]])) %in% 
+                             order(df_norm$squared_dev, decreasing = TRUE )[1]), 
+             colour = "grey20")
 ```
 
 

@@ -145,8 +145,9 @@ mcmc_summary <- Summary(mcmc_output)
 The unexplained technical noise is similar across batches.
 
 ```{r batch-theta}
-colnames(chain_theta) <- unique(anno_filter$batch)
-theta_long <- gather(as.data.frame(chain_theta), key = "batch", value = "theta")
+colnames(mcmc_output@theta) <- unique(anno_filter$batch)
+theta_long <- gather(as.data.frame(mcmc_output@theta), key = "batch",
+                     value = "theta")
 ggplot(theta_long, aes(x = batch, y = theta)) +
   geom_boxplot() +
   theme(axis.text.x = element_text(angle = 90)) +
@@ -230,10 +231,15 @@ phi_s
 
 ## Denoised data
 
-Remove technical noise (i.e. normalize using the ERCC spike-ins).
+Remove technical noise (i.e. normalize using the ERCC spike-ins). This takes a long time! 
 
 ```{r denoised-counts}
 denoised = BASiCS_DenoisedCounts(Data = basics_data, Chain = mcmc_output)
+write.table(denoised, "../data/basics-denoised.txt", quote = FALSE,
+            sep = "\t", col.names = NA)
+denoised_rates = BASiCS_DenoisedRates(Data = basics_data, Chain = mcmc_output)
+write.table(denoised_rates, "../data/basics-denoised-rates.txt", quote = FALSE,
+            sep = "\t", col.names = NA)
 ```
 
 ### PCA - BASiCS Denoised
