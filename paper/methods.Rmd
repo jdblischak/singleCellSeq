@@ -60,20 +60,20 @@ To obtain gene-level counts, we separately assigned reads or molecules to protei
 
 We performed multiple quality control analyses to detect and remove low quality cells.
 In an initial analysis investigating the percentage of reads mapping to the ERCC spike-in controls, we observed that replicate 2 of individual 19098 was a clear outlier.
-It appeared that too much ERCC spike-in mix was added to this batch, which violated the assumption that the same amount of ERCC molecules was added to eac h cell.
-Thus we removed this batch from all of our analyses.
+It appeared that too much ERCC spike-in mix was added to this batch, which violated the assumption that the same amount of ERCC molecules was added to each cell.
+Thus, we removed this batch from all of our analyses.
 
-Next we maintained high quality single cells that passed the following criteria:
+Next, we maintained high quality single cells that passed the following criteria:
 
 *  Only one cell observed per well
-*  At least X mapped reads
-*  Less than X% unmapped reads
-*  Less than X% ERCC reads
-*  More than X genes with at least one read
+*  At least 1581061 mapped reads
+*  Less than 37.46674 % unmapped reads
+*  Less than 3.223869 % ERCC reads
+*  More than 6875.6 genes with at least one read
 
-We chose these criteria based on the distribution of these metrics in the empty wells.
-Lastly, we observed that some wells classified as containing only one cell clustered with multi-cell wells when plotting the number of gene molecules versus the concentration of the samples.
-We also removed these misidentified wells.
+We chose these criteria based on the distribution of these metrics in the empty wells (95 %).
+Lastly, we observed that some wells classified as containing only one cell clustered with multi-cell wells when plotting the number of gene molecules versus the concentration of the samples and also the read to molecule conversion efficiency, calculated by total molecule number devided by total read number, of endogenous genes versus that of ERCC. 
+We also removed these misidentified wells using linear discriminant analaysis.
 After filtering, we maintained `r nrow(anno_filter)` high quality single cells 
 (NA19098: `r sum(anno_filter$individual == "NA19098")`,
  NA19101: `r sum(anno_filter$individual == "NA19101")`,
@@ -81,7 +81,7 @@ After filtering, we maintained `r nrow(anno_filter)` high quality single cells
 
 The quality control analyses were performed using all Ensembl protein-coding genes with at least one observed read.
 Using the high quality single cells, we further removed genes with low expression levels for downstream analyses.
-We removed all genes with a mean log~2~ cpm less than 2.
+We removed all genes with a mean log~2~ cpm less than 2, which we further verified that the overall structure of detected genes remain the same.
 Thus we kept
 `r format(sum(grepl("ENSG", rownames(molecules_filter))), big.mark = ",")`
 endogenous genes and
@@ -107,6 +107,32 @@ For the bulk samples, we used read counts even though the reads contained UMIs.
 Because these samples contained RNA molecules from millions of cells, we could not assume that the 1,024 UMIs we added could accurately estimate the true number of molecules.
 We standardized them to log~2~ cpm.
 
+### Remove batch effect due to within-plate cell-to-cell gene expression variability
+
+Our last normalization step adjusts the transformed log2 gene expression levels for cell-to-cell correlation within each C1 plate. 
+The algorithm follows a method developed for adjusting within-replicate correlation in microarray data [@Smyth2005].
+We assumed that for each gene $g$, cells that belong to the same batch, say $j$, are correlated, for batches $j = 1, \dots, 8$. 
+The batch effect is specific to the plates and independent of biological variation across cell lines. 
+We then fit a linear mixed model for each gene $g$ including a fixed effect of individual cell lines and a random effect for within-batch variance attributed to cell-to-cell correlation: 
+
+$$ y_{g,ijk} = \mu_{g} + \alpha_{g,i} + b_{g,j} + \epsilon_{g,ijk}, $$
+
+where $y_{g,ijk}$ is gene $g$ log2 counts-per-million (cpm) for 
+individual $i$, batch $j$, and cell $k$, $i = NA19098, NA19101, NA19239$,
+$j = 1, \dots, 8$, and $k = 1, \dots, n_{g,j}$, $n_{g,j}$ denotes the number of cells in batch $j$; $\mu_g$ describes gene-specific expression level across cells, $\alpha_{g,i}$ quantifies individual specific gene expression level across replicates, $b_{g,j}$ models within-batch variability due to cell-to-cell correlation, and $\epsilon_{g,ijk}$ describes residual expression variation. 
+We assumed $b_{g,j}$ follows a normal distribution with $b_{g,j} \sim N(0, \sigma^2_{g,b})$ for $j = 1, \dots, 8$, and $\epsilon_{g,ijk} \sim N(0, \sigma^2_\epsilon_{g})$. 
+
+Next, we applied the gls.series function of the limma package [@limma] and computed the batch-corrected expression as:
+
+$$ \hat{y}_{g,ijk} = \hat{\mu}_g + \hat{\alpha}_{g,i} + \hat{\epsilon}_{g,ijk}, $$
+
+where $\hat{mu}_{g}$, $\hat{\alpha}_{g,i}$, and $\hat{\epsilon}_{g,ijk}$ are computed while accounting for batch-specific cell-to-cell variance in gene expression. 
+Finally, we assumed the batch-specific cell-to-cell variance is constant across genes and can be estimated with the mean of gene-specific cell-to-cell variances.  
+
+### Analysis of cell-to-cell variability within and between individual
+
+For coefficents of variation across genes, remove mean dependency following the algorithm described in Kolodziejczyk et al., 2015 [Kolodziejczyk2015].
+
 ### Data and code availability
 
 The data have been deposited in NCBI's Gene Expression Omnibus [@Edgar2002] and are accessible through GEO Series accession number GSEXXXXX ([http://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSEXXXXX][geo]).
@@ -119,54 +145,8 @@ The results of our analyses are viewable at [https://jdblischak.github.io/single
 [site]: https://jdblischak.github.io/singleCellSeq/analysis
 
 
-### Remove batch effect due to within-plate cell-to-cell gene expression variability
-
-Our last normalization step adjusts the transformed log2 gene expression levels for cell-to-cell correlation within each C1 plate. The algorithm follows a method developed for adjusting within-replicate correlation in microarray data [@Smyth2005]. We assumed for each gene $g$, cells that belong to the same batch, say $j$, are correlated, for batches $j = 1, \dots, 8$. The batch effect is specific to the plates and independent of biological variation across cell lines. We fit a linear mixed model for each gene $g$ including a fixed effect of individual cell lines and a random effect for within-batch variance attributed to cell-to-cell correlation: 
-
-$$ y_{g,ijk} = \mu_{g} + \alpha_{g,i} + b_{g,j} + \epsilon_{g,ijk}, $$
-
-where $y_{g,ijk}$ is gene $g$ log2 counts-per-million (cpm) for 
-individual $i$, batch $j$, and cell $k$, $i = NA19098, NA19101, NA19239$,
-$j = 1, \dots, 8$, and $k = 1, \dots, n_{g,j}$, $n_{g,j}$ denotes the number of cells in batch $j$; $\mu_g$ describes gene-specific expression level across cells, $\alpha_{g,i}$ quantifies individual specific gene expression level across replicates, $b_{g,j}$ models within-batch variability due to cell-to-cell correlation, and $\epsilon_{g,ijk}$ describes residual expression variation. We assumed $b_{g,j}$ follows a normal distribution with $b_{g,j} \sim N(0, \sigma^2_{g,b})$ for $j = 1, \dots, 8$, and $\epsilon_{g,ijk} \sim N(0, \sigma^2_\epsilon_{g})$. 
-
-We applied the gls.series function of the limma package [@limma] and computed the batch-corrected expression as:
-
-$$ \hat{y}_{g,ijk} = \hat{\mu}_g + \hat{\alpha}_{g,i} + \hat{\epsilon}_{g,ijk}, $$
-
-where $\hat{mu}_{g}$, $\hat{\alpha}_{g,i}$, and $\hat{\epsilon}_{g,ijk}$ are computed while accounting for batch-specific cell-to-cell variance in gene expression. Finally, we assumed the batch-specific cell-to-cell variance is constant across genes and can be estimated with the mean of gene-specific cell-to-cell variances.  
-
-
-
-### Analysis of cell-to-cell variability within and between individual
-
-For coefficents of variation across genes, remove mean dependency following the algorithm described in Kolodziejczyk et al., 2015 [Kolodziejczyk2015].
-
-
-
-### Description of technologies used
-
-1. UMIs (unique molecular identifiers) were added to each RNA transcript during the reverse transcript step, which provides the power to calculate the absolute numbers of the transcripts. 5 random nucleotides (NNNNN) were used as UMIs. Therefore, there are 1024 different UMIs.
-
-2. ERCC spike-ins were added during the cell lysis step as the control.
-
-3. C1 fluidigm system is used to collect single cell 
 
 ![Adding unique molecular identifiers (UMIs).](../analysis/figure/material-and-method.Rmd/method.png) 
 
-### Preparation of single LCLs
-
-* cell line: 19239
-* sequencing data:
-  1. twocell: two cells were sequenced in one rapid lane (index failed)
-  2. 4 individual cells: each sequenced in 1 full flowcell lane, 2 made by in-house Tn2 and the other 2 by Epicentre
-  3. 96 cells: cells collected by 1 C1 plate. Due to financial limitation, only 24 indices were used. Each pool of 24 libraries were sequenced in 1 full flowcell lane. These and the 4 individual cells were sequenced on the same flowcell.
-
 ![Report of LCL sequencing experiments.](../analysis/figure/material-and-method.Rmd/LCL.png)  
   
-### Preparation of single iPSCs
-
-* cell line: 19239, 19101, 19098
-* number of replicates: 3, each collected using different passages of cells
-* bulk vs single cell: each C1 plate has a bulk sample collected at the same time using the same chemicals freshly prepared each time. For the bulk, 2 libraries using 2 different indices were generated from each bulk sample (total 2*9=18). All the bulk samples were pooled as the "bulk" for sequencing. For single cell, the 96 libraries from the same C1 plates were pooled and sequenced.
-* sequencing: SE 100+8. total 31 lanes are required. therefore, 4 full flowcells were used. "bulk" sample was sequenced in 1 lane of all 4 flowcells. samples were balanced as much as possible. 
-* goals: ~ 3 millions good reads per cell and average 200,000 molecules per cell 
