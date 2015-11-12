@@ -144,8 +144,8 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-10-19</p>
-<p><strong>Code version:</strong> 6b16d0b7ff64ea109c14ebf7c3bfbb5cebd4dec8</p>
+<p><strong>Last updated:</strong> 2015-11-11</p>
+<p><strong>Code version:</strong> 48d0a820ba6794f241a52faf89a214afeba506d9</p>
 <p>We analyzed our single cell data with <a href="https://github.com/catavallejos/BASiCS">BASiCS</a> developed by <a href="http://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1004333">Vallejos et al., 2015</a>. The results shown here are from a model fit with 40,000 iterations. This time we also modeled the unexplained technical noise with a separate parameter (theta) per batch.</p>
 <p>BASiCS and its dependency, RcppArmadillo, were able to be installed on the cluster using a new version of gcc. Since this took a long time to run, it was submitted via the following:</p>
 <pre class="bash"><code>echo &quot;Rscript -e &#39;library(rmarkdown); render(\&quot;basics.Rmd\&quot;)&#39;&quot; | \
@@ -203,14 +203,14 @@ names(spike_input) &lt;- spike$id[spike$id %in% rownames(molecules_filter)]
 spike_input &lt;- spike_input[order(names(spike_input))]
 stopifnot(sum(tech) == length(spike_input),
           rownames(molecules_filter)[tech] == names(spike_input))</code></pre>
-<p>30 of the ERCC spike-ins were observed in the single cell data.</p>
+<p>34 of the ERCC spike-ins were observed in the single cell data.</p>
 <blockquote>
 <p>These elements must be stored into an object of class <code>BASiCS_Data</code>.</p>
 </blockquote>
 <pre class="r"><code>basics_data &lt;- newBASiCS_Data(as.matrix(molecules_filter), tech, spike_input,
                               BatchInfo = anno_filter$batch)</code></pre>
 <pre><code>An object of class BASiCS_Data
- Dataset contains 10513 genes (10483 biological and 30 technical) and 563 cells.
+ Dataset contains 10598 genes (10564 biological and 34 technical) and 568 cells.
  Elements (slots): Counts, Tech, SpikeInput and BatchInfo.
  The data contains 8 batches.
 
@@ -253,23 +253,24 @@ if (file.exists(paste0(store_dir, &quot;/chain_phi_&quot;, run_name, &quot;.txt&
 }</code></pre>
 <pre><code>
 Read 0.0% of 2000 rows
-Read 2000 rows and 10513 (of 10513) columns from 0.331 GB file in 00:00:09
+Read 2000 rows and 10598 (of 10598) columns from 0.333 GB file in 00:00:08
 
 Read 0.0% of 2000 rows
-Read 2000 rows and 10483 (of 10483) columns from 0.348 GB file in 00:00:09
+Read 2000 rows and 10564 (of 10564) columns from 0.351 GB file in 00:00:09
 An object of class BASiCS_Chain
  2000 MCMC samples.
- Dataset contains 10513 genes (10483 biological and 30 technical) and 563 cells (8 batches). 
+ Dataset contains 10598 genes (10564 biological and 34 technical) and 568 cells (8 batches). 
  Elements (slots): mu, delta, phi, s, nu and theta.</code></pre>
-<p>Fitting the model took 77.76 hours.</p>
+<p>Fitting the model took 79.66 hours.</p>
 <p>Summarize the results.</p>
 <pre class="r"><code>mcmc_summary &lt;- Summary(mcmc_output)</code></pre>
 </div>
 <div id="batch-information" class="section level2">
 <h2>Batch information</h2>
 <p>The unexplained technical noise is similar across batches.</p>
-<pre class="r"><code>colnames(chain_theta) &lt;- unique(anno_filter$batch)
-theta_long &lt;- gather(as.data.frame(chain_theta), key = &quot;batch&quot;, value = &quot;theta&quot;)
+<pre class="r"><code>colnames(mcmc_output@theta) &lt;- unique(anno_filter$batch)
+theta_long &lt;- gather(as.data.frame(mcmc_output@theta), key = &quot;batch&quot;,
+                     value = &quot;theta&quot;)
 ggplot(theta_long, aes(x = batch, y = theta)) +
   geom_boxplot() +
   theme(axis.text.x = element_text(angle = 90)) +
@@ -339,8 +340,15 @@ phi_s</code></pre>
 </div>
 <div id="denoised-data" class="section level2">
 <h2>Denoised data</h2>
-<p>Remove technical noise (i.e. normalize using the ERCC spike-ins).</p>
-<pre class="r"><code>denoised = BASiCS_DenoisedCounts(Data = basics_data, Chain = mcmc_output)</code></pre>
+<p>Remove technical noise (i.e. normalize using the ERCC spike-ins). This takes a long time!</p>
+<pre class="r"><code>denoised = BASiCS_DenoisedCounts(Data = basics_data, Chain = mcmc_output)
+write.table(denoised, &quot;../data/basics-denoised.txt&quot;, quote = FALSE,
+            sep = &quot;\t&quot;, col.names = NA)
+denoised_rates = BASiCS_DenoisedRates(Data = basics_data, Chain = mcmc_output)</code></pre>
+<pre><code>[1] &quot;This calculation requires a loop across the 2000 MCMC iterations&quot;
+[1] &quot;You might need to be patient ... &quot;</code></pre>
+<pre class="r"><code>write.table(denoised_rates, &quot;../data/basics-denoised-rates.txt&quot;, quote = FALSE,
+            sep = &quot;\t&quot;, col.names = NA)</code></pre>
 <div id="pca---basics-denoised" class="section level3">
 <h3>PCA - BASiCS Denoised</h3>
 <p>Both the raw and the cpm versions of the BASiCS denoised data appear similar to the result with the <a href="#pca-non-normalized-cpm">non-normalized cpm data</a>. This does not change substantially when increasing the iterations from a few thousands to a few tens of thousands.</p>
