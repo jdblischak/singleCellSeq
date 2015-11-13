@@ -1,7 +1,7 @@
 ---
 title: "Per gene statistical comparison of CVs"
 author: "Joyce Hsiao"
-date: 2015-11-01
+date: 2015-11-12
 ---
 
 **Last updated:** `r Sys.Date()`
@@ -45,26 +45,25 @@ source("functions.R")
 
 Input quality single cells
 
-```{r}
+```{r import-quality-single-cell-list}
 quality_single_cells <- read.table("../data/quality-single-cells.txt", 
-                                  header = TRUE,
+                                  header = FALSE,
                                   stringsAsFactors = FALSE)
 str(quality_single_cells)
 ```
 
 Input annotation of only QC-filtered single cells. Remove NA19098.r2
 
-```{r}
-anno <- read.table("../data/annotation.txt", 
+```{r import-annotation-for-filtered-data}
+anno_filter <- read.table("../data/annotation-filter.txt", 
                     header = TRUE,
                     stringsAsFactors = FALSE)
-anno_filter <- anno[ which(anno$sample_id %in% quality_single_cells[[1]]), ]
 dim(anno_filter)
 ```
 
 Import endogeneous gene molecule counts that are QC-filtered, CPM-normalized, ERCC-normalized, and also processed to remove unwanted variation from batch effet. ERCC genes are removed from this file.
 
-```{r}
+```{r import-filtered-molecule-counts}
 molecules_ENSG <- read.table("../data/molecules-final.txt", 
                              header = TRUE, stringsAsFactors = FALSE)
 stopifnot(NCOL(molecules_ENSG) == NROW(anno_filter))
@@ -73,7 +72,7 @@ stopifnot(NCOL(molecules_ENSG) == NROW(anno_filter))
 
 ## Import gene symbols
 
-```{r}
+```{r import-gene-symbols}
 gene_info <- read.table("../data/gene-info.txt", sep = "\t",
                         header = TRUE, stringsAsFactors = FALSE)
 str(gene_info)
@@ -84,7 +83,7 @@ str(gene_info)
 
 We compute squared CV across cells for each individual and then for each individual CV profile, account for mean dependency by computing distance with respect to the data-wide coefficient variation on the log10 scale. 
 
-```{r}
+```{r compute-normalized-cv}
 ENSG_cv <- Humanzee::compute_cv(log2counts = molecules_ENSG,
                       grouping_vector = anno_filter$individual)
 
@@ -99,7 +98,7 @@ ENSG_cv_adj <- Humanzee::normalize_cv(group_cv = ENSG_cv,
 
 Individual CV vectors are standarized for individual CV mean and coefficients of variation across genes. 
 
-```{r}
+```{r compute-summary-deviation}
 df_cv <- data.frame(NA19098 = ENSG_cv_adj[[1]]$log10cv2_adj,
                     NA19101 = ENSG_cv_adj[[2]]$log10cv2_adj,
                     NA19239 = ENSG_cv_adj[[3]]$log10cv2_adj)
