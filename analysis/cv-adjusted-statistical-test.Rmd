@@ -1,7 +1,7 @@
 ---
 title: "Per gene statistical comparison of CVs"
 author: "Joyce Hsiao"
-date: 2015-11-01
+date: 2015-11-12
 ---
 
 **Last updated:** `r Sys.Date()`
@@ -26,7 +26,7 @@ We first compute the deviation to the median for each individual's CV. Then, for
 
 ## Set up
 
-```{r, message=FALSE, warning=FALSE}
+```{r set-up, message=FALSE, warning=FALSE}
 library("data.table")
 library("dplyr")
 library("limma")
@@ -43,26 +43,24 @@ source("functions.R")
 
 Input quality single cells
 
-```{r}
+```{r import-quality-single-cells}
 quality_single_cells <- read.table("../data/quality-single-cells.txt", 
-                                  header = TRUE,
                                   stringsAsFactors = FALSE)
 str(quality_single_cells)
 ```
 
 Input annotation of only QC-filtered single cells. Remove NA19098.r2
 
-```{r}
-anno <- read.table("../data/annotation.txt", 
+```{r import-annotation-for-filtered-data}
+anno_filter <- read.table("../data/annotation-filter.txt", 
                     header = TRUE,
                     stringsAsFactors = FALSE)
-anno_filter <- anno[ which(anno$sample_id %in% quality_single_cells[[1]]), ]
 dim(anno_filter)
 ```
 
 Import endogeneous gene molecule counts that are QC-filtered, CPM-normalized, ERCC-normalized, and also processed to remove unwanted variation from batch effet. ERCC genes are removed from this file.
 
-```{r}
+```{r import-filtered-molecule-counts}
 molecules_ENSG <- read.table("../data/molecules-final.txt", 
                              header = TRUE, stringsAsFactors = FALSE)
 stopifnot(NCOL(molecules_ENSG) == NROW(anno_filter))
@@ -71,7 +69,7 @@ stopifnot(NCOL(molecules_ENSG) == NROW(anno_filter))
 
 ## Import gene symbols
 
-```{r}
+```{r import-gene-symbols}
 gene_info <- read.table("../data/gene-info.txt", sep = "\t",
                         header = TRUE, stringsAsFactors = FALSE)
 str(gene_info)
@@ -82,7 +80,7 @@ str(gene_info)
 
 We compute squared CV across cells for each individual and then for each individual CV profile, account for mean dependency by computing distance with respect to the data-wide coefficient variation on the log10 scale. 
 
-```{r}
+```{r compute-normalized-cv}
 ENSG_cv <- Humanzee::compute_cv(log2counts = molecules_ENSG,
                       grouping_vector = anno_filter$individual)
 
@@ -97,7 +95,7 @@ ENSG_cv_adj <- Humanzee::normalize_cv(group_cv = ENSG_cv,
 
 Individual CV vectors are standarized for individual CV mean and coefficients of variation across genes. 
 
-```{r}
+```{r standardize-cv}
 df_cv <- data.frame(NA19098 = ENSG_cv_adj[[1]]$log10cv2_adj,
                     NA19101 = ENSG_cv_adj[[2]]$log10cv2_adj,
                     NA19239 = ENSG_cv_adj[[3]]$log10cv2_adj)
@@ -112,15 +110,30 @@ colnames(df_norm) <- names(ENSG_cv_adj)
 
 
 ```{r}
-# ggplot(data.frame(adj_cv = rbind(ENSG_cv_adj[[1]]$log10cv2_adj) ))
-boxplot(df_cv)
-boxplot(df_norm)
+library(gridExtra)
+grid.arrange( ggplot( data.frame(cv = c(df_cv[ ,1], df_cv[ ,2], df_cv[ ,3]),
+                                individual = rep( c("NA19098", "NA19101", "NA19239"),
+                                                  each = dim(df_cv)[1])),
+                     aes(x = factor(individual), y = cv,
+                         fill = factor(individual)) ) +
+               geom_boxplot() +
+               ggtitle("Adjusted CV distribution") + 
+               xlab("individual") + ylab("Adjusted CV"),
+             ggplot( data.frame(cv = c(df_norm[ ,1], df_norm[ ,2], df_norm[ ,3]),
+                                individual = rep( c("NA19098", "NA19101", "NA19239"),
+                                                  each = dim(df_cv)[1])),
+                     aes(x = factor(individual), y = cv,
+                         fill = factor(individual)) ) +
+               geom_boxplot() +
+               ggtitle("Standardized adjusted CV") +
+               xlab("individual") + ylab("Standardized adjusted CV"),
+            ncol = 2, nrow = 1)
 ```
 
 
 Compute metrics for quantifying similarity between the three individual coefficients of variation. 
 
-```{r}
+```{r summary-similarity}
 library(matrixStats)
 
 df_norm <- as.data.frame(df_norm)
@@ -159,146 +172,6 @@ title(with(gene_info, external_gene_name[ensembl_gene_id == gene]) )
 ```
 
 
-## Establish statistical significance of the CVs
-
-We would like to address the statistical significance of the similarity metrics (Sum-of-Squared-Deviation-from-the-Median and Sum-of-Absolute-Deviation-from-the-Median). The null hypothesis is that the "adjusted" coefficients of variation are the same for each individual. 
-
-### Permutation
-
-Permute cell labels. An idea for hypothesis testing. 
-
-```{r}
-if (file.exists("rda/permuted_distance.rda")) {
-  load("rda/permuted_distance.rda")
-} else {
-  stop("Permuted_distance.rda does not exist")
-}
-```
-
-Make permuted data sets. The following codes are run on the cluster; they are displayed here for documentation.
-
-```{r, eval = FALSE}
-permuted_data <- permute_cells(log2counts = molecules_ENSG, 
-                               grouping_vector = anno_qc_filter$individual, 
-                               num_permute = 5)
-
-# Compute adjusted CV for the permuted data
-source("../code/cv-functions.r")
-permuted_cv_adj <- lapply(permuted_data, function(per_data) {
-  perm_cv <- compute_cv(log2counts = per_data,
-                      grouping_vector = anno_qc_filter$individual)
-
-  perm_cv_adj <- normalize_cv(group_cv = perm_cv, 
-                            log2counts = per_data, 
-                            anno = anno_qc_filter)
-  
-  df_perm <- cbind(perm_cv_adj[[1]]$log10cv2_adj, 
-                   perm_cv_adj[[2]]$log10cv2_adj,
-                   perm_cv_adj[[3]]$log10cv2_adj)
-  
-  # Standardize CVs
-  df_norm <- sweep(df_perm, MARGIN = 2, STATS = colMeans(as.matrix(df_perm)), FUN = "-")
-  df_norm <- sweep(df_perm, MARGIN = 2, STATS = sqrt(colVars(as.matrix(df_perm))), FUN = "/")
-  return(df_norm)
-})
-
-save(permuted_data, permuted_cv_adj,
-     file = "rda/cv-adjusted-comparison/permuted-data.rda")
-
-permuted_distance <- lapply(permuted_cv_adj, function(per_data) {
-  squared_dev <- rowSums( ( per_data - rowMedians(as.matrix(per_data)) )^2 )
-  abs_dev <- rowSums(abs( per_data - rowMedians(as.matrix(per_data)) ))
-  list(squared_dev = squared_dev,
-       abs_dev = abs_dev)
-})
-save(permuted_distance, 
-     file = "rda/cv-adjusted-comparison/permuted-distance.rda")
-```
-
-
-Individual means/variances in each permuted data set.
-
-
-```{r}
-permuted_summary <- lapply(permuted_data, function(per_data) {
-  sum_info <- lapply(1:dim(per_data)[1], function(ii_gene) {
-        gene_mean <- aggregate(as.matrix(per_data)[ii_gene, ] ~ anno_qc_filter$individual,
-                              FUN = mean)
-        gene_sd <- aggregate(as.matrix(per_data)[ii_gene, ] ~ anno_qc_filter$individual,
-                              FUN = sd)
-        list(gene_mean = gene_mean, gene_sd = gene_sd)
-})
-  means <- do.call(rbind, means)  
-  means
-}
-  per_data[ , anno_qc_filter$individual == unique(anno_qc_filter$individual)[p]]
-}
-ggplot(data.frame(do.call(rbind, permuted_cv_adj[[1]]),
-        aes(x = log10(mean), y = log10(cv^2))) +
-   geom_point(aes(col = individual)) +
-   ggtitle("Permutation-based CV")
-
-ggplot(data.frame(do.call(rbind, permuted_cv_adj[[1]]),
-       aes(x = log10(mean), y = log10cv2_adj)) +
-   geom_point(aes(col = individual)) +
-   ggtitle("Permutation-based adjusted CV")
-
-```
-
-Compute empirical p-values
-
-```{r}
-load("rda/permuted_data.rda")
-
-df_norm$squared_dev
-df_norm$abs_dev
-
-
-```
-
-Distribution of empirical p-values
-
-
-```{r}
-
-```
-
-
-### Bootstrapping
-
-Bootstrap for cell lables within each individual. 
-
-```{r}
-if (file.exists("rda/bootstrap_distance.rda")) {
-  load("rda/bootstrap_distance.rda")
-} else {
-  stop("bootstrap_distance.rda does not exist")
-}
-```
-
-Make bootstrapped data sets. The following codes are run on the cluster; they are displayed here for documentation.
-
-```{r, eval = FALSE}
-require(Humanzee)
-bootstrap_output <- Humanzee::bootstrap_cv_test(
-                        log2counts = molecules_ENSG, 
-                        grouping_vector = anno_filter$individual,
-                        anno = anno_qc_filter,
-                        num_bootstrap = 1000,
-                        output_rda = FALSE,
-                        do_parallel = TRUE, 
-                        number_cores = 2
-                        )
-# save rda for computing on the cluster
-save(molecules_ENSG, anno_filter, 
-     file = "./rda/cv-adjusted-comparison/bootstrap-cv-test.rda")
-```
-
-
-```{r}
-load("rda/cv-adjusted-comparison/bootstrap-data.rda")
-load("rda/cv-adjusted-comparison/bootstrap-distance.rda")
-```
 
 
 ## Session information
