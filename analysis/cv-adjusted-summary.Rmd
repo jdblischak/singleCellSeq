@@ -1,7 +1,7 @@
 ---
 title: "Cell-to-cell heterogeneity analysis summary"
 author: "Joyce Hsiao"
-date: 2015-11-16
+date: 2015-11-17
 ---
 
 **Last updated:** `r Sys.Date()`
@@ -41,64 +41,81 @@ library("cowplot")
 
 ## Prepare data
 
+### Import annotation
+
 Input annotation of only QC-filtered single cells. Remove NA19098.r2
 
 ```{r import-annotation}
 anno_filter <- read.table("../data/annotation-filter.txt", 
                       header = TRUE,
                       stringsAsFactors = FALSE)
+dim(anno_filter)
 head(anno_filter, 2)
 ```
 
+
+### Import molecule counts
+
+Import molecule counts for genes with at least one observed read (before QC filtering).
+
+```{r import-molecule-counts-before-filtering}
+molecules <- read.table("../data/molecules.txt",
+                        header = TRUE, stringsAsFactors = FALSE)
+dim(molecules)
+molecules[1:5, 1:5]
+```
+
+Remove genes with mean zero count in the unfiltered data
+
+```{r remove-mean-count-zero-genes}
+library(matrixStats)
+molecules <- molecules[rowMeans(as.matrix(molecules)) > 0, ]
+molecules <- molecules[rowVars(as.matrix(molecules)) > 0, ]
+dim(molecules)
+```
+
+
 Import molecule counts after filtering and before any correction.
 
-```{r}
+```{r import-molecule-counts-after-filtering}
 molecules_filter <- read.table("../data/molecules-filter.txt",
                                header = TRUE, stringsAsFactors = FALSE)
 stopifnot(NROW(anno_filter) == NCOL(molecules_filter))
 ```
 
+Compute collision correctecd counts.
+
+```{r import-collision-corrected-counts}
+molecules_collision <- -1024 * log(1 - molecules_filter / 1024)
+```
 
 Import final processed molecule counts of endogeneous genes.
 
-```{r import-counts}
-molecules_ENSG <- read.table("../data/molecules-final.txt", 
+```{r import-ensg-final-transformed-log2counts}
+molecules_final <- read.table("../data/molecules-final.txt", 
                              header = TRUE, stringsAsFactors = FALSE)
-stopifnot(NROW(anno_filter) == NCOL(molecules_ENSG))
+dim(molecules_final)
+stopifnot(NROW(anno_filter) == NCOL(molecules_final))
 ```
+
 
 Import final processed molecule counts of ERCC genes.
 
-```{r import-counts-ercc}
-molecules_ERCC <- read.table("../data/molecules-cpm-ercc.txt", 
+```{r import-ercc-log2cpmcounts}
+molecules_cpm_ercc <- read.table("../data/molecules-cpm-ercc.txt", 
                              header = TRUE, stringsAsFactors = FALSE)
-stopifnot(NROW(anno_filter) == NCOL(molecules_ERCC))
+dim(molecules_cpm_ercc)
+stopifnot(NROW(anno_filter) == NCOL(molecules_cpm_ercc))
 ```
 
-Compute collision correctecd counts.
-
-```{r}
-molecules_collision <- -1024 * log(1 - molecules_filter / 1024)
-```
 
 Import CPM corrected counts
 
 ```{r}
 molecules_cpm <- read.table("../data/molecules-cpm.txt", 
                              header = TRUE, stringsAsFactors = FALSE)
+dim(molecules_cpm)
 stopifnot(NROW(anno_filter) == NCOL(molecules_cpm))
-```
-
-Import the expected number of ERCC molecules per well.
-
-```{r}
-ercc <- read.table("../data/expected-ercc-molecules.txt", header = TRUE,
-                   stringsAsFactors = FALSE)
-ercc <- ercc[ercc$id %in% rownames(molecules_ERCC), ]
-ercc <- ercc[order(ercc$id), ]
-stopifnot(ercc$id == rownames(molecules_ERCC))
-
-ercc$log2_cpm <- cpm(ercc$ercc_molecules_well, log = TRUE)
 ```
 
 
@@ -108,6 +125,8 @@ Import gene symbols.
 gene_symbols <- read.table(file = "../data/gene-info.txt", sep = "\t",
                            header = TRUE, stringsAsFactors = FALSE, quote = "")
 ```
+
+
 
 ## Helper functions
 
@@ -120,8 +139,7 @@ Fit a poisson distribution based on the ERCC genes and overlay the fittedn line.
 
 ```{r plot-mean-cv-poission}
 plot_poisson_cv <- function(molecules_ENSG, molecules_ERCC, 
-                            molecules_ERCC_expected = NULL,
-                            is_log2count = TRUE,
+                            is_log2count = FALSE,
                             include_observed_ERCC = TRUE,
                             main){
     cbPalette <- c("#999999", "#0000FF", "#56B4E9", "#009E73", 
@@ -205,6 +223,8 @@ plot_poisson_cv <- function(molecules_ENSG, molecules_ERCC,
 }
 ```
 
+
+
 ### plot_density
 
 Per gene density plots of large distances.
@@ -234,6 +254,137 @@ plot_density <- function(which_gene, labels, gene_symbols) {
 }
 ```
 
+
+
+## Cumulative distribution for ERCC spike-ins (filtered data)
+
+34 ERCC genes left after filtering.
+
+### NA19098
+
+```{r ercc-expected-poisson-NA19098}
+if(!file.exists("figure/cv-adjusted.Rmd/ercc-poission-NA19098.pdf")) {
+  pdf(file = "figure/cv-adjusted.Rmd/ercc-poission-NA19098.pdf",
+      width = 8, height = 10)
+  molecules_filter_ercc <- molecules_filter[grep("ERCC", rownames(molecules_filter) ), 
+                                          grep("NA19098", colnames(molecules_filter) ) ]
+  molecules_filter_ercc <- molecules_filter_ercc[order(rowMeans(molecules_filter_ercc), 
+                                                  decreasing = TRUE), ]
+  ncells <- NCOL(molecules_filter_ercc)
+  par(mfrow = c(4, 3), cex.main = 1,
+      cex = .7, mar = c(3, 3, 3, 2))
+  for (i in 1: NROW(molecules_filter_ercc)) {
+      expression <- unlist(molecules_filter_ercc[i, ])
+      expression <- expression[order(expression)]
+      plot(x = expression,
+           y = cumsum(expression)/max(cumsum(expression)),
+           main = rownames(molecules_filter_ercc)[i])
+      lines(ecdf(expression), col = "blue")
+      x_seq <- seq(from = 0, to = max(expression),  by = 1)
+      lines(x = x_seq, 
+            y = ppois(x_seq, mean(x_seq)), 
+            col = "red" )
+  }
+  dev.off()
+}
+```
+
+
+
+
+### NA19101
+
+```{r ercc-expected-poisson-NA19101}
+if(!file.exists("figure/cv-adjusted.Rmd/ercc-poission-NA19101.pdf")) {
+  pdf(file = "figure/cv-adjusted.Rmd/ercc-poission-NA19101.pdf",
+      width = 8, height = 10)
+  molecules_filter_ercc <- molecules_filter[grep("ERCC", rownames(molecules_filter) ), 
+                                          grep("NA19101", colnames(molecules_filter) ) ]
+  molecules_filter_ercc <- molecules_filter_ercc[order(rowMeans(molecules_filter_ercc), 
+                                                decreasing = TRUE), ]
+  ncells <- NCOL(molecules_filter_ercc)
+  par(mfrow = c(4, 3), cex.main = 1,
+      cex = .7, mar = c(3, 3, 3, 2))
+  for (i in 1: NROW(molecules_filter_ercc)) {
+      expression <- unlist(molecules_filter_ercc[i, ])
+      expression <- expression[order(expression)]
+      plot(x = expression,
+           y = cumsum(expression)/max(cumsum(expression)),
+           main = rownames(molecules_filter_ercc)[i])
+      lines(ecdf(expression), col = "blue")
+      x_seq <- seq(from = 0, to = max(expression),  by = 1)
+      lines(x = x_seq, 
+            y = ppois(x_seq, mean(x_seq)), 
+            col = "red" )
+  }
+  dev.off()
+}
+```
+
+ 
+ 
+### NA19239
+
+```{r ercc-expected-poisson-NA19239}
+if(!file.exists("figure/cv-adjusted.Rmd/ercc-poission-NA19239.pdf")) {
+  pdf(file = "figure/cv-adjusted.Rmd/ercc-poission-NA19239.pdf",
+      width = 8, height = 10)
+  molecules_filter_ercc <- molecules_filter[grep("ERCC", rownames(molecules_filter) ), 
+                                          grep("NA19239", colnames(molecules_filter) ) ]
+  molecules_filter_ercc <- molecules_filter_ercc[order(rowMeans(molecules_filter_ercc), 
+                                                decreasing = TRUE), ]
+  ncells <- NCOL(molecules_filter_ercc)
+  par(mfrow = c(4, 3), cex.main = 1,
+      cex = .7, mar = c(3, 3, 3, 2))
+  for (i in 1: NROW(molecules_filter_ercc)) {
+      expression <- unlist(molecules_filter_ercc[i, ])
+      expression <- expression[order(expression)]
+      plot(x = expression,
+           y = cumsum(expression)/max(cumsum(expression)),
+           main = rownames(molecules_filter_ercc)[i])
+      lines(ecdf(expression), col = "blue")
+      x_seq <- seq(from = 0, to = max(expression),  by = 1)
+      lines(x = x_seq, 
+            y = ppois(x_seq, mean(x_seq)), 
+            col = "red" )
+  }
+  dev.off()
+}
+```
+
+
+
+
+
+### Overall
+
+```{r ercc-expected-poisson-overall}
+if(!file.exists("figure/cv-adjusted.Rmd/ercc-poission-overall.pdf")) {
+  pdf(file = "figure/cv-adjusted.Rmd/ercc-poission-overall.pdf",
+      width = 8, height = 10)
+  molecules_filter_ercc <- molecules_filter[grep("ERCC", rownames(molecules_filter) ), ]
+  molecules_filter_ercc <- molecules_filter_ercc[order(rowMeans(molecules_filter_ercc), 
+                                                decreasing = TRUE), ]
+  ncells <- NCOL(molecules_filter_ercc)
+  par(mfrow = c(4, 3), cex.main = 1,
+      cex = .7, mar = c(3, 3, 3, 2))
+  for (i in 1: NROW(molecules_filter_ercc)) {
+      expression <- unlist(molecules_filter_ercc[i, ])
+      expression <- expression[order(expression)]
+      plot(x = expression,
+           y = cumsum(expression)/max(cumsum(expression)),
+           main = rownames(molecules_filter_ercc)[i])
+      lines(ecdf(expression), col = "blue")
+      x_seq <- seq(from = 0, to = max(expression),  by = 1)
+      lines(x = x_seq, 
+            y = ppois(x_seq, mean(x_seq)), 
+            col = "red" )
+  }
+  dev.off()
+}
+```
+
+
 ## Individual CV-mean plot
 
 Points marked blue are ERCC genes, based on the *observed counts*. Note that CPM correction for the endogeneous genes included only total molecule coutns of the endogeneous genes, and CPM correction for the ERCC genes included only total molecule counts of the ERCC genes. Because the total molecule counts of the endogeneous genes is about 100 times of the ERCC genes, the CPM corrected ERCC counts end up being 100 times of the CPM corrected endogeneous genes on average.
@@ -245,11 +396,18 @@ Points marked blue are ERCC genes, based on the *observed counts*. Note that CPM
 *Yellow line* describes a 3 times of the standard deviation of a Poisson distribution.
 
 
-*NA19098
+### NA19098
 
-```{r}
+```{r NA19098-mean-cv}
 theme_set(theme_bw(base_size = 8))
 cowplot::plot_grid(
+    plot_poisson_cv(molecules[ grep("ERCC", rownames(molecules), invert = TRUE), 
+                               grep("NA19098", colnames(molecules) ) ], 
+                    molecules[grep("ERCC", rownames(molecules) ), 
+                              grep("NA19098", colnames(molecules) ) ], 
+                    is_log2count = FALSE,
+                    main = "Raw counts") +
+                    theme(legend.position = "none"),
     plot_poisson_cv(molecules_filter[grep("ERCC", rownames(molecules_filter),
                                           invert = TRUE), 
                                       anno_filter$individual == "NA19098"], 
@@ -266,28 +424,32 @@ cowplot::plot_grid(
                 is_log2count = FALSE, 
                 main = "Collision-corrected counts") +
                 theme(legend.position = "none"),
-    plot_poisson_cv(molecules_cpm[ ,anno_filter$individual == "NA19098"], 
-                    molecules_ERCC[, anno_filter$individual == "NA19098"], 
-                    is_log2count = TRUE,
-                    include_observed_ERCC = FALSE,
-                    main = "log2 CPM counts") +
-                    theme(legend.position = "none"), 
-    plot_poisson_cv(molecules_ENSG[, anno_filter$individual == "NA19098"], 
-                    molecules_ERCC[, anno_filter$individual == "NA19098"],
-                    is_log2count = TRUE,
-                    include_observed_ERCC = FALSE,
-                    main = "Transformed counts") +
-                    theme(legend.position = "none"), 
+    plot_poisson_cv(molecules_filter[grep("ERCC", rownames(molecules_filter),
+                                      invert = TRUE), 
+                                  anno_filter$individual == "NA19098"], 
+                molecules_filter[grep("ERCC", rownames(molecules_filter)), 
+                                 anno_filter$individual == "NA19098"], 
+                is_log2count = FALSE,
+                main = "Filtered counts (zoom-in)") +
+                theme(legend.position = "none") +
+                ylim(0, 3),
   ncol = 2,
-  labels = LETTERS[1:4])
+  labels = LETTERS[1:3])
 ```
 
 
 *NA19101
 
-```{r}
+```{r NA19101-mean-cv}
 theme_set(theme_bw(base_size = 8))
 cowplot::plot_grid(
+    plot_poisson_cv(molecules[ grep("ERCC", rownames(molecules), invert = TRUE), 
+                               grep("NA19101", colnames(molecules) ) ], 
+                    molecules[grep("ERCC", rownames(molecules) ), 
+                              grep("NA19101", colnames(molecules) ) ], 
+                    is_log2count = FALSE,
+                    main = "Raw counts") +
+                    theme(legend.position = "none"),
     plot_poisson_cv(molecules_filter[grep("ERCC", rownames(molecules_filter),
                                           invert = TRUE), 
                                       anno_filter$individual == "NA19101"], 
@@ -303,30 +465,34 @@ cowplot::plot_grid(
                                  anno_filter$individual == "NA19101"], 
                 is_log2count = FALSE, 
                 main = "Collision-corrected counts") +
-                theme(legend.position = "none"),
-    plot_poisson_cv(molecules_cpm[ ,anno_filter$individual == "NA19101"], 
-                    molecules_ERCC[, anno_filter$individual == "NA19101"], 
-                    is_log2count = TRUE,
-                    include_observed_ERCC = FALSE,
-                    main = "log2 CPM counts") +
-                    theme(legend.position = "none"), 
-    plot_poisson_cv(molecules_ENSG[, anno_filter$individual == "NA19101"], 
-                    molecules_ERCC[, anno_filter$individual == "NA19101"],
-                    is_log2count = TRUE,
-                    include_observed_ERCC = FALSE,
-                    main = "Transformed counts") +
-                    theme(legend.position = "none"), 
-  ncol = 2,
-  labels = LETTERS[1:4])
+                theme(legend.position = "none"),  
+    plot_poisson_cv(molecules_filter[grep("ERCC", rownames(molecules_filter),
+                                          invert = TRUE), 
+                                      anno_filter$individual == "NA19101"], 
+                    molecules_filter[grep("ERCC", rownames(molecules_filter)), 
+                                     anno_filter$individual == "NA19101"], 
+                    is_log2count = FALSE,
+                    main = "Filtered counts (zoom-in)") +
+                    theme(legend.position = "none") +
+                    ylim(0, 3),
+    ncol = 2,
+    labels = LETTERS[1:4])
 ```
 
 
 
-*NA19101
+*NA19239
 
-```{r}
+```{r NA19239-mean-cv}
 theme_set(theme_bw(base_size = 8))
 cowplot::plot_grid(
+    plot_poisson_cv(molecules[ grep("ERCC", rownames(molecules), invert = TRUE), 
+                               grep("NA19239", colnames(molecules) ) ], 
+                    molecules[grep("ERCC", rownames(molecules) ), 
+                              grep("NA19239", colnames(molecules) ) ], 
+                    is_log2count = FALSE,
+                    main = "Raw counts") +
+                    theme(legend.position = "none"),
     plot_poisson_cv(molecules_filter[grep("ERCC", rownames(molecules_filter),
                                           invert = TRUE), 
                                       anno_filter$individual == "NA19239"], 
@@ -342,20 +508,17 @@ cowplot::plot_grid(
                                  anno_filter$individual == "NA19239"], 
                 is_log2count = FALSE, 
                 main = "Collision-corrected counts") +
-                theme(legend.position = "none"),
-    plot_poisson_cv(molecules_cpm[ ,anno_filter$individual == "NA19239"], 
-                    molecules_ERCC[, anno_filter$individual == "NA19239"], 
-                    is_log2count = TRUE,
-                    include_observed_ERCC = FALSE,
-                    main = "log2 CPM counts") +
-                    theme(legend.position = "none"), 
-    plot_poisson_cv(molecules_ENSG[, anno_filter$individual == "NA19239"], 
-                    molecules_ERCC[, anno_filter$individual == "NA19239"],
-                    is_log2count = TRUE,
-                    include_observed_ERCC = FALSE,
-                    main = "Transformed counts") +
-                    theme(legend.position = "none"), 
-  ncol = 2,
+                theme(legend.position = "none"),  
+    plot_poisson_cv(molecules_filter[grep("ERCC", rownames(molecules_filter),
+                                          invert = TRUE), 
+                                      anno_filter$individual == "NA19239"], 
+                    molecules_filter[grep("ERCC", rownames(molecules_filter)), 
+                                     anno_filter$individual == "NA19239"], 
+                    is_log2count = FALSE,
+                    main = "Filtered counts (zoom-in)") +
+                    theme(legend.position = "none") +
+                    ylim(0, 3),
+    ncol = 2,
   labels = LETTERS[1:4])
 ```
 
@@ -380,7 +543,7 @@ source("../code/cv-functions.r")
 Compute individual CVs.
 
 ```{r compute-cv}
-ENSG_cv <- compute_cv(log2counts = molecules_ENSG,
+ENSG_cv <- compute_cv(log2counts = molecules_final,
                       grouping_vector = anno_filter$individual)
 ```
 
@@ -388,7 +551,7 @@ Adjust CVs for mean dependency.
 
 ```{r adjust-cv}
 ENSG_cv_adj <- normalize_cv(group_cv = ENSG_cv, 
-                            log2counts = molecules_ENSG, 
+                            log2counts = molecules_final, 
                             anno = anno_filter)
 ```
 
