@@ -116,7 +116,7 @@ normalize_cv <- function(group_cv, log2counts, anno) {
   )
   ii_na <- which( is.na(roll_medians) )
   roll_medians[ii_na] <- median( log10(data_cv^2)[order_gene][ii_na] )
-  names(roll_medians) <- rownames(molecules_ENSG)[order_gene]
+  names(roll_medians) <- rownames(log2counts)[order_gene]
 
   # Order rolling medians according to the count matrix
   reorder_gene <- match(rownames(log2counts), names(roll_medians) )

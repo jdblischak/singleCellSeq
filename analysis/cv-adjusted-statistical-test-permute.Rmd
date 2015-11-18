@@ -1,7 +1,7 @@
 ---
 title: "Per gene statistical comparison of CVs: permutation-based p-values"
 author: "Joyce Hsiao"
-date: 2015-11-12
+date: 2015-11-17
 ---
 
 **Last updated:** `r Sys.Date()`
@@ -19,7 +19,9 @@ opts_chunk$set(message = FALSE, warning = FALSE, eval = TRUE,
 
 ## Objective
 
-Quantify statistical significance of individual differences between adjusted CVs. Here we will focus on empirical p-values computed from permuted samples.
+Quantify statistical significance of individual differences between adjusted CVs. 
+
+We permuted the wells labels across samples for 10,000 times. Then, for each gene, we computed the number of permuted samples produced larger distance than the observed distance between standardized coefficients of variance between individuals. 
 
 
 ## Set up
@@ -39,14 +41,6 @@ source("functions.R")
 
 ## Prepare data
 
-Input quality single cells
-
-```{r import-quality-single-cell}
-quality_single_cells <- read.table("../data/quality-single-cells.txt", 
-                                  stringsAsFactors = FALSE)
-str(quality_single_cells)
-```
-
 Input annotation of only QC-filtered single cells. Remove NA19098.r2
 
 ```{r import-annotation-filter}
@@ -62,15 +56,6 @@ Import endogeneous gene molecule counts that are QC-filtered, CPM-normalized, ER
 molecules_ENSG <- read.table("../data/molecules-final.txt", 
                              header = TRUE, stringsAsFactors = FALSE)
 stopifnot(NCOL(molecules_ENSG) == NROW(anno_filter))
-```
-
-
-## Import gene symbols
-
-```{r import-gene-symbol}
-gene_info <- read.table("../data/gene-info.txt", sep = "\t",
-                        header = TRUE, stringsAsFactors = FALSE)
-str(gene_info)
 ```
 
 
@@ -117,9 +102,40 @@ df_norm$squared_dev <- rowSums( ( df_norm - rowMedians(as.matrix(df_norm)) )^2 )
 df_norm$abs_dev <- rowSums(abs( df_norm - rowMedians(as.matrix(df_norm)) ))
 ```
 
-## Permtued p-vals
+
+## Compute permuted p-vals
+
+Export some rdas.
+
+```{r output-rdas-for-computing-permuted-pvals}
+if (!file.exists("rda/cv-adjusted-statistical-test-permute/adj-cv.rda")) {
+  save(df_norm, file = "rda/cv-adjusted-statistical-test-permute/adj-cv.rda")
+}
+
+
+if (!file.exists("rda/cv-adjusted-statistical-test-permute/permute-cv-test.rda")) {
+  save(molecules_ENSG, anno_filter,
+       file = "rda/cv-adjusted-statistical-test-permute/permute-cv-test.rda")
+}
+```
+
+Compute permuted distances for each gene.
+
+```bash
+sbatch ../code/permuted-cv-test.sbatch
+```
+
+Compute permutation-based p-values for each gene.
+
+```bash
+sbatch ../code/permuted-cv-compute-pval.sbatch
+```
+
+
+## Sanity checks on the permuted p-values
 
 Confirm that the gene with the larger SSM and SAM are significant with a p-value of 0.
+
 
 ```{r import-permuted-pvalues}
 load("rda/cv-adjusted-statistical-test-permute/permuted-pval.rda")
@@ -132,7 +148,7 @@ permuted_pval$squared_dev[order(df_norm$squared_dev, decreasing = T)[3]]
 library(ggplot2)
 ggplot(data.frame(pvals = permuted_pval$squared_dev,
                   dist = df_norm$squared_dev),
-       aes(x = dist, y = -log10(pvals))) +
+       aes(x = dist, y = pvals)) +
   geom_point()
 ```
 
@@ -142,7 +158,7 @@ Gene with the largest Sum-of-Squared-Deviations.
 ggplot(do.call(rbind, ENSG_cv_adj),
        aes(x = log10(mean), y = log10cv2_adj)) +
   geom_point(aes(col = group), cex = .8) + facet_wrap( ~ group) +
-  ggtitle("p < .001") + 
+  ggtitle("Gene with the largest SSM") + 
   geom_point(data = subset(do.call(rbind, ENSG_cv_adj), 
                            c(1:NROW(ENSG_cv_adj[[1]])) %in% 
                              order(df_norm$squared_dev, decreasing = TRUE )[1]), 
