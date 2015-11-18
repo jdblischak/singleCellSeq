@@ -14,39 +14,60 @@ To be able to quantify mRNA molecule numbers in single cells with exceptional ac
 Importantly, for each of the Yoruba lines, we performed three independent C1 collections to more accurately capture the characteristics of technical variability across C1 replicates and then to further remove them from downstream analysis.
 To estimate how well the scRNA-seq can reassemble the RNA-seq results from population bulk samples, each individual C1 collection was accompanied by a collection of bulk sample using the same reagents.
 
+#### Removal of low quality sample
 Given the low abundance of mRNA content and the high vulnerability of single cells, scRNA-seq can be intensively affected by various technical artifacts arising from cell isolation and capture, mRNA capture efficiency, library preparation, and even sequencing procedures.
 As a result, our quality control of scRNA-seq libraries was performed in multiple steps for generating reliable analysis results.
-After removing the samples that were not one-cell libraries as reported by the visual inspection, we first filtered out the one-cell libraries that were similar to no-cell libraries according the number of total mapped reads, the percentage of unmapped reads, the percentage of ERCC spike-in reads, and the number of genes detected. 
+After removing the samples that were not one-cell libraries as reported by the visual inspection, we first filtered out the one-cell libraries that were similar to no-cell libraries judging from the number of total mapped reads, the percentage of unmapped reads, the percentage of ERCC spike-in reads, and the number of genes detected. 
 Next, we identified several one-cell libraries that had high possibility to be multiple-cell libraries based on the number of total molecules, the concentration of cDNA amplicons, and the read-to-molecule conversion efficiency defined as the number of total molecules divided by the number of total reads.
 we maintained `r nrow(anno_filter)` high quality single cells 
 (NA19098: `r sum(anno_filter$individual == "NA19098")`,
  NA19101: `r sum(anno_filter$individual == "NA19101")`,
  NA19239: `r sum(anno_filter$individual == "NA19239")`).
 
+#### Removal of genes with lower expression
 Besides carrying out quality control at the library level, we next executed quality control at gene detection level to deal with the problem of genes possibly being missed during sequencing (referred to as gene “dropout”). 
-Evidently, we observed that the mean of read counts and the mean of molecule counts of each gene across cells were highly correlated for both ERCC and endogenous genes (r = and r = , respectively), yet they were diverged at genes with lower expression level, indicating high detection noise. 
+Evidently, we observed that the mean of read counts and the mean of molecule counts of each gene across cells were highly correlated for both ERCC and endogenous genes (r = and r = , respectively), yet they were diverged at genes with lower expression level, indicating high detection noise of lowly expressed genes. 
 We therefore applied a cutoff to filter out genes with low molecule counts and kept `r format(sum(grepl("ENSG", rownames(molecules_filter))), big.mark = ",")`
 endogenous genes and
 `r sum(grepl("ERCC", rownames(molecules_filter)))`
 ERCC spike-in genes for the follwing analysis.
 When looking at the proportion of genes detected in the high quality cells before and after the filtering, we found that the absolate numbers of the proportion were increased while keeping the relative relationship across cells, providing us with the confidence that the removed genes were truly the dropouts.
 
-### ERCC spike-ins and Batch effect
+#### ERCC spike-ins 
 To estimate the mRNA capture efficiency, we first calcutated the input molecule numbers of ERCC spike-in RNA transcripts and then compared the imput quantities with the observed quantities in high quality cells wihtout filtering of genes. 
-While the observed levels of ERCC spike-ins strongly correlated with the known input quantities (r = 0.9932), the capture efficiency of ERCC spike-ins, defined as the fraction of total input molecules being successfully detected per cells, has the avarage of 9.119 %.
-We further accessed the 
+While the observed levels of ERCC spike-ins strongly correlated with the known input quantities (r = 0.9932), the capture efficiency of ERCC spike-ins, defined as the fraction of total input molecules being successfully detected in each high quality cells, has the avarage of 9.119 %.
 
+Currently, ERCC spike-ins are being used to identify low-quality single cells, to measure cell-cell technical variability, and also to indicate relative cellular mRNA content, all of which are under the assumption that each sample contains exact quatities of ERCC spike-ins.
+However, when looking at total ERCC molecule versus total gene molecules, percentage of ERCC molecule versus total gene molecules, ERCC capture efficiency versus total gene molecules, and ERCC capture efficiency versus percentage of ERCC molecule, we observe a clear differences across the three individuals but not across C1 replicates in all of the above.
+The fact that the C1 replicates of the same individuals were consistent in these analysis suggested that this "individual effect" cannot be arising simply from the cell-cell technical variability including PCR amplification, library prepration, and sequencing. 
+Instead, some unidentified factors inherent from the individual difference to the distribution of gene expression in the single cells from these three individuals is consistently affecting the molecule counts.
+For the purpose of measuring cellular mRNA content in cells, even though there was clearly a relationship between the percent ERCC molecules and the total gene molecules, the confidence in the accuracy of this estimate was inevitably dampened by the individual effect of ERCC spike-ins.
+We thus decided not to explicaity estimate the technical variability and cellular content in this study. 
+ 
+#### Batch effect of molecule counts
+To avoid batch effect from the sequencing, we followed the general guidelines for bulk samples by equally distributing the nine C1 replicates of the three individuals onto four flowcells to acquire sufficient sequencing depth. 
+We didn't observe any obvious counfouder that need to be corrected while carrying out quality control at the level of sequencing lane.
+Not surprisingly, there was a observable batch effect of C1 collection according to the PCA results of endogenous gene expression using molecule counts.
+In addition to the C1 collection itself, we noticed an unexpected batch effect arising from the difference of read-to-molecule conversion efficiency, computed from the total molecule counts divided by the total reads counts of endogenous genes in each cell, between different C1 replicates.
+Intriguingly, not only the difference of conversion efficiency between C1 replicates was significant, the difference between the three individual was also siginificant, which further strengthens our conclusion that difference in certain unknown factors across these individuals are affecting the molecule counts of both ERCC spike-ins and endogenous genes in single cells.
 
 ### Subsampling
 It has been shown in separate studies that as few as 10 single cells can accurately reflect gene expression from a pooled population [@Pollen2014], and 2 million reads can already reach saturation point of gene detection [@Wu2014].
-However, no systematic subsampling at the levels of sequencing depth, including read counts and molecule counts, along with the consideration of cell number has been reported. To assess the accuracy of single-cell RNA-seq, I collected data from bulk sample (cells in bulk) together with each C1 prep from the same population of cells using the same SMARTer master mixes. 
-The results from subsampling indicate that sequencing depth of 2 million reads, which corresponds to ~100,000 molecule counts of protein coding genes, with 75 single cells is sufficient to capture the majority of genes expressed in the whole cell culture (~90 %). 
+However, no systematic subsampling at the levels of sequencing depth, including read counts and molecule counts, along with the consideration of cell number has been reported. 
+To assess the accuracy of single-cell RNA-seq, we collected data from bulk sample (cells in bulk) together with each C1 prep from the same population of cells using the same SMARTer master mixes. 
+The results from subsampling in high quality cells indicate that sequencing depth of 2 million reads, which corresponds to ~100,000 molecule counts of protein coding genes, with 75 single cells is sufficient to capture the majority of genes expressed in the whole cell culture (~90 %). 
 Using the same subsampling strategy, the pattern of the correlation between the mean expression levels of subsampled single cells and the bulk sample also coincides with the pattern of detected gene numbers in all three individuals (r > 0.93). 
-Most importantly, the cell-cell variance from the same subsampling cutoffs also accurately represents all the collected single cells from one individual (r > 0.95), suggesting that a sample size of 75 cells is sufficient for the proposed study.
+Most importantly, the cell-cell variance from the same subsampling cutoffs also accurately represents all the collected single cells from one individual (r > 0.95), suggesting that a sample size of 75 high quality cells is sufficient for capturing cell-cell variability.
 
 ### A novel pipeline 
+To remove the technical variability arosed from all the factors mentioned above without explicitly modeling the variability of ERCC spike-in molecule counts, we developed a pipeline which is applicable for studying cell-cell variability aross multiple biological conditions with multiple C1 collections.  
 
+#### Standardization (cpm)
+
+#### Linear transformation
+#### Removal of batch effect
 ### Cell-cell variability of gene expression
+
 
 1. study design and data collection (Fig. `r fig_main_qc`, sup fig.1 and 2)
 2. cpm (Fig. `r fig_main_cpm`, sup fig.3 and 4)
