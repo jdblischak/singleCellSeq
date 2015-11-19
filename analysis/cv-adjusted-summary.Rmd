@@ -65,6 +65,7 @@ dim(molecules)
 molecules[1:5, 1:5]
 ```
 
+
 Remove genes with mean zero count in the unfiltered data
 
 ```{r remove-mean-count-zero-genes}
@@ -688,45 +689,46 @@ Mark top ranked genes based on individual standardized CVs.
 df_plot <- data.frame(
   cvs = c(ENSG_cv_adj[[1]]$log10cv2_adj, ENSG_cv_adj[[2]]$log10cv2_adj,
           ENSG_cv_adj[[3]]$log10cv2_adj),
+  normed_cv = c(df_norm$NA19098, df_norm$NA19101, df_norm$NA19239),
   means = c(ENSG_cv[[1]]$mean, ENSG_cv[[2]]$mean, ENSG_cv[[3]]$mean),
- individual = as.factor(rep(names(ENSG_cv), each = NROW(ENSG_cv[[1]])) ) ) 
+  individual = as.factor(rep(names(ENSG_cv), each = NROW(ENSG_cv[[1]])) ) ) 
 
 cowplot::plot_grid(
   ggplot( df_plot,
-      aes(x = log10(means), y = cvs ) ) +
+      aes(x = log10(means), y = normed_cv ) ) +
       geom_point( aes(col = as.factor(individual)), cex = 1.2 ) + 
       facet_wrap( ~ individual) +
       labs(x = "log10 Mean gene expression level", 
-           y = "log10 Squared CV") +
+           y = "Standardized CV") +
       geom_point(
         data = df_plot[ rep( rank(ENSG_cv[[1]]$mean) > length(genes) - 1000, 3), ],
         colour = "grey20", cex = 1.2 ) +
       ggtitle("Top 1000 genes by NA19098 mean gene expressionl ") +
       theme(legend.position = "none"),
   ggplot( df_plot,
-        aes(x = log10(means), y = cvs ) ) +
+        aes(x = log10(means), y = normed_cv ) ) +
         geom_point( aes(col = as.factor(individual)), cex = 1.2 ) + 
         facet_wrap( ~ individual) +
         labs(x = "log10 Mean gene expression level", 
-             y = "log10 Squared CV") +
+             y = "Standardized CV") +
         geom_point(
           data = df_plot[ rep( rank(df_norm[[1]]) > length(genes) - 1000, 3), ],
           colour = "grey20", cex = 1.2 ) +
         ggtitle("Top 1000 genes by NA19098 SCV") +
         theme(legend.position = "none"),
   ggplot( df_plot,
-        aes(x = log10(means), y = cvs ) ) +
+        aes(x = log10(means), y = normed_cv ) ) +
         geom_point( aes(col = as.factor(individual)), cex = 1.2 ) + 
         facet_wrap( ~ individual) +
         labs(x = "log10 Mean gene expression level", 
-             y = "log10 Squared CV") +
+             y = "Standadrdized CV") +
         geom_point(
           data = df_plot[ rep( rank(df_norm[[2]]) > length(genes) - 1000, 3), ],
           colour = "grey20", cex = .9 ) +
         ggtitle("Top 1000 genes by NA19101 SCV") +
         theme(legend.position = "none"),
   ggplot( df_plot,
-        aes(x = log10(means), y = cvs ) ) +
+        aes(x = log10(means), y = normed_cv ) ) +
         geom_point( aes(col = as.factor(individual)), cex = 1.2 ) + 
         facet_wrap( ~ individual) +
         labs(x = "log10 Mean gene expression level", 
@@ -759,15 +761,18 @@ ii_cellcycle_genes <- lapply(1:3, function(per_individual) {
 names(ii_cellcycle_genes) <- names(ENSG_cv)
 ii_cellcycle_genes <- do.call(c, ii_cellcycle_genes)
 
-ggplot(do.call(rbind, ENSG_cv_adj),
-       aes(x = log10(mean), y = log10cv2_adj )) +
+ggplot(data.frame(do.call(rbind, ENSG_cv_adj),
+                  normed_cv = c(df_norm$NA19098, df_norm$NA19101, df_norm$NA19239) ),
+       aes(x = log10(mean), y = normed_cv )) +
   geom_point(aes(col = group), cex = 1.2) + facet_wrap( ~ group) +
   ggtitle("Cellcycle genes") + 
-  geom_point(data = subset(do.call(rbind, ENSG_cv_adj), 
-                           ii_cellcycle_genes), 
-             colour = "grey20", cex = 1.2) +
+  geom_point(
+      data = subset(data.frame(do.call(rbind, ENSG_cv_adj),
+                 normed_cv = c(df_norm$NA19098, df_norm$NA19101, df_norm$NA19239) ), 
+                 ii_cellcycle_genes), 
+       colour = "grey20", cex = 1.2) +
   labs(x = "log10 Mean gene expression level",
-       y = "log10 SCV")
+       y = "Standardized CV")
 ```
 
 
@@ -789,11 +794,13 @@ ii_pluripotent_genes <- lapply(1:3, function(per_individual) {
 names(ii_pluripotent_genes) <- names(ENSG_cv)
 ii_pluripotent_genes <- do.call(c, ii_pluripotent_genes)
 
-ggplot(do.call(rbind, ENSG_cv_adj),
-       aes(x = log10(mean), y = log10cv2_adj)) +
+ggplot(data.frame(do.call(rbind, ENSG_cv_adj),
+                  normed_cv = c(df_norm$NA19098, df_norm$NA19101, df_norm$NA19239) ),
+       aes(x = log10(mean), y = normed_cv)) +
   geom_point(aes(col = group), cex = 1.2) + facet_wrap( ~ group) +
   ggtitle("Pluripotent genes") + 
-  geom_point(data = subset(do.call(rbind, ENSG_cv_adj), 
+  geom_point(data = subset(data.frame(do.call(rbind, ENSG_cv_adj),
+                  normed_cv = c(df_norm$NA19098, df_norm$NA19101, df_norm$NA19239) ), 
                            ii_pluripotent_genes), 
              colour = "grey20", cex = 1.2) +
   labs(x = "log10 Mean gene expression level",
@@ -815,16 +822,18 @@ df_norm$squared_dev <- rowSums( ( df_norm - rowMedians(as.matrix(df_norm)) )^2 )
 Top 1000 ranked genes by SSM.
 
 ```{r}
-ggplot(do.call(rbind, ENSG_cv_adj),
-       aes(x = log10(mean), y = log10cv2_adj )) +
+ggplot(data.frame(do.call(rbind, ENSG_cv_adj),
+                  normed_cv = c(df_norm$NA19098, df_norm$NA19101, df_norm$NA19239) ),
+       aes(x = log10(mean), y = normed_cv )) +
   geom_point(aes(col = group), cex = 1.2) + facet_wrap( ~ group) +
   ggtitle("Top 1000 ranked genes by SSM") + 
   geom_point(
-    data = subset(do.call(rbind, ENSG_cv_adj), 
+    data = subset(data.frame(do.call(rbind, ENSG_cv_adj),
+                  normed_cv = c(df_norm$NA19098, df_norm$NA19101, df_norm$NA19239) ), 
                   rep(rank(df_norm$squared_dev) > length(genes) - 1000, times = 3) ), 
              colour = "grey20", cex = 1.2 ) +
   labs(x = "log10 Mean gene expression level",
-     y = "log10 SCV")
+       y = "SCV")
 ```
 
 Import permutation results.
@@ -902,6 +911,25 @@ if(!file.exists("../analysis/figure/cv-adjusted-summary.Rmd/density-low-ssm.pdf"
 ```
 
 
+## GO analysis of differential CV genes
+
+
+```{r}
+if (!file.exists("rda/cv-adjusted-summary/go.rda")) {
+  go_cv <- GOtest(my_ensembl_gene_universe = rownames(molecules_filter),
+                      my_ensembl_gene_test = rownames(molecules_filter)[permuted_pval$squared_dev == 0],
+                      pval_cutoff = 1, ontology=c("BP") )
+  goterms_bp <- summary(go_cv$GO$BP, pvalue = 1)
+  goterms_bp <- data.frame(ID = goterms_bp[[1]],
+                           Pvalue = goterms_bp[[2]],
+                           Terms = goterms_bp[[7]])
+  goterms_bp <- goterms_bp[order(goterms_bp$Pvalue), ]
+} else {
+  load(file = "rda/cv-adjusted-summary/go.rda")
+}
+goterms_bp$Terms[ goterms_bp$Pvalue < .01 ]
+```
+
 
 ## Others
 
@@ -910,7 +938,9 @@ if(!file.exists("../analysis/figure/cv-adjusted-summary.Rmd/density-low-ssm.pdf"
 
 * High SSM genes.
 
-```{r}
+Make a data.frame for all genes tested including permutation-based p-values, SSM (Sum-of-the-Squared-Deviations-From-the-Median), ENSG IDs, and gene symbols. 
+
+```{r, fig.width=8, fig.height=8}
 genes_plot <- data.frame(
     pval = permuted_pval$squared_dev,
     dist = df_norm$squared_dev,
@@ -919,18 +949,32 @@ genes_plot <- data.frame(
                         external_gene_name[match(genes, ensembl_gene_id)]) ) 
 genes_plot <- genes_plot[ order(genes_plot$dist, decreasing = TRUE), ]
 genes_plot <- genes_plot[ genes_plot$pval == 0, ]
-zero_count <- molecules_filter[rownames(molecules_filter) == genes_plot$genes[3], ] == 0
-ggplot(data.frame(zero_count = c(zero_count),
-                  individual = anno_filter$individual),
-       aes(x = factor(individual),
-           fill = zero_count,
-           color = individual) ) +
-       geom_bar() + scale_fill_grey()
+```
+
+For each individual, count the number of zero count cells and the number of non-zero count cells. 
+
+```{r}
+library(gridExtra)
+grid.arrange(grobs = lapply(1:16, function(per_gene) {
+  zero_count <- molecules_filter[rownames(molecules_filter) == genes_plot$genes[per_gene], ] == 0
+  ggplot(data.frame(zero_count = c(zero_count),
+                    individual = anno_filter$individual),
+         aes(x = factor(individual),
+             fill = zero_count,
+             color = individual) ) +
+         geom_bar() + scale_fill_grey() +
+         ggtitle(genes_plot$gene_symbols[per_gene]) +
+         theme(legend.position = "none")
+  }),
+  ncol = 4, nrow = 4,
+  labels = LETTERS[1:16])
 ```
 
 
 
 ### Heatmap
+
+Placeholder for a heatmap.
 
 ```{r}
 library(gplots)
