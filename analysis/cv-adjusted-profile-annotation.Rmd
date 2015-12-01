@@ -1,0 +1,323 @@
+---
+title: "Profile individual adjusted CVs"
+author: "Joyce Hsiao"
+date: 2015-10-29
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+
+library(knitr)
+opts_chunk$set(message = FALSE, warning = FALSE, eval = TRUE, 
+               echo = TRUE)
+```
+
+
+## Objective
+
+We rank each individual's adjusted CV (Deviation-from-the-Median; DM) and compare genes' ranks in adjusted CV across individuals. 
+
+Method: Compute CV for each individual and adjust the CV to remove its dependency on mean gene expression. We will follow [Kolodziejczyk et al., 2015] to compute the adjusted coefficient of variation (referred to as Deviation-from-the-Median in [Kolodziejczyk et al., 2015] and also in our related documentations).
+
+[Kolodziejczyk et al., 2015](http://dx.doi.org/10.1016/j.stem.2015.09.011)
+
+
+## Set up
+
+```{r, message=FALSE, warning=FALSE}
+library("data.table")
+library("dplyr")
+library("limma")
+library("edgeR")
+library("ggplot2")
+library("grid")
+theme_set(theme_bw(base_size = 12))
+source("functions.R")
+```
+
+
+## Prepare data
+
+Input annotation of only QC-filtered single cells. Remove NA19098.r2
+
+```{r}
+anno_qc <- read.table("../data/annotation-filter.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+is_include <- anno_qc$batch != "NA19098.r2"
+anno_qc_filter <- anno_qc[which(is_include), ]
+```
+
+
+Import endogeneous gene molecule counts that are QC-filtered, CPM-normalized, ERCC-normalized, and also processed to remove unwanted variation from batch effet. ERCC genes are removed from this file.
+
+```{r}
+molecules_ENSG <- read.table("../data/molecules-final.txt", header = TRUE, stringsAsFactors = FALSE)
+molecules_ENSG <- molecules_ENSG[ , is_include]
+```
+
+Input moleclule counts before log2 CPM transformation. This file is used to compute percent zero-count cells per sample.
+
+```{r}
+molecules_sparse <- read.table("../data/molecules-filter.txt", header = TRUE, stringsAsFactors = FALSE)
+
+molecules_sparse <- molecules_sparse[grep("ENSG", rownames(molecules_sparse)), ]
+stopifnot( all.equal(rownames(molecules_ENSG), rownames(molecules_sparse)) )
+```
+
+
+## Compute normalized CV 
+
+We compute squared CV across cells for each individual and then for each individual CV profile, account for mean dependency by computing distance with respect to the data-wide coefficient variation on the log10 scale. 
+
+```{r}
+source("../code/cv-functions.r")
+
+ENSG_cv <- compute_cv(log2counts = molecules_ENSG,
+                      grouping_vector = anno_qc_filter$individual)
+
+ENSG_cv_adj <- normalize_cv(group_cv = ENSG_cv, 
+                            log2counts = molecules_ENSG, 
+                            anno = anno_qc_filter)
+```
+
+
+
+## Extreme genes 
+
+*Top/bottom 50
+
+```{r}
+extreme_genes_50 <- lapply(ENSG_cv_adj, function(xx) {
+  low_mean <- rank(xx$mean) < 50
+  high_mean <- rank(xx$mean) > (length(xx$mean) - 50)
+  low_cv <-  rank(xx$log10cv2_adj) < 50
+  high_cv <- rank(xx$log10cv2_adj) > (length(xx$log10cv2_adj) - 50)
+  res <- data.frame(high_mean = high_mean,
+                    low_mean = low_mean,
+                    high_cv = high_cv,
+                    low_cv = low_cv)
+  rownames(res) <- rownames(ENSG_cv_adj[[1]])
+  res
+})
+```
+
+*Top/bottom 200
+
+```{r}
+extreme_genes_200 <- lapply(ENSG_cv_adj, function(xx) {
+  low_mean <- rank(xx$mean) < 200
+  high_mean <- rank(xx$mean) > (length(xx$mean) - 200)
+  low_cv <-  rank(xx$log10cv2_adj) < 200
+  high_cv <- rank(xx$log10cv2_adj) > (length(xx$log10cv2_adj) - 200)
+  res <- data.frame(high_mean = high_mean,
+                    low_mean = low_mean,
+                    high_cv = high_cv,
+                    low_cv = low_cv)
+  rownames(res) <- rownames(ENSG_cv_adj[[1]])
+  res
+})
+```
+
+*Output gene symbols.
+
+```{r}
+gene_info <- read.table("../data/gene-info.txt", header = TRUE, sep = "\t", 
+                        stringsAsFactors = FALSE, quote = "")
+str(gene_info)
+```
+
+
+Gene symbols ordered by CV
+
+```{r}
+adj_cv_order <- with(gene_info, data.frame(
+                          NA19098 = external_gene_name[
+                            order(ENSG_cv_adj$NA19098$log10cv2_adj, decreasing = TRUE)],
+                          NA19101 = external_gene_name[
+                            order(ENSG_cv_adj$NA19101$log10cv2_adj, decreasing = TRUE)],
+                          NA19239 = external_gene_name[
+                            order(ENSG_cv_adj$NA19239$log10cv2_adj, decreasing = TRUE)], 
+                          stringsAsFactors = FALSE) )
+
+head(adj_cv_order)
+```
+
+```{r}
+if(!file.exists("../data/gene-order-high-to-low-cv.txt")) {
+write.table(adj_cv_order, file = "../data/gene-order-high-to-low-cv.txt",
+            sep = "\t",
+            col.names = TRUE, row.names = FALSE, quote = FALSE)
+}
+```
+
+
+
+## Annotation
+
+### GOstats
+
+```{r run-gostats, eval = F}
+require(Humanzee)
+if (file.exists("rda/cv-adjusted-profile/go-cv-NA19098.rda")) {
+  load("rda/cv-adjusted-profile/go-cv-NA19098.rda")  
+} else {
+go_cv_high <- GOtest(my_ensembl_gene_universe = rownames(molecules_ENSG),
+                      my_ensembl_gene_test = rownames(molecules_ENSG)[extreme_genes_50[[1]]$high_cv],
+                      pval_cutoff = 1, ontology=c("BP") )
+go_cv_low <- GOtest(my_ensembl_gene_universe = rownames(molecules_ENSG),
+                      my_ensembl_gene_test = rownames(molecules_ENSG)[extreme_genes_50[[1]]$low_cv],
+                      pval_cutoff = 1, ontology=c("BP") )
+
+go_mean_high <- GOtest(my_ensembl_gene_universe = rownames(molecules_ENSG),
+                      my_ensembl_gene_test = rownames(molecules_ENSG)[extreme_genes_50[[1]]$high_mean],
+                      pval_cutoff = 1, ontology=c("BP") )
+go_mean_low <- GOtest(my_ensembl_gene_universe = rownames(molecules_ENSG),
+                      my_ensembl_gene_test = rownames(molecules_ENSG)[extreme_genes_50[[1]]$low_mean],
+                      pval_cutoff = 1, ontology=c("BP") )
+
+save(ENSG_cv_adj, extreme_genes_50,
+     go_cv_high, go_cv_low, go_mean_high, go_mean_low,
+     file = "rda/cv-adjusted-profile/go-cv-NA19098.rda")
+}
+
+if (file.exists("rda/cv-adjusted-profile/go-cv-NA19101.rda")) {
+  load("rda/cv-adjusted-profile/go-cv-NA19101.rda")  
+} else {
+go_cv_high <- GOtest(my_ensembl_gene_universe = rownames(molecules_ENSG),
+                      my_ensembl_gene_test = rownames(molecules_ENSG)[extreme_genes_50[[2]]$high_cv],
+                      pval_cutoff = 1, ontology=c("BP") )
+go_cv_low <- GOtest(my_ensembl_gene_universe = rownames(molecules_ENSG),
+                      my_ensembl_gene_test = rownames(molecules_ENSG)[extreme_genes_50[[2]]$low_cv],
+                      pval_cutoff = 1, ontology=c("BP") )
+
+go_mean_high <- GOtest(my_ensembl_gene_universe = rownames(molecules_ENSG),
+                      my_ensembl_gene_test = rownames(molecules_ENSG)[extreme_genes_50[[2]]$high_mean],
+                      pval_cutoff = 1, ontology=c("BP") )
+go_mean_low <- GOtest(my_ensembl_gene_universe = rownames(molecules_ENSG),
+                      my_ensembl_gene_test = rownames(molecules_ENSG)[extreme_genes_50[[2]]$low_mean],
+                      pval_cutoff = 1, ontology=c("BP") )
+save(ENSG_cv_adj, extreme_genes_50,
+     go_cv_high, go_cv_low, go_mean_high, go_mean_low,
+     file = "rda/cv-adjusted-profile/go-cv-NA19101.rda")
+}
+
+
+if (file.exists("rda/cv-adjusted-profile/go-cv-NA19239.rda")) {
+  load("rda/cv-adjusted-profile/go-cv-NA19239.rda")  
+} else {
+go_cv_high <- GOtest(my_ensembl_gene_universe = rownames(molecules_ENSG),
+                      my_ensembl_gene_test = rownames(molecules_ENSG)[extreme_genes_50[[3]]$high_cv],
+                      pval_cutoff = 1, ontology=c("BP") )
+go_cv_low <- GOtest(my_ensembl_gene_universe = rownames(molecules_ENSG),
+                      my_ensembl_gene_test = rownames(molecules_ENSG)[extreme_genes_50[[3]]$low_cv],
+                      pval_cutoff = 1, ontology=c("BP") )
+
+go_mean_high <- GOtest(my_ensembl_gene_universe = rownames(molecules_ENSG),
+                      my_ensembl_gene_test = rownames(molecules_ENSG)[extreme_genes_50[[3]]$high_mean],
+                      pval_cutoff = 1, ontology=c("BP") )
+go_mean_low <- GOtest(my_ensembl_gene_universe = rownames(molecules_ENSG),
+                      my_ensembl_gene_test = rownames(molecules_ENSG)[extreme_genes_50[[3]]$low_mean],
+                      pval_cutoff = 1, ontology=c("BP") )
+save(ENSG_cv_adj, extreme_genes_50,
+     go_cv_low, go_cv_high,
+     go_mean_high, go_mean_low, file = "rda/cv-adjusted-profile/go-cv-NA19239.rda")
+}
+```
+
+
+
+### Extract GO terms
+
+* NA19098
+
+```{r, eval = F}
+load(file = "rda/cv-adjusted-profile/go-cv-NA19098.rda")
+goterms_cv_high <- summary(go_cv_high$GO$BP, pvalue = .05)
+goterms_cv_high <- data.frame(ID = goterms_cv_high[[1]],
+                             Pvalue = goterms_cv_high[[2]],
+                             Terms = goterms_cv_high[[7]])
+goterms_cv_high <- goterms_cv_high[order(goterms_cv_high$Pvalue), ]
+head(goterms_cv_high)
+
+goterms_cv_low <- summary(go_cv_low$GO$BP, pvalue = .05)
+goterms_cv_low <- data.frame(ID = goterms_cv_low[[1]],
+                             Pvalue = goterms_cv_low[[2]],
+                             Terms = goterms_cv_low[[7]])
+goterms_cv_low <- goterms_cv_high[order(goterms_cv_low$Pvalue), ]
+head(goterms_cv_low)
+```
+
+
+* NA19101
+
+```{r, eval = F}
+load(file = "rda/cv-adjusted-profile/go-cv-NA19101.rda")
+goterms_cv_high <- summary(go_cv_high$GO$BP, pvalue = .05)
+goterms_cv_high <- data.frame(ID = goterms_cv_high[[1]],
+                             Pvalue = goterms_cv_high[[2]],
+                             Terms = goterms_cv_high[[7]])
+goterms_cv_high <- goterms_cv_high[order(goterms_cv_high$Pvalue), ]
+head(goterms_cv_high)
+
+goterms_cv_low <- summary(go_cv_low$GO$BP, pvalue = .05)
+goterms_cv_low <- data.frame(ID = goterms_cv_low[[1]],
+                             Pvalue = goterms_cv_low[[2]],
+                             Terms = goterms_cv_low[[7]])
+goterms_cv_low <- goterms_cv_high[order(goterms_cv_low$Pvalue), ]
+head(goterms_cv_low)
+```
+
+
+* NA19239
+
+```{r, eval = F}
+load(file = "rda/cv-adjusted-profile/go-cv-NA19239.rda")
+goterms_cv_high <- summary(go_cv_high$GO$BP, pvalue = .05)
+goterms_cv_high <- data.frame(ID = goterms_cv_high[[1]],
+                             Pvalue = goterms_cv_high[[2]],
+                             Terms = goterms_cv_high[[7]])
+goterms_cv_high <- goterms_cv_high[order(goterms_cv_high$Pvalue), ]
+head(goterms_cv_high)
+
+goterms_cv_low <- summary(go_cv_low$GO$BP, pvalue = .05)
+goterms_cv_low <- data.frame(ID = goterms_cv_low[[1]],
+                             Pvalue = goterms_cv_low[[2]],
+                             Terms = goterms_cv_low[[7]])
+goterms_cv_low <- goterms_cv_high[order(goterms_cv_low$Pvalue), ]
+head(goterms_cv_low)
+```
+
+
+## Export files
+
+
+```{r, eval = FALSE}
+library("biomaRt")
+ensembl <- useMart(host = "grch37.ensembl.org",
+                   biomart = "ENSEMBL_MART_ENSEMBL",
+                   dataset = "hsapiens_gene_ensembl")
+
+info <- getBM(attributes = c("ensembl_gene_id", "chromosome_name",
+                                                   "external_gene_name", "transcript_count",
+                                                   "description"),
+                                    filters = "ensembl_gene_id",
+                                    values = rownames(molecules_ENSG[sig_cv, ]),
+                                    mart = ensembl)
+
+write.table(extreme_genes_50$NA19098$high_cv, quote = FALSE)
+
+```
+
+
+
+
+
+## Session information
+
+```{r info}
+sessionInfo()
+```

@@ -1,0 +1,301 @@
+---
+title: "Mixed effect model for batch correction - limma"
+author: "Joyce Hsiao"
+date: 2015-11-11
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+```
+
+
+## Objective 
+
+Compare per gene batch effect correction versus genewide batch effect correct using the [filtered data].
+
+[filtered data](https://jdblischak.github.io/singleCellSeq/analysis/data-transformation.html)
+
+
+## Setup
+
+```{r}
+source("functions.R")
+library("limma")
+library("edgeR")
+library(ggplot2)
+theme_set(theme_bw(base_size = 16))
+```
+
+
+## Data preparation
+
+Input quality single cells
+
+```{r}
+quality_single_cells <- read.table("../data/quality-single-cells.txt", 
+                                  header = TRUE,
+                                  stringsAsFactors = FALSE)
+str(quality_single_cells)
+```
+
+
+Input annotation
+
+```{r}
+anno <- read.table("../data/annotation.txt", 
+                    header = TRUE,
+                    stringsAsFactors = FALSE)
+anno_filter <- anno[ which(anno$sample_id %in% quality_single_cells[[1]]), ]
+dim(anno_filter)
+```
+
+
+*Molecule counts
+
+Input molecule counts.
+
+```{r}
+molecules <- read.table("../data/molecules.txt", 
+                          header = TRUE,
+                          stringsAsFactors = FALSE)
+dim(molecules)
+```
+
+Filter cells.
+
+```{r}
+molecules_filter <- molecules[ , which(colnames(molecules) %in% quality_single_cells[[1]])]
+dim(molecules_filter)
+```
+
+Filter genes.
+
+```{r}
+molecules_cpm_mean <- rowMeans(cpm(molecules_filter, log = TRUE))
+lower_exp_cutoff <- 2
+genes_pass_filter <- rownames(molecules_filter)[molecules_cpm_mean > lower_exp_cutoff]
+```
+
+
+```{r}
+overexpressed_rows <- apply(molecules_filter, 1, function(x) any(x >= 1024))
+overexpressed_genes <- rownames(molecules_filter)[overexpressed_rows]
+genes_pass_filter <- setdiff(genes_pass_filter, overexpressed_genes)
+```
+
+
+```{r}
+molecules_filter <- molecules_filter[rownames(molecules_filter) %in% genes_pass_filter, ]
+```
+
+*Correct for collision probability
+
+```{r}
+molecules_collision <- -1024 * log(1 - molecules_filter / 1024)
+```
+
+*Molecules single cell endogeneous
+
+```{r}
+ercc_rows <- grepl("ERCC", rownames(molecules_filter))
+molecules_cpm <- cpm(molecules_collision[!ercc_rows, ], log = TRUE)
+```
+
+*Linear transformation
+
+```{r}
+molecules_cpm_ercc <- cpm(molecules_collision[ercc_rows, ], log = TRUE)
+ercc <- read.table("../data/expected-ercc-molecules.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+ercc <- ercc[ercc$id %in% rownames(molecules_cpm_ercc), ]
+ercc <- ercc[order(ercc$id), ]
+ercc$log2_cpm <- cpm(ercc$ercc_molecules_well, log = TRUE)
+```
+
+
+```{r}
+molecules_cpm_trans <- molecules_cpm
+molecules_cpm_trans[, ] <- NA
+intercept <- numeric(length = ncol(molecules_cpm_trans))
+slope <- numeric(length = ncol(molecules_cpm_trans))
+for (i in 1:ncol(molecules_cpm_trans)) {
+  fit <- lm(molecules_cpm_ercc[, i] ~ ercc$log2_cpm)
+  intercept[i] <- fit$coefficients[1]
+  slope[i] <- fit$coefficients[2]
+  # Y = mX + b -> X = (Y - b) / m
+  molecules_cpm_trans[, i] <- (molecules_cpm[, i] - intercept[i]) / slope[i]
+}
+dim(molecules_cpm_trans)
+```
+
+
+## Remove unwanted variation 
+
+Load the Humanzee package
+
+```{r}
+if (!require(Humanzee, quietly = TRUE)) {
+  library(devtools)
+  install_github("jhsiao999/Humanzee")
+  library(Humanzee)
+}
+```
+
+Create design matrix and compute a consensus correlation coefficient using
+limma's duplicateCorrelation function.
+
+```{r}
+block <- anno_filter$batch
+design <- model.matrix(~ 1 + individual, data = anno_filter)
+```
+
+Compute correlation between replicates.
+
+```{r}
+dup_corrs_file <- "../data/dup-corrs.rda"
+if (file.exists(dup_corrs_file)) {
+  load(dup_corrs_file)
+} else{
+  dup_corrs <- duplicateCorrelation(molecules_cpm_trans,
+                                    design = design, block = block)
+  save(dup_corrs, file = dup_corrs_file)
+}
+str(dup_corrs)
+```
+
+Restrict correlation to between -1 and 1.
+
+```{r}
+corrs_vec <- pmin(dup_corrs$atanh.correlations, 1)
+```
+
+Distribution of per-gene cell-to-cell correlation across batches.
+
+```{r}
+ggplot(data.frame(corrs = corrs_vec ),
+       aes(x = corrs) ) +
+  geom_histogram() + 
+  geom_vline(data = data.frame(corr = dup_corrs$cor),
+             aes(xintercept = corr, 
+                 colour = "red"),
+             show_guide = FALSE)
+```
+
+### Gene-wise correction
+
+```{r}
+if (file.exists("../data/limma-crossed-per-gene.rda")) {
+  load("../data/limma-crossed-per-gene.rda")
+} else {
+  gls_fit_per_gene <- Humanzee::ruv_mixed_model(molecules_cpm_trans,
+                          ndups = 1,
+                          per_gene = FALSE,
+                          design = design, block = block,
+                          correlation = corrs_vec)
+  save(gls_fit_per_gene, file = "../data/limma-crossed-per-gene.rda")
+}
+```
+
+Compute expression levels after removing variation due to random effects.
+
+```{r remove-unwanted-variation-per-gene}
+molecules_final_per_gene <- t( design %*% t(gls_fit_per_gene$coef) ) + gls_fit_per_gene$resid
+```
+
+```{r pca-molecules-final-per-gene}
+pca_final_per_gene <- run_pca(molecules_final_per_gene)
+pca_final_plot_per_gene <- plot_pca(pca_final_per_gene$PCs, explained = pca_final_per_gene$explained,
+         metadata = anno_filter, color = "individual",
+         shape = "replicate") +
+  labs(title = "Molecules (batch corrected) for single cells")
+pca_final_plot_per_gene
+```
+
+
+### Gene-wide correction
+
+```{r}
+if (file.exists("../data/limma-crossed.rda")) {
+  load("../data/limma-crossed.rda")
+} else {
+  gls_fit <- Humanzee::ruv_mixed_model(molecules_cpm_trans,
+                          ndups = 1,
+                          per_gene = FALSE,
+                          design = design, block = block,
+                          correlation = dup_corrs$cor)
+  save(gls_fit, file = "../data/limma-crossed.rda")
+}
+```
+
+
+Compute expression levels after removing variation due to random effects.
+
+```{r remove-unwanted-variation}
+molecules_final <- t( design %*% t(gls_fit$coef) ) + gls_fit$resid
+```
+
+
+```{r pca-molecules-final}
+pca_final <- run_pca(molecules_final)
+pca_final_plot <- plot_pca(pca_final$PCs, explained = pca_final$explained,
+         metadata = anno_filter, color = "individual",
+         shape = "replicate") +
+  labs(title = "Molecules (batch corrected) for single cells")
+pca_final_plot
+```
+
+### Expression ranking
+
+*Gene ranks per cell are consistent between the gene-wise correction and the 
+gene-wide correction methods. There seems to be more fluctuations in the 
+correlation between the two methods in cell ranks per gene, which suggests
+a possible impact on the analysis comparing coefficients of variations 
+between genes. 
+
+Per-cell correlation in expression levels
+
+```{r}
+cell_corr <- sapply(1:NCOL(molecules_final), function(ii_cell) {
+  cor(molecules_final[ , ii_cell], 
+      molecules_final_per_gene[ , ii_cell], method = "spearman")
+})
+summary(cell_corr)
+```
+
+Per-gene correlation in expression levels
+
+```{r}
+gene_corr <- sapply(1:NROW(molecules_final), function(ii_gene) {
+  cor(molecules_final[ii_gene, ], 
+      molecules_final_per_gene[ii_gene, ], method = "spearman")
+})
+summary(gene_corr)
+```
+
+Per-gene correlation in expression levels for each individual
+
+```{r}
+gene_corr_individual <- lapply(1:3, function(ii_individual) {
+  which_individual <- anno_filter$individual == unique(anno_filter$individual)[ii_individual]
+  df <- molecules_final[ , which_individual]
+  df_per_gene <- molecules_final_per_gene[ , which_individual]
+  cell_corr <- sapply(1:NROW(molecules_final), function(ii_gene) {
+          cor(df[ ii_gene, ], 
+              df_per_gene[ ii_gene, ], method = "spearman")
+        })
+  cell_corr
+})
+lapply(gene_corr_individual, summary)
+```
+
+
+
+## Session information
+
+```{r info}
+sessionInfo()
+```

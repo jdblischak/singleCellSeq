@@ -1,0 +1,205 @@
+---
+title: "Quality control plots"
+author: "PoYuan Tung"
+date: 2015-10-21
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+opts_chunk$set(cache = FALSE)
+```
+
+## Input
+
+```{r packages, message=FALSE, cache=FALSE}
+library("biomaRt")
+library("data.table")
+library("dplyr")
+library("limma")
+library("edgeR")
+library("ggplot2")
+library("grid")
+library("cowplot")
+theme_set(theme_bw(base_size = 12))
+source("functions.R")
+```
+
+Input ERCC molecule counts calculated in [capture efficiency](capture-efficiency.html). 
+
+```{r input-ercc}
+ercc <- read.table("../data/expected-ercc-molecules.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+head(ercc)
+```
+
+Input annotation.
+
+```{r input-annotation}
+anno <- read.table("../data/annotation.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno)
+```
+
+Input read counts.
+
+```{r input-read-counts}
+reads <- read.table("../data/reads.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+```
+
+Input molecule counts.
+
+```{r input-molecule-counts}
+molecules <- read.table("../data/molecules.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+```
+
+Input list of quality single cells.
+
+```{r input-quality-single-cells}
+quality_single_cells <- scan("../data/quality-single-cells.txt",
+                             what = "character")
+```
+
+Keep only the single cells that passed the [QC filters](qc-filter-ipsc.html).
+
+```{r filter-cells}
+reads <- reads[, colnames(reads) %in% quality_single_cells]
+molecules <- molecules[, colnames(molecules) %in% quality_single_cells]
+anno <- anno[anno$sample_id %in% quality_single_cells, ]
+stopifnot(dim(reads) == dim(molecules),
+          nrow(anno) == ncol(reads))
+```
+
+## Compare reads and molecules
+
+Compare the means of each gene obtained via the different methods.
+
+```{r reads-v-molecules}
+## calculate mean
+reads_mean     <- apply(reads, 1, mean)
+molecules_mean <- apply(molecules, 1, mean)
+distribution <- data.frame(reads_mean, molecules_mean)
+
+## correlation between reads and molecules
+cor(distribution)
+
+## select ERCC
+distribution$type <- ifelse(grepl("ERCC", rownames(distribution)), "ERCC", "gene")
+
+## color palette
+cbPalette <- c("#0000FF", "#999999", "#990033", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#009E73")
+
+## plot
+plot_mean_log <- ggplot(distribution, aes(x = molecules_mean, y = reads_mean, col = type)) + 
+  geom_point(size = 3, alpha = 0.5) +  
+  scale_colour_manual(values=cbPalette) + 
+  labs(x = "mean molecule", y = "mean reads", title = "Reads vs. Molecules - log scale") + 
+  scale_x_log10() + 
+  scale_y_log10()
+
+plot_mean_log
+
+plot_mean <- ggplot(distribution, aes(x = molecules_mean, y = reads_mean, col = type)) + 
+  geom_point(size = 3, alpha = 0.5) +  
+  scale_colour_manual(values=cbPalette) + 
+  labs(x = "mean molecule", y = "mean reads", title = "Reads vs. Molecules") +
+  geom_smooth(method = "lm")
+
+plot_mean
+```
+
+## Distribution of fold change to mean
+
+Look at the distribution of fold change to mean. As being reported by others, the lowly expressed genes show divergent read and molecule counts
+
+```{r distribution}
+## calculate fold change to mean
+distribution$fold_change_read     <- log2(reads_mean/mean(reads_mean))
+distribution$fold_change_molecule <- log2(molecules_mean/mean(molecules_mean))
+
+plot_distribution <- ggplot(distribution, aes(x = fold_change_molecule, y = fold_change_read, col = type)) + 
+  geom_point(size = 3, alpha = 0.5) + 
+  scale_colour_manual(values=cbPalette) + 
+  stat_function(fun= function(x) {x}, col= "#56B4E9") + 
+  labs(x = "log2 fold change to mean (molecule)", y =  "log2 fold change to mean (reads)")
+
+plot_distribution
+```
+
+## Visualizing capture efficiency
+
+Use only those `r sum(ercc$ercc_molecules_well >= 1)` ERCC genes with at least 1 expected molecule per well.
+
+```{r capture-efficiency}
+ercc_list <- list()
+for (spike in ercc$id[ercc$ercc_molecules_well >= 1]) {
+  if (spike %in% rownames(molecules)) {
+    ercc_list$id <- c(ercc_list$id, spike)
+    ercc_list$observed_mean <- c(ercc_list$observed_mean,
+                                 mean(as.numeric(molecules[spike, ])))
+    ercc_list$observed_sem <- c(ercc_list$observed_sem,
+                                 sd(as.numeric(molecules[spike, ])) /
+                                 sqrt(ncol(molecules)))
+    ercc_list$expected <- c(ercc_list$expected,
+                            ercc$ercc_molecules_well[ercc$id == spike])
+  }
+}
+ercc_plot <- as.data.frame(ercc_list, stringsAsFactors = FALSE)
+str(ercc_plot)
+cor(ercc_plot$observed_mean, ercc_plot$expected)
+```
+
+```{r ercc-capture-efficiency, fig.width=8, fig.height=8}
+p_efficiency <- ggplot(ercc_plot, aes(x = expected, y = observed_mean)) +
+  geom_point(col = "red") +
+  geom_errorbar(aes(ymin = observed_mean - observed_sem,
+                    ymax = observed_mean + observed_sem), width = 0) +
+  labs(x = "Expected ERCC molecules",
+       y = "Observed ERCC molecules\n(mean +/- sem)",
+       title = "ERCC capture efficiency")
+
+p_efficiency
+
+p_efficiency_plot <- p_efficiency + scale_x_log10() +
+  scale_y_log10() +
+  labs(x = "Expected ERCC molecules",
+       y = "Observed ERCC molecules\n(mean +/- sem)",
+       title = "ERCC capture efficiency - log scale")
+
+p_efficiency_plot
+```
+
+## Calculate capture efficiency per cell
+```{r capture-efficiency-cell}
+ercc_index <- grep("ERCC", rownames(molecules))
+length(ercc_index)
+
+efficiency <- numeric(length = ncol(molecules))
+total_ercc_molecules <- sum(ercc_plot$expected)
+for (i in 1:ncol(molecules)) {
+  efficiency[i] <- sum(molecules[ercc_index, i]) / total_ercc_molecules
+}
+summary(efficiency)
+```
+
+## QC plots
+```{r plots, fig.width=12, fig.height=8}
+theme_set(theme_bw(base_size = 10))
+plot_grid(plot_mean + theme(legend.position = "none"),
+          plot_mean_log + theme(legend.position = "none"),
+          p_efficiency + theme(legend.position = "none"),
+          p_efficiency_plot + theme(legend.position = "none"),
+          labels = LETTERS[1:4])
+
+```
+
+## Session information
+
+```{r info}
+sessionInfo()
+```

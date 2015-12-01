@@ -1,0 +1,166 @@
+---
+title: "CV and sparsity"
+author: "Joyce Hsiao"
+date: 2015-10-07
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+```
+
+
+## Objective
+
+Explore the relationship between coefficient of variation and sparsity.
+
+As expected, a large coefficient of variation is associated with a large number of zero-count cells in a gene, an observation that is consistent with an important feature of the count data where the coefficient of variation is large for genes with low expression levels.
+
+## Set up
+
+```{r, message=FALSE, warning=FALSE}
+library("data.table")
+library("dplyr")
+library("limma")
+library("edgeR")
+library("ggplot2")
+library("grid")
+theme_set(theme_bw(base_size = 12))
+source("functions.R")
+
+## Knitr settings
+library(knitr)
+opts_knit$set(progress = TRUE, verbose = TRUE)
+opts_chunk$set(message = FALSE, warning = FALSE, eval = TRUE, 
+               echo = TRUE)
+```
+
+
+
+## Prepare data
+
+
+Input annotation of only QC-filtered single cells
+
+```{r}
+anno_qc <- read.table("../data/annotation-filter.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno_qc)
+```
+
+
+Input molecule counts that are filtered, transformed, and also processed to remove unwanted variation from batch effet. ERCC genes are also removed.
+
+```{r}
+molecules_qc <- read.table("../data/molecules-final.txt", header = TRUE, stringsAsFactors = FALSE)
+```
+
+
+## Compute coefficient of variation
+
+Compute per batch coefficient of variation.
+
+Include only genes with positive coefficient of variation. Some genes in this data may have zero coefficient of variation, because we include gene with more than 0 count 
+across all cells.
+
+
+```{r}
+molecules_cv_batch <- 
+  lapply(1:length(unique(anno_qc$batch)), function(per_batch) {
+        molecules_per_batch <- molecules_qc[ , unique(anno_qc$batch) == unique(anno_qc$batch)[per_batch] ]
+        mean_per_gene <- apply(molecules_per_batch, 1, mean, na.rm = TRUE)
+        sd_per_gene <- apply(molecules_per_batch, 1, sd, na.rm = TRUE)
+        cv_per_gene <- data.frame(mean = mean_per_gene,
+                                  sd = sd_per_gene,
+                                  cv = sd_per_gene/mean_per_gene)
+        rownames(cv_per_gene) <- rownames(molecules_qc)
+    
+        cv_per_gene <- cv_per_gene[rowSums(is.na(cv_per_gene)) == 0, ]
+        cv_per_gene$batch <- unique(anno_qc$batch)[per_batch]
+        return(cv_per_gene)
+      }) 
+names(molecules_cv_batch) <- unique(anno_qc$batch)
+
+dim(molecules_cv_batch[[1]])
+```
+
+
+## Sparsity
+
+Import molecule count file before normlization.
+
+```{r}
+molecules_filter <- read.table("../data/molecules-filter.txt")
+
+select_nonERCC <- grep("ERCC", rownames(molecules_filter), invert = TRUE)
+molecules_ENSG <- molecules_filter[select_nonERCC, ]
+
+stopifnot(dim(molecules_ENSG) == dim(molecules_qc))
+```
+
+Compute the proportion of zero count cells in each gene. 
+
+per_batch = 2
+```{r}
+molecules_sparse_batch <- 
+  lapply(1:length(unique(anno_qc$batch)), function(per_batch) {
+        sparse_per_batch <- molecules_ENSG[ , unique(anno_qc$batch) == unique(anno_qc$batch)[per_batch] ]
+        sparse_per_gene <- apply(sparse_per_batch, 1, function(x) {
+                                  mean(x == 0)
+                                })
+        return(sparse_per_gene)
+      }) 
+names(molecules_sparse_batch) <- unique(anno_qc$batch)
+str(molecules_sparse_batch[[1]])
+str(molecules_sparse_batch[[2]])
+```
+
+Frequency of zero-count cell proportions.
+
+```{r}
+par(mfrow = c(3,3), mar = c(4,2,2,3))
+for (per_batch in 1:length(unique(anno_qc$batch))) {
+  hist( molecules_sparse_batch[[per_batch]],
+        main = unique(anno_qc$batch)[per_batch], breaks = 100,
+        ylim = c(0, 3000), xlim = c(0, 1),
+        xlab = "No. of zero-count cells")
+}
+```
+
+## CV and sparsity
+
+```{r}
+require(broman)
+require(scales)
+crayons <- brocolors("crayon")
+par(mfrow = c(3,3), mar = c(4,2,2,3))
+for (per_batch in 1:length(unique(anno_qc$batch))) {
+  df_xy <- data.frame(x = molecules_sparse_batch[[per_batch]],
+                      y = molecules_cv_batch[[per_batch]]$cv)
+  plot(df_xy,
+       xlab = "Proportion of zero-count cells",
+       ylab = "CV",
+       xlim = c(0, 1), ylim = c(0, 1),
+       main = unique(anno_qc$batch)[per_batch], 
+       cex = .6, pch = 16, col = alpha(crayons["Outer Space"], .8))
+  loess_fit <- loess(y ~ x, df_xy)
+  x_seq <- with(df_xy, seq(min(x), max(x), by = .01))
+  lines(x_seq, 
+        predict(loess_fit, x_seq), 
+        col = crayons["Outrageous Orange"],
+        lwd = 1)
+}
+```
+
+
+
+
+
+## Session information
+
+```{r info}
+sessionInfo()
+```

@@ -1,0 +1,273 @@
+---
+title: "BASiCS - 40,000 iterations"
+date: 2015-08-10
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+```
+
+We analyzed our single cell data with [BASiCS][] developed by [Vallejos et al., 2015][vallejos2015].
+The results shown here are from a model fit with 40,000 iterations.
+
+[basics]: https://github.com/catavallejos/BASiCS
+[vallejos2015]: http://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1004333
+
+BASiCS and its dependency, RcppArmadillo, were able to be installed on the cluster using a new version of gcc.
+Since this took a long time to run, it was submitted via the following:
+
+```bash
+echo "Rscript -e 'library(rmarkdown); render(\"basics.Rmd\")'" | \
+  qsub -l h_vmem=32g -cwd -V -j y -o ~/log/ -N basics
+```
+
+```{r packages}
+library("BASiCS")
+library("data.table")
+source("functions.R")
+library("ggplot2")
+theme_set(theme_bw(base_size = 16))
+library("tidyr")
+library("edgeR")
+```
+
+##  Input
+
+Below is the description of the data from the BASiCS vignette, interspersed with my code to load the data.
+
+> The input dataset for BASiCS must contain the following 3 elements:
+
+> * `Counts`: a matrix of raw expression counts with dimensions $q$ times $n$. First $q_0$ rows must correspond to biological genes. Last $q-q_0$ rows must correspond to technical spike-in genes.
+
+Input annotation.
+
+```{r input-annotation}
+anno_filter <- read.table("../data/annotation-filter.txt", header = TRUE,
+                          stringsAsFactors = FALSE)
+```
+
+Input molecule counts.
+
+```{r input-molecule-counts}
+molecules_filter <- read.table("../data/molecules-filter.txt", header = TRUE,
+                               stringsAsFactors = FALSE)
+stopifnot(nrow(anno_filter) == ncol(molecules_filter),
+          colnames(molecules_filter) == anno_filter$sample_id,
+          anno_filter$well != "bulk")
+```
+
+Remove outlier batch NA19098.r2.
+
+```{r remove-NA19098.r2}
+molecules_filter <- molecules_filter[, anno_filter$batch != "NA19098.r2"]
+anno_filter <- anno_filter[anno_filter$batch != "NA19098.r2", ]
+stopifnot(nrow(anno_filter) == ncol(molecules_filter),
+          colnames(molecules_filter) == anno_filter$sample_id,
+          anno_filter$well != "bulk")
+```
+
+> * `Tech`: a vector of `TRUE`/`FALSE` elements with length $q$. If `Tech[i] = FALSE` the gene `i` is biological; otherwise the gene is spike-in.
+
+```{r tech}
+tech <- grepl("ERCC", rownames(molecules_filter))
+```
+
+> * `SpikeInput`: a vector of length $q-q_0$ whose elements contain the input number of molecules for the spike-in genes (amount per cell).
+
+```{r load-spike-input}
+spike <- read.table("../data/expected-ercc-molecules.txt", header = TRUE,
+                    sep = "\t", stringsAsFactors = FALSE)
+```
+
+Only keep the spike-ins that were kept after applying the expression cutoff.
+
+```{r spike-input}
+spike_input <- spike$ercc_molecules_well[spike$id %in% rownames(molecules_filter)]
+names(spike_input) <- spike$id[spike$id %in% rownames(molecules_filter)]
+spike_input <- spike_input[order(names(spike_input))]
+stopifnot(sum(tech) == length(spike_input),
+          rownames(molecules_filter)[tech] == names(spike_input))
+```
+
+`r length(spike_input)` of the ERCC spike-ins were observed in the single cell data.
+
+> These elements must be stored into an object of class `BASiCS_Data`.
+
+```{r create-object}
+basics_data <- newBASiCS_Data(as.matrix(molecules_filter), tech, spike_input)
+```
+
+## Fit the model
+
+```{r fit-model}
+store_dir <- "../data"
+run_name <- "new"
+if (file.exists(paste0(store_dir, "/chain_phi_", run_name, ".txt"))) {
+  chain_mu = as.matrix(fread(paste0(store_dir, "/chain_mu_", run_name, ".txt")))
+  chain_delta = as.matrix(fread(paste0(store_dir, "/chain_delta_", run_name, ".txt")))
+  chain_phi = as.matrix(fread(paste0(store_dir, "/chain_phi_", run_name, ".txt")))
+  chain_s = as.matrix(fread(paste0(store_dir, "/chain_s_", run_name, ".txt")))
+  chain_nu = as.matrix(fread(paste0(store_dir, "/chain_nu_", run_name, ".txt")))
+  chain_theta = as.matrix(fread(paste0(store_dir, "/chain_theta_", run_name, ".txt")))
+
+  mcmc_output <- newBASiCS_Chain(mu = chain_mu, delta = chain_delta,
+                                 phi = chain_phi, s = chain_s,
+                                 nu = chain_nu, theta = chain_theta)
+
+  time_total <- readRDS(paste0(store_dir, "/time_total_", run_name, ".rds"))
+} else {
+  time_start <- Sys.time()
+  mcmc_output <- BASiCS_MCMC(basics_data, N = 40000, Thin = 10, Burn = 20000,
+                             PrintProgress = TRUE, StoreChains = TRUE,
+                             StoreDir = store_dir, RunName = run_name)
+  time_end <- Sys.time()
+  time_total <- difftime(time_end, time_start, units = "hours")
+  saveRDS(time_total, paste0(store_dir, "/time_total_", run_name, ".rds"))
+}
+```
+
+Fitting the model took `r round(as.numeric(time_total), 2)` hours.
+
+Summarize the results.
+
+```{r summary}
+mcmc_summary <- Summary(mcmc_output)
+```
+
+## Cell-specific normalizing constants
+
+BASiCS models two cell-specific parameters.
+Phi models the differences in gene molecules.
+S models the differences in ERCC molecules.
+
+```{r phi-rna-content}
+plot(mcmc_summary, Param = "phi")
+```
+
+```{r s-capture-efficiency}
+plot(mcmc_summary, Param = "s")
+```
+
+```{r extract-model-parameters}
+phi <- displaySummaryBASiCS(mcmc_summary, Param = "phi")
+s <- displaySummaryBASiCS(mcmc_summary, Param = "s")
+parameters <- cbind(phi, s, anno_filter)
+parameters$gene_count <- colSums(counts(basics_data, type = "biological"))
+parameters$ercc_count <- colSums(counts(basics_data, type = "technical"))
+```
+
+### Phi versus gene molecule count
+
+```{r phi-versus-gene-molecule-count}
+phi_gene_count <- ggplot(parameters, aes(x = gene_count, y = Phi)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  labs(x = "Gene molecule count",
+       title = paste0("Phi measures gene molecule count differences\nr = ",
+                      round(cor(parameters$gene_count, parameters$Phi), 2)))
+phi_gene_count
+```
+
+### Phi versus ERCC molecule count
+
+```{r phi-versus-ercc-molecule-count}
+phi_ercc_count <- phi_gene_count %+% aes(x = ercc_count) +
+  labs(x = "ERCC molecule count",
+       title = paste0("Phi does not measure ERCC molecule count differences\nr = ",
+                      round(cor(parameters$ercc_count, parameters$Phi), 2)))
+phi_ercc_count
+```
+
+### S versus ERCC molecule count
+
+```{r s-versus-ercc-molecule-count}
+s_ercc_count <- phi_ercc_count %+% aes(y = S) +
+  labs(y = "S",
+       title = paste0("S measures ERCC molecule count differences\nr = ",
+                      round(cor(parameters$ercc_count, parameters$S), 2)))
+s_ercc_count
+```
+
+### S versus gene molecule count
+
+```{r s-versus-gene-molecule-count}
+s_gene_count <- phi_gene_count %+% aes(y = S) +
+  labs(y = "S",
+       title = paste0("S does not measure gene molecule count differences\nr = ",
+                      round(cor(parameters$gene_count, parameters$S), 2)))
+s_gene_count
+```
+
+### Phi versus S
+
+```{r phi-versus-s}
+phi_s <- ggplot(parameters, aes(x = S, y = Phi)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  labs(       title = paste0("Phi versus S\nr = ",
+                      round(cor(parameters$S, parameters$Phi), 2)))
+phi_s
+```
+
+## Denoised data
+
+Remove technical noise (i.e. normalize using the ERCC spike-ins).
+
+```{r denoised-counts}
+denoised = BASiCS_DenoisedCounts(Data = basics_data, Chain = mcmc_output)
+```
+
+### PCA - BASiCS Denoised
+
+Both the raw and the cpm versions of the BASiCS denoised data appear similar to the result with the [non-normalized cpm data](#pca-non-normalized-cpm).
+This does not change substantially when increasing the iterations from a few thousands to a few tens of thousands.
+
+```{r pca-basics}
+pca_basics <- run_pca(denoised)
+plot_pca(pca_basics$PCs, explained = pca_basics$explained,
+         metadata = anno_filter, color = "individual",
+         shape = "replicate")
+```
+
+### PCA - BASiCS Denoised cpm
+
+```{r pca-basics-cpm}
+denoised_cpm <- cpm(denoised, log = TRUE,
+                    lib.size = colSums(denoised) *
+                               calcNormFactors(denoised, method = "TMM"))
+pca_basics_cpm <- run_pca(denoised_cpm)
+plot_pca(pca_basics_cpm$PCs, explained = pca_basics_cpm$explained,
+         metadata = anno_filter, color = "individual",
+         shape = "replicate")
+```
+
+### PCA - non-normalized
+
+```{r pca-non-normalized}
+pca_non <- run_pca(counts(basics_data))
+plot_pca(pca_non$PCs, explained = pca_non$explained,
+         metadata = anno_filter, color = "individual",
+         shape = "replicate")
+```
+
+### PCA - non-normalized cpm
+
+```{r pca-non-normalized-cpm}
+non_cpm <- cpm(counts(basics_data), log = TRUE,
+               lib.size = colSums(counts(basics_data)) *
+                          calcNormFactors(counts(basics_data), method = "TMM"))
+pca_non_cpm <- run_pca(non_cpm)
+plot_pca(pca_non_cpm$PCs, explained = pca_non_cpm$explained,
+         metadata = anno_filter, color = "individual",
+         shape = "replicate")
+```
+
+## Session information
+
+```{r info}
+sessionInfo()
+```

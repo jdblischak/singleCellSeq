@@ -1,0 +1,198 @@
+---
+title: "Potential batch effect in the ordering effect of the capture sites"
+author: "Joyce Hsiao"
+date: 2015-10-02
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+```
+
+## Objective
+
+We investigated potential ordering effect of wells on each place on gene
+expression for each plate. [Leng](http://dx.doi.org/10.1038/nmeth.3549) et al. discussed ordering effect in single-cell RNA-seq experiments using Fluidigm C1 and implemented an algorithm that detects ordering effect of wells on gene expression in [OEFinder](http://dx.doi.org/10.1101/025437).
+
+First, we applied OEFinder to each batch (within each individual) on the CPM-normalized data. The OEFinder returned a warning saying "essentially perfect fit: summary may be unreliable."
+
+We then applied OEFinder to one individual at a time, and the same error message returned...
+
+
+
+
+## Setup
+
+```{r}
+source("functions.R")
+library(edgeR)
+library(ggplot2)
+theme_set(theme_bw(base_size = 16))
+```
+
+
+
+## Prepare single cell data before filtering
+
+Input annotation
+
+```{r}
+anno <- read.table("../data/annotation.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno)
+```
+
+
+Input read counts.
+
+```{r}
+reads <- read.table("../data/reads.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+```
+
+Input molecule counts
+
+```{r}
+molecules <- read.table("../data/molecules.txt", header = TRUE, stringsAsFactors = FALSE)
+```
+
+Remove bulk samples
+
+```{r}
+single_samples <- anno$well != "bulk"
+anno_single <- anno[ which(single_samples), ]
+molecules_single <- molecules[ , which(single_samples)]
+reads_single <- reads[ , which(single_samples)]
+stopifnot(ncol(molecules_single) == nrow(anno_single),
+          colnames(molecules_single) == anno_single$sample_id)
+```
+
+Remove ERCC genes.
+
+```{r}
+ii_nonERCC <- grep("ERCC", rownames(molecules_single), invert = TRUE)
+
+molecules_single_ENSG <- molecules_single[ii_nonERCC, ]
+```
+
+
+Remove genes with no counts and also overly expressed genes.
+
+```{r}
+## remove gene with 0 counts
+expressed_single_ENSG <- rowSums(molecules_single_ENSG) > 0
+molecules_single_ENSG <- molecules_single[expressed_single_ENSG, ]
+dim(molecules_single_ENSG)
+
+## remove gene with molecule count larger than 1024 (15 if them)
+overexpressed_genes <- rownames(molecules_single_ENSG)[apply(molecules_single_ENSG, 1,
+                                                        function(x) any(x >= 1024))]
+molecules_single_ENSG <- molecules_single_ENSG[!(rownames(molecules_single_ENSG) %in% overexpressed_genes), ]
+
+## collision probability and cpm molecule counts
+molecules_single_collision <- -1024 * log(1 - molecules_single_ENSG / 1024)
+molecules_single_cpm <- cpm(molecules_single_collision, log = TRUE)
+```
+
+## Prepare OEFinder input
+
+### Per batch, per individual
+
+Output single cell CPM to txt files.
+
+```{r, eval = FALSE}
+anno_single$unique_batch <- with(anno_single, paste(individual, batch, sep = "_"))
+for (per_batch in 1:length(unique(anno_single$unique_batch))) {
+  ii_batch <- anno_single$unique_batch == unique(anno_single$unique_batch)[per_batch]
+  write.table(molecules_single_cpm[which(ii_batch), ], 
+              file = paste("../data/molecules-single-cpm", "-", 
+                           unique(anno_single$unique_batch)[per_batch], ".txt", sep = ""),
+              quote = FALSE,
+              col.names = TRUE, row.names = TRUE)
+}
+```
+
+
+Prepare capture site identification file. A txt file with one column of capture site ID (A, B, C, ..., H).
+
+```{r, eval = FALSE}
+require(stringr)
+capture_site <- str_extract(anno_single$well, "[aA-zZ]+")
+table(capture_site)
+
+# Save capture_site to a txt file.
+for (per_batch in 1:length(unique(anno_single$unique_batch))) {
+  ii_batch <- anno_single$unique_batch == unique(anno_single$unique_batch)[per_batch]
+  write.table(data.frame(site = capture_site[ii_batch]), 
+              file = paste("../data/capture-site-",
+                           unique(anno_single$unique_batch)[per_batch], ".txt", sep = ""),
+              quote = FALSE,
+              col.names = FALSE, row.names = FALSE)
+}
+```
+
+
+
+### Per individual
+
+Output single cell CPM to txt files.
+
+```{r, eval = FALSE}
+for (per_person in 1:length(unique(anno_single$individual))) {
+  ii_person <- anno_single$individual == unique(anno_single$individual)[per_person]
+  write.table(molecules_single_cpm[which(ii_person), ], 
+              file = paste("../data/molecules-single-cpm", "-", 
+                           unique(anno_single$individual)[per_person], ".txt", sep = ""),
+              quote = FALSE,
+              col.names = TRUE, row.names = TRUE)
+}
+```
+
+
+Prepare capture site identification file. A txt file with one column of capture site ID (A, B, C, ..., H).
+
+```{r, eval = FALSE}
+require(stringr)
+capture_site <- str_extract(anno_single$well, "[aA-zZ]+")
+table(capture_site)
+
+# Save capture_site to a txt file.
+for (per_person in 1:length(unique(anno_single$individual))) {
+  ii_person <- anno_single$individual == unique(anno_single$individual)[per_person]
+  write.table(data.frame(site = capture_site[ii_person]), 
+              file = paste("../data/capture-site-",
+                           unique(anno_single$individual)[per_person], ".txt", sep = ""),
+              quote = FALSE,
+              col.names = FALSE, row.names = FALSE)
+}
+```
+
+## OEFinder
+
+Upload *molecules-single-cpm-(batch).txt* and *capture-site-(batch).txt* to OEFinder Shiny GUI interface.
+
+Output to *singleCellSeq/data/OEFinder*.
+
+
+* Run OEFinder
+
+```{r, eval = FALSE}
+# Packages required to start OEFinder
+library(shiny)
+library(gdata)
+library(shinyFiles)
+library(EBSeq)
+
+runGitHub("OEFinder", "lengning")
+```
+
+
+
+## Session information
+
+```{r info}
+sessionInfo()
+```

@@ -1,0 +1,340 @@
+---
+title: "Coefficient of variation"
+author: "Joyce Hsiao"
+date: 2015-09-26
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+```
+
+
+## Objectives
+
+We used Kruskal-Wallis test to compare coefficient of variation between individual
+(3 coefficient of variations from the batches for per individual). The p-value distribution of the per gene Kruskal-Wallis test does not resemeble p-value 
+distribution of the commonly know per gene tests of differential gene expression. 
+
+Visulization of the count distributions of the top 9 and bottom 9 genes that 
+are different in coefficient of variation between individuals using the Kruskal-Wallis
+test did not reveal systematic different between the count distributions.
+
+We then applied Kwame Okrah's HTShape package to compute skewness and kurtoss estimtes
+of each gene with each unique batches, and also across the three individuals. The
+SO-plot shows that there are a good proportion of the genes that are skewed in their count distribution. 
+
+
+## Set up
+
+```{r, message = FALSE, warning = FALSE}
+library(ggplot2)
+library(edgeR)
+library(limma)
+```
+
+
+## Prepare data
+
+Input annotation
+
+```{r}
+anno <- read.table("../data/annotation.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno)
+```
+
+
+Input molecule counts
+
+```{r}
+molecules <- read.table("../data/molecules.txt", header = TRUE, stringsAsFactors = FALSE)
+```
+
+Remove bulk samples
+
+```{r}
+single_samples <- anno$well != "bulk"
+anno_single <- anno[ which(single_samples), ]
+molecules_single <- molecules[ , which(single_samples)]
+stopifnot(ncol(molecules_single) == nrow(anno_single),
+          colnames(molecules_single) == anno_single$sample_id)
+```
+
+Remove ERCC genes.
+
+```{r}
+nonERCC <- grep("ERCC", rownames(molecules_single), invert = TRUE)
+molecules_single <- molecules_single[nonERCC, ]
+```
+
+
+Remove genes with no counts and also overly expressed genes.
+
+```{r}
+## remove gene with 0 counts
+expressed_single <- rowSums(molecules_single) > 0
+molecules_single <- molecules_single[expressed_single, ]
+dim(molecules_single)
+
+## remove gene with molecule count larger than 1024 (15 if them)
+overexpressed_genes <- rownames(molecules_single)[apply(molecules_single, 1,
+                                                        function(x) any(x >= 1024))]
+molecules_single <- molecules_single[!(rownames(molecules_single) %in% overexpressed_genes), ]
+
+## collision probability and cpm molecule counts
+molecules_single_collision <- -1024 * log(1 - molecules_single / 1024)
+molecules_single_cpm <- cpm(molecules_single_collision, log = TRUE)
+```
+
+
+
+## Compute coefficient of variation
+
+Per individual coefficient of variation.
+
+```{r, eval = FALSE}
+molecules_cv <- 
+  lapply(1:length(unique(anno_single$individual)), function(per_person) {
+    molecules_per_person <- molecules_single_collision[ , anno_single$individual == unique(anno_single$individual)]
+    cv_foo <- data.frame(mean = apply(molecules_per_person, 1, mean, na.rm = TRUE),
+           cv = apply(molecules_per_person, 1, sd, na.rm = TRUE) / 
+                apply(molecules_per_person, 1, mean, na.rm = TRUE) )
+    rownames(cv_foo) <- rownames(molecules_single_collision)
+    
+    cv_foo <- cv_foo[rowSums(is.na(cv_foo)) == 0, ]
+    cv_foo$individual <- unique(anno_single$individual)[per_person]
+      
+    return(cv_foo)
+    }) 
+names(molecules_cv) <- unique(anno_single$individual)
+```
+
+
+Per batch coefficient of variation.
+
+```{r}
+unique_batch <- with(anno_single, paste(individual, batch, sep = "_"))
+
+molecules_cv_batch <- 
+  lapply(1:length(unique(unique_batch)), function(per_batch) {
+    molecules_per_batch <- molecules_single_collision[ , unique_batch == unique(unique_batch)[per_batch]]
+    cv_foo <- data.frame(mean = apply(molecules_per_batch, 1, mean, na.rm = TRUE),
+           cv = apply(molecules_per_batch, 1, sd, na.rm = TRUE) / 
+                apply(molecules_per_batch, 1, mean, na.rm = TRUE) )
+    rownames(cv_foo) <- rownames(molecules_single_collision)
+    
+    cv_foo <- cv_foo[rowSums(is.na(cv_foo)) == 0, ]
+    cv_foo$batch <- unique(unique_batch)[per_batch]
+      
+    return(cv_foo)
+    }) 
+names(molecules_cv_batch) <- unique(unique_batch)
+```
+
+
+Subset CV data to include only genes that have data across all batches.
+
+```{r}
+all_genes <- lapply(1:3, function(ii) {
+                intersect(intersect(rownames(molecules_cv_batch[[ 1+ (ii-1)*3]]),
+                                    rownames(molecules_cv_batch[[ 2+ (ii-1)*3]]) ),
+                          rownames(molecules_cv_batch[[3 + (ii-1)*3]]) ) })
+all_genes <- intersect(intersect(all_genes[[1]], all_genes[[2]]), all_genes[[3]])
+str(all_genes)
+
+molecules_cv_batch <- 
+  lapply(1: length(molecules_cv_batch), function(per_batch) {
+          ii_include <- which(rownames(molecules_cv_batch[[per_batch]]) %in% all_genes)
+          molecules_cv_batch[[per_batch]][ ii_include, ]
+  })
+
+stopifnot(all.equal(rownames(molecules_cv_batch[[9]]), rownames(molecules_cv_batch[[8]]) ) )
+
+nrow(molecules_cv_batch[[1]])
+```
+
+
+## Kruskal-Wallis test
+
+A nonparametric test commonly used for comparison of multiple groups that have 
+a very small sample size.
+
+```{r}
+df_cv <- lapply(1:nrow(molecules_cv_batch[[1]]), function(per_gene) {
+  do.call(rbind, lapply(1: length(molecules_cv_batch), function(per_batch) {
+                    molecules_cv_batch[[per_batch]][per_gene, ] })
+                  )
+})
+
+# Create a factor variable of individual
+individual <- rep(unique(anno_single$individual), times = 3)
+
+# Kruskal walls
+kw_pval <- lapply(1:nrow(molecules_cv_batch[[1]]), function(per_gene) {
+  result <- kruskal.test(cv ~ factor(individual), data = df_cv[[per_gene]])
+  data.frame(pval = result$p.value, 
+             gene = rownames(molecules_cv_batch[[1]])[per_gene])
+})
+kw_pval <- do.call(rbind, kw_pval)
+
+
+summary(kw_pval$pval)
+ggplot(data = kw_pval, aes(x = pval)) + geom_histogram() +
+  ggtitle("Kruskal-Wallis p-value")
+
+# library(ggplot2)
+# ggplot(data = molecules_cv[[1]], aes(x = mean, y = cv)) +
+#   geom_point(size = 2, alpha = .5) + scale_x_log10() +
+#   geom_point(data = data.frame(mean = molecules_cv[[1]]$mean,
+#                                cv_adj = cv_adj), aes(x = mean, y = cv_adj), 
+#              size = 2, alpha = .5, col = "blue")
+```
+
+
+## Top 9 in Kruskal-Wallis
+
+```{r}
+ii_diff <- order(kw_pval$pval)[1:9]
+gene_subset <- df_cv[ii_diff]
+
+df_cv_merge <- lapply(1:9, function(per_gene) {
+          data.frame(gene_subset[[per_gene]], 
+                     individual = rep(c("19098", "19101", "19239"), 3),
+                     gene = kw_pval$gene[ii_diff[per_gene]])
+})
+df_cv_merge <- do.call(rbind, df_cv_merge)
+
+ggplot(df_cv_merge, aes( x = factor(individual), y = cv)) +
+  geom_point(aes(col = factor(individual))) + facet_grid(. ~ gene)
+```
+
+
+```{r}
+unique_batch <- with(anno_single, paste(individual, batch, sep = "_"))
+count_cell <- lapply(1:9, function(per_batch) {
+    ii_batch <- which(unique_batch %in% unique(unique_batch)[per_batch])
+    ii_gene <- which( rownames(molecules_single_collision) %in% kw_pval$gene[ii_diff] )
+    df_foo <- molecules_single_collision[ii_gene, ii_batch]
+    colnames(df_foo) <- ""
+
+    df_meta <- data.frame(df_foo, 
+                         individual = anno_single$individual[ii_batch][1],
+                         batch = anno_single$batch[ii_batch][1],
+                         genes = rownames(df_foo))
+    df_meta
+})
+names(count_cell) <- unique(unique_batch)
+
+count_cell_merge <- do.call(rbind, count_cell)
+
+table(count_cell_merge$individual)
+
+count_cell_merge <- reshape(count_cell_merge, direction = "long",
+                            timevar = "gene", varying = list(1:96) )
+
+ggplot(count_cell_merge, 
+        aes( x = Var.1, group = factor(paste(individual, batch, "_"))) ) +
+        geom_density(aes(x = Var.1, col = factor(individual)) ) + 
+        facet_wrap( ~ genes, scales = "free")
+```
+
+
+## Bottom 9 in Kruskal-Wallis
+
+```{r}
+ii_diff <- order(kw_pval$pval, decreasing = TRUE)[1:9]
+gene_subset <- df_cv[ii_diff]
+
+df_cv_merge <- lapply(1:9, function(per_gene) {
+          data.frame(gene_subset[[per_gene]], 
+                     individual = rep(c("19098", "19101", "19239"), 3),
+                     gene = kw_pval$gene[ii_diff[per_gene]])
+})
+df_cv_merge <- do.call(rbind, df_cv_merge)
+
+ggplot(df_cv_merge, aes( x = factor(individual), y = cv)) +
+  geom_point(aes(col = factor(individual))) + facet_grid(. ~ gene)
+```
+
+
+```{r}
+unique_batch <- with(anno_single, paste(individual, batch, sep = "_"))
+count_cell <- lapply(1:9, function(per_batch) {
+    ii_batch <- which(unique_batch %in% unique(unique_batch)[per_batch])
+    ii_gene <- which( rownames(molecules_single_collision) %in% kw_pval$gene[ii_diff] )
+    df_foo <- molecules_single_collision[ii_gene, ii_batch]
+    colnames(df_foo) <- ""
+
+    df_meta <- data.frame(df_foo, 
+                         individual = anno_single$individual[ii_batch][1],
+                         batch = anno_single$batch[ii_batch][1],
+                         genes = rownames(df_foo))
+    df_meta
+})
+names(count_cell) <- unique(unique_batch)
+
+count_cell_merge <- do.call(rbind, count_cell)
+
+count_cell_merge <- reshape(count_cell_merge, direction = "long",
+                            timevar = "gene", varying = list(1:96) )
+
+ggplot(count_cell_merge, 
+        aes( x = Var.1, group = factor(paste(individual, batch, "_"))) ) +
+        geom_density(aes(x = Var.1, col = factor(individual)) ) + 
+        facet_wrap( ~ genes, scales = "free")
+```
+
+
+
+## Explore quantiles
+
+Use Kwame's package to compare shapes of distributions.
+
+```{r}
+require(devtools)
+install_github("kokrah/HTshape")
+require(HTShape)
+vignette("HTShape")
+```
+
+Select genes that have valid CV measures in all batches. 
+
+SO-plot for one batch...
+
+```{r}
+ii_genes <- which(rownames(molecules_single_collision) %in% all_genes )
+unique_batch <- with(anno_single, paste(individual, batch, sep = "_"))
+
+fit_shape <- lapply(1:9, function(per_batch) {
+                    ii_batch <- which(unique_batch == unique(unique_batch)[per_batch])
+                    count_foo <- as.matrix(molecules_single_collision[ii_genes, ii_batch])
+                    shape_results <- fitShape( log(count_foo + 1) )
+                    list(L3 = shape_results$lrats[ "LR3", ],
+                         L4 = shape_results$lrats[ "LR4", ] )
+                })
+plotSO(fit_shape[[1]]$L3, fit_shape[[1]]$L4)
+```
+
+
+SO-plot for the entire data set.
+
+```{r}
+ii_genes <- which(rownames(molecules_single_collision) %in% all_genes )
+
+fit_shape <- fitShape( log(molecules_single_collision[ii_genes, ] + 1) )
+
+plotSO(fit_shape$lrats[1, ], fit_shape$lrats[2, ])
+```
+
+
+
+
+## Session information
+
+```{r info}
+sessionInfo()
+```

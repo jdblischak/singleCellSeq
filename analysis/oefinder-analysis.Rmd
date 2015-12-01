@@ -1,7 +1,7 @@
 ---
 title: "Ordering effect of the capture sites"
-author: "Joyce Hsiao"
-date: 2015-09-09
+author: "Joyce Hsiao & Po-Yuang Tung"
+date: 2015-09-26
 ---
 
 **Last updated:** `r Sys.Date()`
@@ -12,7 +12,7 @@ date: 2015-09-09
 source("chunk-options.R")
 ```
 
-## All genes, cells
+## Goal
 
 We investigated potential ordering effect of wells on each place on gene
 expression across the 9 plates (batches). [Leng](http://dx.doi.org/10.1038/nmeth.3549) et al. discussed ordering effect 
@@ -24,17 +24,12 @@ The results indicated that there are 549 OE genes (out of 20419 genes). GO analy
 
 
 ## Setup
+
 ```{r}
 source("functions.R")
 library(edgeR)
 library(ggplot2)
 theme_set(theme_bw(base_size = 16))
-
-# Packages required to start OEFinder
-# library(shiny)
-# library(gdata)
-# library(shinyFiles)
-# library(EBSeq)
 ```
 
 
@@ -83,13 +78,6 @@ if (!file.exists("../data/molecules-single.txt")) {
               quote = FALSE,
               col.names = TRUE, row.names = TRUE)
 }
-
-if (!file.exists("../data/reads-single.txt")) {
-  write.table(reads_single, 
-              file = "../data/reads-single.txt",
-              quote = FALSE,
-              col.names = TRUE, row.names = TRUE)
-}
 ```
 
 
@@ -104,7 +92,7 @@ table(capture_site)
 
 Save capture_site to a txt file.
 
-```{r, eval = FALSE}
+```{r}
 if (!file.exists("../data/capture-site.txt")) {
 write.table(data.frame(site = capture_site), 
             file = "../data/capture-site.txt",
@@ -114,18 +102,31 @@ write.table(data.frame(site = capture_site),
 ```
 
 
-### Molecule count data
+## OEFinder
 
 For unnormalized data, OEFinder defaults the DESeq normalization method. 
 
-Upload *molecules.txt* and *capture-site.txt* to OEFinder Shiny GUI interface.
+Upload *molecules-single-ENSG.txt* and *capture-site.txt* to OEFinder Shiny GUI interface.
 
 Output to *singleCellSeq/data/OEFinder*.
 
 
-```{r}
-# runGitHub("OEFinder", "lengning")
+* Run OEFinder
 
+```{r, eval = FALSE}
+# Packages required to start OEFinder
+library(shiny)
+library(gdata)
+library(shinyFiles)
+library(EBSeq)
+
+runGitHub("OEFinder", "lengning")
+
+```
+
+Load OEFinder outputted genes.
+
+```{r}
 OE_raw <- read.csv("../data/OEFinder/all-genes-OEgenes.csv",
                      stringsAsFactors = FALSE,
                      quote = "\"", sep = ",", header = TRUE)
@@ -149,17 +150,10 @@ oefinder_raw <- rownames(molecules_single) %in% as.character(OE_raw$genes)
 table(oefinder_raw)
 ```
 
-Summarize individual, well, and batch information for the OE genes.
-
-```{r}
-anno_single_oe_raw <- anno_single[which(oefinder_raw), ]
-
-with(anno_single_oe_raw, table(well, batch, individual))
-```
 
 ## Expression level of OE genes
 
-To answer the question if OE genes are more highly expressed, the average molecule cmp of OE genes or of all genes in each cells were plotted. If the OE genes are highly expressed, it is possible that this position effect is present in all genes but can only be observed with certain amount of expressing level.
+To answer the question if OE genes are more highly expressed, the average molecule CPM of OE genes or of all genes in each cells were plotted. If the OE genes are highly expressed, it is possible that this position effect is present in all genes but can only be observed with certain amount of expressing level.
 
 ```{r}
 ## remove gene with 0 counts
@@ -185,6 +179,31 @@ anno_single$all_gene_ave <- apply(molecules_single_cpm, 2, mean)
 
 ggplot(anno_single, aes(x = as.factor(individual))) + geom_boxplot(aes( y = OE_ave, fill = as.factor(batch), alpha = 0.25)) + geom_boxplot(aes( y = all_gene_ave, fill = as.factor(batch))) +  labs (x = "individual", y = "avarage molecule cpm", alpha = "OE", fill = "batch")
 ```
+
+
+## Distribution of OE genes
+
+```{r}
+cutoffs <- seq(1001, nrow(molecules_single_cpm), by = 1000)
+cutoffs <- c(cutoffs, nrow(molecules_single_cpm))
+top_genes_count <- lapply(1:length(cutoffs), function(cut) {
+                        per_cutoff <- cutoffs[cut]
+                        cell_across_order <- order(rowSums(molecules_single_cpm), decreasing = TRUE)
+                        top_genes <- rownames(molecules_single_cpm)[cell_across_order < per_cutoff]
+                        sum(OE_raw$genes %in% top_genes)
+                        })
+top_genes_count <- do.call(c, top_genes_count)
+
+ggplot(data.frame(top_count = top_genes_count,
+                  cutoffs = cutoffs), 
+       aes(x = as.factor(cutoffs), y = top_count)) + geom_point() +
+       labs(x = "Top X genes", y = "Number of OEFinder OE genes")
+```
+
+OE genes identified by OEFinder were not limited to the top 1000 genes. On the contrary, we found
+OE genes at all levels of gene expression (averaged acrosss cells).
+
+
 
 
 ## Session information

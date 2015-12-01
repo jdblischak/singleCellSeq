@@ -1,0 +1,301 @@
+---
+title: "Shrunk linear transformation"
+date: 2015-10-20
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+opts_chunk$set(fig.width = 8, fig.height = 8)
+```
+
+```{r packages, message=FALSE}
+library("biomaRt")
+library("data.table")
+library("dplyr")
+library("limma")
+library("edgeR")
+library("ggplot2")
+library("grid")
+#library("cowplot")
+theme_set(theme_bw(base_size = 12))
+source("functions.R")
+source("../code/multitask_regression/multitask_regression.R")
+require(doMC)
+registerDoMC(7)
+```
+
+## Load data
+
+```{r input-ercc}
+anno=read.table("../data/annotation.txt",header=T,stringsAsFactors=F)
+quality_single_cells <- scan("../data/quality-single-cells.txt",
+                             what = "character")
+anno_filter <- anno %>% filter(sample_id %in% quality_single_cells)
+
+molecules_cpm_ercc = fread( "../data/molecules-cpm-ercc.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+setDF(molecules_cpm_ercc)
+rownames(molecules_cpm_ercc)=molecules_cpm_ercc$V1
+molecules_cpm_ercc$V1=NULL
+molecules_cpm_ercc=as.matrix(molecules_cpm_ercc)
+
+molecules_cpm = fread( "../data/molecules-cpm.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+setDF(molecules_cpm)
+rownames(molecules_cpm)=molecules_cpm$V1
+molecules_cpm$V1=NULL 
+molecules_cpm=as.matrix(molecules_cpm)
+
+ercc <- read.table("../data/expected-ercc-molecules.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+head(ercc)
+
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+```
+
+## Linear transformation with ERCC controls
+
+First let's repeat John's linear transformation.
+
+We need to filter the `r nrow(ercc)` ERCC genes to only include those that passed the expression filters.
+
+```{r filter-ercc}
+ercc <- ercc[ercc$id %in% rownames(molecules_cpm_ercc), ]
+ercc <- ercc[order(ercc$id), ]
+stopifnot(ercc$id == rownames(molecules_cpm_ercc))
+```
+
+Because the molecule counts have been converted to log~2~ cpm, we also convert the expected ERCC molecule counts to log~2~ cpm.
+
+```{r cpm-expected-ercc}
+ercc$log2_cpm <- cpm(ercc$ercc_molecules_well, log = TRUE)
+```
+
+We perform the linear transformation per single cell.
+
+```{r linear-transformation}
+molecules_cpm_trans <- molecules_cpm
+molecules_cpm_trans[, ] <- NA
+intercept <- numeric(length = ncol(molecules_cpm_trans))
+slope <- numeric(length = ncol(molecules_cpm_trans))
+for (i in 1:ncol(molecules_cpm_trans)) {
+  fit <- lm(molecules_cpm_ercc[, i] ~ ercc$log2_cpm)
+  intercept[i] <- fit$coefficients[1]
+  slope[i] <- fit$coefficients[2]
+  # Y = mX + b -> X = (Y - b) / m
+  molecules_cpm_trans[, i] <- (molecules_cpm[, i] - intercept[i]) / slope[i]
+}
+stopifnot(!is.na(molecules_cpm_trans))
+```
+
+Here is a visualization of what happened using the first single cell
+
+```{r linear-transformation-example}
+plotTransform <- function(ind,...) {
+  plot(ercc$log2_cpm, molecules_cpm_ercc[, ind],
+     xlab = "Expected log2 cpm", ylab = "Observed log2 cpm",
+     ...)
+  abline(intercept[ind], slope[ind])
+  points(molecules_cpm_trans[, ind], molecules_cpm[, ind], col = "red")
+}
+plotTransform(1,main = "Example linear transformation - endogenous genes in red")
+
+```
+
+and then the most outlying intercepts and slopes. 
+ 
+```{r outlying-slopes-intercepts}
+par(mfrow=c(2,2))
+plotTransform(which.min(intercept), main = "Smallest intercept")
+plotTransform(which.max(intercept), main = "Largest intercept")
+plotTransform(which.min(slope), main = "Smallest slope")
+plotTransform(which.max(slope), main = "Largest slope")
+par(mfrow=c(1,1))
+```
+
+The transformed data vs. the raw data:
+
+```{r transformed-vs-raw}
+ggplot(data.frame(x=as.numeric(molecules_cpm),y=as.numeric(molecules_cpm_trans)),aes(x,y)) + stat_binhex()+scale_fill_gradientn(colours=c("white","blue"),name = "Frequency",na.value=NA) + xlab("raw") + ylab("transformed") + geom_abline(intercept=0,slope=1) + stat_smooth(method="lm")
+```
+
+## Shrunk linear transformation
+
+Within each batch we fit the linear transformation jointly, shrinking using a learnt prior. The per cell linear regression is
+$$ y_{cn} = \beta_c x_{nc} + \mu_c + \epsilon_{cn} $$
+where $y_{cn}$ is the log cpm for ERCC $n$ in cell $c$, $\beta$ is the slope, $\mu$ is the intercept, and 
+$$ \epsilon_{cn} \sim N(0,\sigma^2) $$
+is noise (currently I assume the same noise variance in each cell). For notational convenience let $\tilde{\beta}_c = [ \beta_c, \mu_c ]^T$ and $\tilde{x}_{nc} = [ x_{nc}, 1 ]^T$, then
+$$ y_{cn} = \tilde{\beta}_c \tilde{x}_{nc} + \epsilon_{cn} $$
+We put a bivariate normal prior on $\tilde{\beta}$, i.e.
+$$ \tilde{\beta} \sim N( m, S )$$
+where $m$ is the shared transformation coefficients across the batch, and the covariance matrix $S$ controls the spread around that mean. Integrating over $\epsilon$ and $\tilde{\beta}$ we have
+$$ y_{c:} \sim N(m^T \tilde{x}_{:c}, \tilde{x}_{:c}^T S \tilde{x}_{:c} + \sigma^2 I_{N\times N} ) $$
+Numerical optimization (LBFGS) is used to get maximum likelihood estimates of $m$, $S$ and $\sigma^2$. Given these estimates, the posterior expectation of $\tilde{\beta}_c$ is
+$$ \mathbb{E}[\beta_c] = ( S^{-1} +  \tilde{x}_{:c}^T \tilde{x}_{:c}/\sigma^2 )^{-1} (S^{-1}m + \tilde{x}_{:c}^T y_{cn}/\sigma^2) $$
+This expected value is then used to linearly transform the real gene cpm values, as before. 
+
+This takes a little while (5 minutes-ish on my laptop). 
+
+```{r learn-shrunk-estimates}
+intercept_shrunk <- numeric(length = ncol(molecules_cpm))
+slope_shrunk <- numeric(length = ncol(molecules_cpm))
+batches <- unique(anno_filter$batch)
+for (batch in batches) {
+  cellsInBatch <- which(anno_filter$batch==batch)
+  y <- lapply( as.list(cellsInBatch), function(i) molecules_cpm_ercc[, i] )
+  x <- lapply( as.list(cellsInBatch), function(i) cbind(1,ercc$log2_cpm) )
+  sink("temp.txt") # this outputs a lot of uninteresting stuff, so sink it
+  fit <- foreach(j=1:5) %do% multitask_regression(x,y)
+  sink()
+  fit_best <- fit[[ which.max(unlist(lapply(fit,function(g) g$value))) ]]
+  intercept_shrunk[ cellsInBatch ] <- fit_best$par$coeffs[1,]
+  slope_shrunk[ cellsInBatch ] <- fit_best$par$coeffs[2,]
+}
+
+molecules_cpm_trans_shrunk <- sweep( sweep( molecules_cpm, 2, intercept_shrunk, "-"), 2, slope_shrunk, "/" )
+write.table(molecules_cpm_trans_shrunk, "../data/molecules-cpm-trans-shrunk.txt",
+            quote = FALSE, sep = "\t", col.names = NA)
+```
+
+Here is a visualization of what happened using the first single cell as an example.
+
+```{r shrunk-transformation-example}
+plotTransform <- function(ind) {
+  plot(ercc$log2_cpm, molecules_cpm_ercc[, ind],
+     xlab = "Expected log2 cpm", ylab = "Observed log2 cpm",
+     main = "Example linear transformation - endogenous genes in red")
+  abline(intercept_shrunk[ind], slope_shrunk[ind])
+  points(molecules_cpm_trans_shrunk[, ind], molecules_cpm[, ind], col = "red")
+}
+plotTransform(1)
+```
+
+Compare the intercepts and slopes with and without shrinkage: you can see shrinkage pulls the estimates towards the mean for the experiment. 
+
+```{r linear-transformation-intercept}
+transformation_intercepts <- rbind( data.frame( intercept=intercept, shrinkage=F, batch=anno_filter$batch ),  data.frame( intercept=intercept_shrunk, shrinkage=T, batch=anno_filter$batch ) )
+ggplot(transformation_intercepts, aes(batch, intercept, col=shrinkage)) + geom_boxplot() + theme_bw(base_size = 16) + theme(axis.text.x = element_text(angle = 90, hjust = 1)) + scale_colour_manual(values=cbPalette)
+```
+
+```{r linear-transformation-slope}
+transformation_slopes <- rbind( data.frame( slope=slope, shrinkage=F, batch=anno_filter$batch ),  data.frame( slope=slope_shrunk, shrinkage=T, batch=anno_filter$batch ) )
+ggplot(transformation_slopes, aes(batch, slope, col=shrinkage)) + geom_boxplot() + theme_bw(base_size = 16) + theme(axis.text.x = element_text(angle = 90, hjust = 1)) + scale_colour_manual(values=cbPalette)
+```
+
+PCA of raw cpms, transformed and shrunk transform. 
+
+```{r pca-molecules-cpm-trans}
+make_pca_plot <- function(x) {
+  pca_res <- run_pca(x)
+  plot_pca(pca_res$PCs, explained = pca_res$explained,
+           metadata = anno_filter, color = "individual",
+           shape = "replicate") 
+  }
+
+cpm_mats <- list( raw=molecules_cpm, transform=molecules_cpm_trans, shrunk_transform=molecules_cpm_trans_shrunk)
+
+foreach(n=names(cpm_mats)) %do%
+  { make_pca_plot(cpm_mats[[n]]) + labs(title=paste0("PCA (",n,")")) + scale_colour_manual(values=cbPalette) }
+```
+
+### ANOVA for batch and individual effects
+
+Next look at whether the batch and individual effects are more or less significant under the different normalization approaches using a per gene ANOVA. 
+
+```{r run-anovas}
+anovas <- lapply(cpm_mats, function(x) {
+  foreach(i=1:nrow(x)) %dopar% anova(lm(x[i,] ~ anno_filter$replicate + anno_filter$individual))
+  })
+```
+
+First let's look at the proportion of variance explained by batch or individual across genes using the different normalizations. 
+
+```{r variance-components}
+variance_components <- lapply( as.list(names(anovas)), function(name) {
+  ss=do.call(rbind,foreach(a=anovas[[name]]) %do% a[,"Sum Sq"] )
+  colnames(ss)=c("batch","individual","residual")
+  data.frame(sweep(ss,1,rowSums(ss),"/"), method=name)
+} )
+names(variance_components)=names(cpm_mats)
+
+ggplot( do.call(rbind,variance_components), aes(batch, individual, col=method)) + geom_point() + theme_bw(base_size = 16) + labs(title="Variance proportions")+ scale_colour_manual(values=cbPalette)
+```
+
+Another way to look at this is with the ANOVA p-values
+```{r anova-pvals}
+anova_pvals <- lapply( as.list(names(anovas)), function(name) {
+  ps=do.call(rbind,foreach(a=anovas[[name]]) %do% a[,"Pr(>F)"] )
+  colnames(ps)=c("batch","individual","residual")
+  data.frame(ps, method=name)
+} )
+names(anova_pvals)=names(anovas)
+
+ggplot( do.call( rbind, anova_pvals ), aes(-log10(batch), -log10(individual), col=method)) + geom_point() + theme_bw(base_size = 16) + labs(title="ANOVA p-values")+ scale_colour_manual(values=cbPalette)
+```
+
+This is quite hard to parse, so let's look at the proportion of variance explained by batch out of the explainable proportion (batch + individual): 
+
+```{r batch_over_explained}
+batch_over_explained <- lapply( as.list(names(anovas)), function(name) {
+  ss=do.call(rbind,foreach(a=anovas[[name]]) %do% a[1:2,"Sum Sq"] )
+  colnames(ss)=c("batch","individual")
+  data.frame( prop_batch=ss[,"batch"] / rowSums(ss), method=name)
+} )
+names(batch_over_explained) = names(cpm_mats)
+
+qplot(batch_over_explained$transform$prop_batch,batch_over_explained$shrunk_transform$prop_batch) + stat_binhex() +scale_fill_gradientn(colours=c("white","blue"),name = "Frequency",na.value=NA) + geom_abline(intercept=0,slope=1) + stat_smooth(method="lm")
+```
+
+The relative variance coming from batch or individual is very similar with or without the transformation. However, the raw data is pretty different: 
+```{r batch_over_explained_raw_vs_transformed}
+qplot(batch_over_explained$raw$prop_batch,batch_over_explained$shrunk_transform$prop_batch) + stat_binhex() +scale_fill_gradientn(colours=c("white","blue"),name = "Frequency",na.value=NA) + geom_abline(intercept=0,slope=1) + stat_smooth(method="lm")
+```
+
+It's easier to look at a histogram of the proportion explained by batch. 
+```{r batch_over_explained_density}
+ggplot( do.call(rbind,batch_over_explained), aes(prop_batch,col=method, fill=method)) + geom_histogram(alpha=0.2, position="identity") + xlab("variance_batch / (variance_batch + variance_individual)")
+```
+This clearly shows the advantage of the transformations: a higher proportion of the explainable variance is due to individual rather than batch. 
+
+The main difference between the two transforms is how much variance ends up in the residual: more without the shrinkage. 
+```{r proportion_explained_wo_shrinkage}
+qplot(1-variance_components$transform$residual,1-variance_components$shrunk_transform$residual)  + geom_abline(intercept=0,slope=1) + stat_smooth(method="lm") + xlab("proportion variance explained (transformed data)") + ylab("proportion variance explained (shrunk transform)")
+```
+
+Comparing the raw and two transforms we see the residual variances are raw > transform > shrunk_transform. 
+```{r proportion_explained_hist}
+ggplot( do.call(rbind,variance_components), aes(1-residual,col=method)) + geom_density() + xlab("proportion variance explained") + xlim(0,.5)+ scale_colour_manual(values=cbPalette)
+```
+
+Including shrinkage makes the batch effect look stronger, but this is really because without including shrinkage the residual variance is higher
+```{r anova_batch_pvals_wo_shrinkage}
+qplot(-log10(anova_pvals$transform$batch), -log10(anova_pvals$shrunk_transform$batch)) + geom_point() + geom_abline(intercept=0,slope=1) + stat_smooth() 
+```
+
+...and shrinkage therefore also makes the individual effect look stronger.
+```{r anova_individual_pvals_wo_shrinkage}
+qplot(-log10(anova_pvals$transform$individual), -log10(anova_pvals$shrunk_transform$individual)) + geom_point() + geom_abline(intercept=0,slope=1)
+```
+
+We can also look at this relative to the raw data, for batch: 
+```{r batch_pvals_all}
+batch_p_all=rbind(data.frame(x=-log10(anova_pvals$raw$batch),y=-log10(anova_pvals$transform$batch),shrinkage=F),data.frame(x=-log10(anova_pvals$raw$batch),y=-log10(anova_pvals$shrunk_transform$batch),shrinkage=T))
+ggplot( batch_p_all[sample.int(nrow(batch_p_all)),], aes(x,y,col=shrinkage)) + geom_point() + geom_abline(intercept=0,slope=1) + theme_bw(base_size = 16) + xlab("-log10(p) for batch effect (raw cpm)") + ylab("-log10(p) for batch effect (transformed cpm)")+ scale_colour_manual(values=cbPalette)
+```
+
+and for individual: 
+```{r individual_pvals_all}
+individual_pvals_all=rbind(data.frame(x=-log10(anova_pvals$raw$individual),y=-log10(anova_pvals$transform$individual),shrinkage=F),data.frame(x=-log10(anova_pvals$raw$individual),y=-log10(anova_pvals$shrunk_transform$individual),shrinkage=T))
+ggplot( individual_pvals_all[sample.int(nrow(individual_pvals_all)),], aes(x,y,col=shrinkage)) + geom_point() + geom_abline(intercept=0,slope=1) + theme_bw(base_size = 16) + xlab("-log10(p) for individual effect (raw cpm)") + ylab("-log10(p) for individual effect (transformed cpm)")+ scale_colour_manual(values=cbPalette)
+```
+
+## Session information
+
+```{r info}
+sessionInfo()
+```

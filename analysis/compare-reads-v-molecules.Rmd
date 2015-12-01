@@ -280,6 +280,94 @@ total_counts_single_ind <- ggplot(total_counts_data[total_counts_data$well != "b
 total_counts_single_ind
 ```
 
+### Pairwise distance between cells
+
+Pairwise distance in (total reads, total molecules) between batches or individuals.
+
+* Compute pairwise Euclidean distance between cells.
+
+```{r distance}
+total_counts_single <- total_counts_data[total_counts_data$well != "bulk", ]
+total_counts_single_dist <- as.matrix( dist(total_counts_single[ , c("total_reads", "total_molecules")]) )
+rownames(total_counts_single_dist) <- with(total_counts_single,
+                                            paste(individual, batch, sep = "_"))
+colnames(total_counts_single_dist) <- rownames(total_counts_single_dist)
+total_counts_single[1:2, 1:2]
+```
+
+```{r three-groups}
+ind_index <- (total_counts_single$individual)
+ind_batch_index <- with(total_counts_single,paste(individual, batch, sep = "_"))
+
+same_ind_index <- outer(ind_index,ind_index,function(x,y) x==y)
+same_batch_index <- outer(ind_batch_index,ind_batch_index,function(x,y) x==y)
+
+dim_temp <- dim(total_counts_single_dist)
+dist_index_matrix <- matrix("diff_ind",nrow=dim_temp[1],ncol=dim_temp[2])
+
+dist_index_matrix[same_ind_index & !same_batch_index] <- "same_ind_diff_batch"
+dist_index_matrix[same_batch_index] <- "same_batch"
+
+ans <- lapply(unique(c(dist_index_matrix)),function(x){
+  temp <- c(total_counts_single_dist[(dist_index_matrix==x)&(upper.tri(dist_index_matrix,diag=FALSE))])
+  data.frame(dist=temp,type=rep(x,length(temp)))
+})
+ans1 <- do.call(rbind,ans)
+
+boxplot(dist~type,data=ans1)
+
+plot(density(ans1$dist[ans1$type=="same_batch"]))
+lines(density(ans1$dist[ans1$type=="same_ind_diff_batch"]),col=2)
+lines(density(ans1$dist[ans1$type=="diff_ind"]),col=3)
+
+ggplot(ans1, aes(x= factor(type), y = dist, col = factor(type)), height = 600, width = 2000) +
+geom_boxplot(outlier.shape = NA, alpha = .01, width = .2, position = position_dodge(width = .9)) +
+ylim(0, 100) +
+labs(title = "cell-cell distance (total molecule and total reads)") +
+theme(axis.text.x = element_text(hjust=1, angle = 45))
+
+summary(lm(dist~type,data=ans1))
+```
+
+### Reads to molecule conversion rate
+
+```{r conversion-rate}
+## calculate conversion rate
+total_counts_single$conversion_rate <- total_counts_single$total_reads/ total_counts_single$total_molecules
+plot(total_counts_single$conversion_rate,col=total_counts_single$batch)
+
+## create 9 batches
+total_counts_single$batch_num <- paste(total_counts_single$individual,total_counts_single$batch,sep="_")
+
+## calculate individual mean for standardization
+avg_conversion_rate <- do.call(rbind,
+lapply(unique(total_counts_single$individual),function(x){
+  c(individual=x,avg_conv_rate=mean(total_counts_single$conversion_rate[total_counts_single$individual==x]))
+}))
+
+total_counts_single <-merge(total_counts_single,avg_conversion_rate,by="individual")
+
+## create std_conv_rate within individual to remove individual effect
+total_counts_single$std_conv_rate <- total_counts_single$conversion_rate - total_counts_single$avg_conv_rate
+plot(total_counts_single$std_conv_rate,col=total_counts_single$batch)
+
+summary(lm(std_conv_rate~batch_num,data=total_counts_single))
+
+## violin plots
+ggplot(total_counts_single, aes(x= factor(batch_num), y = conversion_rate, fill = factor(batch_num)), height = 600, width = 2000) +
+geom_violin(alpha = .5) + 
+geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+labs(x = "batch", y = "conversion rate", title = "individual batch effect of conversion rate") +
+theme(axis.text.x = element_text(hjust=1, angle = 45))
+
+ggplot(total_counts_single, aes(x= factor(batch_num), y = std_conv_rate, fill = factor(batch_num)), height = 600, width = 2000) +
+geom_violin(alpha = .5) + 
+geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+labs(x = "batch", y = "std conversion rate", title = "batch effect of conversion rate") +
+theme(axis.text.x = element_text(hjust=1, angle = 45))
+```
+
+### PCA
 What effect does this difference in total molecule count have in PCA?
 
 ```{r pca-single}

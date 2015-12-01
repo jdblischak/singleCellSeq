@@ -1,0 +1,181 @@
+---
+title: "Per gene statistical comparison of CVs"
+author: "Joyce Hsiao"
+date: 2015-11-12
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+
+library(knitr)
+opts_chunk$set(message = FALSE, warning = FALSE, eval = TRUE, 
+               echo = TRUE)
+```
+
+
+## Objective
+
+We computed similarity metrics to quantify similarity between individuals in coefficients of variation (after accounting for mean dependenc): 1) Sum-of-Squared-Deviation-from-the-Meidan (SSM), and 2) Sum-of-Absolute-Deviation-from-the-Median (SAM). We ordered genes by these metrics and described genes with high and low similarity between individual adjusted-CV. 
+
+We first compute the deviation to the median for each individual's CV. Then, for each gene, we compute two meausures to quantify the variabilty of the CVs: sum of squared deviation and sum of absolute deviation. Then, to get a confidence of this estimate, we perform bootstraping within each individual; this step perserves the individual differences in mean and yet allow us to get a sample estimate of the variances. 
+
+
+## Set up
+
+```{r set-up, message=FALSE, warning=FALSE}
+library("data.table")
+library("dplyr")
+library("limma")
+library("edgeR")
+library("ggplot2")
+library("grid")
+library("Humanzee")
+theme_set(theme_bw(base_size = 12))
+source("functions.R")
+```
+
+
+## Prepare data
+
+Input quality single cells
+
+```{r import-quality-single-cells}
+quality_single_cells <- read.table("../data/quality-single-cells.txt", 
+                                  stringsAsFactors = FALSE)
+str(quality_single_cells)
+```
+
+Input annotation of only QC-filtered single cells. Remove NA19098.r2
+
+```{r import-annotation-for-filtered-data}
+anno_filter <- read.table("../data/annotation-filter.txt", 
+                    header = TRUE,
+                    stringsAsFactors = FALSE)
+dim(anno_filter)
+```
+
+Import endogeneous gene molecule counts that are QC-filtered, CPM-normalized, ERCC-normalized, and also processed to remove unwanted variation from batch effet. ERCC genes are removed from this file.
+
+```{r import-filtered-molecule-counts}
+molecules_ENSG <- read.table("../data/molecules-final.txt", 
+                             header = TRUE, stringsAsFactors = FALSE)
+stopifnot(NCOL(molecules_ENSG) == NROW(anno_filter))
+```
+
+
+## Import gene symbols
+
+```{r import-gene-symbols}
+gene_info <- read.table("../data/gene-info.txt", sep = "\t",
+                        header = TRUE, stringsAsFactors = FALSE)
+str(gene_info)
+```
+
+
+## Compute normalized CV 
+
+We compute squared CV across cells for each individual and then for each individual CV profile, account for mean dependency by computing distance with respect to the data-wide coefficient variation on the log10 scale. 
+
+```{r compute-normalized-cv}
+ENSG_cv <- Humanzee::compute_cv(log2counts = molecules_ENSG,
+                      grouping_vector = anno_filter$individual)
+
+ENSG_cv_adj <- Humanzee::normalize_cv(group_cv = ENSG_cv, 
+                            log2counts = molecules_ENSG, 
+                            anno = anno_filter)
+```
+
+## Compute summary measure of deviation 
+
+* Standardize the each CV vectors
+
+Individual CV vectors are standarized for individual CV mean and coefficients of variation across genes. 
+
+```{r standardize-cv}
+df_cv <- data.frame(NA19098 = ENSG_cv_adj[[1]]$log10cv2_adj,
+                    NA19101 = ENSG_cv_adj[[2]]$log10cv2_adj,
+                    NA19239 = ENSG_cv_adj[[3]]$log10cv2_adj)
+
+library(matrixStats)
+df_norm <- sweep(df_cv, MARGIN = 2, STATS = colMeans(as.matrix(df_cv)), FUN = "-")
+df_norm <- sweep(df_norm, MARGIN = 2, STATS = sqrt(colVars(as.matrix(df_cv))), FUN = "/")
+colnames(df_norm) <- names(ENSG_cv_adj)
+```
+
+* Adj-CVs before/after standardization.
+
+
+```{r}
+library(gridExtra)
+grid.arrange( ggplot( data.frame(cv = c(df_cv[ ,1], df_cv[ ,2], df_cv[ ,3]),
+                                individual = rep( c("NA19098", "NA19101", "NA19239"),
+                                                  each = dim(df_cv)[1])),
+                     aes(x = factor(individual), y = cv,
+                         fill = factor(individual)) ) +
+               geom_boxplot() +
+               ggtitle("Adjusted CV distribution") + 
+               xlab("individual") + ylab("Adjusted CV"),
+             ggplot( data.frame(cv = c(df_norm[ ,1], df_norm[ ,2], df_norm[ ,3]),
+                                individual = rep( c("NA19098", "NA19101", "NA19239"),
+                                                  each = dim(df_cv)[1])),
+                     aes(x = factor(individual), y = cv,
+                         fill = factor(individual)) ) +
+               geom_boxplot() +
+               ggtitle("Standardized adjusted CV") +
+               xlab("individual") + ylab("Standardized adjusted CV"),
+            ncol = 2, nrow = 1)
+```
+
+
+Compute metrics for quantifying similarity between the three individual coefficients of variation. 
+
+```{r summary-similarity}
+library(matrixStats)
+
+df_norm <- as.data.frame(df_norm)
+df_norm$squared_dev <- rowSums( ( df_norm - rowMedians(as.matrix(df_norm)) )^2 )
+df_norm$abs_dev <- rowSums(abs( df_norm - rowMedians(as.matrix(df_norm)) ))
+```
+
+
+*Gene with the largest SSM (Sum-of-Squared-Deviation-from-the-median). 
+
+```{r}
+library(broman)
+crayon <- brocolors("crayon")
+library(scales)
+
+gene <- rownames(molecules_ENSG)[ order(df_norm$squared_dev, decreasing = TRUE)[3]]
+
+# Compute density for individual gene expression 
+dens <- lapply(1:3, function(ii_individual) {
+   density( unlist(molecules_ENSG[ rownames(molecules_ENSG) == gene,
+        anno_filter$individual == unique(anno_filter$individual)[ii_individual]]) )
+  })
+names(dens) <- unique(anno_filter$individual)
+xlims <- c(range( sapply(dens, "[[", 1) ) )
+ylims <- c(0, max( sapply(dens, "[[", 2) ) )
+
+par(mfrow = c(1,1))
+plot(0, pch = "", 
+     xlab = "log2 gene expression", main = "",
+     ylab = "Density", axes = F, xlim = xlims, ylim = ylims)
+axis(1); axis(2)
+polygon(dens[[1]], col = alpha( crayon["Blue Bell"], .3), lwd = .5 )
+polygon(dens[[2]], col = alpha( crayon["Fern"], .3), lwd = .5)
+polygon(dens[[3]], col = alpha( crayon["Sunglow"], .2), lwd = .5 )
+title(with(gene_info, external_gene_name[ensembl_gene_id == gene]) )
+```
+
+
+
+
+## Session information
+
+```{r info}
+sessionInfo()
+```

@@ -33,7 +33,7 @@ run_pca <- function(x, retx = TRUE, center = TRUE, scale = TRUE) {
 #   color, shape, size: column name of metadata used to pass column to ggplot
 #                       aesthetic
 #   factors: character vector which contains the column names of metadata that
-#            need to be explcitly converted to a factor
+#            need to be explicitly converted to a factor
 plot_pca <- function(x, pcx = 1, pcy = 2, explained = NULL, metadata = NULL,
                      color = NULL, shape = NULL, size = NULL, factors = NULL) {
   library("ggplot2")

@@ -1,0 +1,219 @@
+---
+title: "Subsample coefficient of variation"
+author: "Joyce Hsiao"
+date: 2015-10-24
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+
+library(knitr)
+opts_chunk$set(message = FALSE, warning = FALSE, eval = TRUE, 
+               echo = TRUE)
+``` 
+
+
+## Objective
+
+Because the differential analysis of coefficient of variation is performed on the data set that has been cleaned up batch effect, we suspect that there is little variation between the individual replicates. We subsequently perform subsampling for each individual to generate samples of arbitary sizes; for example, we combine the two biological replicates of NA19098 and then take random samples of size 20 with replacement for 10 times. 
+
+Need to repeat the analysis across a range of subsample sizes. 
+
+## Set up
+
+```{r, message=FALSE, warning=FALSE}
+library("data.table")
+library("dplyr")
+library("limma")
+library("edgeR")
+library("ggplot2")
+library("grid")
+theme_set(theme_bw(base_size = 12))
+source("functions.R")
+```
+
+
+## Prepare data
+
+Input annotation of only QC-filtered single cells. Remove NA19098.r2
+
+```{r}
+anno_qc <- read.table("../data/annotation-filter.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+is_include <- anno_qc$batch != "NA19098.r2"
+anno_qc_filter <- anno_qc[which(is_include), ]
+```
+
+
+Import endogeneous gene molecule counts that are QC-filtered, CPM-normalized, ERCC-normalized, and also processed to remove unwanted variation from batch effet. ERCC genes are removed from this file.
+
+```{r}
+molecules_ENSG <- read.table("../data/molecules-final.txt", header = TRUE, stringsAsFactors = FALSE)
+molecules_ENSG <- molecules_ENSG[ , is_include]
+```
+
+Input moleclule counts before log2 CPM transformation. This file is used to compute percent zero-count cells per sample.
+
+```{r}
+molecules_sparse <- read.table("../data/molecules-filter.txt", header = TRUE, stringsAsFactors = FALSE)
+
+molecules_sparse <- molecules_sparse[grep("ENSG", rownames(molecules_sparse)), ]
+stopifnot( all.equal(rownames(molecules_ENSG), rownames(molecules_sparse)) )
+```
+
+
+## Compute normalized CV 
+
+```{r}
+source("../code/cv-functions.r")
+
+# compute_cv() takes log2 counts as input
+ENSG_cv <- compute_cv(counts = molecules_ENSG,
+                           anno = anno_qc_filter)
+
+ENSG_cv_adj <- normalize_cv(batch_cv = ENSG_cv, 
+                                 counts = molecules_ENSG, 
+                                 anno = anno_qc_filter)
+```
+
+
+## Compute normalied CV based on subsamples
+
+*Three subsamples for each individual, 20 cells per sample
+
+```{r}
+source("../code/cv-functions.r")
+
+subsample_obj <- make_subsample(counts = molecules_ENSG,
+                                anno = anno_qc_filter,
+                                subsample_size = 20,
+                                number_subsample = 3) 
+
+subsample_cv <- compute_cv(counts = subsample_obj$counts_subsample,
+                           anno = subsample_obj$anno_subsample)
+
+subsample_cv_adj <- normalize_cv(batch_cv = subsample_cv, 
+                                 counts = subsample_obj$counts_subsample, 
+                                 anno = subsample_obj$anno_subsample)
+```
+
+Prepare data.frames.
+
+```{r}
+df_adj <- do.call(rbind, subsample_cv_adj)
+df_raw <- do.call(rbind, ENSG_cv_adj)
+
+df_adj$ENSG <- sapply(strsplit(rownames(df_adj), fix = TRUE, split = "."), "[[", 3)
+df_raw$ENSG <- sapply(strsplit(rownames(df_raw), fix = TRUE, split = "."), "[[", 3)
+
+df_adj[df_adj$ENSG == "ENSG00000237683", ]
+df_raw[df_raw$ENSG == "ENSG00000237683", ]
+```
+
+
+
+
+## limma
+
+
+```{r}
+library(limma)
+
+number_batch <- length(unique(subsample_obj$anno_subsample$batch))
+df_limma <- matrix(df_adj$log10cv2_adj, 
+                   nrow = nrow(subsample_obj$counts_subsample), 
+                   ncol = number_batch, byrow = FALSE)
+individual <- factor(matrix(df_adj$individual, 
+                           nrow = nrow(subsample_obj$counts_subsample), 
+                           ncol = number_batch, byrow = FALSE)[1,] )
+
+# limma fit
+fit_limma <- lmFit(df_limma, 
+                   design = model.matrix(~individual))                      
+# empricial bayes
+fit_limma <- eBayes(fit_limma)
+```
+
+Histogram of p-value.
+
+```{r}
+hist(fit_limma$p.value)
+```
+
+
+False discovery control adjustment.
+
+```{r}
+F.p.adj <- p.adjust(fit_limma$F.p.value, method = "fdr")
+```
+
+
+Cutoffs
+
+```{r}
+df_cuts <- data.frame(cuts = c(.001, .01, .05, .1, .15, .2))
+df_cuts$sig_count <- sapply(1:6, function(per_cut) {
+                    sum(F.p.adj < df_cuts$cuts[per_cut] )
+                    })
+df_cuts
+```
+
+
+False discovery control adjutment.
+
+```{r}
+F.p.adj <- p.adjust(fit_limma$F.p.value, method = "fdr")
+```
+
+
+
+## Investigate...
+
+Our naive analysis seems to pick up genes with different density between individuals.
+
+```{r, fig.width = 12, fig.height=12}
+library(gridExtra)
+order_high_cv <- order(df_adj[F.p.adj < .01, ]$log10cv2_adj, decreasing = TRUE)
+high_plots <- lapply(1:10, function(i) {
+  ind <- order_high_cv[i]
+  ggplot(data.frame(values = unlist(subsample_obj$counts_subsample[ind, ]),
+                    individual = factor(subsample_obj$anno_subsample$individual),
+                    replicate = factor(subsample_obj$anno_subsample$replicate),
+                    batch = factor(subsample_obj$anno_subsample$batch), check.rows = F), 
+         aes(x = batch, y = values, fill = individual)) + 
+    geom_violin(alpha = .5) +
+    geom_boxplot(alpha = .1, width = .2) + 
+    ggtitle(paste(rownames(subsample_obj$counts_subsample)[ind],
+                  ";CV = ", round(df_adj[F.p.adj < .01, ]$log10cv2_adj[ind], 2) ) )
+})
+grid.arrange(grobs = high_plots, ncol = 2)
+```
+
+
+## PCA
+
+Prepare a matrix of normalized CVs.
+
+```{r}
+df_cv <- matrix(df_adj$log10cv2_adj, 
+                   nrow = nrow(subsample_obj$counts_subsample), 
+                   ncol = number_batch, byrow = FALSE)
+
+prcomp_cv <- prcomp(t(df_cv) %*% df_cv)
+
+library(qtlcharts)
+iplot(prcomp_cv$x[,1], prcomp_cv$x[,2],
+      as.numeric(as.factor( unique(subsample_obj$anno_subsample$batch) )),
+      unique(subsample_obj$anno_subsample$batch) )
+```
+
+
+## Session information
+
+```{r info}
+sessionInfo()
+```

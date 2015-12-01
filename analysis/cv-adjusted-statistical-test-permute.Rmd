@@ -1,0 +1,173 @@
+---
+title: "Per gene statistical comparison of CVs: permutation-based p-values"
+author: "Joyce Hsiao"
+date: 2015-11-17
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+
+library(knitr)
+opts_chunk$set(message = FALSE, warning = FALSE, eval = TRUE, 
+               echo = TRUE)
+```
+
+
+## Objective
+
+Quantify statistical significance of individual differences between adjusted CVs. 
+
+We permuted the wells labels across samples for 10,000 times. Then, for each gene, we computed the number of permuted samples produced larger distance than the observed distance between standardized coefficients of variance between individuals. 
+
+
+## Set up
+
+```{r set-up, message=FALSE, warning=FALSE}
+library("data.table")
+library("dplyr")
+library("limma")
+library("edgeR")
+library("ggplot2")
+library("grid")
+library("Humanzee")
+theme_set(theme_bw(base_size = 12))
+source("functions.R")
+```
+
+
+## Prepare data
+
+Input annotation of only QC-filtered single cells. Remove NA19098.r2
+
+```{r import-annotation-filter}
+anno_filter <- read.table("../data/annotation-filter.txt", 
+                    header = TRUE,
+                    stringsAsFactors = FALSE)
+dim(anno_filter)
+```
+
+Import endogeneous gene molecule counts that are QC-filtered, CPM-normalized, ERCC-normalized, and also processed to remove unwanted variation from batch effet. ERCC genes are removed from this file.
+
+```{r import-filtered-molecule-count}
+molecules_ENSG <- read.table("../data/molecules-final.txt", 
+                             header = TRUE, stringsAsFactors = FALSE)
+stopifnot(NCOL(molecules_ENSG) == NROW(anno_filter))
+```
+
+
+## Compute normalized CV 
+
+We compute squared CV across cells for each individual and then for each individual CV profile, account for mean dependency by computing distance with respect to the data-wide coefficient variation on the log10 scale. 
+
+```{r compute-normalized-cv}
+ENSG_cv <- Humanzee::compute_cv(log2counts = molecules_ENSG,
+                      grouping_vector = anno_filter$individual)
+
+ENSG_cv_adj <- Humanzee::normalize_cv(group_cv = ENSG_cv, 
+                            log2counts = molecules_ENSG, 
+                            anno = anno_filter)
+```
+
+
+## Compute summary measure of deviation 
+
+* Standardize the each CV vectors
+
+Individual CV vectors are standarized for individual CV mean and coefficients of variation across genes. 
+
+```{r standardized-cv}
+df_cv <- data.frame(NA19098 = ENSG_cv_adj[[1]]$log10cv2_adj,
+                    NA19101 = ENSG_cv_adj[[2]]$log10cv2_adj,
+                    NA19239 = ENSG_cv_adj[[3]]$log10cv2_adj)
+
+library(matrixStats)
+df_norm <- sweep(df_cv, MARGIN = 2, STATS = colMeans(as.matrix(df_cv)), FUN = "-")
+df_norm <- sweep(df_norm, MARGIN = 2, STATS = sqrt(colVars(as.matrix(df_cv))), FUN = "/")
+colnames(df_norm) <- names(ENSG_cv_adj)
+```
+
+* SSM and SAM
+
+Compute metrics for quantifying similarity between the three individual coefficients of variation. 
+
+```{r summary-of-deviation}
+library(matrixStats)
+
+df_norm <- as.data.frame(df_norm)
+df_norm$squared_dev <- rowSums( ( df_norm - rowMedians(as.matrix(df_norm)) )^2 )
+df_norm$abs_dev <- rowSums(abs( df_norm - rowMedians(as.matrix(df_norm)) ))
+```
+
+
+## Compute permuted p-vals
+
+Export some rdas.
+
+```{r output-rdas-for-computing-permuted-pvals}
+if (!file.exists("rda/cv-adjusted-statistical-test-permute/adj-cv.rda")) {
+  save(df_norm, file = "rda/cv-adjusted-statistical-test-permute/adj-cv.rda")
+}
+
+
+if (!file.exists("rda/cv-adjusted-statistical-test-permute/permute-cv-test.rda")) {
+  save(molecules_ENSG, anno_filter,
+       file = "rda/cv-adjusted-statistical-test-permute/permute-cv-test.rda")
+}
+```
+
+Compute permuted distances for each gene.
+
+```bash
+sbatch ../code/permuted-cv-test.sbatch
+```
+
+Compute permutation-based p-values for each gene.
+
+```bash
+sbatch ../code/permuted-cv-compute-pval.sbatch
+```
+
+
+## Sanity checks on the permuted p-values
+
+Confirm that the gene with the larger SSM and SAM are significant with a p-value of 0.
+
+
+```{r import-permuted-pvalues}
+load("rda/cv-adjusted-statistical-test-permute/permuted-pval.rda")
+permuted_pval$squared_dev[which.max(df_norm$squared_dev)]
+permuted_pval$squared_dev[order(df_norm$squared_dev, decreasing = T)[3]]
+```
+
+
+```{r ssm-pvalue}
+library(ggplot2)
+ggplot(data.frame(pvals = permuted_pval$squared_dev,
+                  dist = df_norm$squared_dev),
+       aes(x = dist, y = pvals)) +
+  geom_point()
+```
+
+Gene with the largest Sum-of-Squared-Deviations.
+
+```{r}
+ggplot(do.call(rbind, ENSG_cv_adj),
+       aes(x = log10(mean), y = log10cv2_adj)) +
+  geom_point(aes(col = group), cex = .8) + facet_wrap( ~ group) +
+  ggtitle("Gene with the largest SSM") + 
+  geom_point(data = subset(do.call(rbind, ENSG_cv_adj), 
+                           c(1:NROW(ENSG_cv_adj[[1]])) %in% 
+                             order(df_norm$squared_dev, decreasing = TRUE )[1]), 
+             colour = "grey20")
+```
+
+
+## Session information
+
+```{r info}
+sessionInfo()
+```

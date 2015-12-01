@@ -1,0 +1,271 @@
+---
+title: "Batch effects of conversion efficiency"
+date: 2015-10-23
+author: Joyce Hsiao & PoYuan Tung
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+# opts_chunk$set(cache = TRUE)
+```
+
+## Objective
+
+Compute conversion efficiency of each cell using the filerted set of cells. Compare conversion efficiency between batches: is there an individual effect or batch effect of coversion efficiency?
+
+The definition of conversion efficiency: total molecule counts/ total read counts
+
+Note that we will remove the NA19098 batch 2 in the following analyses. 
+
+We will use analysis of variance to test whether conversion rates are significantly different between individuals. Results below are described at an alpha level of .05.
+
+
+## Input
+
+```{r packages, message=FALSE}
+library("dplyr")
+library("ggplot2")
+library("cowplot")
+theme_set(theme_bw(base_size = 16))
+library("edgeR")
+source("functions.R")
+```
+
+Input annotation.
+
+```{r input-annotation}
+anno <- read.table("../data/annotation.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno)
+```
+
+Input read counts.
+
+```{r input-read-counts}
+reads <- read.table("../data/reads.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+```
+
+Input molecule counts.
+
+```{r input-molecule-counts}
+molecules <- read.table("../data/molecules.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+```
+
+Input list of quality single cells.
+
+```{r input-quality-single-cells}
+quality_single_cells <- scan("../data/quality-single-cells.txt",
+                             what = "character")
+```
+
+Keep only the single cells that passed the [QC filters](qc-filter-ipsc.html).
+
+```{r filter-cells}
+reads <- reads[, colnames(reads) %in% quality_single_cells]
+molecules <- molecules[, colnames(molecules) %in% quality_single_cells]
+anno <- anno[anno$sample_id %in% quality_single_cells, ]
+stopifnot(dim(reads) == dim(molecules),
+          nrow(anno) == ncol(reads))
+```
+
+Seperate ERCC and endogenous genes
+
+```{r ercc-genes}
+reads_ENSG <- reads[grep("ERCC", rownames(reads), invert = TRUE), ]
+reads_ERCC <- reads[grep("ERCC", rownames(reads), invert = FALSE), ]
+
+molecules_ENSG <- molecules[grep("ERCC", rownames(molecules), invert = TRUE), ]
+molecules_ERCC <- molecules[grep("ERCC", rownames(molecules), invert = FALSE), ]
+```
+
+## Reads to molecule conversion efficiency
+
+```{r conversion-rate}
+total_counts_ERCC <- data.frame(total_reads = colSums(reads_ERCC),
+                                total_molecules = colSums(molecules_ERCC))
+total_counts_ERCC$conversion <- with(total_counts_ERCC,
+                                     total_molecules/total_reads)
+summary(total_counts_ERCC)
+
+
+total_counts_ENSG <- data.frame(total_reads = colSums(reads_ENSG),
+                                total_molecules = colSums(molecules_ENSG))
+total_counts_ENSG$conversion <- with(total_counts_ENSG,
+                                     total_molecules/total_reads)
+summary(total_counts_ENSG)
+```
+
+
+```{r plot-convertion}
+## create a color palette with one color per individual and different shades for repplicates
+great_color <- c("#CC3300", "#FF9966", "#006633", "#009900", "#99FF99", "#3366FF", "#6699FF", "#66CCFF")
+
+depth_plot_ensg <- ggplot(data.frame(total_counts_ENSG,
+                  batch = anno$batch), 
+       aes(x = total_reads/10^6, y = total_molecules/10^3, col = factor(batch))) +
+  geom_point() +
+  scale_color_manual(values = great_color) +
+  labs(x = "Total number of reads (x10^6)",
+       y = "Total number of molecules (x10^3)",
+       title = "Effect of read depth on single cells (genes)")
+
+depth_plot_ensg
+
+depth_plot_ercc <- ggplot(data.frame(total_counts_ERCC,
+                  batch = anno$batch), 
+       aes(x = total_reads/10^6, y = total_molecules/10^3, col = factor(batch))) +
+  geom_point() +
+  scale_color_manual(values = great_color) +
+  labs(x = "Total number of reads (x10^6)",
+       y = "Total number of molecules (x10^3)",
+       title = "Effect of read depth on single cells (ERCC spike-in)")
+
+depth_plot_ercc
+```
+
+## Compare variances of conversion rates between batches
+
+### ENSG
+
+```{r}
+convertion_ensg <- ggplot(data.frame(total_counts_ENSG,
+                  batch = anno$batch),
+       aes(x = factor(batch), y = conversion,
+           fill = factor(batch)), height = 600, width = 2000) +
+geom_violin(alpha = .5) + 
+geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+  scale_fill_manual(values = great_color) +
+labs(x = "batch", y = "conversion efficiency", title = "ENSG batch effect of conversion efficiency") +
+theme(axis.text.x = element_text(hjust=1, angle = 45))
+
+convertion_ensg
+```
+
+
+*Between individual
+
+For individual $i$, sample $j$, we have $n_{ij}$ cells. Here we compare the per cell conversion rate from molecule count to read count between the three individuals:
+
+$$ Y_{ijk} = \mu_i + b_{ij} + \epsilon_{ijk} $$
+
+where $i = 1, 2, 3$, $j = 1, 2, 3$, and $k = 1, 2, \dots, n_{ij}$.
+
+
+```{r}
+df_ENSG <- data.frame(total_counts_ENSG,
+                      individual = factor(anno$individual),
+                      replicate = factor(anno$replicate),
+                      batch = factor(anno$batch))
+
+library(lme4)
+lmer_ENSG_full <- lmer(conversion ~ individual + (1| individual:replicate), 
+                        data = df_ENSG)
+lmer_ENSG_null <- lmer(conversion ~ 1 + (1| individual:replicate), 
+                        data = df_ENSG)
+anova(lmer_ENSG_null, lmer_ENSG_full)
+```
+
+
+*For each individual, between batches.
+
+```{r}
+for (i in 1:length(unique(anno$individual))) {
+  print(unique(anno$individual)[i])
+  select_individual <- with(anno, individual == unique(individual)[i])
+  print( summary(aov(conversion ~ batch, 
+                     data = df_ENSG[select_individual, ]) ) )
+}
+```
+
+### ERCC
+
+```{r}
+convertion_ercc <- ggplot(data.frame(total_counts_ERCC,
+                  batch = anno$batch),
+       aes(x = factor(batch), y = conversion,
+           fill = factor(batch)), height = 600, width = 2000) +
+geom_violin(alpha = .5) + 
+geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+  scale_fill_manual(values = great_color) +
+labs(x = "batch", y = "conversion efficiency", title = "ERCC batch effect of conversion efficiency") +
+theme(axis.text.x = element_text(hjust=1, angle = 45))
+
+convertion_ercc
+```
+
+* Between individuals
+
+```{r}
+df_ERCC <- data.frame(total_counts_ERCC,
+                      individual = factor(anno$individual),
+                      replicate = factor(anno$replicate),
+                      batch = factor(anno$batch))
+
+library(lme4)
+lmer_ERCC_full <- lmer(conversion ~ individual + (1| individual:replicate), 
+                        data = df_ERCC)
+lmer_ERCC_null <- lmer(conversion ~ 1 + (1| individual:replicate), 
+                        data = df_ERCC)
+anova(lmer_ERCC_null, lmer_ERCC_full)
+```
+
+*For each individual, between batches.
+
+```{r}
+for (i in 1:length(unique(anno$individual))) {
+  print(unique(anno$individual)[i])
+  select_individual <- with(anno, individual == unique(individual)[i])
+  print( summary(aov(conversion ~ batch, 
+                     data = df_ERCC[select_individual, ]) ) )
+}
+```
+
+## Summary plots
+
+```{r, fig.width = 12, fig.height=6}
+library(gridExtra)
+grid.arrange(
+  ggplot(data.frame(total_counts_ERCC,
+                    batch = anno$batch),
+         aes(x = factor(batch), y = conversion,
+             fill = factor(batch)), height = 600, width = 2000) +
+  geom_violin(alpha = .5) + 
+  geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+    scale_fill_manual(values = great_color) +
+  labs(x = "batch", y = "conversion rate", title = "Batch effect of conversion rate (ERCC spike-in)") +
+  theme(axis.text.x = element_text(hjust=1, angle = 45))
+  ,
+  ggplot(data.frame(total_counts_ENSG,
+                    batch = anno$batch),
+         aes(x = factor(batch), y = conversion,
+             fill = factor(batch)), height = 600, width = 2000) +
+  geom_violin(alpha = .5) + 
+  geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+    scale_fill_manual(values = great_color) +
+  labs(x = "batch", y = "conversion rate", title = "Batch effect of conversion rate (genes)") +
+  theme(axis.text.x = element_text(hjust=1, angle = 45)),
+  ncol = 2
+)
+
+```
+
+```{r plot-reads-molecule, fig.width=12, fig.height=8}
+theme_set(theme_bw(base_size = 8))
+plot_grid(depth_plot_ensg + theme(legend.position = "none"), 
+          convertion_ensg + theme(legend.position = "none"),
+          depth_plot_ercc + theme(legend.position = "none"),
+          convertion_ercc + theme(legend.position = "none"),
+          labels = LETTERS[1:4])
+```
+
+## Session information
+
+```{r info}
+sessionInfo()
+```

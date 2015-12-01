@@ -1,0 +1,95 @@
+---
+title: "Generate gene symbols"
+author: "Joyce Hsiao"
+date: 2015-10-29
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+
+library(knitr)
+opts_chunk$set(message = FALSE, warning = FALSE, eval = TRUE, 
+               echo = TRUE)
+```
+
+
+## Objective
+
+Find gene symbols for the final data set and save them in a text file for annotation references.
+
+## Set up
+
+```{r, message=FALSE, warning=FALSE}
+library("data.table")
+library("dplyr")
+library("limma")
+library("edgeR")
+library("ggplot2")
+library("grid")
+theme_set(theme_bw(base_size = 12))
+source("functions.R")
+```
+
+
+## Prepare data
+
+Input annotation of only QC-filtered single cells. Remove NA19098.r2
+
+```{r}
+anno_qc <- read.table("../data/annotation-filter.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+is_include <- anno_qc$batch != "NA19098.r2"
+anno_qc_filter <- anno_qc[which(is_include), ]
+```
+
+
+Import endogeneous gene molecule counts that are QC-filtered, CPM-normalized, ERCC-normalized, and also processed to remove unwanted variation from batch effet. ERCC genes are removed from this file.
+
+```{r}
+molecules_ENSG <- read.table("../data/molecules-final.txt", header = TRUE, stringsAsFactors = FALSE)
+molecules_ENSG <- molecules_ENSG[ , is_include]
+```
+
+
+## Generate Gene IDs
+
+
+```{r}
+if(!file.exists("../data/gene-info.txt")) {
+  library("biomaRt")
+  ensembl <- useMart(host = "grch37.ensembl.org",
+                     biomart = "ENSEMBL_MART_ENSEMBL",
+                     dataset = "hsapiens_gene_ensembl")
+
+  gene_info <- getBM(attributes = c("ensembl_gene_id", 
+                               "chromosome_name",
+                               "external_gene_name", 
+                               "transcript_count",
+                               "description"),
+                      filters = "ensembl_gene_id",
+                      values = rownames(molecules_ENSG),
+                      mart = ensembl)
+
+  write.table(gene_info, row.names = FALSE,
+              file = "../data/gene-info.txt", quote = FALSE, sep = "\t") 
+} else {
+  gene_info <- read.table(file = "../data/gene-info.txt", sep = "\t",
+                          header = TRUE, stringsAsFactors = FALSE, quote = "")
+}
+str(gene_info)
+```
+
+
+
+
+
+
+## Session information
+
+```{r info}
+sessionInfo()
+```

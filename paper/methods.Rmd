@@ -1,0 +1,183 @@
+---
+bibliography: refs.bib
+---
+
+```{r chunk-options, include=FALSE}
+source("chunk-options-paper.R")
+```
+
+## Materials and Methods
+
+### Cell culture of iPSCs
+
+Undifferentiated feeder-free iPSCs generated from Yoruba LCLs were grown in E8 medium (Life Tech) [@Chen2011] on Metrigel-coated tissue culture plates with daily media feeding at 37 °C with 5% (vol/col) CO2. 
+For standard maintenance, cells were splited every 3-4 days using cell release solution (0.5 mM EDTA and NaCl in PBS) at the confluence of roughly 80%. 
+For the single cell suspension, iPSC were individualized by Accutase Cell Detachment Solution (BD) for 5-7 minutes at 37 °C and washed twice with E8 media immediately before each experiment. 
+Cell viability and cell counts were then measured by the Automated Cell Counter (Bio-Rad) to generate resuspension at densities of 2.5 X 105 cells/mL in E8 medium for C1 cell capture.   
+
+### Single cell capture and single cell library preparation
+
+Single cell loading and capture was performed following the fluidigm manual "Using C1 to Generate Single-Cell cDNA Libraries for mRNA Sequencing Protocol"(PN 100-7168). 
+Briefly, 30 ul of C1 Suspension Reagent was added to a 70-ul aliquot of ~17,500 cells. 
+Five ul of this cell mix were loaded onto 10-17 um C1 Single-Cell Auto Prep IFC microfluidic chip (Fluidigm), and the chip was then processed on a C1 instrument using the cell-loading script according to the manufacturer's instructions. 
+Using the standard staining script, the iPSCs were stained with StainAlive TRA-1-60 Antibody (Stemgent, PN 09-0068). 
+The capture efficiency and TRA-1-60 staining were then inspected using the EVOS FL Cell Imaging System (ThermoFisher)(supplemental Table X). 
+
+Immediately after imaging, reverse transcription and cDNA amplification were performed in the C1 system using the SMARTer PCR cDNA Synthesis kit (Clontech) and the Advantage 2 PCR kit (Clontech) according to the instructions in the Fluidigm user manual with minor changes to incorporate UMI labeling [@Islam2014].
+Specifically, the reverse transcription primer and the 1:50,000 Ambion® ERCC Spike-In Mix1 (Life Tech) were added to the lysis buffer, and the template-switching oligos which contain the UMI (5-bp random sequence) were included in the reverse transcription mix. 
+When the run finished, full-length, amplified, single-cell cDNA libraries were harvested in a total of approximately 13 ul C1 Harvesting Reagents and quantified using DNA High Sensitivity LabChip (Caliper). 
+A bulk sample, a 40 ul aliquot of ~10,000 cells, was collected in parallel with each C1 chip using the same reaction mixes following the C1 protocol of "Tube Controls with Purified RNA" (PN 100-7168, Appendix A).
+
+For sequencing library preparation, tagmentation and isolation of 5' fragments were performed according to the UMI protocol [@Islam2014].
+Instead of using commercial available Tn5 transposase, Tn5 protein stock was freshly purified in house using the IMPACT system (pTXB1, NEB) following the protocol previously described [@Picelli2014].
+The activity of Tn5 was tested and shown to be comparable with the EZ-Tn5-Transposase (Epicentre). 
+Importantly, all the libraries in this study were generated using the same batch of Tn5 protein purification. 
+For each of the bulk samples, two libraries were generated using two different indices in order to get sufficient material. 
+All of the 18 bulk libraries were then pooled and labelled as the "bulk" for sequencing.
+
+### Illumina high-throughput sequencing
+
+Single-cell RNA-seq libraries generated from 96 individual cells (namely, one C1 microfluidic prep) were pooled and then sequenced in three lanes on an Illumina Hiseq 2500 instrument using the PCR primer (C1-P1-PCR-2) as the read 1 primer and the Tn5 adapter (C1-Tn5-U) as the index read primer [@Islam2014]. 
+Libraries, both from bulk and single cell samples, were assigned to lanes at random on the flowcells (Fig. `r fig_supp_flowcell`). 
+Single-end reads of 100 bp were generated along with 8-bp index reads corresponding to the cell-specific barcodes. 
+
+### Read mapping
+
+We processed the sequencing data from the single cells and bulk samples through the same pipeline.
+To assess read quality, we ran FastQC ([http://www.bioinformatics.babraham.ac.uk/projects/fastqc][fastqc]) and observed a decrease in base quality at the 3' end of the reads.
+Thus we removed low quality bases from the 3' end of the reads using sickle with default settings [@Joshi2011] (Figure `r fig_supp_sickle`).
+To handle the UMI sequences at the 5' end of each read, we used umitools ([https://brwnj.github.io/umitools][umitools]) to find all reads with a UMI of the pattern NNNNNGGG.
+The UMI was cut from the 5' end of the read and added to the name of the sequence, and reads without UMIs were discarded.
+We then mapped reads to human genome hg19 (only including chromosomes 1-22, X, and Y, plus the ERCC sequences) with Subread [@Liao2013], discarding non-uniquely mapped reads (option -u) and breaking ties for best mapping location using Hamming distance (option -H).
+Post-mapping we combined all reads for a given single cell using samtools [@Li2009].
+We converted read counts to molecule counts using umitools, which keeps only one read for each UMI and start position combination.
+To obtain gene-level counts, we separately assigned reads or molecules to protein-coding genes (Ensembl GRCh37 release 82) and the ERCC spike-in genes using featureCounts [@Liao2014].
+
+[fastqc]: http://www.bioinformatics.babraham.ac.uk/projects/fastqc
+[umitools]: https://brwnj.github.io/umitools
+
+### Calculate the input molecule quantities of ERCC spiked-ins 
+
+According to the information provided by Fluidigm, each of the 96 capture chamber received 13.5 nl of lysis buffer, which contain 1:50,000 Ambion® ERCC Spike-In Mix1 (Life Tech) in our setup. 
+Therefore, our estimation of the total spiked-in molecule number was 16,831 per sample. 
+Since the relative concentration of each ERCC genes were provided by the manufacture, we were able to calculate the molecule number of each ERCC gene added to each sample. 
+
+### Filtering cells and genes
+
+We performed multiple quality control analyses to detect and remove low quality cells.
+In an initial analysis investigating the percentage of reads mapping to the ERCC spike-in controls, we observed that replicate 2 of individual 19098 was a clear outlier.
+It appeared that too much ERCC spike-in mix was added to this batch, which violated the assumption that the same amount of ERCC molecules was added to each cell.
+Thus, we removed this batch from all of our analyses.
+
+Next, we maintained high quality single cells that passed the following criteria:
+
+*  Only one cell observed per well
+*  At least 1581061 mapped reads
+*  Less than 37.46674 % unmapped reads
+*  Less than 3.223869 % ERCC reads
+*  More than 6875.6 genes with at least one read
+
+We chose these criteria based on the distribution of these metrics in the empty wells (95 %).
+Lastly, we observed that some wells classified as containing only one cell clustered with multi-cell wells when plotting the number of gene molecules versus the concentration of the samples and also the read to molecule conversion efficiency, calculated by total molecule number devided by total read number, of endogenous genes versus that of ERCC. 
+We also removed these misidentified wells using linear discriminant analaysis.
+After filtering, we maintained `r nrow(anno_filter)` high quality single cells 
+(NA19098: `r sum(anno_filter$individual == "NA19098")`,
+ NA19101: `r sum(anno_filter$individual == "NA19101")`,
+ NA19239: `r sum(anno_filter$individual == "NA19239")`).
+
+The quality control analyses were performed using all Ensembl protein-coding genes with at least one observed read.
+Using the high quality single cells, we further removed genes with low expression levels for downstream analyses.
+We removed all genes with a mean log~2~ cpm less than 2, which we further verified that the overall structure of detected genes remain the same.
+We also removed genes with molecule counts larger than 1024 due to alternative transcriptional start sites for the correction of collision probability.
+Thus we kept
+`r format(sum(grepl("ENSG", rownames(molecules_filter))), big.mark = ",")`
+endogenous genes and
+`r sum(grepl("ERCC", rownames(molecules_filter)))`
+ERCC spike-in genes.
+
+### Normalization
+
+We transformed the single cell molecule counts in multiple steps (Fig. `r fig_main_normalization`).
+First, we corrected for the collision probability using a method similar to that developed by @Grun2014.
+Essentially we are correcting for the fact that we did not observe all the molecules originally in the cell.
+The main difference between our approach and that of @Grun2014 is that we apply the correction at the level of gene counts and not individual molecule counts.
+Second, we standardized the molecule counts to log~2~ counts per million (cpm).
+This standardization was performed separately for the gene and ERCC molecules.
+Third, we corrected for cell-to-cell technical noise using the ERCC spike-in controls.
+For each single cell, we fit a linear regression between the expected ERCC molecule counts and the observed ERCC molecule counts (both were transformed to log~2~ cpm).
+Next we used the slope and intercept of the least squares regression line to linearly transform the log~2~ cpm for the genes in that cell.
+This is analogous to the standard curves used for qPCR measurements.
+Fourth, we removed technical noise between the eight batches (three replicates each for 19101 and 19239 and two replicates for 19098).
+We fit a linear mixed model with a fixed effect for individual and a random effect for the eight batches and removed the variation captured by the random effect.
+
+For the bulk samples, we used read counts even though the reads contained UMIs.
+Because these samples contained RNA molecules from millions of cells, we could not assume that the 1,024 UMIs we added could accurately estimate the true number of molecules.
+We standardized them to log~2~ cpm.
+
+### Remove batch effect due to within-plate cell-to-cell gene expression variability
+
+Our last normalization step adjusts the transformed log2 gene expression levels for cell-to-cell correlation within each C1 plate. The algorithm mimics a method that was initially develops for adjusting within-replicate correlation in microarray data [@Smyth2005]. We assumed that for each gene $g$, cells that belong to the same batch $j$ are correlated, for batches $j = 1, \dots, 8$. The batch effect is specific to each C1 plate and is independent of biological variation across cell lines. 
+
+We then fit a linear mixed model for each gene $g$ that includes a fixed effect of individual cell lines and a random effect for within-batch variation attributed to cell-to-cell correlation within each C1 plate: 
+
+$$ y_{g,ijk} = \mu_{g} + \alpha_{g,i} + b_{g,j} + \epsilon_{g,ijk}, $$
+
+where $y_{g,ijk}$ denotes log2 counts-per-million (cpm) for gene $g$ in individual cell line $i$, batch $j$, and cell $k$, and $i = NA19098, NA19101, NA19239$, $j = 1, \dots, 8$, $k = 1, \dots, n_{g,j}$ with $n_{g,j}$ denotes the number of cells in batch $j$; $\mu_g$ describes gene-specific expression level across cells, $\alpha_{g,i}$ quantifies mean gene expression level for individaul cell line $i$, $b_{g,j}$ models cell-to-cell correlation in batch $j$, and $\epsilon_{g,ijk}$ describes residual variation in gene expression levels. We assumed $b_{g,j}$ are independent and identically distribued with mean 0 and variance $\sigma^2_{g,b})$ for $j = 1, \dots, 8$.
+
+Next, we applied Least-Squared (LS) method and computed the batch-corrected expression as:
+
+$$ \widehat{y}_{g,ijk} = y_{g,ijk} - \widehat{b}_{g,j}, $$
+
+where $\widehat{b}_{g,j}$ is the LS estimate of batch-effect specific to replicate $j$. The computations in this step are performed with the gls.series function of the limma package [@limma].
+
+
+### Analysis of cell-to-cell transcriptional variability
+
+#### Quantify cell-to-cell heterogeneity
+
+We quantified cell-to-cell heterogeneity in transcriptional expression as a function of transcript abundance. First, squared coefficents of variations (CVs) are computed for each cell line on the normalized, batch-corrected molecule counts. To account for the confounding effect of mean gene expression level on CVs, we follow the approach described in Kolodziejczyk et al., 2015 [@Kolodziejczyk2015]: 
+
+1. Sort genes by mean gene expression levels across cell lines.
+
+2. Compute squared CVs for each gene. 
+
+3. Starting from the gene with the lowest gene expression level, for every sliding window of 50 genes, substract the log10 median squared CVs from the log10 squared CVs of each cell line, and the number of overlapping genes between windows is 25. The computation was performed with the rollapply function of the R zoo package [@Zeileis2005]. 
+
+4. Standardize each cell line's adjusted log10 CVs by substracting the respectived mean and standard deviation across genes. The final adjusted metircs are referred to as *SSCV* (Standardized Squared Coefficients of Variation).
+
+
+#### Individual differences in cell-to-cell heterogeneity
+
+To evaluate individual differences in cell-to-cell heterogeneity, we computed a dissimilarity metric SSM (Sum of Squared Deviation from the Median) for SSCVs between individuals 
+
+$$ SSCV_{g} = \sum_{i=1}^{3} \left( SSCV_{gi} - \overline{SSCV}_{g} \right)^2$$
+
+for gene $g$ and individual cell lines $i = 1, \dots, 3$, where $ \overline{SSCV}_{g}$ denotes the median of SSCVs of gene $g$. We then computed permutation-based p-values for each gene based on 10,000 permutation, in which the individual cell line labels are shuffled between cells, and 
+
+$$ \frac{1}{B} \sum_{B=1}^{10,000} \mathbb{I} \left( SSCV_{g} \gt  SSCV_{g,B} \right),$$
+
+where $SSCV_{g,B}$ is the SSCV of gene $g$ in permutation $B$, and $\mathbb{I}$ equals 1 if $\left( SSCV_{g} \gt  SSCV_{g,B} \right)$ and 0 otherwise.  
+
+
+
+
+
+
+
+### Data and code availability
+
+The data have been deposited in NCBI's Gene Expression Omnibus [@Edgar2002] and are accessible through GEO Series accession number GSEXXXXX ([http://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSEXXXXX][geo]).
+The code and processed data are available at [https://github.com/jdblischak/singleCellSeq][repo].
+From the beginning of the project, we performed this research in the open.
+The results of our analyses are viewable at [https://jdblischak.github.io/singleCellSeq/analysis][site].
+
+[geo]: http://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSEXXXXX
+[repo]: https://github.com/jdblischak/singleCellSeq
+[site]: https://jdblischak.github.io/singleCellSeq/analysis
+
+
+
+![Adding unique molecular identifiers (UMIs).](../analysis/figure/material-and-method.Rmd/method.png) 
+
+![Report of LCL sequencing experiments.](../analysis/figure/material-and-method.Rmd/LCL.png)  
+  

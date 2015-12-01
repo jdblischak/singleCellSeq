@@ -1,0 +1,176 @@
+---
+title: "Per gene statistical comparison of CVs"
+author: "Joyce Hsiao"
+date: 2015-11-12
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+
+library(knitr)
+opts_chunk$set(message = FALSE, warning = FALSE, eval = TRUE, 
+               echo = TRUE)
+```
+
+
+## Objective
+
+Quantify statistical significance of individual differences between adjusted CVs. Here we focus on bootstrapped CIs of individual CVs.
+
+For cells within each individual cell line, we constructed 1000 samples with replacment and then computed 95% confidence interval. This method resulted in narrow confidence interval. 
+
+Since sample size is a major factor in the width of confidence interval, instead of the entire set of cells for each individual, we sample a subset of the cells with replacement; the number of the sample is set to be 90, close to the number of wells on each C1 plate.
+
+
+## Set up
+
+```{r, message=FALSE, warning=FALSE}
+library("data.table")
+library("dplyr")
+library("limma")
+library("edgeR")
+library("ggplot2")
+library("grid")
+library("Humanzee")
+theme_set(theme_bw(base_size = 12))
+source("functions.R")
+```
+
+
+## Prepare data
+
+Input quality single cells
+
+```{r import-quality-single-cell-list}
+quality_single_cells <- read.table("../data/quality-single-cells.txt", 
+                                  header = FALSE,
+                                  stringsAsFactors = FALSE)
+str(quality_single_cells)
+```
+
+Input annotation of only QC-filtered single cells. Remove NA19098.r2
+
+```{r import-annotation-for-filtered-data}
+anno_filter <- read.table("../data/annotation-filter.txt", 
+                    header = TRUE,
+                    stringsAsFactors = FALSE)
+dim(anno_filter)
+```
+
+Import endogeneous gene molecule counts that are QC-filtered, CPM-normalized, ERCC-normalized, and also processed to remove unwanted variation from batch effet. ERCC genes are removed from this file.
+
+```{r import-filtered-molecule-counts}
+molecules_ENSG <- read.table("../data/molecules-final.txt", 
+                             header = TRUE, stringsAsFactors = FALSE)
+stopifnot(NCOL(molecules_ENSG) == NROW(anno_filter))
+```
+
+
+## Import gene symbols
+
+```{r import-gene-symbols}
+gene_info <- read.table("../data/gene-info.txt", sep = "\t",
+                        header = TRUE, stringsAsFactors = FALSE)
+str(gene_info)
+```
+
+
+## Compute normalized CV 
+
+We compute squared CV across cells for each individual and then for each individual CV profile, account for mean dependency by computing distance with respect to the data-wide coefficient variation on the log10 scale. 
+
+```{r compute-normalized-cv}
+ENSG_cv <- Humanzee::compute_cv(log2counts = molecules_ENSG,
+                      grouping_vector = anno_filter$individual)
+
+ENSG_cv_adj <- Humanzee::normalize_cv(group_cv = ENSG_cv, 
+                            log2counts = molecules_ENSG, 
+                            anno = anno_filter)
+```
+
+## Compute summary measure of deviation 
+
+* Standardize the each CV vectors
+
+Individual CV vectors are standarized for individual CV mean and coefficients of variation across genes. 
+
+```{r compute-summary-deviation}
+df_cv <- data.frame(NA19098 = ENSG_cv_adj[[1]]$log10cv2_adj,
+                    NA19101 = ENSG_cv_adj[[2]]$log10cv2_adj,
+                    NA19239 = ENSG_cv_adj[[3]]$log10cv2_adj)
+
+library(matrixStats)
+df_norm <- sweep(df_cv, MARGIN = 2, STATS = colMeans(as.matrix(df_cv)), FUN = "-")
+df_norm <- sweep(df_norm, MARGIN = 2, STATS = sqrt(colVars(as.matrix(df_cv))), FUN = "/")
+colnames(df_norm) <- names(ENSG_cv_adj)
+```
+
+* SSM and SAM
+
+Compute metrics for quantifying similarity between the three individual coefficients of variation. 
+
+```{r}
+library(matrixStats)
+
+df_norm <- as.data.frame(df_norm)
+df_norm$squared_dev <- rowSums( ( df_norm - rowMedians(as.matrix(df_norm)) )^2 )
+df_norm$abs_dev <- rowSums(abs( df_norm - rowMedians(as.matrix(df_norm)) ))
+```
+
+## Bootstrapped CIs
+
+### Sample size is the orignal sample size
+
+```{r}
+load("rda/cv-adjusted-statistical-test-bootstrap/bootstrap-ci.rda")
+rownames(abs_dev_pnt) <- rownames(molecules_ENSG)
+rownames(squared_dev_pnt) <- rownames(molecules_ENSG)
+
+head(cbind(squared_dev_pnt, df_norm$squared_dev))
+head(cbind(abs_dev_pnt, df_norm$abs_dev))
+```
+
+Genes with SSM outside of the 95% boostrapped CI are consistented to be statistical significant.
+
+```{r}
+sig_gene_CI_squared_dev <- df_norm$squared_dev > squared_dev_pnt[, 2] | df_norm$squared_dev < squared_dev_pnt[, 1]
+
+sig_gene_CI_abs_dev <- df_norm$abs_dev > abs_dev_pnt[, 2] | df_norm$abs_dev < abs_dev_pnt[, 1]
+```
+
+
+```{r}
+library(broman)
+crayon <- brocolors("crayon")
+ggplot(data.frame(index = c(mean(sig_gene_CI_squared_dev == 0), 
+                            mean(sig_gene_CI_squared_dev == 1),
+                            mean(sig_gene_CI_abs_dev == 0 ),
+                            mean(sig_gene_CI_abs_dev == 1) ),
+                  type = factor( rep(c(0,1), times = 2),
+                                 labels = c("Non-sig.", "Sig.") ),
+                  metric = rep( c("SSM", "SAM"), each = 2)  ),
+      aes(x = metric, y = 100*index, fill = type) ) +
+  geom_bar(stat = "identity", colour = "white") +
+  scale_fill_manual(values = c("orange", "grey80")) +
+  ylab("Percent") + xlab("Similarity metric") 
+```
+
+
+Correspondance of SSM and SAM results.
+
+```{r}
+library(gplots)
+venn(list(SSM = rownames(molecules_ENSG)[which(sig_gene_CI_squared_dev)],
+          SAM = rownames(molecules_ENSG)[which(sig_gene_CI_abs_dev)] ))
+```
+
+
+## Session information
+
+```{r info}
+sessionInfo()
+```
