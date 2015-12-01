@@ -8,7 +8,7 @@ source("chunk-options-paper.R")
 
 ## Materials and Methods
 
-### Cell culture
+### Cell culture of iPSCs
 
 Undifferentiated feeder-free iPSCs generated from Yoruba LCLs were grown in E8 medium (Life Tech) [@Chen2011] on Metrigel-coated tissue culture plates with daily media feeding at 37 °C with 5% (vol/col) CO2. 
 For standard maintenance, cells were splited every 3-4 days using cell release solution (0.5 mM EDTA and NaCl in PBS) at the confluence of roughly 80%. 
@@ -56,7 +56,7 @@ To obtain gene-level counts, we separately assigned reads or molecules to protei
 [fastqc]: http://www.bioinformatics.babraham.ac.uk/projects/fastqc
 [umitools]: https://brwnj.github.io/umitools
 
-### Calculate the number of ERCC spiked-in molecules
+### Calculate the input molecule quantities of ERCC spiked-ins 
 
 According to the information provided by Fluidigm, each of the 96 capture chamber received 13.5 nl of lysis buffer, which contain 1:50,000 Ambion® ERCC Spike-In Mix1 (Life Tech) in our setup. 
 Therefore, our estimation of the total spiked-in molecule number was 16,831 per sample. 
@@ -88,6 +88,7 @@ After filtering, we maintained `r nrow(anno_filter)` high quality single cells
 The quality control analyses were performed using all Ensembl protein-coding genes with at least one observed read.
 Using the high quality single cells, we further removed genes with low expression levels for downstream analyses.
 We removed all genes with a mean log~2~ cpm less than 2, which we further verified that the overall structure of detected genes remain the same.
+We also removed genes with molecule counts larger than 1024 due to alternative transcriptional start sites for the correction of collision probability.
 Thus we kept
 `r format(sum(grepl("ENSG", rownames(molecules_filter))), big.mark = ",")`
 endogenous genes and
@@ -115,10 +116,10 @@ We standardized them to log~2~ cpm.
 
 ### Remove batch effect due to within-plate cell-to-cell gene expression variability
 
-Our last normalization step adjusts the transformed log2 gene expression levels for cell-to-cell correlation within each C1 plate. 
-The algorithm follows a method developed for adjusting within-replicate correlation in microarray data [@Smyth2005].
-We assumed that for each gene $g$, cells that belong to the same batch, say $j$, are correlated, for batches $j = 1, \dots, 8$. 
-The batch effect is specific to the plates and independent of biological variation across cell lines. 
+Our last normalization step adjusts the transformed log2 gene expression levels for cell-to-cell correlation within each C1 plate (or replicate). 
+The algorithm follows a method developed for adjusting within-replicate correlation in microarray data (limma) [@Smyth2005].
+We assumed that for each gene $g$, cells that belong to the same C1 replicate, say $j$, are correlated, for batches $j = 1, \dots, 8$. 
+The batch effect is specific to the C1 replicate and independent of biological variation across cell lines. 
 We then fit a linear mixed model for each gene $g$ including a fixed effect of individual cell lines and a random effect for within-batch variance attributed to cell-to-cell correlation: 
 
 $$ y_{g,ijk} = \mu_{g} + \alpha_{g,i} + b_{g,j} + \epsilon_{g,ijk}, $$

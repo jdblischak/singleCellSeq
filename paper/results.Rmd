@@ -12,7 +12,8 @@ Single-cell transcriptomics has recently emerged as a powerful technology to exp
 Specifically, randomly labeling individual transcripts with UMIs at the reverse transcription step prior to amplification of mRNA provides the power to measure absolute molecule counts per gene by eliminating the amplification bias [@Islam2014; @Grun2014; @Jaitin2014], whereas including the spike-in quantification standards of known abundance in the samples allows estimation of technical variation [@Brennecke2013; @Grun2014; @Ding2015; @Vallejos2015].
 To be able to quantify mRNA molecule numbers in single cells with exceptional accuracy, we collected single cell RNA-seq (scRNA-seq) data from three Yoruba iPSC lines (19098, 19101, and 19239), with the additions of both 5-bp random sequence UMIs and ERCC spike-ins, using C1 microfluidic plates from the Fluidigm system followed by sequencing on the Illumina HiSeq system.
 Importantly, for each of the Yoruba lines, we performed three independent C1 collections to more accurately capture the characteristics of technical variability across C1 replicates and then to further remove them from downstream analysis.
-To estimate how well the scRNA-seq can reassemble the RNA-seq results from population bulk samples, each individual C1 collection was accompanied by a collection of bulk sample using the same reagents.
+The three C1 replicates of each individual were collected using cells with different passage numbers, and hence they were also biological replicates. 
+Moreover, to estimate how well the scRNA-seq can reassemble the RNA-seq results from population bulk samples, each individual C1 collection was accompanied by a collection of bulk sample using the same reagents.
 
 #### Removal of low quality sample
 Given the low abundance of mRNA content and the high vulnerability of single cells, scRNA-seq can be intensively affected by various technical artifacts arising from cell isolation and capture, mRNA capture efficiency, library preparation, and even sequencing procedures.
@@ -54,19 +55,44 @@ Intriguingly, not only the difference of conversion efficiency between C1 replic
 ### Subsampling
 It has been shown in separate studies that as few as 10 single cells can accurately reflect gene expression from a pooled population [@Pollen2014], and 2 million reads can already reach saturation point of gene detection [@Wu2014].
 However, no systematic subsampling at the levels of sequencing depth, including read counts and molecule counts, along with the consideration of cell number has been reported. 
-To assess the accuracy of single-cell RNA-seq, we collected data from bulk sample (cells in bulk) together with each C1 prep from the same population of cells using the same SMARTer master mixes. 
+To assess the accuracy of single-cell RNA-seq, we collected data from bulk sample (cells in bulk) together with each C1 prep from the same population of cells using the same master mixes including lysis mix, RT mix, and PCR mix. 
 The results from subsampling in high quality cells indicate that sequencing depth of 2 million reads, which corresponds to ~100,000 molecule counts of protein coding genes, with 75 single cells is sufficient to capture the majority of genes expressed in the whole cell culture (~90 %). 
 Using the same subsampling strategy, the pattern of the correlation between the mean expression levels of subsampled single cells and the bulk sample also coincides with the pattern of detected gene numbers in all three individuals (r > 0.93). 
 Most importantly, the cell-cell variance from the same subsampling cutoffs also accurately represents all the collected single cells from one individual (r > 0.95), suggesting that a sample size of 75 high quality cells is sufficient for capturing cell-cell variability.
 
-### A novel pipeline 
-To remove the technical variability arosed from all the factors mentioned above without explicitly modeling the variability of ERCC spike-in molecule counts, we developed a pipeline which is applicable for studying cell-cell variability aross multiple biological conditions with multiple C1 collections.  
+We also collected scRNA-seq data from Lymphoblastoid Cell Lines (LCLs) in a trial run, in which libraries from one single cell was sequenced individually on one sequencing lane. 
+Since all the library materials were used in these samples, the data collected from this single cell libraries were possibly the most we could obtain using this protocol. 
+The subsampling results from these libraries showed that with the sequencing depth of 50 million reads, the numbers of endogenous genes started to plateau, whereas the total molecule counts were still increasing, suggesting that we have not yet reach the satuation point of molecule counts. 
+
+### A novel normalization for scRNA-seq data analysis 
+To remove the technical variability arosed from all the factors mentioned above without explicitly estimating the technical variability of ERCC spike-in molecule counts, here, we developed a pipeline which is applicable for studying cell-cell variability aross multiple biological conditions with multiple C1 collections.  
+
+#### Correct for collision probability
+Due to the stochasticity of the UMI sampling process, not all molecules will be tagged with an unique UMI and sequenced. 
+Thus, after removing genes with lower expression level in high quality cells, we first computed the molecule number of each gene by applying a mathematical correction to account for the effect of random counting statistics termed collision probability [@Fu2011]. 
+This step also removed the genes with molecule counts larger than 1024, which in our case were all mitochondrial genes, becuase of the alternative transcriptional start sites. 
 
 #### Standardization (cpm)
+We then checked if the sequecning depth played a role in total molecule counts per sample and found that the total read counts highly correlated with not only the total molecule counts but also the PC1 of overall gene expression.
+Not surprizingly, same results were also observed when we investigated the effects of sequencing depth on total molecule counts and PCA of ERCC spike-ins.
+Therefore, we performed standardization separatly on endogenous genes and ERCC spike-ins within each sample using the unit of cpm (counts per million). 
 
 #### Linear transformation
-#### Removal of batch effect
+To eliminate the cell-to-cell technical variability coming from the differences of mRNA capture efficiency within one C1 collection, we next performed linear transforamtion on the log transformed molecule numbers using a fitted linear model generating from the observed and the expected molecule qualities of ERCC spike-ins in each sample.
+In other words, we used ERCC spike-ins to make a linear standard curve for each sample.  
+The PCA of gene expression after linear transformation showed that PC2 seperated not only the three individuals but also the three C1 replicates of each individual, similar to the results of filtered raw molecule data, suggesting the batch effect from the C1 replicates were yet to be removed.
+
+shrunk linear transforamtion???
+
+#### Mixed model for batch effect correction
+Since the linear transformation with the ERCC spike-ins was not sufficient to get rid of all the unwanted technical variation, we used a mixed effect model to correct for batch effects across C1 replicates by adapting the algorithm from limma for estimating variance components due to random effects [@Smyth2005]. 
+Specifically, this analysis operated under the assumption that biological replicates (or C1 replicates within an individual in this case) share similar correlation across genes. 
+The results of PCA on the cleaned data showed that the samples from different C1 replicates of the same individual largely overlapped, indicating that we have successfully removed large proportion of the unwanted technical variation arcoss C1 replicates using out normalization method.
+Furthermore, we were also confident to conclude that individual 19239 was the outlier of the three individuals.
+
 ### Cell-cell variability of gene expression
+
+#### Genes with differential cell-cell variability across individuals
 
 
 1. study design and data collection (Fig. `r fig_main_qc`, sup fig.1 and 2)
