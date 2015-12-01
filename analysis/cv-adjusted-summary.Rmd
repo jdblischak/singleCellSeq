@@ -1,7 +1,7 @@
 ---
 title: "Cell-to-cell heterogeneity analysis summary"
 author: "Joyce Hsiao"
-date: 2015-11-17
+date: 2015-11-17  
 ---
 
 **Last updated:** `r Sys.Date()`
@@ -670,6 +670,7 @@ gplots::venn(
 ```
 
 
+
 Top 1000 genes based on Means.
 
 ```{r venn-top-1000-means}
@@ -740,6 +741,70 @@ cowplot::plot_grid(
         theme(legend.position = "none"),
   labels = LETTERS[1:4] )  
 ```
+
+
+## GO analysis of top ranked genes
+
+Based on Standardized CVs
+
+```{r}
+if (!file.exists("rda/cv-adjusted-summary/go-cv-rank.rda")) {
+  venn_cv_rank <- gplots::venn(
+      list(NA19098 = genes[ which( rank(df_norm[[1]]) > length(genes) - 1000 ) ],
+           NA19101 = genes[ which( rank(df_norm[[2]]) > length(genes) - 1000 ) ],
+           NA19239 = genes[ which( rank(df_norm[[3]]) > length(genes) - 1000 ) ] ))
+  venn_cv_rank_list <- attr(venn_cv_rank, "intersections")
+  
+  # GO terms of genes with high CV across individuals
+  go_cv_rank_all <- GOtest(my_ensembl_gene_universe = rownames(molecules_filter),
+                            my_ensembl_gene_test = venn_cv_rank_list[["111"]],
+                            pval_cutoff = 1, ontology=c("BP") )
+  go_cv_rank_all_terms <- summary(go_cv_rank_all$GO$BP, pvalue = 1)
+  go_cv_rank_all_terms <- data.frame(ID = go_cv_rank_all_terms[[1]],
+                                     Pvalue = go_cv_rank_all_terms[[2]],
+                                     Terms = go_cv_rank_all_terms[[7]])
+  go_cv_rank_all_terms <- go_cv_rank_all_terms[order(go_cv_rank_all_terms$Pvalue), ]
+  
+  # GO terms of genes with high CVs for NA19098
+  go_cv_rank_NA19098 <- GOtest(my_ensembl_gene_universe = rownames(molecules_filter),
+                            my_ensembl_gene_test = venn_cv_rank_list[["100"]],
+                            pval_cutoff = 1, ontology=c("BP") )
+  go_cv_rank_NA19098_terms <- summary(go_cv_rank_NA19098$GO$BP, pvalue = 1)
+  go_cv_rank_NA19098_terms <- data.frame(ID = go_cv_rank_NA19098_terms[[1]],
+                                     Pvalue = go_cv_rank_NA19098_terms[[2]],
+                                     Terms = go_cv_rank_NA19098_terms[[7]])
+  go_cv_rank_NA19098_terms <- go_cv_rank_NA19098_terms[order(go_cv_rank_NA19098_terms$Pvalue), ]
+
+  # GO terms of genes with high CVs for NA19101
+  go_cv_rank_NA19101 <- GOtest(my_ensembl_gene_universe = rownames(molecules_filter),
+                            my_ensembl_gene_test = venn_cv_rank_list[["010"]],
+                            pval_cutoff = 1, ontology=c("BP") )
+  go_cv_rank_NA19101_terms <- summary(go_cv_rank_NA19101$GO$BP, pvalue = 1)
+  go_cv_rank_NA19101_terms <- data.frame(ID = go_cv_rank_NA19101_terms[[1]],
+                                     Pvalue = go_cv_rank_NA19101_terms[[2]],
+                                     Terms = go_cv_rank_NA19101_terms[[7]])
+  go_cv_rank_NA19101_terms <- go_cv_rank_NA19101_terms[order(go_cv_rank_NA19101_terms$Pvalue), ]
+
+  
+  # GO terms of genes with high CVs for NA19239
+  go_cv_rank_NA19239 <- GOtest(my_ensembl_gene_universe = rownames(molecules_filter),
+                            my_ensembl_gene_test = venn_cv_rank_list[["001"]],
+                            pval_cutoff = 1, ontology=c("BP") )
+  go_cv_rank_NA19239_terms <- summary(go_cv_rank_NA19239$GO$BP, pvalue = 1)
+  go_cv_rank_NA19239_terms <- data.frame(ID = go_cv_rank_NA19239_terms[[1]],
+                                     Pvalue = go_cv_rank_NA19239_terms[[2]],
+                                     Terms = go_cv_rank_NA19239_terms[[7]])
+  go_cv_rank_NA19239_terms <- go_cv_rank_NA19239_terms[order(go_cv_rank_NA19239_terms$Pvalue), ]
+    
+  save(go_cv_rank_all_terms,
+       go_cv_rank_NA19098_terms, go_cv_rank_NA19101_terms, go_cv_rank_NA19239_terms,
+       file = "rda/cv-adjusted-summary/go-cv-rank.rda")
+} else {
+  load(file = "rda/cv-adjusted-summary/go-cv-rank.rda")
+}
+```
+
+
 
 
 ## Pluripotency and cell-cycle
