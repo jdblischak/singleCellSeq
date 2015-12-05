@@ -31,26 +31,26 @@ Evidently, we observed that the mean of read counts and the mean of molecule cou
 We therefore applied a cutoff to filter out genes with low molecule counts and kept `r format(sum(grepl("ENSG", rownames(molecules_filter))), big.mark = ",")`
 endogenous genes and
 `r sum(grepl("ERCC", rownames(molecules_filter)))`
-ERCC spike-in genes for the follwing analysis.
-When looking at the proportion of genes detected in the high quality cells before and after the filtering, we found that the absolate numbers of the proportion were increased while keeping the relative relationship across cells, providing us with the confidence that the removed genes were truly the dropouts.
+ERCC spike-in genes for the following analysis.
+When looking at the proportion of genes detected in the high quality cells before and after the filtering, we found that the absolute numbers of the proportion were increased while keeping the relative relationship across cells, providing us with the confidence that the removed genes were truly the dropouts.
 
 #### ERCC spike-ins 
-To estimate the mRNA capture efficiency, we first calcutated the input molecule numbers of ERCC spike-in RNA transcripts and then compared the imput quantities with the observed quantities in high quality cells wihtout filtering of genes. 
-While the observed levels of ERCC spike-ins strongly correlated with the known input quantities (r = 0.9932), the capture efficiency of ERCC spike-ins, defined as the fraction of total input molecules being successfully detected in each high quality cells, has the avarage of 9.119 %.
+To estimate the mRNA capture efficiency, we first calculated the input molecule numbers of ERCC spike-in RNA transcripts and then compared the input quantities with the observed quantities in high quality cells without filtering of genes. 
+While the observed levels of ERCC spike-ins strongly correlated with the known input quantities (r = 0.9932), the capture efficiency of ERCC spike-ins, defined as the fraction of total input molecules being successfully detected in each high quality cells, has the average of 9.119 %.
 
-Currently, ERCC spike-ins are being used to identify low-quality single cells, to measure cell-cell technical variability, and also to indicate relative cellular mRNA content, all of which are under the assumption that each sample contains exact quatities of ERCC spike-ins.
+Currently, ERCC spike-ins are being used to identify low-quality single cells, to measure cell-cell technical variability, and also to indicate relative cellular mRNA content, all of which are under the assumption that each sample contains exact quantities of ERCC spike-ins.
 However, when looking at total ERCC molecule versus total gene molecules, percentage of ERCC molecule versus total gene molecules, ERCC capture efficiency versus total gene molecules, and ERCC capture efficiency versus percentage of ERCC molecule, we observe a clear differences across the three individuals but not across C1 replicates in all of the above.
-The fact that the C1 replicates of the same individuals were consistent in these analysis suggested that this "individual effect" cannot be arising simply from the cell-cell technical variability including PCR amplification, library prepration, and sequencing. 
+The fact that the C1 replicates of the same individuals were consistent in these analysis suggested that this "individual effect" cannot be arising simply from the cell-cell technical variability including PCR amplification, library preparation, and sequencing. 
 Instead, some unidentified factors inherent from the individual difference to the distribution of gene expression in the single cells from these three individuals is consistently affecting the molecule counts.
 For the purpose of measuring cellular mRNA content in cells, even though there was clearly a relationship between the percent ERCC molecules and the total gene molecules, the confidence in the accuracy of this estimate was inevitably dampened by the individual effect of ERCC spike-ins.
-We thus decided not to explicaity estimate the technical variability and cellular content in this study. 
+We thus decided not to explicitly  estimate the technical variability and cellular content in this study. 
  
 #### Batch effect of molecule counts
 To avoid batch effect from the sequencing, we followed the general guidelines for bulk samples by equally distributing the nine C1 replicates of the three individuals onto four flowcells to acquire sufficient sequencing depth. 
-We didn't observe any obvious counfouder that need to be corrected while carrying out quality control at the level of sequencing lane.
+We didn't observe any obvious confounder that need to be corrected while carrying out quality control at the level of sequencing lane.
 Not surprisingly, there was a observable batch effect of C1 collection according to the PCA results of endogenous gene expression using molecule counts.
 In addition to the C1 collection itself, we noticed an unexpected batch effect arising from the difference of read-to-molecule conversion efficiency, computed from the total molecule counts divided by the total reads counts of endogenous genes in each cell, between different C1 replicates.
-Intriguingly, not only the difference of conversion efficiency between C1 replicates was significant, the difference between the three individual was also siginificant, which further strengthens our conclusion that difference in certain unknown factors across these individuals are affecting the molecule counts of both ERCC spike-ins and endogenous genes in single cells.
+Intriguingly, not only the difference of conversion efficiency between C1 replicates was significant, the difference between the three individual was also significant, which further strengthens our conclusion that difference in certain unknown factors across these individuals are affecting the molecule counts of both ERCC spike-ins and endogenous genes in single cells.
 
 ### Subsampling
 It has been shown in separate studies that as few as 10 single cells can accurately reflect gene expression from a pooled population [@Pollen2014], and 2 million reads can already reach saturation point of gene detection [@Wu2014].
@@ -62,37 +62,41 @@ Most importantly, the cell-cell variance from the same subsampling cutoffs also 
 
 We also collected scRNA-seq data from Lymphoblastoid Cell Lines (LCLs) in a trial run, in which libraries from one single cell was sequenced individually on one sequencing lane. 
 Since all the library materials were used in these samples, the data collected from this single cell libraries were possibly the most we could obtain using this protocol. 
-The subsampling results from these libraries showed that with the sequencing depth of 50 million reads, the numbers of endogenous genes started to plateau, whereas the total molecule counts were still increasing, suggesting that we have not yet reach the satuation point of molecule counts. 
+The subsampling results from these libraries showed that with the sequencing depth of 50 million reads, the numbers of endogenous genes started to plateau, whereas the total molecule counts were still increasing, suggesting that we have not yet reach the saturation point of molecule counts. 
 
 ### A novel normalization for scRNA-seq data analysis 
-To remove the technical variability arosed from all the factors mentioned above without explicitly estimating the technical variability of ERCC spike-in molecule counts, here, we developed a pipeline which is applicable for studying cell-cell variability aross multiple biological conditions with multiple C1 collections.  
+To remove the technical variability arose from all the factors mentioned above without explicitly estimating the technical variability of ERCC spike-in molecule counts, here, we developed a pipeline which is applicable for studying cell-cell variability across multiple biological conditions with multiple C1 collections.  
 
 #### Correct for collision probability
 Due to the stochasticity of the UMI sampling process, not all molecules will be tagged with an unique UMI and sequenced. 
 Thus, after removing genes with lower expression level in high quality cells, we first computed the molecule number of each gene by applying a mathematical correction to account for the effect of random counting statistics termed collision probability [@Fu2011]. 
-This step also removed the genes with molecule counts larger than 1024, which in our case were all mitochondrial genes, becuase of the alternative transcriptional start sites. 
+This step also removed the genes with molecule counts larger than 1024, which in our case were all mitochondrial genes, because of the alternative transcriptional start sites. 
 
 #### Standardization (cpm)
-We then checked if the sequecning depth played a role in total molecule counts per sample and found that the total read counts highly correlated with not only the total molecule counts but also the PC1 of overall gene expression.
-Not surprizingly, same results were also observed when we investigated the effects of sequencing depth on total molecule counts and PCA of ERCC spike-ins.
-Therefore, we performed standardization separatly on endogenous genes and ERCC spike-ins within each sample using the unit of cpm (counts per million). 
+We then checked if the sequencing depth played a role in total molecule counts per sample and found that the total read counts highly correlated with not only the total molecule counts but also the PC1 of overall gene expression.
+Not surprisingly, same results were also observed when we investigated the effects of sequencing depth on total molecule counts and PCA of ERCC spike-ins.
+Therefore, we performed standardization separately on endogenous genes and ERCC spike-ins within each sample using the unit of cpm (counts per million). 
 
 #### Linear transformation
-To eliminate the cell-to-cell technical variability coming from the differences of mRNA capture efficiency within one C1 collection, we next performed linear transforamtion on the log transformed molecule numbers using a fitted linear model generating from the observed and the expected molecule qualities of ERCC spike-ins in each sample.
+To eliminate the cell-to-cell technical variability coming from the differences of mRNA capture efficiency within one C1 collection, we next performed linear transformation on the log transformed molecule numbers using a fitted linear model generating from the observed and the expected molecule qualities of ERCC spike-ins in each sample.
 In other words, we used ERCC spike-ins to make a linear standard curve for each sample.  
-The PCA of gene expression after linear transformation showed that PC2 seperated not only the three individuals but also the three C1 replicates of each individual, similar to the results of filtered raw molecule data, suggesting the batch effect from the C1 replicates were yet to be removed.
+The PCA of gene expression after linear transformation showed that PC2 separated not only the three individuals but also the three C1 replicates of each individual, similar to the results of filtered raw molecule data, suggesting the batch effect from the C1 replicates were yet to be removed.
 
-shrunk linear transforamtion???
+shrunk linear transformation???
 
 #### Mixed model for batch effect correction
 Since the linear transformation with the ERCC spike-ins was not sufficient to get rid of all the unwanted technical variation, we used a mixed effect model to correct for batch effects across C1 replicates by adapting the algorithm from limma for estimating variance components due to random effects [@Smyth2005]. 
 Specifically, this analysis operated under the assumption that biological replicates (or C1 replicates within an individual in this case) share similar correlation across genes. 
-The results of PCA on the cleaned data showed that the samples from different C1 replicates of the same individual largely overlapped, indicating that we have successfully removed large proportion of the unwanted technical variation arcoss C1 replicates using out normalization method.
+The results of PCA on the cleaned data showed that the samples from different C1 replicates of the same individual largely overlapped, indicating that we have successfully removed large proportion of the unwanted technical variation across C1 replicates using out normalization method.
 Furthermore, we were also confident to conclude that individual 19239 was the outlier of the three individuals.
 
 ### Cell-cell variability of gene expression
+We evaluate the variability in gene expression profiles for each individual samples.
+The principal component analysis suggest that after our normalization steps, the major source of variation is not driven by replicate labels but instead is highly correlated with mean molecule counts across replicates. 
+Therefore, for transcriptome-wide comparison of cell-to-cell heterogeneity, we combine replicates of each individual samples and compute each gene’s coefficients of variation across the combined samples.
+To account for the confounding effect of mean molecule counts in the individual difference of coefficients of variation, we fit a data-wide PCA and filtered the first PC (29% of variation), which is highly correlated with mean molecule counts (r = .90).
 
-#### Genes with differential cell-cell variability across individuals
+### Genes with differential cell-cell variability across individuals
 
 
 1. study design and data collection (Fig. `r fig_main_qc`, sup fig.1 and 2)
