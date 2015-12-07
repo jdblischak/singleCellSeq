@@ -20,7 +20,7 @@ then
 fi
 
 echo "Removing reads with duplicate UMIs..."
-umitools rmdup $FILE $OUTDIR/$BASE.rmdup.bam > $OUTDIR/$BASE.rmdup.bed
+umitools rmdup --mismatches 1 $FILE $OUTDIR/$BASE.rmdup.bam > $OUTDIR/$BASE.rmdup.bed
 
 echo "Counting number of reads..."
 samtools view -c $OUTDIR/$BASE.rmdup.bam > $OUTDIR/$BASE.rmdup.count.txt
