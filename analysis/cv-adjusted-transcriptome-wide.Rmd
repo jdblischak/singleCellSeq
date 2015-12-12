@@ -48,10 +48,8 @@ source("functions.R")
 Input annotation of only QC-filtered single cells. Remove NA19098.r2
 
 ```{r}
-anno_qc <- read.table("../data/annotation-filter.txt", header = TRUE,
+anno_qc_filter <- read.table("../data/annotation-filter.txt", header = TRUE,
                    stringsAsFactors = FALSE)
-is_include <- anno_qc$batch != "NA19098.r2"
-anno_qc_filter <- anno_qc[which(is_include), ]
 ```
 
 
@@ -59,7 +57,6 @@ Import endogeneous gene molecule counts that are QC-filtered, CPM-normalized, ER
 
 ```{r}
 molecules_ENSG <- read.table("../data/molecules-final.txt", header = TRUE, stringsAsFactors = FALSE)
-molecules_ENSG <- molecules_ENSG[ , is_include]
 ```
 
 Input moleclule counts before log2 CPM transformation. This file is used to compute percent zero-count cells per sample.
@@ -72,19 +69,20 @@ stopifnot( all.equal(rownames(molecules_ENSG), rownames(molecules_sparse)) )
 ```
 
 
-## Compute normalized CV 
+## Compute normalized CV for each batch
 
 ```{r}
 source("../code/cv-functions.r")
 
 # compute_cv() takes log2 counts as input
-ENSG_cv <- compute_cv(counts = molecules_ENSG,
-                           anno = anno_qc_filter)
+ENSG_cv <- compute_cv(log2counts = molecules_ENSG,
+                      grouping_vector = anno_qc_filter$batch)
 
-ENSG_cv_adj <- normalize_cv(batch_cv = ENSG_cv, 
-                                 counts = molecules_ENSG, 
-                                 anno = anno_qc_filter)
+ENSG_cv_adj <- normalize_cv(group_cv = ENSG_cv, 
+                            log2counts = molecules_ENSG, 
+                            anno = anno_qc_filter)
 ```
+
 
 
 ## Compare transcriptome profile within individuals
@@ -101,25 +99,21 @@ versus after normalization.
 * Before normalization
 
 ```{r}
-print(ENSG_cv[[1]]$individual[1])
 print(friedman.test( cbind(ENSG_cv[[1]]$cv, ENSG_cv[[2]]$cv) ) )
 
-print(ENSG_cv[[3]]$individual[3])
 print(friedman.test( cbind(ENSG_cv[[3]]$cv, ENSG_cv[[4]]$cv, ENSG_cv[[5]]$cv) ) )
 
-print(ENSG_cv[[6]]$individual[6])
 print(friedman.test( cbind(ENSG_cv[[6]]$cv, ENSG_cv[[7]]$cv, ENSG_cv[[8]]$cv) ) )
 ```
 
 * After normalization
 
 ```{r}
-print(ENSG_cv_adj[[1]]$individual[1])
 print(friedman.test( cbind(ENSG_cv_adj[[1]]$log10cv2_adj, ENSG_cv_adj[[2]]$log10cv2_adj) ) )
 
-print(ENSG_cv[[3]]$individual[3])
 print(friedman.test( cbind(ENSG_cv_adj[[3]]$log10cv2_adj, 
-                           ENSG_cv_adj[[4]]$log10cv2_adj, ENSG_cv_adj[[5]]$log10cv2_adj) ) )
+                           ENSG_cv_adj[[4]]$log10cv2_adj, 
+                           ENSG_cv_adj[[5]]$log10cv2_adj) ) )
 
 print(ENSG_cv[[6]]$individual[6])
 print(friedman.test( cbind(ENSG_cv_adj[[6]]$log10cv2_adj, 
@@ -131,14 +125,12 @@ print(friedman.test( cbind(ENSG_cv_adj[[6]]$log10cv2_adj,
 The normalization method we used is a non-linear transformation. The method aims to remove heterogeneity of variances across mean gene expression levels. 
 
 ```{r}
-print(ENSG_cv[[6]]$individual[6])
 plot(x = rank(log10((ENSG_cv_adj[[6]]$cv)^2)),
      y = rank(ENSG_cv_adj[[6]]$log10cv2_adj),
      xlab = "Before normalization", ylab = "After normalization",
      cex = .4, pch = 16, main = "Ranks of CV")
 abline(0, 1, col = "red")
 
-print(ENSG_cv[[6]]$individual[6])
 plot(x = (log10((ENSG_cv_adj[[6]]$cv)^2)),
      y = (ENSG_cv_adj[[6]]$log10cv2_adj),
      xlab = "Before normalization", ylab = "After normalization",
@@ -203,33 +195,6 @@ friedman_results
 
 
 
-* Subsampling (NOT RUN).
-
-```{r, eval = FALSE}
-source("../code/cv-functions.r")
-
-sizes <- c(10, 20, 30, 40, 60, 70, 80, 90, 100)
-subsamples_compare <- lapply(sizes, function(per_size) {
-  per_size_test <- sapply(1:100, function(per_sample) {
-      subsample_obj <- make_subsample(counts = molecules_ENSG,
-                                      anno = anno_qc_filter,
-                                      subsample_size = per_size,
-                                      number_subsample = 1) 
-      
-      subsample_cv <- compute_cv(counts = subsample_obj$counts_subsample,
-                                 anno = subsample_obj$anno_subsample)
-      
-      subsample_cv_adj <- normalize_cv(batch_cv = subsample_cv, 
-                                       counts = subsample_obj$counts_subsample, 
-                                       anno = subsample_obj$anno_subsample)
-      df_compare <- do.call(cbind, lapply(subsample_cv_adj, "[[", 7) )
-      res <- friedman.test(df_compare)
-      res$p.value
-  })
-  per_size_test
-})
-names(subsamples_compare) <- sizes
-```
 
 
 
