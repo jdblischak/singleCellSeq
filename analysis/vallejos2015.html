@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+
+<meta name="date" content="2015-09-29" />
+
+<title>BASiCS analysis of Mouse ESC dataset</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">BASiCS analysis of Mouse ESC dataset</h1>
+<h4 class="date"><em>2015-09-29</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#introduction">Introduction</a></li>
+<li><a href="#data-pre-processing">Data pre-processing</a></li>
+<li><a href="#effect-of-sequencing-depth-on-total-molecule-counts">Effect of sequencing depth on total molecule counts</a></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2015-10-01</p>
+<p><strong>Code version:</strong> 0a8ae478de84ce46ed5572c0b2b85e3337f3f71c</p>
+<p>The first half of the analysis is the data cleaning steps performed in <a href="http://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1004333">Vallejos et al., 2015</a> to reproduce the steps performed in <a href="http://www.nature.com/nmeth/journal/v11/n2/full/nmeth.2772.html">Islam et al., 2014</a>. In the second half I compare the total molecule counts from this clean data to the sequencing depth per sample to determine if there is still <a href="islam2014.html">a relationship between sequencing depth and total molecule count</a>.</p>
+<div id="introduction" class="section level2">
+<h2>Introduction</h2>
+<p>This document shows the code used when illustrating the use of BASiCS by analysing the mouse ESC dataset described in Islam et al (2014)<a href="#fn1" class="footnoteRef" id="fnref1"><sup>1</sup></a>. To start the analysis, the following data must be dowloaded and stored in <code>data.path</code> directory.</p>
+<ul>
+<li><p>Expression counts. File ‘GSE46980_CombinedMoleculeCounts.tab’ from <a href="http://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE46980">Series GSE46980</a>.</p></li>
+<li><p>Quality control information. File ‘187_3lanes_CA.txt’ (provided by Sten Linnarson).</p></li>
+<li><p>Input molecules of spike-in genes. File ‘SilverBulletCTRLConc.txt’ (provided by Sten Linnarson).</p></li>
+<li><p>List of highly variable genes detected by Islam et al (2014). Supplementary Table 1 (noisy genes) in <a href="http://www.nature.com/nmeth/journal/v11/n2/full/nmeth.2772.html#supplementary-information">Islam et al (2014)</a></p></li>
+</ul>
+<pre class="r"><code># Here, we stored the 3 files mentioned above in the current R working directory
+# Change this path as necessary
+
+#setwd(&quot;/Users/catalinavallejos/Documents/MRC/Projects/SCE/LaTeX/BASiCS/AnalysisMouseESC/&quot;)
+# data.path = getwd()
+data.path = &quot;/mnt/gluster/home/jdblischak/basics/AnalysisMouseESC&quot;</code></pre>
+<p>In addition, the following libraries must be loaded before performing the analysis</p>
+<pre class="r"><code>#################################
+# REQUIRED LIBRARIES ############
+#################################
+library(BASiCS) # To perform BASiCS analysis
+# Please ignore the message &#39;No methods found in &quot;BiocGenerics&quot; for requests: displayTechIndicator, displaySpikeInput&#39;
+# BASiCS only needs to import the generic functions, not the associated methods. 
+
+#################################
+# OPTIONAL LIBRARIES ############
+#################################
+library(data.table) # For fast pre-processing of large datasets. Can be replaced by standard &#39;data.frame&#39; objects</code></pre>
+<hr />
+</div>
+<div id="data-pre-processing" class="section level2">
+<h2>Data pre-processing</h2>
+<div id="loading-the-expression-counts" class="section level4">
+<h4>Loading the expression counts</h4>
+<pre class="r"><code># Matrix of expression counts (ignoring metadata)
+Counts &lt;- fread(paste0(data.path,&quot;/GSE46980_CombinedMoleculeCounts.tab&quot;),skip=6,drop=c(&quot;Chr&quot;,&quot;Pos&quot;,&quot;Strand&quot;,&quot;TrLen&quot;,&quot;MinExonHits&quot;,&quot;ExonHits&quot;))
+Cells &lt;- as.vector(t(read.table(paste0(data.path,&quot;/GSE46980_CombinedMoleculeCounts.tab&quot;),skip=5, nrows = 1, header = F)[-1]))
+SpikesInfo &lt;- fread(paste0(data.path,&quot;/SilverBulletCTRLConc.txt&quot;), select=c(&quot;ERCC_ID&quot;,&quot;Name&quot;,&quot;molecules_in_each_chamber&quot;))</code></pre>
+<ul>
+<li><p><code>Counts</code> is the matrix of expression counts. The first column in <code>Counts</code> contains the identifiers for each of the 25914 transcripts and the remaining columns contain the observed expression counts for each of the 96 cells in the sample.</p></li>
+<li><p><code>Cells</code> contains cell identifiers for each of the 96 cells in the sample. These identifiers are required in order to combine the quality control information.</p></li>
+<li><p><code>SpikesInfo</code> contains the input molecules that were added to the cell’s lysis (for each of the 92 spike-in genes)</p></li>
+</ul>
+<p>The first step is to fix the format of genes and cells’ identifiers:</p>
+<pre class="r"><code># Cell identifiers
+setnames(Counts,names(Counts),c(&quot;Name&quot;,Cells)) 
+
+# Gene identifiers 
+# ERCC identifiers must start with &#39;ERCC&#39; (required to combine with the information about input molecules)
+setkey(Counts,Name); setkey(SpikesInfo,Name)
+Counts &lt;- merge(Counts,SpikesInfo,all=TRUE)
+# Creating a variable containing gene names (including ERCC names)
+Counts$Name &lt;- ifelse(is.na(Counts$ERCC_ID),Counts$Name,Counts$ERCC_ID) 
+# Excluding 4 spike-in genes that are not part of the ERCC molecules.
+Counts &lt;- Counts[-grep(&quot;SPIKE&quot;,Counts$Name)] 
+
+# Removing a column which is no longer required
+Counts=Counts[,ERCC_ID:=NULL] </code></pre>
+<p><strong>Current processed data contains 25910 genes and 96 cells.</strong> The next step is to remove those cells that did not pass the quality control criteria employed by Islam et al (2014).</p>
+<pre class="r"><code>QC_Info &lt;- fread(paste0(data.path,&quot;/187_3lanes_CA.txt&quot;))
+GoodCells=QC_Info$Well[QC_Info$GoodCell==1]
+# 9 other cells deleted as possible MEF (information provided by Sten Linnarson)
+MEF=c(&quot;D02&quot;, &quot;E02&quot;, &quot;A06&quot;, &quot;H07&quot;, &quot;D08&quot;, &quot;A09&quot;, &quot;G10&quot;, &quot;F12&quot;, &quot;G12&quot;) 
+GoodCells=GoodCells[!(GoodCells %in% MEF)]
+Counts &lt;- subset(Counts, select = c(&quot;Name&quot;,GoodCells,&quot;molecules_in_each_chamber&quot;))</code></pre>
+<p><strong>Current processed data contains 25910 genes and 41 cells.</strong> The next step is to remove those transcrips that are very lowly expressed.</p>
+<pre class="r"><code>GenesIDs &lt;- Counts$Name
+# Fixing a gene name that was missinterpreted by excel... 
+GenesIDs[GenesIDs==&quot;1-Sep&quot;]=&quot;Sept1&quot; 
+SpikesInput &lt;- Counts$molecules_in_each_chamber
+Counts = Counts[, Name := NULL]
+Counts = Counts[, molecules_in_each_chamber := NULL]
+
+SumByGene = rowSums(Counts)
+GenesInclude = I(SumByGene&gt;=41)
+CountsQC = as.matrix(Counts[GenesInclude,]) 
+GenesQC.IDs = GenesIDs[GenesInclude]
+SpikesInputQC = SpikesInput[GenesInclude]
+# Fixing a gene name that was missinterpreted by excel...
+GenesQC.IDs[GenesQC.IDs==&quot;1-Sep&quot;]=&quot;Sept1&quot; 
+# Creating and identifier of spike-in genes
+TechQC=ifelse(1:nrow(CountsQC) %in% grep(&quot;ERCC&quot;,GenesQC.IDs),T,F)</code></pre>
+<p><strong>Current processed data contains 7941 genes and 41 cells.</strong> Finally, we need to re-arrange the data such that the expression counts are at the bottom of the table.</p>
+<pre class="r"><code>CountsQC=rbind(CountsQC[!TechQC,],CountsQC[TechQC,])
+GenesQC.IDs=c(GenesQC.IDs[!TechQC],GenesQC.IDs[TechQC])
+SpikesInputQC = c(SpikesInputQC[!TechQC],SpikesInputQC[TechQC]) 
+TechQC=c(TechQC[!TechQC],TechQC[TechQC]) 
+SpikesInputQC = SpikesInputQC[TechQC]
+
+n = ncol(CountsQC) # Number of cells
+q = nrow(CountsQC) # Total number of genes
+q.bio = q - sum(TechQC) # Number of intrinsic genes</code></pre>
+<p><strong>Final processed data contains 7941 genes (7895 biological and 46 spike-in) and 41 cells.</strong></p>
+<hr />
+</div>
+</div>
+<div id="effect-of-sequencing-depth-on-total-molecule-counts" class="section level2">
+<h2>Effect of sequencing depth on total molecule counts</h2>
+<p>Is there still an effect of sequencing depth on total molecule counts using the cleaned data? Import the total reads that were <a href="islam2014.html">previously counted</a> from the raw fastq files.</p>
+<pre class="r"><code>islam_total_reads_file &lt;- &quot;../data/islam-2014-total-reads.txt&quot;
+total_reads_df &lt;- read.table(islam_total_reads_file, stringsAsFactors = FALSE)
+colnames(total_reads_df) &lt;- c(&quot;cell&quot;, &quot;total_reads&quot;)
+total_reads &lt;- total_reads_df$total_reads
+# names(total_reads) &lt;- total_reads_df$cell</code></pre>
+<p>They used the well as the identifiers. Luckily since the columns were organized by well, I can easily add them. The counting iterates by column first (numbers) and the row (letters), e.g. “A01, B01, C01,…, F12, G12, H12”.</p>
+<pre class="r"><code>names(total_reads) &lt;- sprintf(&quot;%s%02d&quot;, LETTERS[1:8], rep(1:12, each = 8))</code></pre>
+<p>Calculate the total molecules counts.</p>
+<pre class="r"><code>total_molecules &lt;- colSums(CountsQC)</code></pre>
+<p>Filter the total reads using the well ID.</p>
+<pre class="r"><code>total_reads &lt;- total_reads[names(total_reads) %in% names(total_molecules)]
+stopifnot(names(total_molecules) == names(total_reads),
+          length(total_molecules) == length(total_reads))
+total_counts &lt;- data.frame(cell = names(total_reads), total_reads, total_molecules,
+                           stringsAsFactors = FALSE)</code></pre>
+<p>To make the plots more easily interpretable, I scale the total number of molecules by 10<sup>3</sup> and the total number of reads by 10<sup>6</sup>.</p>
+<pre class="r"><code>total_counts$total_reads &lt;- total_counts$total_reads / 10^6
+total_counts$total_molecules &lt;- total_counts$total_molecules / 10^3</code></pre>
+<p>Plotting the sequencing depth versus the total number of molecules per sample.</p>
+<pre class="r"><code>library(&quot;ggplot2&quot;)
+theme_set(theme_bw(base_size = 12))
+p_conv &lt;- ggplot(total_counts, aes(x = total_reads, y = total_molecules)) +
+  geom_point() +
+  labs(x = &quot;Sequencing depth (millions)&quot;,
+       y = &quot;Total molecules (thousands)&quot;,
+       title = &quot;Effect of sequencing depth on molecule count&quot;)
+p_conv</code></pre>
+<p><img src="figure/vallejos2015.Rmd/reads-to-molecules-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>There is still a trend of more total molecules with increasing sequencing depth.</p>
+<pre class="r"><code>p_conv + geom_smooth(method = &quot;lm&quot;)</code></pre>
+<p><img src="figure/vallejos2015.Rmd/reads-to-molecules-trend-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>model_conv &lt;- lm(total_molecules ~ total_reads, data = total_counts)
+summary(model_conv)</code></pre>
+<pre><code>
+Call:
+lm(formula = total_molecules ~ total_reads, data = total_counts)
+
+Residuals:
+    Min      1Q  Median      3Q     Max 
+-56.635 -19.889  -1.527  25.020  69.063 
+
+Coefficients:
+            Estimate Std. Error t value Pr(&gt;|t|)    
+(Intercept)   -1.896     26.053  -0.073    0.942    
+total_reads   25.598      3.277   7.811  1.7e-09 ***
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
+
+Residual standard error: 28.3 on 39 degrees of freedom
+Multiple R-squared:   0.61, Adjusted R-squared:    0.6 
+F-statistic:    61 on 1 and 39 DF,  p-value: 1.698e-09</code></pre>
+<p>For every additional 1 million raw reads, a sample has ~25.6 thousand more molecules.</p>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] ggplot2_1.0.1    data.table_1.9.4 BASiCS_0.3.0     knitr_1.10.5    
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.12.0         magrittr_1.5        MASS_7.3-40        
+ [4] BiocGenerics_0.14.0 munsell_0.4.2       colorspace_1.2-6   
+ [7] lattice_0.20-31     stringr_1.0.0       httr_0.6.1         
+[10] plyr_1.8.3          tools_3.2.0         parallel_3.2.0     
+[13] grid_3.2.0          gtable_0.1.2        coda_0.17-1        
+[16] htmltools_0.2.6     yaml_2.1.13         digest_0.6.8       
+[19] reshape2_1.4.1      formatR_1.2         bitops_1.0-6       
+[22] RCurl_1.95-4.6      evaluate_0.7        rmarkdown_0.6.1    
+[25] labeling_0.3        stringi_0.4-1       scales_0.2.4       
+[28] chron_2.3-45        proto_0.3-10       </code></pre>
+</div>
+<div class="footnotes">
+<hr />
+<ol>
+<li id="fn1"><p>Islam et al (2014). Quantitative single-cell RNA-seq with unique molecular identifiers. <em>Nature Methods</em> 11: 163-166.<a href="#fnref1">↩</a></p></li>
+</ol>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+
+</body>
+</html>

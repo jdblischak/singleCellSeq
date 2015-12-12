@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+
+<meta name="date" content="2015-08-10" />
+
+<title>BASiCS - Variance components</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">BASiCS - Variance components</h1>
+<h4 class="date"><em>2015-08-10</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#input">Input</a></li>
+<li><a href="#denoised-data">Denoised data</a><ul>
+<li><a href="#pca---basics-denoised">PCA - BASiCS Denoised</a></li>
+<li><a href="#anova">ANOVA</a></li>
+</ul></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2015-11-11</p>
+<p><strong>Code version:</strong> 48d0a820ba6794f241a52faf89a214afeba506d9</p>
+<pre class="r"><code>source(&quot;functions.R&quot;)
+library(&quot;ggplot2&quot;)
+theme_set(theme_bw(base_size = 16))
+library(&quot;edgeR&quot;)
+require(doMC)</code></pre>
+<div id="input" class="section level2">
+<h2>Input</h2>
+<p>Below is the description of the data from the BASiCS vignette, interspersed with my code to load the data.</p>
+<blockquote>
+<p>The input dataset for BASiCS must contain the following 3 elements:</p>
+</blockquote>
+<blockquote>
+<ul>
+<li><code>Counts</code>: a matrix of raw expression counts with dimensions <span class="math"><em>q</em></span> times <span class="math"><em>n</em></span>. First <span class="math"><em>q</em><sub>0</sub></span> rows must correspond to biological genes. Last <span class="math"><em>q</em> − <em>q</em><sub>0</sub></span> rows must correspond to technical spike-in genes.</li>
+</ul>
+</blockquote>
+<p>Input annotation.</p>
+<pre class="r"><code>anno_filter &lt;- read.table(&quot;../data/annotation-filter.txt&quot;, header = TRUE,
+                          stringsAsFactors = FALSE)</code></pre>
+<p>Input molecule counts.</p>
+<pre class="r"><code>molecules_cpm = read.table(&quot;../data/molecules-cpm.txt&quot;, header = TRUE, stringsAsFactors = FALSE)
+molecules_cpm_trans = read.table(&quot;../data/molecules-cpm-trans.txt&quot;, header = TRUE, stringsAsFactors = FALSE)
+molecules_cpm_trans_shrunk = read.table(&quot;../data/molecules-cpm-trans-shrunk.txt&quot;, header = TRUE, stringsAsFactors = FALSE)</code></pre>
+<p>Remove outlier batch NA19098.r2.</p>
+<pre class="r"><code>tokeep=anno_filter$batch != &quot;NA19098.r2&quot;
+anno_filter &lt;- anno_filter[tokeep, ]
+molecules_cpm &lt;- molecules_cpm[,tokeep]
+molecules_cpm_trans &lt;- molecules_cpm_trans[,tokeep]
+molecules_cpm_trans_shrunk &lt;- molecules_cpm_trans_shrunk[,tokeep]</code></pre>
+</div>
+<div id="denoised-data" class="section level2">
+<h2>Denoised data</h2>
+<p>Remove technical noise</p>
+<pre class="r"><code>denoised &lt;- read.table(&quot;../data/basics-denoised.txt&quot;, header = TRUE,
+                          stringsAsFactors = FALSE)
+denoised_rates &lt;- read.table(&quot;../data/basics-denoised-rates.txt&quot;, header = TRUE,
+                          stringsAsFactors = FALSE)</code></pre>
+<div id="pca---basics-denoised" class="section level3">
+<h3>PCA - BASiCS Denoised</h3>
+<p>Both the raw and the cpm versions of the BASiCS denoised data appear similar to the result with the <a href="#pca-non-normalized-cpm">non-normalized cpm data</a>. This does not change substantially when increasing the iterations from a few thousands to a few tens of thousands.</p>
+<pre class="r"><code>denoised_cpm &lt;- cpm(denoised, log = TRUE,
+                    lib.size = colSums(denoised) *
+                               calcNormFactors(denoised, method = &quot;TMM&quot;))
+denoised_rates_cpm &lt;- cpm(denoised_rates, log = TRUE,
+                    lib.size = colSums(denoised_rates) *
+                               calcNormFactors(denoised_rates, method = &quot;TMM&quot;))</code></pre>
+<pre class="r"><code>cbPalette &lt;- c(&quot;#999999&quot;, &quot;#E69F00&quot;, &quot;#56B4E9&quot;, &quot;#009E73&quot;, &quot;#F0E442&quot;, &quot;#0072B2&quot;, &quot;#D55E00&quot;, &quot;#CC79A7&quot;)
+
+make_pca_plot &lt;- function(x) {
+  pca_res &lt;- run_pca(x)
+  plot_pca(pca_res$PCs, explained = pca_res$explained,
+           metadata = anno_filter, color = &quot;individual&quot;,
+           shape = &quot;replicate&quot;) 
+  }
+
+cpm_mats &lt;- list( raw=molecules_cpm, transform=molecules_cpm_trans, shrunk_transform=molecules_cpm_trans_shrunk, basics_denoised_rates=log(denoised_rates), basics_denoised_cpm=denoised_cpm, basics_denoised_rates_cpm=denoised_rates_cpm)
+
+cpm_mats &lt;- lapply(cpm_mats, as.matrix)
+common_genes=Reduce(intersect, lapply(cpm_mats,rownames))
+common_cells=Reduce(intersect, lapply(cpm_mats,colnames))
+cpm_mats &lt;- lapply(cpm_mats, function(g) g[common_genes,common_cells])
+rownames(anno_filter)=anno_filter$sample_id
+anno_filter=anno_filter[common_cells,]
+
+foreach(n=names(cpm_mats)) %do%
+  { make_pca_plot(cpm_mats[[n]]) + labs(title=paste0(&quot;PCA (&quot;,n,&quot;)&quot;)) + scale_colour_manual(values=cbPalette) }</code></pre>
+<pre><code>[[1]]</code></pre>
+<p><img src="figure/basics-variance-components.Rmd/pca-basics-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre><code>
+[[2]]</code></pre>
+<p><img src="figure/basics-variance-components.Rmd/pca-basics-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre><code>
+[[3]]</code></pre>
+<p><img src="figure/basics-variance-components.Rmd/pca-basics-3.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre><code>
+[[4]]</code></pre>
+<p><img src="figure/basics-variance-components.Rmd/pca-basics-4.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre><code>
+[[5]]</code></pre>
+<p><img src="figure/basics-variance-components.Rmd/pca-basics-5.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre><code>
+[[6]]</code></pre>
+<p><img src="figure/basics-variance-components.Rmd/pca-basics-6.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="anova" class="section level3">
+<h3>ANOVA</h3>
+<p>Next look at whether the batch and individual effects are more or less significant under the different normalization approaches using a per gene ANOVA.</p>
+<pre class="r"><code>anovas &lt;- lapply(cpm_mats, function(x) {
+  foreach(i=1:nrow(x)) %dopar% anova(lm(x[i,] ~ anno_filter$replicate + anno_filter$individual))
+  })
+
+variance_components &lt;- lapply( as.list(names(anovas)), function(name) {
+  ss=do.call(rbind,foreach(a=anovas[[name]]) %do% a[,&quot;Sum Sq&quot;] )
+  colnames(ss)=c(&quot;batch&quot;,&quot;individual&quot;,&quot;residual&quot;)
+  data.frame(sweep(ss,1,rowSums(ss),&quot;/&quot;), method=name)
+} )
+names(variance_components)=names(cpm_mats)
+
+batch_over_explained &lt;- lapply( as.list(names(anovas)), function(name) {
+  ss=do.call(rbind,foreach(a=anovas[[name]]) %do% a[1:2,&quot;Sum Sq&quot;] )
+  colnames(ss)=c(&quot;batch&quot;,&quot;individual&quot;)
+  data.frame( prop_batch=ss[,&quot;batch&quot;] / rowSums(ss), method=name)
+} )
+names(batch_over_explained) = names(cpm_mats)</code></pre>
+<p>The histogram of the proportion explained by batch.</p>
+<pre class="r"><code>ggplot( do.call(rbind,batch_over_explained), aes(prop_batch,col=method)) + geom_density() + xlab(&quot;variance_batch / (variance_batch + variance_individual)&quot;)</code></pre>
+<p><img src="figure/basics-variance-components.Rmd/batch_over_explained_density-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>And the proportion of variance explained by either batch or individual.</p>
+<pre class="r"><code>ggplot( do.call(rbind,variance_components), aes(1-residual,col=method)) + geom_density() + xlab(&quot;proportion variance explained&quot;) + xlim(0,.5)+ scale_colour_manual(values=cbPalette)</code></pre>
+<pre><code>Warning: Removed 25 rows containing non-finite values (stat_density).</code></pre>
+<pre><code>Warning: Removed 15 rows containing non-finite values (stat_density).</code></pre>
+<pre><code>Warning: Removed 25 rows containing non-finite values (stat_density).</code></pre>
+<pre><code>Warning: Removed 29 rows containing non-finite values (stat_density).</code></pre>
+<pre><code>Warning: Removed 26 rows containing non-finite values (stat_density).</code></pre>
+<pre><code>Warning: Removed 28 rows containing non-finite values (stat_density).</code></pre>
+<p><img src="figure/basics-variance-components.Rmd/proportion_explained_hist-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>Any version of the BASICS normalized data behaves basically (sic) like the raw data.</p>
+</div>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] parallel  grid      stats     graphics  grDevices utils     datasets 
+[8] methods   base     
+
+other attached packages:
+ [1] mgcv_1.8-6       nlme_3.1-120     testit_0.4       hexbin_1.27.0   
+ [5] doMC_1.3.4       iterators_1.0.7  foreach_1.4.2    rstan_2.8.0     
+ [9] Rcpp_0.12.0      ggplot2_1.0.1    edgeR_3.10.2     limma_3.24.9    
+[13] dplyr_0.4.2      data.table_1.9.4 biomaRt_2.24.0   knitr_1.10.5    
+[17] rmarkdown_0.6.1 
+
+loaded via a namespace (and not attached):
+ [1] compiler_3.2.0       formatR_1.2          GenomeInfoDb_1.4.0  
+ [4] plyr_1.8.3           bitops_1.0-6         tools_3.2.0         
+ [7] digest_0.6.8         lattice_0.20-31      RSQLite_1.0.0       
+[10] evaluate_0.7         gtable_0.1.2         Matrix_1.2-1        
+[13] DBI_0.3.1            yaml_2.1.13          proto_0.3-10        
+[16] gridExtra_2.0.0      httr_0.6.1           stringr_1.0.0       
+[19] S4Vectors_0.6.0      IRanges_2.2.4        stats4_3.2.0        
+[22] inline_0.3.14        Biobase_2.28.0       R6_2.1.1            
+[25] AnnotationDbi_1.30.1 XML_3.98-1.2         reshape2_1.4.1      
+[28] magrittr_1.5         codetools_0.2-11     scales_0.2.4        
+[31] htmltools_0.2.6      BiocGenerics_0.14.0  MASS_7.3-40         
+[34] assertthat_0.1       colorspace_1.2-6     labeling_0.3        
+[37] stringi_0.4-1        lazyeval_0.1.10      RCurl_1.95-4.6      
+[40] munsell_0.4.2        chron_2.3-45        </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+
+</body>
+</html>

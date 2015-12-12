@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+<meta name="author" content="Joyce Hsiao" />
+
+<meta name="date" content="2015-09-09" />
+
+<title>Mixed effect model for batch correction - limma</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Mixed effect model for batch correction - limma</h1>
+<h4 class="author"><em>Joyce Hsiao</em></h4>
+<h4 class="date"><em>2015-09-09</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#mixed-model-for-batch-effect-correction">Mixed model for batch-effect correction</a><ul>
+<li><a href="#crossed-model">Crossed Model</a></li>
+<li><a href="#nested-model">Nested Model</a></li>
+</ul></li>
+<li><a href="#setup">Setup</a></li>
+<li><a href="#prepare-single-cell-molecule-data">Prepare single cell molecule data</a></li>
+<li><a href="#remove-unwanted-variation">Remove unwanted variation</a><ul>
+<li><a href="#endogeneous-genes">Endogeneous genes</a></li>
+<li><a href="#ercc-genes">ERCC genes</a></li>
+</ul></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2015-09-10</p>
+<p><strong>Code version:</strong> e1c7de23b7d323b4ad7620051f93ce06b17077d5</p>
+<div id="mixed-model-for-batch-effect-correction" class="section level2">
+<h2>Mixed model for batch-effect correction</h2>
+<p>We adapted limma’s algorithm for estimating variance components due to random effects. This analysis operates under the assumption that biological replicates (or batches within an individual in this case) share similar correlation across genes. Morever, the analysis permis negative correlation between replicates.</p>
+<div id="crossed-model" class="section level3">
+<h3>Crossed Model</h3>
+<p>For every single gene, we will fit a mixed model assuming differences between batches are not individual-specific as follows</p>
+<p><br /><span class="math"><em>y</em><sub><em>i</em><em>j</em><em>k</em></sub> = <em>μ</em> + <em>α</em><sub><em>i</em></sub> + <em>b</em><sub><em>j</em></sub> + <em>ϵ</em><sub><em>i</em><em>j</em><em>k</em></sub></span><br />,</p>
+<p>where <span class="math"><em>y</em><sub><em>i</em><em>j</em><em>k</em></sub></span> is the log2 counts-per-million (cpm) for any gene in individual <span class="math"><em>i</em></span>, batch <span class="math"><em>j</em></span>, and cell <span class="math"><em>k</em></span>, <span class="math"><em>μ</em></span> is the gene-specific expression level across all cells, <span class="math"><em>α</em><sub><em>i</em></sub></span> is the expression level specific to individual <span class="math"><em>i</em></span>, <span class="math"><em>b</em><sub><em>j</em></sub></span> is batch <span class="math"><em>j</em></span>‘s deviation of expression level from gene-specific expression levels, and <span class="math"><em>ϵ</em><sub><em>i</em><em>j</em><em>k</em></sub></span> is the models’ residual error.</p>
+<p>We assume that <span class="math"><em>b</em><sub><em>j</em></sub></span> follows a normal distribution with <span class="math"><em>b</em><sub><em>j</em></sub> ∼ <em>N</em>(0, <em>σ</em><sub><em>b</em></sub><sup>2</sup>)</span> for <span class="math"><em>j</em> = 1, …, 9</span>, and <span class="math"><em>ϵ</em><sub><em>i</em><em>j</em><em>k</em></sub> ∼ <em>N</em>(0, <em>σ</em><sub><em>ϵ</em></sub><sup>2</sup>)</span> for <span class="math"><em>i</em> = 1, 2, 3; <em>j</em> = 1, …, 9; <em>a</em><em>n</em><em>d</em><em>k</em> = 1, …, <em>n</em><sub><em>i</em><em>j</em></sub></span>, where <span class="math"><em>n</em><sub><em>i</em></sub><em>j</em></span> denotes the number of cells in individual <span class="math"><em>i</em></span>, batch <span class="math"><em>j</em></span>.</p>
+</div>
+<div id="nested-model" class="section level3">
+<h3>Nested Model</h3>
+<p>For every single gene, we will fit a mixed model assuming differences between batches as homogeneous within individuals as follows</p>
+<p><br /><span class="math"><em>y</em><sub><em>i</em><em>j</em><em>k</em></sub> = <em>μ</em> + <em>α</em><sub><em>i</em></sub> + <em>b</em><sub><em>i</em><em>j</em></sub> + <em>ϵ</em><sub><em>i</em><em>j</em><em>k</em></sub></span><br />,</p>
+<p>where the only difference from the Cross model is the batch random effect <span class="math"><em>b</em><sub><em>i</em><em>j</em></sub></span>, with <span class="math"><em>i</em> = 1, 2, 3</span> and <span class="math"><em>j</em> = 1, 2, 3</span>. Hence <span class="math">$\hat{b}_{i.}$</span> estimates for individual <span class="math"><em>i</em></span> the random variation of expression levels from the entire population as a function of the variation across the three batches. Note that as before, <span class="math"><em>b</em><sub><em>i</em><em>j</em></sub></span> follows a normal distribution <span class="math"><em>N</em>(0, <em>σ</em><sub><em>b</em></sub><sup>2</sup>)</span>.</p>
+<p>Note that limma does not accommodate fitting of nested random effect. We will use other algorithms to remove unwanted variation under the nested model framework.</p>
+</div>
+</div>
+<div id="setup" class="section level2">
+<h2>Setup</h2>
+<pre class="r"><code>source(&quot;functions.R&quot;)
+library(&quot;limma&quot;)
+library(&quot;edgeR&quot;)
+library(ggplot2)
+theme_set(theme_bw(base_size = 16))</code></pre>
+</div>
+<div id="prepare-single-cell-molecule-data" class="section level2">
+<h2>Prepare single cell molecule data</h2>
+<p>Input annotation</p>
+<pre class="r"><code>anno &lt;- read.table(&quot;../data/annotation.txt&quot;, header = TRUE,
+                   stringsAsFactors = FALSE)</code></pre>
+<p>Input molecule counts</p>
+<pre class="r"><code>molecules &lt;- read.table(&quot;../data/molecules.txt&quot;, header = TRUE,
+           stringsAsFactors = FALSE)</code></pre>
+<p>Input list of quality single cells</p>
+<pre class="r"><code>quality_single_cells &lt;- scan(&quot;../data/quality-single-cells.txt&quot;, what = &quot;character&quot;)</code></pre>
+<p>Keep only the single cells that pass the QC filters. This also removes the bulk samples</p>
+<pre class="r"><code>molecules_single &lt;- molecules[, colnames(molecules) %in% quality_single_cells]
+anno_single &lt;- anno[anno$sample_id %in% quality_single_cells, ]
+stopifnot(ncol(molecules_single) == nrow(anno_single),
+          colnames(molecules_single) == anno_single$sample_id)</code></pre>
+<p>Also remove batch 2 of individual 19098.</p>
+<pre class="r"><code>molecules_single &lt;- molecules_single[, !(anno_single$individual == 19098 &amp; anno_single$batch == 2)]
+anno_single &lt;- anno_single[!(anno_single$individual == 19098 &amp; 
+                anno_single$batch == 2), ]
+stopifnot(ncol(molecules_single) == nrow(anno_single))</code></pre>
+<p>Remove genes with zero read counts in the single cells</p>
+<pre class="r"><code>expressed_single &lt;- rowSums(molecules_single) &gt; 0
+molecules_single &lt;- molecules_single[expressed_single, ]</code></pre>
+<p>Remove genes with greater than or equal to 1,024 molecules in at least one of the cells</p>
+<pre class="r"><code>overexpressed_genes &lt;- rownames(molecules_single)[ apply(molecules_single, 1, 
+                                                    function(x) any(x &gt;= 1024))]
+molecules_single &lt;- molecules_single[!(rownames(molecules_single) %in% overexpressed_genes), ]</code></pre>
+<p>Correct for collision probability</p>
+<pre class="r"><code>molecules_single_collision &lt;- -1024 * log(1 - molecules_single/1024)</code></pre>
+<p>Standardize the molecule counts to account for differences in sequencing depth. This is necessary because the sequencing depth affects the total molecule counts</p>
+<pre class="r"><code>molecules_single_cpm &lt;- cpm(molecules_single_collision, log = TRUE)</code></pre>
+<p>Prepare ERCC data</p>
+<pre class="r"><code>gene_rows_single &lt;- grep(&quot;ERCC&quot;, rownames(molecules_single), invert = TRUE)
+dim(molecules_single_cpm[gene_rows_single, ])</code></pre>
+<pre><code>[1] 17382   563</code></pre>
+<pre class="r"><code>gene_rows_ercc &lt;- grep(&quot;ERCC&quot;, rownames(molecules_single))
+dim(molecules_single_cpm[gene_rows_ercc, ])</code></pre>
+<pre><code>[1]  81 563</code></pre>
+</div>
+<div id="remove-unwanted-variation" class="section level2">
+<h2>Remove unwanted variation</h2>
+<p>First, we create a unique identifying ID for the 9 batches.</p>
+<pre class="r"><code>batch_unique &lt;- with(anno_single, paste(individual, &quot;_&quot;, batch, sep = &quot;&quot;) )
+table(batch_unique)</code></pre>
+<pre><code>batch_unique
+19098_1 19098_3 19101_1 19101_2 19101_3 19239_1 19239_2 19239_3 
+     85      57      77      68      52      78      67      79 </code></pre>
+<p>Load the Humanzee package</p>
+<pre class="r"><code>if (!require(Humanzee, quietly = TRUE)) {
+  library(devtools)
+  install_github(&quot;jhsiao999/Humanzee&quot;)
+  library(Humanzee)
+}</code></pre>
+<div id="endogeneous-genes" class="section level3">
+<h3>Endogeneous genes</h3>
+<p>Create design matrix and compute a consensus correlation coefficient using limma’s duplicateCorrelation function.</p>
+<pre class="r"><code>block &lt;- batch_unique
+design &lt;- model.matrix(~ 1 + individual, data = anno_single)
+dup_corrs &lt;- duplicateCorrelation(molecules_single_cpm[gene_rows_single, ],
+                         design = design, block = block)</code></pre>
+<p>Fit a mixed model with the 9 batches being the random effect.</p>
+<pre class="r"><code>if (file.exists(&quot;../data/limma-crossed.rda&quot;)) {
+  load(&quot;../data/limma-crossed.rda&quot;)
+} else {
+  gls_fit &lt;-
+      Humanzee::ruv_mixed_model(molecules_single_cpm[gene_rows_single, ],
+                      ndups = 1,
+                      design = design, block = block,
+                      correlation = dup_corrs$cons)
+  save(gls_fit, file = &quot;../data/limma-crossed.rda&quot;)
+}</code></pre>
+<p>Compute expression levels after removing variation due to random effects.</p>
+<pre class="r"><code>molecule_batch_removed &lt;- t( design %*% t(gls_fit$coef) ) + gls_fit$resid
+
+pca_single_mixed_correction &lt;- run_pca(molecule_batch_removed)
+plot_pca(pca_single_mixed_correction$PCs, 
+         explained = pca_single_mixed_correction$explained,
+         metadata = anno_single, color = &quot;individual&quot;,
+         shape = &quot;batch&quot;, factors = c(&quot;individual&quot;, &quot;batch&quot;))</code></pre>
+<p><img src="figure/batch-limma.Rmd/unnamed-chunk-16-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="ercc-genes" class="section level3">
+<h3>ERCC genes</h3>
+<p>Create design matrix and compute a consensus correlation coefficient using limma’s duplicateCorrelation function.</p>
+<pre class="r"><code>block &lt;- batch_unique
+design &lt;- model.matrix(~ 1 + individual, data = anno_single)
+dup_corrs &lt;- duplicateCorrelation(molecules_single_cpm[gene_rows_ercc, ],
+                         design = design, block = block)
+
+# Consensu correlation between batches
+dup_corrs$consensus.correlation</code></pre>
+<pre><code>[1] 0.03855768</code></pre>
+<p>Fit a mixed model with the 9 batches being the random effect.</p>
+<pre class="r"><code>if (file.exists(&quot;../data/limma-crossed-ercc.rda&quot;)) {
+  load(&quot;../data/limma-crossed-ercc.rda&quot;)
+} else {
+  gls_fit &lt;-
+      Humanzee::ruv_mixed_model(molecules_single_cpm[gene_rows_ercc, ],
+                      ndups = 1,
+                      design = design, block = block,
+                      correlation = dup_corrs$cons)
+  save(gls_fit, file = &quot;../data/limma-crossed-ercc.rda&quot;)
+}</code></pre>
+<p>Compute expression levels after removing variation due to random effects.</p>
+<pre class="r"><code>molecule_ercc_removed &lt;- t( design %*% t(gls_fit$coef) ) + gls_fit$resid
+
+pca_single_mixed_correction_ercc &lt;- run_pca(molecule_ercc_removed)
+plot_pca(pca_single_mixed_correction_ercc$PCs, 
+         explained = pca_single_mixed_correction_ercc$explained,
+         metadata = anno_single, color = &quot;individual&quot;,
+         shape = &quot;batch&quot;, factors = c(&quot;individual&quot;, &quot;batch&quot;))</code></pre>
+<p><img src="figure/batch-limma.Rmd/unnamed-chunk-19-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] testit_0.4          Humanzee_0.0.0.9000 ggplot2_1.0.1      
+[4] edgeR_3.10.2        limma_3.24.9        knitr_1.10.5       
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.12.0      magrittr_1.5     MASS_7.3-40      munsell_0.4.2   
+ [5] statmod_1.4.21   colorspace_1.2-6 stringr_1.0.0    plyr_1.8.3      
+ [9] tools_3.2.0      grid_3.2.0       gtable_0.1.2     htmltools_0.2.6 
+[13] yaml_2.1.13      digest_0.6.8     reshape2_1.4.1   formatR_1.2     
+[17] evaluate_0.7     rmarkdown_0.6.1  labeling_0.3     stringi_0.4-1   
+[21] scales_0.2.4     proto_0.3-10    </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+
+</body>
+</html>

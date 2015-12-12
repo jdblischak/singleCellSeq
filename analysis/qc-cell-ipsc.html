@@ -125,18 +125,31 @@ img {
 <div id="TOC">
 <ul>
 <li><a href="#input">Input</a></li>
-<li><a href="#total-mapped-reads-unmapped-ratios-and-ercc-ratios">Total mapped reads, unmapped ratios, and ERCC ratios</a></li>
+<li><a href="#total-mapped-reads-unmapped-ratios-and-ercc-ratios">Total mapped reads, unmapped ratios, and ERCC ratios</a><ul>
+<li><a href="#total-molecules-of-ercc-and-endogenous-genes">Total molecules of ERCC and endogenous genes</a></li>
+<li><a href="#adjust-the-ercc-total-reads-of-19098-batch-2">Adjust the ERCC total reads of 19098 batch 2</a></li>
+</ul></li>
 <li><a href="#cell-number">Cell number</a></li>
 <li><a href="#number-of-genes-detected">Number of genes detected</a></li>
 <li><a href="#reads-mapped-to-mitochondrial-genes">Reads mapped to mitochondrial genes</a></li>
-<li><a href="#effect-of-cell-qc-data-on-sequencing-results">Effect of cell QC data on sequencing results</a></li>
-<li><a href="#pca">PCA</a></li>
+<li><a href="#effect-of-cell-qc-data-on-sequencing-results">Effect of cell QC data on sequencing results</a><ul>
+<li><a href="#cell-number-1">Cell number</a></li>
+<li><a href="#concentration">Concentration</a></li>
+<li><a href="#tra-1-60">Tra-1-60</a></li>
+<li><a href="#filtering-by-cell-number-and-tra-1-60">Filtering by cell number and Tra-1-60</a></li>
+</ul></li>
+<li><a href="#pca">PCA</a><ul>
+<li><a href="#reads">Reads</a></li>
+</ul></li>
+<li><a href="#filter">Filter</a><ul>
+<li><a href="#effect-of-sample-concentration">Effect of sample concentration</a></li>
+</ul></li>
 <li><a href="#session-information">Session information</a></li>
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-07-07</p>
-<p><strong>Code version:</strong> 8e5d336be95361fb60a5dbbed71bbfdaa8ed8ef7</p>
+<p><strong>Last updated:</strong> 2015-10-07</p>
+<p><strong>Code version:</strong> 5b866c4e43bd9168cd3f4f4621d63daa0d527c49</p>
 <div id="input" class="section level2">
 <h2>Input</h2>
 <pre class="r"><code>library(&quot;dplyr&quot;)
@@ -156,13 +169,13 @@ library(&quot;edgeR&quot;)</code></pre>
 <pre class="r"><code>anno &lt;- read.table(&quot;../data/annotation.txt&quot;, header = TRUE,
                    stringsAsFactors = FALSE)
 head(anno)</code></pre>
-<pre><code>  individual batch well     sample_id
-1      19098     1  A01 NA19098.1.A01
-2      19098     1  A02 NA19098.1.A02
-3      19098     1  A03 NA19098.1.A03
-4      19098     1  A04 NA19098.1.A04
-5      19098     1  A05 NA19098.1.A05
-6      19098     1  A06 NA19098.1.A06</code></pre>
+<pre><code>  individual replicate well      batch      sample_id
+1    NA19098        r1  A01 NA19098.r1 NA19098.r1.A01
+2    NA19098        r1  A02 NA19098.r1 NA19098.r1.A02
+3    NA19098        r1  A03 NA19098.r1 NA19098.r1.A03
+4    NA19098        r1  A04 NA19098.r1 NA19098.r1.A04
+5    NA19098        r1  A05 NA19098.r1 NA19098.r1.A05
+6    NA19098        r1  A06 NA19098.r1 NA19098.r1.A06</code></pre>
 <p>Input read counts.</p>
 <pre class="r"><code>reads &lt;- read.table(&quot;../data/reads.txt&quot;, header = TRUE,
                     stringsAsFactors = FALSE)</code></pre>
@@ -200,35 +213,68 @@ summary_per_sample_reads$total.mapped &lt;- apply(summary_per_sample_reads[,5:8]
 # plot
 ggplot(summary_per_sample_reads, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5)</code></pre>
 <p><img src="figure/qc-cell-ipsc.Rmd/reads-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
-<pre class="r"><code># plot the sum of reads and &#39;Assigned&#39;
-plot(apply(reads,2,sum),summary_per_sample_reads[,5])</code></pre>
-<p><img src="figure/qc-cell-ipsc.Rmd/reads-2.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
-<pre class="r"><code># total ERCC reads 
-summary_per_sample_reads$total.ERCC &lt;- apply(reads[grep(&quot;ERCC&quot;, rownames(reads)), ],2,sum)
-
-plot(summary_per_sample_reads$total.ERCC)</code></pre>
-<p><img src="figure/qc-cell-ipsc.Rmd/reads-3.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
-<pre class="r"><code># creat ERCC ratios
-summary_per_sample_reads$ERCC.ratios &lt;- apply(reads[grep(&quot;ERCC&quot;, rownames(reads)), ],2,sum)/apply(summary_per_sample_reads[,5:8],1,sum)
-
-# plot
-ggplot(summary_per_sample_reads, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5)</code></pre>
-<p><img src="figure/qc-cell-ipsc.Rmd/reads-4.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <p>Looking at only the single cell libraries</p>
 <pre class="r"><code># remove bulk keep single cell
 summary_per_sample_reads_single &lt;- summary_per_sample_reads[summary_per_sample_reads$well!=&quot;bulk&quot;,]
 
+# total ERCC reads 
+summary_per_sample_reads_single$total.ERCC &lt;- apply(reads[grep(&quot;ERCC&quot;, rownames(reads)), ],2,sum)
+plot(summary_per_sample_reads_single$total.ERCC)</code></pre>
+<p><img src="figure/qc-cell-ipsc.Rmd/reads-single-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code># creat ERCC ratios
+summary_per_sample_reads_single$ERCC.ratios &lt;- apply(reads[grep(&quot;ERCC&quot;, rownames(reads)), ],2,sum)/apply(summary_per_sample_reads_single[,5:8],1,sum)
+
 # many plots
 ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + xlab(&quot;Number of mapped reads&quot;) + ylab(&quot;Umapped reads ratio&quot;)</code></pre>
-<p><img src="figure/qc-cell-ipsc.Rmd/reads-single-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + xlab(&quot;Number of mapped reads&quot;) + ylab(&quot;Spike-in reads ratio&quot;)</code></pre>
 <p><img src="figure/qc-cell-ipsc.Rmd/reads-single-2.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))</code></pre>
+<pre class="r"><code>ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + xlab(&quot;Number of mapped reads&quot;) + ylab(&quot;Spike-in reads ratio&quot;)</code></pre>
 <p><img src="figure/qc-cell-ipsc.Rmd/reads-single-3.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))</code></pre>
+<pre class="r"><code>ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = unmapped.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))</code></pre>
 <p><img src="figure/qc-cell-ipsc.Rmd/reads-single-4.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = total.ERCC, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))</code></pre>
+<pre class="r"><code>ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))</code></pre>
 <p><img src="figure/qc-cell-ipsc.Rmd/reads-single-5.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = total.ERCC, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))</code></pre>
+<p><img src="figure/qc-cell-ipsc.Rmd/reads-single-6.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<div id="total-molecules-of-ercc-and-endogenous-genes" class="section level3">
+<h3>Total molecules of ERCC and endogenous genes</h3>
+<p>Looking at the total molecule number of ERCC and endogenous genes</p>
+<pre class="r"><code>summary_per_sample_reads_single$total_ERCC_molecule &lt;- apply(molecules[grep(&quot;ERCC&quot;, rownames(molecules)), ],2,sum)
+
+summary_per_sample_reads_single$total_gene_molecule &lt;- apply(molecules[grep(&quot;ENSG&quot;, rownames(molecules)), ],2,sum)
+
+ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = total_gene_molecule, col = as.factor(individual), shape = as.factor(batch), label = well)) + geom_point(size = 3, alpha = 0.5) + xlab(&quot;Total mapped reads&quot;) + ylab(&quot;Total gene molecule&quot;)</code></pre>
+<p><img src="figure/qc-cell-ipsc.Rmd/total-molecule-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>total_ERCC_plot &lt;- ggplot(summary_per_sample_reads_single, aes(x = total.mapped, y = total_ERCC_molecule, col = as.factor(individual), shape = as.factor(batch), label = well)) + geom_point(size = 3, alpha = 0.5) + xlab(&quot;Total mapped reads&quot;) + ylab(&quot;Total ERCC molecule&quot;) 
+
+total_ERCC_plot</code></pre>
+<p><img src="figure/qc-cell-ipsc.Rmd/total-molecule-2.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>total_ERCC_plot + facet_grid(individual ~ batch) + geom_smooth()</code></pre>
+<pre><code>geom_smooth: method=&quot;auto&quot; and size of largest group is &lt;1000, so using loess. Use &#39;method = x&#39; to change the smoothing method.
+geom_smooth: method=&quot;auto&quot; and size of largest group is &lt;1000, so using loess. Use &#39;method = x&#39; to change the smoothing method.
+geom_smooth: method=&quot;auto&quot; and size of largest group is &lt;1000, so using loess. Use &#39;method = x&#39; to change the smoothing method.
+geom_smooth: method=&quot;auto&quot; and size of largest group is &lt;1000, so using loess. Use &#39;method = x&#39; to change the smoothing method.
+geom_smooth: method=&quot;auto&quot; and size of largest group is &lt;1000, so using loess. Use &#39;method = x&#39; to change the smoothing method.
+geom_smooth: method=&quot;auto&quot; and size of largest group is &lt;1000, so using loess. Use &#39;method = x&#39; to change the smoothing method.
+geom_smooth: method=&quot;auto&quot; and size of largest group is &lt;1000, so using loess. Use &#39;method = x&#39; to change the smoothing method.
+geom_smooth: method=&quot;auto&quot; and size of largest group is &lt;1000, so using loess. Use &#39;method = x&#39; to change the smoothing method.
+geom_smooth: method=&quot;auto&quot; and size of largest group is &lt;1000, so using loess. Use &#39;method = x&#39; to change the smoothing method.</code></pre>
+<p><img src="figure/qc-cell-ipsc.Rmd/total-molecule-3.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>total_ERCC_plot + scale_y_continuous(limits=c(0, 4000)) + facet_grid(individual ~ batch) + geom_smooth()</code></pre>
+<pre><code>geom_smooth: method=&quot;auto&quot; and size of largest group is &lt;1000, so using loess. Use &#39;method = x&#39; to change the smoothing method.
+geom_smooth: method=&quot;auto&quot; and size of largest group is &lt;1000, so using loess. Use &#39;method = x&#39; to change the smoothing method.</code></pre>
+<pre><code>Warning: Removed 96 rows containing missing values (stat_smooth).</code></pre>
+<pre><code>geom_smooth: method=&quot;auto&quot; and size of largest group is &lt;1000, so using loess. Use &#39;method = x&#39; to change the smoothing method.
+geom_smooth: method=&quot;auto&quot; and size of largest group is &lt;1000, so using loess. Use &#39;method = x&#39; to change the smoothing method.
+geom_smooth: method=&quot;auto&quot; and size of largest group is &lt;1000, so using loess. Use &#39;method = x&#39; to change the smoothing method.
+geom_smooth: method=&quot;auto&quot; and size of largest group is &lt;1000, so using loess. Use &#39;method = x&#39; to change the smoothing method.
+geom_smooth: method=&quot;auto&quot; and size of largest group is &lt;1000, so using loess. Use &#39;method = x&#39; to change the smoothing method.
+geom_smooth: method=&quot;auto&quot; and size of largest group is &lt;1000, so using loess. Use &#39;method = x&#39; to change the smoothing method.
+geom_smooth: method=&quot;auto&quot; and size of largest group is &lt;1000, so using loess. Use &#39;method = x&#39; to change the smoothing method.</code></pre>
+<pre><code>Warning: Removed 96 rows containing missing values (geom_point).</code></pre>
+<p><img src="figure/qc-cell-ipsc.Rmd/total-molecule-4.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>plot(summary_per_sample_reads_single$total_ERCC_molecule)</code></pre>
+<p><img src="figure/qc-cell-ipsc.Rmd/total-molecule-5.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
 <div id="adjust-the-ercc-total-reads-of-19098-batch-2" class="section level3">
 <h3>Adjust the ERCC total reads of 19098 batch 2</h3>
 <p>It is obvious that the 19098 batch 2 have a lot more ERCC than all the other. Here is trying to fix it by adjusting the ERCC of the super sad batch.</p>
@@ -262,9 +308,12 @@ ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = unmapped.ra
 <p><img src="figure/qc-cell-ipsc.Rmd/cell-number-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = ERCC.ratios, col = as.factor(individual), label = as.character(cell_number))) + geom_text(fontface=3)</code></pre>
 <p><img src="figure/qc-cell-ipsc.Rmd/cell-number-2.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
-<p>Based on the observation that these is a dinstint cell population with more than 2 million reads, we used it as a cutoff.</p>
-<pre class="r"><code>#qc filter only keep cells with more than 2 million reads
-summary_per_sample_reads_single_qc$qc_filter &lt;- summary_per_sample_reads_single_qc$cell_number == 1 &amp; summary_per_sample_reads_single_qc$total.mapped &gt; 2 * 10^6
+<pre class="r"><code># look at total molecule
+ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = total_gene_molecule, col = as.factor(individual), label = as.character(cell_number))) + xlab(&quot;Total mapped reads&quot;) + ylab(&quot;Total endogenous gene molecule&quot;) + geom_text(fontface=3)</code></pre>
+<p><img src="figure/qc-cell-ipsc.Rmd/cell-number-3.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p>Based on the observation that these is a dinstint cell population with more than 1.5 million reads, we used it as a cutoff.</p>
+<pre class="r"><code>#qc filter only keep cells with more than 1.5 million reads
+summary_per_sample_reads_single_qc$qc_filter &lt;- summary_per_sample_reads_single_qc$cell_number == 1 &amp; summary_per_sample_reads_single_qc$total.mapped &gt; 1.5 * 10^6
 
 ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = unmapped.ratios, col = qc_filter, label = as.character(cell_number))) + geom_text(fontface=3) + facet_grid(individual ~ batch) + theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + xlab(&quot;Number of mapped reads&quot;) + ylab(&quot;Umapped reads ratio&quot;)</code></pre>
 <p><img src="figure/qc-cell-ipsc.Rmd/retained-cell-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
@@ -273,14 +322,8 @@ ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = unmapped.ra
 </div>
 <div id="number-of-genes-detected" class="section level2">
 <h2>Number of genes detected</h2>
-<pre class="r"><code>## remove genes with no read in both single cells and bulk
-expressed &lt;- rowSums(reads[, anno$well == &quot;bulk&quot;]) &gt; 0 &amp;
-             rowSums(reads[, anno$well != &quot;bulk&quot;]) &gt; 0
-reads &lt;- reads[expressed, ]
-dim(reads)</code></pre>
-<pre><code>[1] 17339   873</code></pre>
 <pre class="r"><code>## number of expressed gene in each cell
-reads_single &lt;- reads[, anno$well != &quot;bulk&quot;]
+reads_single &lt;- reads
 reads_single_gene_number &lt;- colSums(reads_single &gt; 1)
 summary_per_sample_reads_single_qc$reads_single_gene_number &lt;- reads_single_gene_number
 
@@ -337,12 +380,26 @@ ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = mt_reads_ra
        aes(x = concentration, y = ERCC.ratios)) +
   geom_point() +
   geom_smooth()</code></pre>
+<pre><code>geom_smooth: method=&quot;auto&quot; and size of largest group is &lt;1000, so using loess. Use &#39;method = x&#39; to change the smoothing method.</code></pre>
 <p><img src="figure/qc-cell-ipsc.Rmd/conc-ercc-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>ggplot(summary_per_sample_reads_single_qc,
        aes(x = concentration, y = unmapped.ratios)) +
   geom_point() +
   geom_smooth()</code></pre>
+<pre><code>geom_smooth: method=&quot;auto&quot; and size of largest group is &lt;1000, so using loess. Use &#39;method = x&#39; to change the smoothing method.</code></pre>
 <p><img src="figure/qc-cell-ipsc.Rmd/conc-unmapped-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(summary_per_sample_reads_single_qc,
+       aes(x = concentration, y = total.mapped)) +
+  geom_point() +
+  geom_smooth()</code></pre>
+<pre><code>geom_smooth: method=&quot;auto&quot; and size of largest group is &lt;1000, so using loess. Use &#39;method = x&#39; to change the smoothing method.</code></pre>
+<p><img src="figure/qc-cell-ipsc.Rmd/conc-total-reads-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(summary_per_sample_reads_single_qc,
+       aes(x = concentration, y = total_gene_molecule)) +
+  geom_point() +
+  geom_smooth()</code></pre>
+<pre><code>geom_smooth: method=&quot;auto&quot; and size of largest group is &lt;1000, so using loess. Use &#39;method = x&#39; to change the smoothing method.</code></pre>
+<p><img src="figure/qc-cell-ipsc.Rmd/conc-total-mol-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 </div>
 <div id="tra-1-60" class="section level3">
 <h3>Tra-1-60</h3>
@@ -388,8 +445,7 @@ ggplot(summary_per_sample_reads_single_qc, aes(x = total.mapped, y = mt_reads_ra
 <div id="reads" class="section level3">
 <h3>Reads</h3>
 <p>Calculate the counts per million for the singe cells.</p>
-<pre class="r"><code>reads_cells &lt;- reads %&gt;% select(-contains(&quot;bulk&quot;))
-reads_cells_cpm &lt;- cpm(reads_cells)</code></pre>
+<pre class="r"><code>reads_cells_cpm &lt;- cpm(reads)</code></pre>
 <p>Select the most variable genes.</p>
 <pre class="r"><code>reads_cells_cpm_log_var &lt;- log(apply(reads_cells_cpm, 1, var))
 hist(reads_cells_cpm_log_var)</code></pre>
@@ -406,11 +462,7 @@ pca_reads_cells &lt;- prcomp(t(reads_cells_cpm), retx = TRUE, scale. = TRUE,
 plot(pca_reads_cells$perc_explained)</code></pre>
 <p><img src="figure/qc-cell-ipsc.Rmd/perc-explained-2.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <p>The first PC accounts for 7% of the variance and the second PC 1%.</p>
-<pre class="r"><code>stopifnot(colnames(reads_cells) == 
-            paste(paste0(&quot;NA&quot;, summary_per_sample_reads_single_qc$individual),
-                   summary_per_sample_reads_single_qc$batch,
-                   summary_per_sample_reads_single_qc$well, sep = &quot;.&quot;))
-pca_reads_cells_anno &lt;- cbind(summary_per_sample_reads_single_qc, pca_reads_cells$x)</code></pre>
+<pre class="r"><code>pca_reads_cells_anno &lt;- cbind(summary_per_sample_reads_single_qc, pca_reads_cells$x)</code></pre>
 <pre class="r"><code>ggplot(pca_reads_cells_anno, aes(x = PC1, y = PC2, col = as.factor(individual),
                                  shape = as.factor(batch))) +
   geom_point()</code></pre>
@@ -433,21 +485,25 @@ pca_reads_cells_anno &lt;- cbind(summary_per_sample_reads_single_qc, pca_reads_c
 <pre class="r"><code>ggplot(pca_reads_cells_anno, aes(x = unmapped.ratios, y = PC1)) +
   geom_point() +
   geom_smooth()</code></pre>
+<pre><code>geom_smooth: method=&quot;auto&quot; and size of largest group is &lt;1000, so using loess. Use &#39;method = x&#39; to change the smoothing method.</code></pre>
 <p><img src="figure/qc-cell-ipsc.Rmd/pc1-unmapped-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <p>PC1 is positively correlated with the total number of mapped reads.</p>
 <pre class="r"><code>ggplot(pca_reads_cells_anno, aes(x = total.mapped, y = PC1)) +
   geom_point() +
   geom_smooth()</code></pre>
+<pre><code>geom_smooth: method=&quot;auto&quot; and size of largest group is &lt;1000, so using loess. Use &#39;method = x&#39; to change the smoothing method.</code></pre>
 <p><img src="figure/qc-cell-ipsc.Rmd/pc1-total-mapped-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <p>PC1 is positively correlated with the detected gene number</p>
 <pre class="r"><code>ggplot(pca_reads_cells_anno, aes(x = reads_single_gene_number, y = PC1)) +
   geom_point() +
   geom_smooth()</code></pre>
+<pre><code>geom_smooth: method=&quot;auto&quot; and size of largest group is &lt;1000, so using loess. Use &#39;method = x&#39; to change the smoothing method.</code></pre>
 <p><img src="figure/qc-cell-ipsc.Rmd/pc1-gene-number-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <p>PC1 is negatively correlated with the ratio of mitochondrial reads</p>
 <pre class="r"><code>ggplot(pca_reads_cells_anno, aes(x = mt_reads_ratio, y = PC1)) +
   geom_point() +
   geom_smooth()</code></pre>
+<pre><code>geom_smooth: method=&quot;auto&quot; and size of largest group is &lt;1000, so using loess. Use &#39;method = x&#39; to change the smoothing method.</code></pre>
 <p><img src="figure/qc-cell-ipsc.Rmd/pc1-mt-gene-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <p>Using various simple filtering cutoffs, it is not possible to capture all the cells that have low values of PC1.</p>
 <pre class="r"><code>pca_reads_cells_anno$cell_filter &lt;- pca_reads_cells_anno$cell_number == 1
@@ -474,6 +530,10 @@ ggplot(pca_reads_cells_anno, aes(x = PC1, y = PC2, col = gene_filter)) +
 ggplot(pca_reads_cells_anno, aes(x = PC1, y = PC2, col = mt_filter)) +
   geom_point()</code></pre>
 <p><img src="figure/qc-cell-ipsc.Rmd/filter-mt-genes-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
+</div>
+<div id="filter" class="section level2">
+<h2>Filter</h2>
 <p>The two cutoffs, total reads and cell number, largely overlap.</p>
 <pre class="r"><code>table(pca_reads_cells_anno$cell_filter, pca_reads_cells_anno$total_cutoff,
       dnn = c(&quot;Num cells == 1&quot;, &quot;Total reads &gt; 1.5e6&quot;))</code></pre>
@@ -527,6 +587,23 @@ stopifnot(!grepl(&quot;bulk&quot;, quality_single_cells$sample_id))
 write.table(quality_single_cells,
             file = &quot;../data/quality-single-cells.txt&quot;, quote = FALSE,
             sep = &quot;\t&quot;, row.names = FALSE, col.names = FALSE)</code></pre>
+<div id="effect-of-sample-concentration" class="section level3">
+<h3>Effect of sample concentration</h3>
+<p>Investigate whether sample concentration can be reflected by total mapped reads or total molecule counts. Maybe in the bad quality cells, but not really in the good quality cells.</p>
+<pre class="r"><code>summary_per_sample_reads_single_qc$qc_filter_all &lt;- pca_reads_cells_anno$qc_filter_all
+
+ggplot(summary_per_sample_reads_single_qc,
+       aes(x = concentration, y = total.mapped, col = qc_filter_all, label = as.character(cell_number))) +
+  geom_text(fontface=3) +
+  geom_smooth()</code></pre>
+<pre><code>geom_smooth: method=&quot;auto&quot; and size of largest group is &lt;1000, so using loess. Use &#39;method = x&#39; to change the smoothing method.</code></pre>
+<p><img src="figure/qc-cell-ipsc.Rmd/keep-cell-concentration-effect-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot(summary_per_sample_reads_single_qc,
+       aes(x = concentration, y = total_gene_molecule, col = qc_filter_all, label = as.character(cell_number))) +
+  geom_text(fontface=3) +
+  geom_smooth()</code></pre>
+<pre><code>geom_smooth: method=&quot;auto&quot; and size of largest group is &lt;1000, so using loess. Use &#39;method = x&#39; to change the smoothing method.</code></pre>
+<p><img src="figure/qc-cell-ipsc.Rmd/keep-cell-concentration-effect-2.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 </div>
 </div>
 <div id="session-information" class="section level2">
@@ -547,16 +624,17 @@ attached base packages:
 [1] stats     graphics  grDevices utils     datasets  methods   base     
 
 other attached packages:
-[1] edgeR_3.10.2  limma_3.24.9  ggplot2_1.0.1 dplyr_0.4.1   knitr_1.10.5 
+[1] edgeR_3.10.2  limma_3.24.9  ggplot2_1.0.1 dplyr_0.4.2   knitr_1.10.5 
 
 loaded via a namespace (and not attached):
- [1] Rcpp_0.11.6      magrittr_1.5     MASS_7.3-40      munsell_0.4.2   
- [5] colorspace_1.2-6 stringr_1.0.0    plyr_1.8.2       tools_3.2.0     
- [9] parallel_3.2.0   grid_3.2.0       gtable_0.1.2     DBI_0.3.1       
-[13] htmltools_0.2.6  lazyeval_0.1.10  yaml_2.1.13      assertthat_0.1  
-[17] digest_0.6.8     reshape2_1.4.1   formatR_1.2      evaluate_0.7    
-[21] rmarkdown_0.6.1  labeling_0.3     stringi_0.4-1    scales_0.2.4    
-[25] proto_0.3-10    </code></pre>
+ [1] Rcpp_0.12.0      magrittr_1.5     MASS_7.3-40      munsell_0.4.2   
+ [5] colorspace_1.2-6 R6_2.1.1         stringr_1.0.0    httr_0.6.1      
+ [9] plyr_1.8.3       tools_3.2.0      parallel_3.2.0   grid_3.2.0      
+[13] gtable_0.1.2     DBI_0.3.1        htmltools_0.2.6  lazyeval_0.1.10 
+[17] yaml_2.1.13      assertthat_0.1   digest_0.6.8     reshape2_1.4.1  
+[21] formatR_1.2      bitops_1.0-6     RCurl_1.95-4.6   evaluate_0.7    
+[25] rmarkdown_0.6.1  labeling_0.3     stringi_0.4-1    scales_0.2.4    
+[29] proto_0.3-10    </code></pre>
 </div>
 
 

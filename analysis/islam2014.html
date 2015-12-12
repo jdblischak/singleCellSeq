@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+
+<meta name="date" content="2015-09-24" />
+
+<title>Effect of sequencing depth on UMI counts from Islam et al., 2014</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Effect of sequencing depth on UMI counts from Islam et al., 2014</h1>
+<h4 class="date"><em>2015-09-24</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#download-molecule-counts-file">Download molecule counts file</a></li>
+<li><a href="#download-fastq-files">Download fastq files</a></li>
+<li><a href="#relationship-between-total-reads-and-total-molecules">Relationship between total reads and total molecules</a></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2015-10-01</p>
+<p><strong>Code version:</strong> 0a8ae478de84ce46ed5572c0b2b85e3337f3f71c</p>
+<p>Does the sequencing depth of a given single cell affect the total number of UMIs observed in the data from <a href="http://www.nature.com/nmeth/journal/v11/n2/full/nmeth.2772.html">Islam et al., 2014</a>?</p>
+<pre class="r"><code>library(&quot;dplyr&quot;)
+library(&quot;ggplot2&quot;)
+theme_set(theme_bw(base_size = 12))</code></pre>
+<div id="download-molecule-counts-file" class="section level2">
+<h2>Download molecule counts file</h2>
+<p>The GEO entry for the study <a href="https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE46980">GSE46980</a> contains a tab-delimted file with the molecule counts for all the samples. The samples are labeled by their well, e.g. “A01”, and their barcode, e.g. “ATTAGAC”. I label them from <code>ESCell_1</code> to <code>ESCell_2</code> to correspond to the naming scheme of their fastq files. The fastq files only contain the barcode and not the well, e.g. “ESCell_1_ATTAGAC_single”. I did a few spot checks, and it appears that the order of the columns in the molecule counts file corresponds to the 1 through 96 numbering of the fastq files.</p>
+<p>Here is the description of the file (you can see this description by clicking on any of the individual samples):</p>
+<blockquote>
+<p>Supplementary_files_format_and_content: Tab-delimited text file containing counts of detected cDNA molecules for each transcript model in each of the 96 cells, using data from all three sequencing lanes.</p>
+</blockquote>
+<pre class="r"><code>islam_file &lt;- &quot;../data/GSE46980_CombinedMoleculeCounts.tab.gz&quot;
+if (!file.exists(islam_file)) {
+  download.file(url = &quot;https://www.ncbi.nlm.nih.gov/geo/download/?acc=GSE46980&amp;format=file&amp;file=GSE46980%5FCombinedMoleculeCounts%2Etab%2Egz&quot;,
+  destfile = islam_file, method = &quot;wget&quot;)
+}
+islam_data &lt;- read.delim(islam_file, skip = 6)
+islam_meta &lt;- islam_data %&gt;% select(Feature:ExonHits)
+islam_counts &lt;- islam_data %&gt;% select(X:X.95)
+colnames(islam_counts) &lt;- paste0(&quot;ESCell_&quot;, 1:96)</code></pre>
+</div>
+<div id="download-fastq-files" class="section level2">
+<h2>Download fastq files</h2>
+<p>Next I needed the raw fastq files to obtain the sequencing depth. These have to be downloaded from the Sequence Read Archive (SRA). Unfortunately by design the SRA assigns samples arbitrary IDs making it very difficult to figure out which sample is what. In other words, this is not the fault of the others because this happens to all data posted to SRA. The informative names that are viewable in GEO are stripped in the SRA.</p>
+<p>Luckily I found a strategy from this <a href="https://www.biostars.org/p/93494/#131604">Biostars comment</a> to obtain the mapping between each sample in GEO to the sample ID in the SRA. The samples with the label “single” each have two fastq files. The other samples labeled “amplified” were PCR-amplifed for an additional 9 cycles, and each only have one fastq file. All three fastq files were used to obtain the molecule counts (see the description above).</p>
+<pre class="r"><code>library(&quot;GEOquery&quot;)</code></pre>
+<pre><code>Loading required package: Biobase
+Loading required package: BiocGenerics
+Loading required package: parallel
+
+Attaching package: &#39;BiocGenerics&#39;
+
+The following objects are masked from &#39;package:parallel&#39;:
+
+    clusterApply, clusterApplyLB, clusterCall, clusterEvalQ,
+    clusterExport, clusterMap, parApply, parCapply, parLapply,
+    parLapplyLB, parRapply, parSapply, parSapplyLB
+
+The following objects are masked from &#39;package:dplyr&#39;:
+
+    combine, intersect, setdiff, union
+
+The following object is masked from &#39;package:stats&#39;:
+
+    xtabs
+
+The following objects are masked from &#39;package:base&#39;:
+
+    anyDuplicated, append, as.data.frame, as.vector, cbind,
+    colnames, do.call, duplicated, eval, evalq, Filter, Find, get,
+    intersect, is.unsorted, lapply, Map, mapply, match, mget,
+    order, paste, pmax, pmax.int, pmin, pmin.int, Position, rank,
+    rbind, Reduce, rep.int, rownames, sapply, setdiff, sort,
+    table, tapply, union, unique, unlist, unsplit
+
+Welcome to Bioconductor
+
+    Vignettes contain introductory material; view with
+    &#39;browseVignettes()&#39;. To cite Bioconductor, see
+    &#39;citation(&quot;Biobase&quot;)&#39;, and for packages &#39;citation(&quot;pkgname&quot;)&#39;.
+
+Setting options(&#39;download.file.method.GEOquery&#39;=&#39;curl&#39;)</code></pre>
+<pre class="r"><code>gse &lt;- getGEO(&quot;GSE46980&quot;)</code></pre>
+<pre><code>ftp://ftp.ncbi.nlm.nih.gov/geo/series/GSE46nnn/GSE46980/matrix/
+Found 1 file(s)
+GSE46980_series_matrix.txt.gz
+File stored at: 
+/tmp/Rtmp3CJOyU/GPL13112.soft</code></pre>
+<pre class="r"><code>gse &lt;- as.data.frame(gse[[1]], stringsAsFactors = FALSE)
+sra_info &lt;- gse %&gt;%
+  select(title, supplementary_file_1) %&gt;%
+  mutate(srx = substr(supplementary_file_1, start = 77, stop = 85))
+head(sra_info)</code></pre>
+<pre><code>                    title
+1 ESCell_1_ATTAGAC_single
+2 ESCell_2_ACGAGTC_single
+3 ESCell_3_TGACGTG_single
+4 ESCell_4_GTCGTTG_single
+5 ESCell_5_CGCTAAA_single
+6 ESCell_6_GTCTGTA_single
+                                                                   supplementary_file_1
+1 ftp://ftp-trace.ncbi.nlm.nih.gov/sra/sra-instant/reads/ByExp/sra/SRX/SRX387/SRX387272
+2 ftp://ftp-trace.ncbi.nlm.nih.gov/sra/sra-instant/reads/ByExp/sra/SRX/SRX387/SRX387273
+3 ftp://ftp-trace.ncbi.nlm.nih.gov/sra/sra-instant/reads/ByExp/sra/SRX/SRX387/SRX387274
+4 ftp://ftp-trace.ncbi.nlm.nih.gov/sra/sra-instant/reads/ByExp/sra/SRX/SRX387/SRX387275
+5 ftp://ftp-trace.ncbi.nlm.nih.gov/sra/sra-instant/reads/ByExp/sra/SRX/SRX387/SRX387276
+6 ftp://ftp-trace.ncbi.nlm.nih.gov/sra/sra-instant/reads/ByExp/sra/SRX/SRX387/SRX387277
+        srx
+1 SRX387272
+2 SRX387273
+3 SRX387274
+4 SRX387275
+5 SRX387276
+6 SRX387277</code></pre>
+<p>The information obtained via GEO maps each sample to its SRA sample ID (SRX). To convert from SRX to the fastq files (SRR), I downloaded the meta-information from SRA. This takes a long time but only has to be done once.</p>
+<pre class="r"><code>library(&quot;SRAdb&quot;)</code></pre>
+<pre><code>Loading required package: RSQLite
+Loading required package: DBI
+Loading required package: graph
+Loading required package: RCurl
+Loading required package: bitops</code></pre>
+<pre class="r"><code>sqlfile &lt;- &quot;/mnt/gluster/home/jdblischak/SRAmetadb.sqlite&quot;
+if(!file.exists(sqlfile)) {
+  sqlfile &lt;- getSRAdbFile(destdir = &quot;/mnt/gluster/home/jdblischak/&quot;, method = &quot;wget&quot;)
+}
+sra_con &lt;- dbConnect(SQLite(), sqlfile)</code></pre>
+<p>For each sample, I download the associated fastq files and give them a meaningful name.</p>
+<pre class="r"><code># directory to save Islam et al. data
+islam_dir &lt;- &quot;/mnt/gluster/data/internal_supp/singleCellSeq/islam&quot;
+dir.create(islam_dir, showWarnings = FALSE)
+for (srx_index in 1:nrow(sra_info)) {
+  srr &lt;- sraConvert(sra_info$srx[srx_index], &quot;run&quot;, sra_con)$run
+  for (srr_index in 1:length(srr)) {
+    original_name &lt;- sprintf(&quot;%s/%s.fastq.gz&quot;, islam_dir, srr[srr_index])
+    new_name &lt;- sprintf(&quot;%s/%s_%d.fastq.gz&quot;, islam_dir, sra_info$title[srx_index], srr_index)
+    # cat(sprintf(&quot;%s\t%s\n&quot;, original_name, new_name))
+    if (!file.exists(new_name)) {
+      getSRAfile(srr[srr_index], sra_con, destDir = islam_dir, fileType = &quot;fastq&quot;, method = &quot;wget&quot;)
+      stopifnot(file.exists(original_name))
+      file.rename(original_name, new_name)
+    }
+  }
+}</code></pre>
+<p>I obtain the sequencing depth by counting the number of raw reads in each file.</p>
+<pre class="r"><code>islam_total_reads_file &lt;- &quot;../data/islam-2014-total-reads.txt&quot;
+if (!file.exists(islam_total_reads_file)) {
+  total_reads &lt;- numeric(length = ncol(islam_counts))
+  names(total_reads) &lt;- colnames(islam_counts)
+  for (cell in names(total_reads)) {
+    cmd &lt;- sprintf(&quot;zcat %s/%s_* | grep &#39;@SRR&#39; | wc -l&quot;,
+                   islam_dir, cell)
+    print(cmd)
+    total_reads[cell] &lt;- as.numeric(system(cmd, intern = TRUE))
+  }
+  write.table(total_reads, file = islam_total_reads_file, quote = FALSE,
+              sep = &quot;\t&quot;, col.names = FALSE)
+} else {
+  total_reads_df &lt;- read.table(islam_total_reads_file, stringsAsFactors = FALSE)
+  colnames(total_reads_df) &lt;- c(&quot;cell&quot;, &quot;total_reads&quot;)
+  total_reads &lt;- total_reads_df$total_reads
+  names(total_reads) &lt;- total_reads_df$cell
+}</code></pre>
+</div>
+<div id="relationship-between-total-reads-and-total-molecules" class="section level2">
+<h2>Relationship between total reads and total molecules</h2>
+<p>I obtain the total molecule counts per sample by summing the columns.</p>
+<pre class="r"><code>total_molecules &lt;- colSums(islam_counts)
+names(total_molecules) &lt;- colnames(islam_counts)
+summary(total_molecules)</code></pre>
+<pre><code>   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+  20850   58100  112300  143200  206300  857100 </code></pre>
+<p>I then merge the total molecules with the total reads, confirming that the sample names are concordant.</p>
+<pre class="r"><code>total_molecules &lt;- total_molecules[names(total_molecules) %in% names(total_reads)]
+stopifnot(names(total_molecules) == names(total_reads),
+          length(total_molecules) == length(total_reads))
+total_counts &lt;- data.frame(cell = names(total_reads), total_reads, total_molecules,
+                           stringsAsFactors = FALSE)</code></pre>
+<p>To make the plots more easily interpretable, I scale the total number of molecules by 10<sup>3</sup> and the total number of reads by 10<sup>6</sup>.</p>
+<pre class="r"><code>total_counts$total_reads &lt;- total_counts$total_reads / 10^6
+total_counts$total_molecules &lt;- total_counts$total_molecules / 10^3</code></pre>
+<p>Plotting the sequencing depth versus the total number of molecules per sample.</p>
+<pre class="r"><code>p_conv &lt;- ggplot(total_counts, aes(x = total_reads, y = total_molecules)) +
+  geom_point() +
+  labs(x = &quot;Sequencing depth (millions)&quot;,
+       y = &quot;Total molecules (thousands)&quot;,
+       title = &quot;Effect of sequencing depth on molecule count&quot;)
+p_conv</code></pre>
+<p><img src="figure/islam2014.Rmd/reads-to-molecules-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>There are two clear outliers: cells 19 and 24. I’m not sure why these two cells are so different.</p>
+<pre class="r"><code>p_conv + geom_text(aes(label = cell))</code></pre>
+<p><img src="figure/islam2014.Rmd/reads-to-molecules-outliers-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>But focusing on the majority of cells, there is a clear increase in the total number of molecules with increasing sequencing depth.</p>
+<pre class="r"><code>p_conv + ylim(0, 400) + geom_smooth(method = &quot;lm&quot;)</code></pre>
+<pre><code>Warning: Removed 2 rows containing missing values (stat_smooth).</code></pre>
+<pre><code>Warning: Removed 2 rows containing missing values (geom_point).</code></pre>
+<pre><code>Warning: Removed 2 rows containing missing values (geom_path).</code></pre>
+<p><img src="figure/islam2014.Rmd/reads-to-molecules-trend-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>Maybe this effect is only seen when considering all genes (since with more sequencing, you are more likely to sequence rare molecules). Below I limit the analysis to only the 10,000 most highly expressed genes.</p>
+<pre class="r"><code>mean_counts &lt;- rowMeans(islam_counts)
+total_counts$total_molecules_high &lt;- colSums(islam_counts[order(mean_counts,
+                                                   decreasing = TRUE)[1:10000], ])
+summary(total_counts$total_molecules_high)</code></pre>
+<pre><code>   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+  20770   57780  111600  142500  205200  851000 </code></pre>
+<pre class="r"><code>total_counts$total_molecules_high &lt;- total_counts$total_molecules_high / 10^3</code></pre>
+<p>The trend appears the same when only using the top expressed genes.</p>
+<pre class="r"><code>p_conv %+% total_counts %+% aes(y = total_molecules_high) +
+  labs(y = &quot;Total molecules (thousands) for highly expressed genes&quot;)</code></pre>
+<p><img src="figure/islam2014.Rmd/reads-to-molecules-high-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>Another possibility is that this difference in largely driven by the ERCC spike-in genes.</p>
+<pre class="r"><code>total_counts$total_molecules_ercc &lt;- colSums(islam_counts[islam_meta$Chr == &quot;CTRL&quot;, ]) / 10^3
+total_counts$total_molecules_endo &lt;- colSums(islam_counts[islam_meta$Chr != &quot;CTRL&quot;, ]) / 10^3</code></pre>
+<pre class="r"><code>p_conv %+% total_counts %+% aes(y = total_molecules_ercc) +
+  labs(y = &quot;Total molecules (thousands) for ERCC genes&quot;)</code></pre>
+<p><img src="figure/islam2014.Rmd/reads-to-molecules-ercc-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>p_conv %+% total_counts %+% aes(y = total_molecules_endo) +
+  labs(y = &quot;Total molecules (thousands) without ERCC genes&quot;)</code></pre>
+<p><img src="figure/islam2014.Rmd/reads-to-molecules-endo-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>But these also look similar to the overall trend.</p>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] parallel  stats     graphics  grDevices utils     datasets  methods  
+[8] base     
+
+other attached packages:
+ [1] SRAdb_1.26.0        RCurl_1.95-4.6      bitops_1.0-6       
+ [4] graph_1.46.0        RSQLite_1.0.0       DBI_0.3.1          
+ [7] GEOquery_2.34.0     Biobase_2.28.0      BiocGenerics_0.14.0
+[10] ggplot2_1.0.1       dplyr_0.4.2         knitr_1.10.5       
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.12.0      magrittr_1.5     MASS_7.3-40      munsell_0.4.2   
+ [5] colorspace_1.2-6 R6_2.1.1         stringr_1.0.0    httr_0.6.1      
+ [9] plyr_1.8.3       tools_3.2.0      grid_3.2.0       gtable_0.1.2    
+[13] htmltools_0.2.6  lazyeval_0.1.10  yaml_2.1.13      assertthat_0.1  
+[17] digest_0.6.8     reshape2_1.4.1   formatR_1.2      evaluate_0.7    
+[21] rmarkdown_0.6.1  labeling_0.3     stringi_0.4-1    scales_0.2.4    
+[25] stats4_3.2.0     XML_3.98-1.2     proto_0.3-10    </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+
+</body>
+</html>

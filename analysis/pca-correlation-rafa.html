@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+<meta name="author" content="Joyce Hsiao" />
+
+<meta name="date" content="2015-09-01" />
+
+<title>Proportion of genes detected</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Proportion of genes detected</h1>
+<h4 class="author"><em>Joyce Hsiao</em></h4>
+<h4 class="date"><em>2015-09-01</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#setup">Setup</a></li>
+<li><a href="#prepare-single-cell-molecule-data">Prepare single cell molecule data</a></li>
+<li><a href="#molecule-count-data-before-qc-filtering">Molecule count data before QC filtering</a></li>
+<li><a href="#molecule-count-data-of-quality-single-cells">Molecule count data of quality single cells</a></li>
+<li><a href="#read-count-data-of-quality-single-cells">Read count data of quality single cells</a></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2015-09-14</p>
+<p><strong>Code version:</strong> 11a61e12229c07d54ae50b9a5db91ff78b59c4e4</p>
+<div id="setup" class="section level2">
+<h2>Setup</h2>
+<pre class="r"><code>source(&quot;functions.R&quot;)
+library(&quot;limma&quot;)
+library(&quot;edgeR&quot;)
+library(ggplot2)
+theme_set(theme_bw(base_size = 16))</code></pre>
+</div>
+<div id="prepare-single-cell-molecule-data" class="section level2">
+<h2>Prepare single cell molecule data</h2>
+<p>Input annotation</p>
+<pre class="r"><code>anno &lt;- read.table(&quot;../data/annotation.txt&quot;, header = TRUE,
+                   stringsAsFactors = FALSE)</code></pre>
+<p>Input molecule counts</p>
+<pre class="r"><code>molecules &lt;- read.table(&quot;../data/molecules.txt&quot;, header = TRUE,
+           stringsAsFactors = FALSE)</code></pre>
+<p>Input read count</p>
+<pre class="r"><code>reads &lt;- read.table(&quot;../data/reads.txt&quot;, header = TRUE,
+                    stringsAsFactors = FALSE)</code></pre>
+<p>Remove batch 2 of individual 19098.</p>
+<pre class="r"><code>molecules_no &lt;- molecules[, !(anno$individual == 19098 &amp; anno$batch == 2)]
+reads_single &lt;- reads[, !(anno$individual == 19098 &amp; anno$batch == 2)]
+anno_no &lt;- anno[!(anno$individual == 19098 &amp; anno$batch == 2), ]
+stopifnot(ncol(molecules_no) == nrow(anno_no))</code></pre>
+<p>Remove bulk samples.</p>
+<pre class="r"><code>molecules_single &lt;- molecules_no[, anno_no$well != &quot;bulk&quot;]
+anno_single &lt;- anno_no[anno_no$well != &quot;bulk&quot;, ]
+stopifnot(ncol(molecules_single) == nrow(anno_single))</code></pre>
+<p>Remove genes with zero count in the single cells</p>
+<pre class="r"><code>expressed_single &lt;- rowSums(molecules_single) &gt; 0
+molecules_single &lt;- molecules_single[which(expressed_single), ]
+reads_single &lt;- reads_single[expressed_single, ]</code></pre>
+</div>
+<div id="molecule-count-data-before-qc-filtering" class="section level2">
+<h2>Molecule count data before QC filtering</h2>
+<pre class="r"><code>require(matrixStats)</code></pre>
+<pre><code>Loading required package: matrixStats
+matrixStats v0.14.0 (2015-02-13) successfully loaded. See ?matrixStats for help.</code></pre>
+<pre class="r"><code>number_nonzero_cells &lt;- colSums(molecules_single != 0)
+number_genes &lt;- dim(molecules_single)[1]
+molecules_prop_genes_detected &lt;- 
+    data.frame(prop = number_nonzero_cells/number_genes,
+               individual = anno_single$individual,
+               individual.batch = paste(anno_single$individual,
+                                        anno_single$batch, sep = &quot;.&quot;))
+
+ggplot(molecules_prop_genes_detected,
+       aes(y = prop, x = as.factor(individual.batch))) + 
+  geom_boxplot( aes(fill = as.factor(individual)) ) +
+  labs(x = &quot;Individual.batch ID&quot;, 
+       y = &quot;Proportion of detected genes&quot;,
+       title = &quot;Proportion of detected genes&quot;)</code></pre>
+<p><img src="figure/pca-correlation-rafa.Rmd/unnamed-chunk-8-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>Principal component analysis on log2 transformed values. We avoid log of 0’s by add 1’s. In addition, our PCA analysis requires that every gene needs to be present in at least one of the cells.</p>
+<pre class="r"><code>molecules_single_log2_pca &lt;- run_pca( log2( molecules_single + 1 ) )
+
+qplot(y = molecules_single_log2_pca$PCs[,1],
+      x = molecules_prop_genes_detected$prop,
+      shape = as.factor(anno_single$batch),
+      colour = as.factor(anno_single$individual),
+      xlab = &quot;Proportion of genes detected&quot;,
+      ylab = &quot;First principal component score&quot;) </code></pre>
+<p><img src="figure/pca-correlation-rafa.Rmd/unnamed-chunk-9-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>qplot(y = molecules_single_log2_pca$PCs[,2],
+      x = molecules_prop_genes_detected$prop,
+      shape = as.factor(anno_single$batch),
+      colour = as.factor(anno_single$individual),
+      xlab = &quot;Proportion of genes detected&quot;,
+      ylab = &quot;Second principal component score&quot;) </code></pre>
+<p><img src="figure/pca-correlation-rafa.Rmd/unnamed-chunk-9-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>Compute median of gene expression of non-zero measurements.</p>
+<pre class="r"><code>require(matrixStats)
+molecules_single_log2_cpm &lt;- molecules_single
+molecules_single_log2_cpm[molecules_single_log2_cpm==0] &lt;- NA
+libsize &lt;- colSums(molecules_single_log2_cpm, na.rm = TRUE)
+molecules_single_log2_cpm &lt;- log2( 10^6 * t(t(molecules_single_log2_cpm)/libsize) )
+
+molecules_median_expression &lt;- 
+    apply(molecules_single_log2_cpm, 2, 
+          function(per_cell) { median(per_cell[per_cell!=0],
+                                      na.rm = TRUE) })</code></pre>
+<pre class="r"><code>molecules_df &lt;- data.frame(medians = molecules_median_expression,
+                       prop = molecules_prop_genes_detected$prop,
+                       individual = anno_single$individual,
+                       batch = anno_single$batch,
+                       individual.batch = paste(anno_single$individual,
+                                                anno_single$batch, sep = &quot;.&quot;))
+
+ggplot(molecules_df, aes(y = medians, x = prop) ) + 
+  geom_point( aes(shape = as.factor(batch), 
+                  colour = as.factor(individual) ) ) +
+  stat_smooth(method = &quot;loess&quot;) +
+  labs( xlab = &quot;Proportion of genes detected&quot;,
+        ylab = &quot;Median expression of non-zero cells (log2 CPM)&quot;)</code></pre>
+<p><img src="figure/pca-correlation-rafa.Rmd/unnamed-chunk-11-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="molecule-count-data-of-quality-single-cells" class="section level2">
+<h2>Molecule count data of quality single cells</h2>
+<p>Input list of quality single cells</p>
+<pre class="r"><code>quality_single_cells &lt;- scan(&quot;../data/quality-single-cells.txt&quot;, what = &quot;character&quot;)</code></pre>
+<p>Keep only the single cells that pass the QC filters. This also removes the bulk samples</p>
+<pre class="r"><code>reads_single &lt;- reads_single[, colnames(reads_single) %in% quality_single_cells]
+molecules_single &lt;- molecules_single[, colnames(molecules_single) %in% quality_single_cells]
+anno_single &lt;- anno_single[anno_single$sample_id %in% quality_single_cells, ]
+stopifnot(ncol(molecules_single) == nrow(anno_single),
+          colnames(molecules_single) == anno_single$sample_id)</code></pre>
+<p>Remove genes with greater than or equal to 1,024 molecules in at least one of the cells</p>
+<pre class="r"><code>overexpressed_genes &lt;- rownames(molecules_single)[ apply(molecules_single, 1, 
+                                function(x) any(x &gt;= 1024))]
+molecules_single &lt;- molecules_single[!(rownames(molecules_single) %in% overexpressed_genes), ]</code></pre>
+<p>Remove genes with zero count in the single cells</p>
+<pre class="r"><code>molecules_single &lt;- molecules_single[which(rowSums(molecules_single) &gt; 0), ]
+reads_single &lt;- reads_single[rowSums(reads_single) &gt; 0, ]</code></pre>
+<p>The observations below were the same before removing genes with greater than or equal to 1,024 molecules in at least one of the cells.</p>
+<pre class="r"><code>require(matrixStats)
+number_nonzero_cells &lt;- colSums(molecules_single != 0)
+number_genes &lt;- dim(molecules_single)[1]
+molecules_prop_genes_detected &lt;- 
+    data.frame(prop = number_nonzero_cells/number_genes,
+               individual = anno_single$individual,
+               individual.batch = paste(anno_single$individual,
+                                        anno_single$batch, sep = &quot;.&quot;))
+
+ggplot(molecules_prop_genes_detected,
+       aes(y = prop, x = as.factor(individual.batch))) + 
+  geom_boxplot( aes(fill = as.factor(individual)) ) +
+  labs(x = &quot;Individual.batch ID&quot;, 
+       y = &quot;Proportion of detected genes&quot;,
+       title = &quot;Proportion of detected genes&quot;)</code></pre>
+<p><img src="figure/pca-correlation-rafa.Rmd/unnamed-chunk-16-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>Principal component analysis on log2 transformed values. We avoid log of 0’s by add 1’s. In addition, our PCA analysis requires that every gene needs to be present in at least one of the cells.</p>
+<pre class="r"><code>molecules_single_log2_pca &lt;- run_pca( log2( molecules_single + 1 ) )
+
+qplot(y = molecules_single_log2_pca$PCs[,1],
+      x = molecules_prop_genes_detected$prop,
+      shape = as.factor(anno_single$batch),
+      colour = as.factor(anno_single$individual),
+      xlab = &quot;Proportion of genes detected&quot;,
+      ylab = &quot;First principal component score&quot;) </code></pre>
+<p><img src="figure/pca-correlation-rafa.Rmd/unnamed-chunk-17-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>qplot(y = molecules_single_log2_pca$PCs[,2],
+      x = molecules_prop_genes_detected$prop,
+      shape = as.factor(anno_single$batch),
+      colour = as.factor(anno_single$individual),
+      xlab = &quot;Proportion of genes detected&quot;,
+      ylab = &quot;Second principal component score&quot;) </code></pre>
+<p><img src="figure/pca-correlation-rafa.Rmd/unnamed-chunk-17-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>Compute median of gene expression of non-zero measurements.</p>
+<pre class="r"><code>require(matrixStats)
+molecules_single_log2_cpm &lt;- molecules_single
+molecules_single_log2_cpm[molecules_single_log2_cpm==0] &lt;- NA
+libsize &lt;- colSums(molecules_single_log2_cpm, na.rm = TRUE)
+molecules_single_log2_cpm &lt;- log2( 10^6 * t(t(molecules_single_log2_cpm)/libsize) )
+
+molecules_median_expression &lt;- 
+    apply(molecules_single_log2_cpm, 2, 
+          function(per_cell) { median(per_cell[per_cell!=0],
+                                      na.rm = TRUE) })</code></pre>
+<pre class="r"><code>molecules_df &lt;- data.frame(medians = molecules_median_expression,
+                       prop = molecules_prop_genes_detected$prop,
+                       individual = anno_single$individual,
+                       batch = anno_single$batch,
+                       individual.batch = paste(anno_single$individual,
+                                                anno_single$batch, sep = &quot;.&quot;))
+
+ggplot(molecules_df, aes(y = medians, x = prop) ) + 
+  geom_point( aes(shape = as.factor(batch), 
+                  colour = as.factor(individual) ) ) +
+  stat_smooth(method = &quot;loess&quot;) +
+  labs( xlab = &quot;Proportion of genes detected&quot;,
+          ylab = &quot;Median expression of non-zero cells (log2 CPM)&quot;)</code></pre>
+<p><img src="figure/pca-correlation-rafa.Rmd/unnamed-chunk-19-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="read-count-data-of-quality-single-cells" class="section level2">
+<h2>Read count data of quality single cells</h2>
+<pre class="r"><code>require(matrixStats)
+number_nonzero_cells &lt;- colSums(reads_single != 0)
+number_genes &lt;- dim(reads_single)[1]
+reads_prop_genes_detected &lt;- 
+    data.frame(prop = number_nonzero_cells/number_genes,
+               individual = anno_single$individual,
+               individual.batch = paste(anno_single$individual,
+                                        anno_single$batch, sep = &quot;.&quot;))
+
+ggplot(reads_prop_genes_detected,
+       aes(y = prop, x = as.factor(individual.batch))) + 
+  geom_boxplot( aes(fill = as.factor(individual)) ) +
+  labs(x = &quot;Individual.batch ID&quot;, 
+       y = &quot;Proportion of detected genes&quot;,
+       title = &quot;Proportion of detected genes in read count data&quot;)</code></pre>
+<p><img src="figure/pca-correlation-rafa.Rmd/unnamed-chunk-20-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>Principal component analysis on log2 transformed values. We avoid log of 0’s by add 1’s. In addition, our PCA analysis requires that every gene needs to be present in at least one of the cells.</p>
+<pre class="r"><code>reads_log2_pca &lt;- run_pca( log2( reads_single + 1 ) )
+
+qplot(y = reads_log2_pca$PCs[,1],
+      x = reads_prop_genes_detected$prop,
+      shape = as.factor(anno_single$batch),
+      colour = as.factor(anno_single$individual),
+      xlab = &quot;Proportion of genes detected&quot;,
+      ylab = &quot;First principal component score&quot;) </code></pre>
+<p><img src="figure/pca-correlation-rafa.Rmd/unnamed-chunk-21-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>qplot(y = reads_log2_pca$PCs[,2],
+      x = reads_prop_genes_detected$prop,
+      shape = as.factor(anno_single$batch),
+      colour = as.factor(anno_single$individual),
+      xlab = &quot;Proportion of genes detected&quot;,
+      ylab = &quot;Second principal component score&quot;) </code></pre>
+<p><img src="figure/pca-correlation-rafa.Rmd/unnamed-chunk-21-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>Compute median of gene expression of non-zero measurements.</p>
+<pre class="r"><code>require(matrixStats)
+reads_single[reads_single==0] &lt;- NA
+reads_libsize &lt;- colSums(reads_single, na.rm = TRUE)
+reads_cpm &lt;- log2( 10^6 * t(t(reads_single)/reads_libsize) )
+
+reads_median_expression &lt;- 
+    apply(reads_cpm, 2, 
+          function(per_cell) { median(per_cell[per_cell!=0],
+                                      na.rm = TRUE) })</code></pre>
+<pre class="r"><code>reads_df &lt;- data.frame(medians = reads_median_expression,
+                       prop = reads_prop_genes_detected$prop,
+                       individual = anno_single$individual,
+                       batch = anno_single$batch,
+                       individual.batch = paste(anno_single$individual,
+                                                anno_single$batch, sep = &quot;.&quot;))
+
+ggplot(reads_df, aes(y = medians, x = prop) ) + 
+  geom_point( aes(shape = as.factor(batch), 
+                  colour = as.factor(individual) ) ) +
+  stat_smooth(method = &quot;loess&quot;) +
+  labs( xlab = &quot;Proportion of genes detected&quot;,
+          ylab = &quot;Median expression of non-zero cells (log2 CPM)&quot;)</code></pre>
+<p><img src="figure/pca-correlation-rafa.Rmd/unnamed-chunk-23-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] testit_0.4         matrixStats_0.14.0 ggplot2_1.0.1     
+[4] edgeR_3.10.2       limma_3.24.9       knitr_1.10.5      
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.12.0      magrittr_1.5     MASS_7.3-40      munsell_0.4.2   
+ [5] colorspace_1.2-6 stringr_1.0.0    plyr_1.8.3       tools_3.2.0     
+ [9] grid_3.2.0       gtable_0.1.2     htmltools_0.2.6  yaml_2.1.13     
+[13] digest_0.6.8     reshape2_1.4.1   formatR_1.2      evaluate_0.7    
+[17] rmarkdown_0.6.1  labeling_0.3     stringi_0.4-1    scales_0.2.4    
+[21] proto_0.3-10    </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+
+</body>
+</html>

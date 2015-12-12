@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+
+<meta name="date" content="2015-09-30" />
+
+<title>Data transformation</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Data transformation</h1>
+<h4 class="date"><em>2015-09-30</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#start-with-raw-gene-counts">Start with raw gene counts</a></li>
+<li><a href="#sum-counts-per-lane-by-sample">Sum counts per lane by sample</a></li>
+<li><a href="#create-annotation-file">Create annotation file</a></li>
+<li><a href="#create-reads-file">Create reads file</a></li>
+<li><a href="#create-molecules-per-lane-file">Create molecules per lane file</a></li>
+<li><a href="#create-molecules-file">Create molecules file</a></li>
+<li><a href="#filter-data">Filter data</a><ul>
+<li><a href="#filter-cells">Filter cells</a></li>
+<li><a href="#filter-genes">Filter genes</a></li>
+<li><a href="#pca-of-filtered-data">PCA of filtered data</a></li>
+</ul></li>
+<li><a href="#correct-for-collision-probability">Correct for collision probability</a></li>
+<li><a href="#calculating-counts-per-million">Calculating counts per million</a><ul>
+<li><a href="#reads-bulk-endogenous">Reads bulk endogenous</a></li>
+<li><a href="#reads-bulk-ercc">Reads bulk ERCC</a></li>
+<li><a href="#molecules-single-cell-endogenous">Molecules single cell endogenous</a></li>
+<li><a href="#molecules-single-cell-ercc">Molecules single cell ERCC</a></li>
+</ul></li>
+<li><a href="#linear-transformation-with-ercc-controls">Linear transformation with ERCC controls</a></li>
+<li><a href="#mixed-model-for-batch-effect-correction">Mixed model for batch-effect correction</a><ul>
+<li><a href="#crossed-model">Crossed Model</a></li>
+<li><a href="#remove-unwanted-variation">Remove unwanted variation</a></li>
+</ul></li>
+<li><a href="#data-transformation-figure">Data transformation figure</a></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2015-11-02</p>
+<p><strong>Code version:</strong> f451005068e895a03d350370f836e185da999881</p>
+<pre class="r"><code>library(&quot;biomaRt&quot;)
+library(&quot;data.table&quot;)
+library(&quot;dplyr&quot;)
+library(&quot;limma&quot;)
+library(&quot;edgeR&quot;)
+library(&quot;ggplot2&quot;)
+library(&quot;grid&quot;)
+library(&quot;cowplot&quot;)
+theme_set(theme_bw(base_size = 12))
+source(&quot;functions.R&quot;)</code></pre>
+<p>This file performs the transformations and outputs various intermediate data files used for our analysis.</p>
+<p>Creates the following files:</p>
+<ul>
+<li>Annotation
+<ul>
+<li><strong><a href="https://github.com/jdblischak/singleCellSeq/blob/master/data/annotation.txt">annotation.txt</a></strong> - Annotation file</li>
+<li><strong><a href="https://github.com/jdblischak/singleCellSeq/blob/master/data/annotation-filter.txt">annotation-filter.txt</a></strong> - Annotation file with only the high quality single cells</li>
+</ul></li>
+<li>Reads
+<ul>
+<li><strong><a href="https://github.com/jdblischak/singleCellSeq/blob/master/data/reads.txt">reads.txt</a></strong> - Read counts in single cells for all genes with at least one observed read</li>
+<li><strong><a href="https://github.com/jdblischak/singleCellSeq/blob/master/data/reads-bulk.txt">reads-bulk.txt</a></strong> - Read counts in bulk samples for all genes with at least one observed read</li>
+<li><strong><a href="https://github.com/jdblischak/singleCellSeq/blob/master/data/reads-filter.txt">reads-filter.txt</a></strong> - Read counts in high quality single cells for filtered genes</li>
+<li><strong><a href="https://github.com/jdblischak/singleCellSeq/blob/master/data/reads-bulk-filter.txt">reads-bulk-filter.txt</a></strong> - Read counts in bulk samples for filtered genes</li>
+<li><strong><a href="https://github.com/jdblischak/singleCellSeq/blob/master/data/reads-bulk-cpm.txt">reads-bulk-cpm.txt</a></strong> - Reads (log<sub>2</sub> cpm) in bulk samples for endogenous genes</li>
+<li><strong><a href="https://github.com/jdblischak/singleCellSeq/blob/master/data/reads-bulk-cpm-ercc.txt">reads-bulk-cpm-ercc.txt</a></strong> - Reads (log<sub>2</sub> cpm) in bulk samples for ERCC genes</li>
+</ul></li>
+<li>Molecules
+<ul>
+<li><strong><a href="https://github.com/jdblischak/singleCellSeq/blob/master/data/molecules.txt">molecules.txt</a></strong> - Molecule counts in single cells for all genes with at least one observed read</li>
+<li><strong><a href="https://github.com/jdblischak/singleCellSeq/blob/master/data/molecules-per-lane.txt">molecules-per-lane.txt</a></strong> - (for QC purposes only) Inflated molecule counts in single cell and bulk samples obtained by summing each lane</li>
+<li><strong><a href="https://github.com/jdblischak/singleCellSeq/blob/master/data/molecules-filter.txt">molecules-filter.txt</a></strong> - Molecule counts in high quality single cells for filtered genes</li>
+<li><strong><a href="https://github.com/jdblischak/singleCellSeq/blob/master/data/molecules-cpm.txt">molecules-cpm.txt</a></strong> - Molecules (log<sub>2</sub> cpm) in high quality single cells for endogenous genes</li>
+<li><strong><a href="https://github.com/jdblischak/singleCellSeq/blob/master/data/molecules-cpm-ercc.txt">molecules-cpm-ercc.txt</a></strong> - Molecules (log<sub>2</sub> cpm) in high quality single cells for ERCC genes</li>
+<li><strong><a href="https://github.com/jdblischak/singleCellSeq/blob/master/data/molecules-cpm-trans.txt">molecules-cpm-trans.txt</a></strong> - Molecules in high quality single cells after linear transformation with ERCC</li>
+<li><strong><a href="https://github.com/jdblischak/singleCellSeq/blob/master/data/molecules-final.txt">molecules-final.txt</a></strong> - Molecules in high quality single cells after removing unwanted variation with mixed model</li>
+</ul></li>
+</ul>
+<div id="start-with-raw-gene-counts" class="section level2">
+<h2>Start with raw gene counts</h2>
+<p>We start with the gene counts file produced by our <a href="process-samples.html">pipeline for processing the sequencing data</a>.</p>
+<pre class="r"><code>counts &lt;- fread(&quot;/mnt/gluster/data/internal_supp/singleCellSeq/gene-counts.txt&quot;)</code></pre>
+<pre><code>
+Read 0.0% of 12402 rows
+Read 80.6% of 12402 rows
+Read 12402 rows and 20427 (of 20427) columns from 0.524 GB file in 00:00:38</code></pre>
+<p>It is a very large file, and when read into R it uses 0.9 Gb of memory. Each row corresponds to a specific sample processed in a specific manner.</p>
+<pre class="r"><code>counts %&gt;% select(1:10) %&gt;% slice(1:10)</code></pre>
+<pre><code>    individual batch well index lane flow_cell          sickle     rmdup
+ 1:      19239     2 bulk    NA   NA        NA quality-trimmed molecules
+ 2:      19098     1  B06    NA   NA        NA quality-trimmed     reads
+ 3:      19098     1  H01    NA   NA        NA quality-trimmed     reads
+ 4:      19098     1  A05    NA   NA        NA quality-trimmed     reads
+ 5:      19098     1  C02    NA   NA        NA quality-trimmed     reads
+ 6:      19098     1  H06    NA   NA        NA quality-trimmed     reads
+ 7:      19098     2  D10    NA   NA        NA quality-trimmed     reads
+ 8:      19098     2  D12    NA   NA        NA quality-trimmed     reads
+ 9:      19098     2  E09    NA   NA        NA quality-trimmed     reads
+10:      19098     3  B12    NA   NA        NA quality-trimmed     reads
+    ENSG00000186092 ENSG00000237683
+ 1:               0              46
+ 2:               0               0
+ 3:               0               2
+ 4:               0               0
+ 5:               0               0
+ 6:               0               0
+ 7:               0               2
+ 8:               0              38
+ 9:               0               0
+10:               0               0</code></pre>
+<p>This granular data is used for performing <a href="qc-by-lane.html">quality control at the level of sequencing lane</a>.</p>
+</div>
+<div id="sum-counts-per-lane-by-sample" class="section level2">
+<h2>Sum counts per lane by sample</h2>
+<p>For downstream analyses, we need to sum the number of reads or molecules for every gene for each sample across sequencing runs. The molecule counts derived using this method will be inflated because duplicate reads (i.e. have the same UMI and start site) will only be removed within a lane. Thus these per-lane molecule count levels are only used for QC purposes.</p>
+<pre class="r"><code>counts_by_sample &lt;- counts %&gt;%
+  filter(!is.na(lane), sickle == &quot;quality-trimmed&quot;) %&gt;%
+  select(individual, batch, well, rmdup, starts_with(&quot;ENSG&quot;), starts_with(&quot;ERCC&quot;)) %&gt;%
+  group_by(individual, batch, well, rmdup) %&gt;%
+  summarise_each(funs(sum)) %&gt;%
+  arrange(individual, batch, well, rmdup) %&gt;%
+  ungroup</code></pre>
+</div>
+<div id="create-annotation-file" class="section level2">
+<h2>Create annotation file</h2>
+<p>The annotation file contains the meta-information for each sample.</p>
+<pre class="r"><code>anno &lt;- counts_by_sample %&gt;%
+  filter(rmdup == &quot;molecules&quot;) %&gt;%
+  select(individual:well) %&gt;%
+  as.data.frame</code></pre>
+<p>Reformat the annotation file:</p>
+<ul>
+<li>Add the string “NA” in front of the individual ID’s so that they are not interpreted as numeric</li>
+<li>The column denoting the 3 replicates is now named <code>replicate</code></li>
+<li>Add the string “r” in front of the replciate numbers so that they are not interpreted as numeric</li>
+<li>Create new column called <code>batch</code> which corresponds to the 9 batches (3 individuals x 3 reps)</li>
+</ul>
+<pre class="r"><code>anno &lt;- anno %&gt;% rename(replicate = batch) %&gt;%
+  mutate(individual = paste0(&quot;NA&quot;, individual),
+         replicate = paste0(&quot;r&quot;, replicate),
+         batch = paste(individual, replicate, sep = &quot;.&quot;),
+         sample_id = paste(batch, well, sep = &quot;.&quot;))
+head(anno)</code></pre>
+<pre><code>  individual replicate well      batch      sample_id
+1    NA19098        r1  A01 NA19098.r1 NA19098.r1.A01
+2    NA19098        r1  A02 NA19098.r1 NA19098.r1.A02
+3    NA19098        r1  A03 NA19098.r1 NA19098.r1.A03
+4    NA19098        r1  A04 NA19098.r1 NA19098.r1.A04
+5    NA19098        r1  A05 NA19098.r1 NA19098.r1.A05
+6    NA19098        r1  A06 NA19098.r1 NA19098.r1.A06</code></pre>
+<p>Output annotation file.</p>
+<pre class="r"><code>write.table(anno, &quot;../data/annotation.txt&quot;, quote = FALSE, sep = &quot;\t&quot;,
+            row.names = FALSE)</code></pre>
+</div>
+<div id="create-reads-file" class="section level2">
+<h2>Create reads file</h2>
+<p>The reads file contains only the counts. Each row is a gene and each column is a sample. The columns in the reads file correspond to the rows in the annotation file.</p>
+<pre class="r"><code>reads &lt;- counts_by_sample %&gt;%
+  filter(rmdup == &quot;reads&quot;) %&gt;%
+  select(-(individual:rmdup)) %&gt;%
+  t
+dim(reads)</code></pre>
+<pre><code>[1] 20419   873</code></pre>
+<pre class="r"><code>colnames(reads) &lt;- anno$sample_id
+reads[1:10, 1:5]</code></pre>
+<pre><code>                NA19098.r1.A01 NA19098.r1.A02 NA19098.r1.A03
+ENSG00000186092              0              0              0
+ENSG00000237683              2              0              6
+ENSG00000235249              0              0              0
+ENSG00000185097              0              0              0
+ENSG00000269831              0              0              0
+ENSG00000269308              0              0              0
+ENSG00000187634              0              0              0
+ENSG00000268179              0              0              0
+ENSG00000188976             56             19              0
+ENSG00000187961              0              0              0
+                NA19098.r1.A04 NA19098.r1.A05
+ENSG00000186092              0              0
+ENSG00000237683             46              0
+ENSG00000235249              0              0
+ENSG00000185097              0              0
+ENSG00000269831              0              0
+ENSG00000269308              0              0
+ENSG00000187634              0              0
+ENSG00000268179              0              0
+ENSG00000188976              3            165
+ENSG00000187961              0              0</code></pre>
+<p>Only genes with at least one read observed in at least one of the single cell or bulk samples are maintained.</p>
+<pre class="r"><code>genes_observed &lt;- rownames(reads)[rowSums(reads) &gt; 0]
+reads &lt;- reads[rownames(reads) %in% genes_observed, ]</code></pre>
+<p>There are 18568 genes with at least one read.</p>
+<p>Separate the bulk samples from the single cells.</p>
+<pre class="r"><code>reads_bulk &lt;- reads[, anno$well == &quot;bulk&quot;]
+reads &lt;- reads[, anno$well != &quot;bulk&quot;]
+stopifnot(ncol(reads_bulk) == 3 * 3, ncol(reads) == 3 * 3 * 96)</code></pre>
+<p>Output read counts.</p>
+<pre class="r"><code>write.table(reads, &quot;../data/reads.txt&quot;, quote = FALSE, sep = &quot;\t&quot;,
+            col.names = NA)
+write.table(reads_bulk, &quot;../data/reads-bulk.txt&quot;, quote = FALSE, sep = &quot;\t&quot;,
+            col.names = NA)</code></pre>
+</div>
+<div id="create-molecules-per-lane-file" class="section level2">
+<h2>Create molecules per lane file</h2>
+<p>Create a molecules per lane file similar to the reads file.</p>
+<pre class="r"><code>molecules_per_lane &lt;- counts_by_sample %&gt;%
+  filter(rmdup == &quot;molecules&quot;) %&gt;%
+  select(-(individual:rmdup)) %&gt;%
+  t
+dim(molecules_per_lane)</code></pre>
+<pre><code>[1] 20419   873</code></pre>
+<pre class="r"><code>colnames(molecules_per_lane) &lt;- anno$sample_id</code></pre>
+<p>Only genes with at least one read observed in at least one of the single cell or bulk samples are maintained.</p>
+<pre class="r"><code>molecules_per_lane &lt;- molecules_per_lane[rownames(molecules_per_lane) %in% genes_observed, ]
+stopifnot(nrow(molecules_per_lane) == nrow(reads))</code></pre>
+<p>Output molecule per lane counts.</p>
+<pre class="r"><code>write.table(molecules_per_lane, &quot;../data/molecules-per-lane.txt&quot;, quote = FALSE, sep = &quot;\t&quot;,
+            col.names = NA)</code></pre>
+</div>
+<div id="create-molecules-file" class="section level2">
+<h2>Create molecules file</h2>
+<p>Reads with the same UMI and start position need to be removed using all the data for a given sample. Otherwise the counts will be inflated because the same read can be sequenced across multiple lanes. Post-mapping we combined all the reads per sample and removed duplicate UMIs (<a href="process-samples.html#process-at-the-sample-level">pipeline</a>). The data from these combined samples have <code>NA</code> recorded for index, lane, and flow_cell.</p>
+<pre class="r"><code>counts_combined &lt;- counts %&gt;%
+  filter(is.na(lane), sickle == &quot;quality-trimmed&quot;) %&gt;%
+  select(individual, batch, well, rmdup, starts_with(&quot;ENSG&quot;), starts_with(&quot;ERCC&quot;)) %&gt;%
+  arrange(individual, batch, well, rmdup)
+stopifnot(counts_combined$individual[c(TRUE, FALSE)] == substr(anno$individual, 3, 8),
+          counts_combined$batch[c(TRUE, FALSE)] == substr(anno$replicate, 2, 2),
+          counts_combined$well[c(TRUE, FALSE)] == anno$well)</code></pre>
+<p>Create molecules file similar to reads file.</p>
+<pre class="r"><code>molecules &lt;- counts_combined %&gt;%
+  filter(rmdup == &quot;molecules&quot;) %&gt;%
+  select(-(individual:rmdup)) %&gt;%
+  t
+dim(molecules)</code></pre>
+<pre><code>[1] 20419   873</code></pre>
+<pre class="r"><code>colnames(molecules) &lt;- anno$sample_id</code></pre>
+<p>Only genes with at least one read observed in at least one of the single cell or bulk samples are maintained.</p>
+<pre class="r"><code>molecules &lt;- molecules[rownames(molecules) %in% genes_observed, ]
+stopifnot(nrow(molecules) == nrow(reads))</code></pre>
+<p>Remove bulk samples from molecules file. Because bulk samples have many more molecules than a single cell, the UMIs are not valid.</p>
+<pre class="r"><code>molecules &lt;- molecules[, anno$well != &quot;bulk&quot;]
+stopifnot(ncol(molecules) == 3 * 3 * 96)</code></pre>
+<p>Output molecule counts.</p>
+<pre class="r"><code>write.table(molecules, &quot;../data/molecules.txt&quot;, quote = FALSE, sep = &quot;\t&quot;,
+            col.names = NA)</code></pre>
+</div>
+<div id="filter-data" class="section level2">
+<h2>Filter data</h2>
+<div id="filter-cells" class="section level3">
+<h3>Filter cells</h3>
+<p>We performed <a href="qc-cell-ipsc.html">quality control at the level of single cell samples</a> to identify low quality single cells.</p>
+<p>Input list of quality single cells.</p>
+<pre class="r"><code>quality_single_cells &lt;- scan(&quot;../data/quality-single-cells.txt&quot;,
+                             what = &quot;character&quot;)</code></pre>
+<p>We filter the annotation, reads, and molecules data to only include quality single cells. Note that this means the filtered annotation file no longer contains information of the bulk samples.</p>
+<pre class="r"><code>anno_filter &lt;- anno %&gt;% filter(sample_id %in% quality_single_cells)
+reads_filter &lt;- reads[, colnames(reads) %in% quality_single_cells]
+molecules_filter &lt;- molecules[, colnames(molecules) %in% quality_single_cells]
+stopifnot(nrow(anno_filter) == ncol(reads_filter),
+          nrow(anno_filter) == ncol(molecules_filter),
+          anno_filter$sample_id == colnames(reads_filter),
+          anno_filter$sample_id == colnames(molecules_filter))</code></pre>
+<p>The number of good quality cells is not even across batches.</p>
+<pre class="r"><code>table(anno_filter$individual, anno_filter$replicate)</code></pre>
+<pre><code>         
+          r1 r2 r3
+  NA19098 85  0 57
+  NA19101 80 71 50
+  NA19239 78 68 79</code></pre>
+</div>
+<div id="filter-genes" class="section level3">
+<h3>Filter genes</h3>
+<p>We filter the genes to exlude both those that are lowly expressed or over-expressed (&gt;= 1024 molecules in a given cell).</p>
+<p>We identify the lower cutoff using the mean log<sub>2</sub> molecule counts per million (cpm) in the 568 high quality single cells.</p>
+<pre class="r"><code>molecules_cpm_mean &lt;- rowMeans(cpm(molecules_filter, log = TRUE))
+hist(molecules_cpm_mean, xlab = &quot;Mean log2 molecule cpm in single cells&quot;,
+     ylab = &quot;Number of genes&quot;, main = &quot;Identifying expression cutoff&quot;)
+lower_exp_cutoff &lt;- 2
+abline(v = lower_exp_cutoff, col = &quot;red&quot;)</code></pre>
+<p><img src="figure/data-transformation.Rmd/identify-lower-expression-cutoff-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>genes_pass_filter &lt;- rownames(molecules_filter)[molecules_cpm_mean &gt; lower_exp_cutoff]</code></pre>
+<p>10609 genes have a mean log<sub>2</sub> molecule cpm greater than 2, including 34 ERCC genes.</p>
+<p>Next we identify any genes which have greater than 1024 molecules in any given single cell. These are above our theoretical maximum number of UMIs (it can happen when a highly expressed gene as multiple start sites), and thus we cannot correct them for the <a href="#collision-probability">collision probability</a>.</p>
+<pre class="r"><code>overexpressed_rows &lt;- apply(molecules_filter, 1, function(x) any(x &gt;= 1024))
+overexpressed_genes &lt;- rownames(molecules_filter)[overexpressed_rows]
+overexpressed_genes</code></pre>
+<pre><code> [1] &quot;ENSG00000197061&quot; &quot;ENSG00000198888&quot; &quot;ENSG00000198763&quot;
+ [4] &quot;ENSG00000198804&quot; &quot;ENSG00000198712&quot; &quot;ENSG00000228253&quot;
+ [7] &quot;ENSG00000198899&quot; &quot;ENSG00000198938&quot; &quot;ENSG00000198886&quot;
+[10] &quot;ENSG00000198786&quot; &quot;ENSG00000198727&quot;</code></pre>
+<pre class="r"><code>ensembl &lt;- useMart(host = &quot;grch37.ensembl.org&quot;,
+                   biomart = &quot;ENSEMBL_MART_ENSEMBL&quot;,
+                   dataset = &quot;hsapiens_gene_ensembl&quot;)
+overexpressed_genes_info &lt;- getBM(attributes = c(&quot;ensembl_gene_id&quot;, &quot;chromosome_name&quot;,
+                                                 &quot;external_gene_name&quot;, &quot;transcript_count&quot;,
+                                                 &quot;description&quot;),
+                                  filters = &quot;ensembl_gene_id&quot;,
+                                  values = overexpressed_genes[grep(&quot;ENSG&quot;, overexpressed_genes)],
+                                  mart = ensembl)
+overexpressed_genes_info</code></pre>
+<pre><code>   ensembl_gene_id chromosome_name external_gene_name transcript_count
+1  ENSG00000197061               6           HIST1H4C                1
+2  ENSG00000198712              MT             MT-CO2                1
+3  ENSG00000198727              MT             MT-CYB                1
+4  ENSG00000198763              MT             MT-ND2                1
+5  ENSG00000198786              MT             MT-ND5                1
+6  ENSG00000198804              MT             MT-CO1                1
+7  ENSG00000198886              MT             MT-ND4                1
+8  ENSG00000198888              MT             MT-ND1                1
+9  ENSG00000198899              MT            MT-ATP6                1
+10 ENSG00000198938              MT             MT-CO3                1
+11 ENSG00000228253              MT            MT-ATP8                1
+                                                                      description
+1                            histone cluster 1, H4c [Source:HGNC Symbol;Acc:4787]
+2   mitochondrially encoded cytochrome c oxidase II [Source:HGNC Symbol;Acc:7421]
+3              mitochondrially encoded cytochrome b [Source:HGNC Symbol;Acc:7427]
+4      mitochondrially encoded NADH dehydrogenase 2 [Source:HGNC Symbol;Acc:7456]
+5      mitochondrially encoded NADH dehydrogenase 5 [Source:HGNC Symbol;Acc:7461]
+6    mitochondrially encoded cytochrome c oxidase I [Source:HGNC Symbol;Acc:7419]
+7      mitochondrially encoded NADH dehydrogenase 4 [Source:HGNC Symbol;Acc:7459]
+8      mitochondrially encoded NADH dehydrogenase 1 [Source:HGNC Symbol;Acc:7455]
+9            mitochondrially encoded ATP synthase 6 [Source:HGNC Symbol;Acc:7414]
+10 mitochondrially encoded cytochrome c oxidase III [Source:HGNC Symbol;Acc:7422]
+11           mitochondrially encoded ATP synthase 8 [Source:HGNC Symbol;Acc:7415]</code></pre>
+<p>11 genes have molecule counts greater than or equal to 1024 in at least one single cell, including 0.</p>
+<p>Update the list of genes passing the filters.</p>
+<pre class="r"><code>genes_pass_filter &lt;- setdiff(genes_pass_filter, overexpressed_genes)</code></pre>
+<p>Filter the data to only include the subset of 10598 genes which pass the lower and upper expression cutoffs. This subset includes 34 ERCC genes.</p>
+<pre class="r"><code>reads_filter &lt;- reads_filter[rownames(reads_filter) %in% genes_pass_filter, ]
+molecules_filter &lt;- molecules_filter[rownames(molecules_filter) %in% genes_pass_filter, ]
+reads_bulk_filter &lt;- reads_bulk[rownames(reads_bulk) %in% genes_pass_filter, ]
+stopifnot(nrow(reads_filter) == length(genes_pass_filter),
+          dim(reads_filter) == dim(molecules_filter),
+          nrow(reads_bulk_filter) == nrow(molecules_filter))</code></pre>
+<p>Output filtered data.</p>
+<pre class="r"><code>write.table(anno_filter, &quot;../data/annotation-filter.txt&quot;, quote = FALSE,
+            sep = &quot;\t&quot;, row.names = FALSE)
+write.table(reads_filter, &quot;../data/reads-filter.txt&quot;, quote = FALSE,
+            sep = &quot;\t&quot;, col.names = NA)
+write.table(molecules_filter, &quot;../data/molecules-filter.txt&quot;, quote = FALSE,
+            sep = &quot;\t&quot;, col.names = NA)
+write.table(reads_bulk_filter, &quot;../data/reads-bulk-filter.txt&quot;, quote = FALSE,
+            sep = &quot;\t&quot;, col.names = NA)</code></pre>
+</div>
+<div id="pca-of-filtered-data" class="section level3">
+<h3>PCA of filtered data</h3>
+<pre class="r"><code>pca_reads_filter &lt;- run_pca(reads_filter)
+pca_reads_filter_plot &lt;- plot_pca(pca_reads_filter$PCs, explained = pca_reads_filter$explained,
+         metadata = anno_filter, color = &quot;individual&quot;,
+         shape = &quot;replicate&quot;) +
+  labs(title = &quot;Filtered raw reads for single cells&quot;)
+pca_reads_filter_plot</code></pre>
+<p><img src="figure/data-transformation.Rmd/pca-reads-filter-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>pca_molecules_filter &lt;- run_pca(molecules_filter)
+pca_molecules_filter_plot &lt;- plot_pca(pca_molecules_filter$PCs, explained = pca_molecules_filter$explained,
+         metadata = anno_filter, color = &quot;individual&quot;,
+         shape = &quot;replicate&quot;) +
+  labs(title = &quot;Filtered raw molecules for single cells&quot;)
+pca_molecules_filter_plot</code></pre>
+<p><img src="figure/data-transformation.Rmd/pca-molecules-filter-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>pca_reads_bulk_filter &lt;- run_pca(reads_bulk_filter)
+pca_reads_bulk_filter_plot &lt;- plot_pca(pca_reads_bulk_filter$PCs, explained = pca_reads_bulk_filter$explained,
+         metadata = anno[anno$well == &quot;bulk&quot;, ], color = &quot;individual&quot;,
+         shape = &quot;replicate&quot;) +
+  labs(title = &quot;Filtered raw reads for bulk samples&quot;)
+pca_reads_bulk_filter_plot</code></pre>
+<p><img src="figure/data-transformation.Rmd/pca-reads-bulk-filter-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
+</div>
+<div id="correct-for-collision-probability" class="section level2">
+<h2>Correct for collision probability</h2>
+<p>Due to the stochasticity of the sampling process, not all molecules will be tagged with a UMI and sequenced. We correct for this “collision probability” following the method applied in <a href="http://www.nature.com/nmeth/journal/v11/n6/full/nmeth.2930.html#methods">Grun et al. 2014</a>.</p>
+<pre class="r"><code>molecules_collision &lt;- -1024 * log(1 - molecules_filter / 1024)</code></pre>
+<pre class="r"><code>pca_molecules_collision &lt;- run_pca(molecules_collision)
+pca_molecules_collision_plot &lt;- plot_pca(pca_molecules_collision$PCs, explained = pca_molecules_collision$explained,
+         metadata = anno_filter, color = &quot;individual&quot;,
+         shape = &quot;replicate&quot;) +
+  labs(title = &quot;Collision probability corrected molecules for single cells&quot;)
+pca_molecules_collision_plot</code></pre>
+<p><img src="figure/data-transformation.Rmd/pca-molecules-collision-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
+<div id="calculating-counts-per-million" class="section level2">
+<h2>Calculating counts per million</h2>
+<p>We calculate the log<sub>2</sub> counts per million (cpm) separately for the endogenous and ERCC genes.</p>
+<pre class="r"><code>ercc_rows &lt;- grepl(&quot;ERCC&quot;, rownames(reads_bulk_filter))</code></pre>
+<div id="reads-bulk-endogenous" class="section level3">
+<h3>Reads bulk endogenous</h3>
+<pre class="r"><code>reads_bulk_cpm &lt;- cpm(reads_bulk_filter[!ercc_rows, ], log = TRUE)
+write.table(round(reads_bulk_cpm, digits = 6), &quot;../data/reads-bulk-cpm.txt&quot;, quote = FALSE,
+            sep = &quot;\t&quot;, col.names = NA)</code></pre>
+<pre class="r"><code>pca_reads_bulk_cpm &lt;- run_pca(reads_bulk_cpm)
+pca_reads_bulk_cpm_plot &lt;- plot_pca(pca_reads_bulk_cpm$PCs, explained = pca_reads_bulk_cpm$explained,
+         metadata = anno[anno$well == &quot;bulk&quot;, ], color = &quot;individual&quot;,
+         shape = &quot;replicate&quot;) +
+  labs(title = &quot;Reads (log2 cpm) for bulk samples&quot;)
+pca_reads_bulk_cpm_plot</code></pre>
+<p><img src="figure/data-transformation.Rmd/pca-reads-cpm-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
+<div id="reads-bulk-ercc" class="section level3">
+<h3>Reads bulk ERCC</h3>
+<pre class="r"><code>reads_bulk_cpm_ercc &lt;- cpm(reads_bulk_filter[ercc_rows, ], log = TRUE)
+write.table(round(reads_bulk_cpm_ercc, digits = 6), &quot;../data/reads-bulk-cpm-ercc.txt&quot;, quote = FALSE,
+            sep = &quot;\t&quot;, col.names = NA)</code></pre>
+</div>
+<div id="molecules-single-cell-endogenous" class="section level3">
+<h3>Molecules single cell endogenous</h3>
+<pre class="r"><code>molecules_cpm &lt;- cpm(molecules_collision[!ercc_rows, ], log = TRUE)
+write.table(round(molecules_cpm, digits = 6), &quot;../data/molecules-cpm.txt&quot;, quote = FALSE,
+            sep = &quot;\t&quot;, col.names = NA)</code></pre>
+<pre class="r"><code>pca_molecules_cpm &lt;- run_pca(molecules_cpm)
+pca_molecules_cpm_plot &lt;- plot_pca(pca_molecules_cpm$PCs, explained = pca_molecules_cpm$explained,
+         metadata = anno_filter, color = &quot;individual&quot;,
+         shape = &quot;replicate&quot;) +
+  labs(title = &quot;Molecules (log2 cpm) for single cells&quot;)
+pca_molecules_cpm_plot</code></pre>
+<p><img src="figure/data-transformation.Rmd/pca-molecules-cpm-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
+<div id="molecules-single-cell-ercc" class="section level3">
+<h3>Molecules single cell ERCC</h3>
+<pre class="r"><code>molecules_cpm_ercc &lt;- cpm(molecules_collision[ercc_rows, ], log = TRUE)
+write.table(round(molecules_cpm_ercc, digits = 6), &quot;../data/molecules-cpm-ercc.txt&quot;, quote = FALSE,
+            sep = &quot;\t&quot;, col.names = NA)</code></pre>
+</div>
+</div>
+<div id="linear-transformation-with-ercc-controls" class="section level2">
+<h2>Linear transformation with ERCC controls</h2>
+<p>To correct for technical effects across the single cells, we use the ERCC spike-in genes. We compare the observed number of ERCC molecules in each sample to the expected number of ERCC molecules and fit the relationship with a linear model. We then use this model to linearly transform the observed gene molecule counts within each single cell.</p>
+<p>The expected number of ERCC molecules per well was calculated in <a href="capture-efficiency.html">another analysis</a>.</p>
+<pre class="r"><code>ercc &lt;- read.table(&quot;../data/expected-ercc-molecules.txt&quot;, header = TRUE,
+                   stringsAsFactors = FALSE)
+head(ercc)</code></pre>
+<pre><code>          id conc_mix1 ercc_molecules_well
+1 ERCC-00130 30000.000          4877.93485
+2 ERCC-00004  7500.000          1219.48371
+3 ERCC-00136  1875.000           304.87093
+4 ERCC-00108   937.500           152.43546
+5 ERCC-00116   468.750            76.21773
+6 ERCC-00092   234.375            38.10887</code></pre>
+<p>We need to filter the 92 ERCC genes to only include those that passed the expression filters.</p>
+<pre class="r"><code>ercc &lt;- ercc[ercc$id %in% rownames(molecules_cpm_ercc), ]
+ercc &lt;- ercc[order(ercc$id), ]
+stopifnot(ercc$id == rownames(molecules_cpm_ercc))</code></pre>
+<p>Because the molecule counts have been converted to log<sub>2</sub> cpm, we also convert the expected ERCC molecule counts to log<sub>2</sub> cpm.</p>
+<pre class="r"><code>ercc$log2_cpm &lt;- cpm(ercc$ercc_molecules_well, log = TRUE)</code></pre>
+<p>We perform the linear transformation per single cell.</p>
+<pre class="r"><code>molecules_cpm_trans &lt;- molecules_cpm
+molecules_cpm_trans[, ] &lt;- NA
+intercept &lt;- numeric(length = ncol(molecules_cpm_trans))
+slope &lt;- numeric(length = ncol(molecules_cpm_trans))
+for (i in 1:ncol(molecules_cpm_trans)) {
+  fit &lt;- lm(molecules_cpm_ercc[, i] ~ ercc$log2_cpm)
+  intercept[i] &lt;- fit$coefficients[1]
+  slope[i] &lt;- fit$coefficients[2]
+  # Y = mX + b -&gt; X = (Y - b) / m
+  molecules_cpm_trans[, i] &lt;- (molecules_cpm[, i] - intercept[i]) / slope[i]
+}
+stopifnot(!is.na(molecules_cpm_trans))</code></pre>
+<p>Here is a visualization of what happened using the first single cell as an example.</p>
+<pre class="r"><code>plot(ercc$log2_cpm, molecules_cpm_ercc[, 1],
+     xlab = &quot;Expected log2 cpm&quot;, ylab = &quot;Observed log2 cpm&quot;,
+     main = &quot;Example linear transformation - endogenous genes in red&quot;)
+abline(intercept[1], slope[1])
+points(molecules_cpm_trans[, 1], molecules_cpm[, 1], col = &quot;red&quot;)</code></pre>
+<p><img src="figure/data-transformation.Rmd/linear-transformation-example-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p>The distribution of the slope and intercept across the batches was similar, with the exception of the outlier 19098 batch 2.</p>
+<pre class="r"><code>boxplot(intercept ~ anno_filter$batch,
+        xlab = &quot;&quot;, ylab = &quot;Intercept&quot;, las = 3,
+        main = &quot;Variation in intercept from linear transformation&quot;)</code></pre>
+<p><img src="figure/data-transformation.Rmd/linear-transformation-intercept-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>boxplot(slope ~ anno_filter$batch,
+        xlab = &quot;&quot;, ylab = &quot;Slope&quot;, las = 3,
+        main = &quot;Variation in slope from linear transformation&quot;)</code></pre>
+<p><img src="figure/data-transformation.Rmd/linear-transformation-slope-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p>Output linearly transformed molecules.</p>
+<pre class="r"><code>write.table(round(molecules_cpm_trans, digits = 6), &quot;../data/molecules-cpm-trans.txt&quot;, quote = FALSE,
+            sep = &quot;\t&quot;, col.names = NA)</code></pre>
+<p>PCA of linearly transformed data.</p>
+<pre class="r"><code>pca_molecules_cpm_trans &lt;- run_pca(molecules_cpm_trans)
+pca_molecules_cpm_trans_plot &lt;- plot_pca(pca_molecules_cpm_trans$PCs, explained = pca_molecules_cpm_trans$explained,
+         metadata = anno_filter, color = &quot;individual&quot;,
+         shape = &quot;replicate&quot;) +
+  labs(title = &quot;Molecules (linearly transformed with ERCC) for single cells&quot;)
+pca_molecules_cpm_trans_plot</code></pre>
+<p><img src="figure/data-transformation.Rmd/pca-molecules-cpm-trans-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
+<div id="mixed-model-for-batch-effect-correction" class="section level2">
+<h2>Mixed model for batch-effect correction</h2>
+<p>Because the linear transformation with the ERCC controls was not sufficient to remove all the unwanted technical variation, we used a mixed model to correct for batch effects.</p>
+<p>We adapted limma’s algorithm for estimating variance components due to random effects. This analysis operates under the assumption that biological replicates (or batches within an individual in this case) share similar correlation across genes. Morever, the analysis permits negative correlation between replicates.</p>
+<div id="crossed-model" class="section level3">
+<h3>Crossed Model</h3>
+<p>For every single gene, we will fit a mixed model assuming differences between batches are not individual-specific as follows</p>
+<p><br /><span class="math"><em>y</em><sub><em>i</em><em>j</em><em>k</em></sub> = <em>μ</em> + <em>α</em><sub><em>i</em></sub> + <em>b</em><sub><em>j</em></sub> + <em>ϵ</em><sub><em>i</em><em>j</em><em>k</em></sub></span><br />,</p>
+<p>where <span class="math"><em>y</em><sub><em>i</em><em>j</em><em>k</em></sub></span> is the log2 counts-per-million (cpm) for any gene in individual <span class="math"><em>i</em></span>, batch <span class="math"><em>j</em></span>, and cell <span class="math"><em>k</em></span>, <span class="math"><em>μ</em></span> is the gene-specific expression level across all cells, <span class="math"><em>α</em><sub><em>i</em></sub></span> is the expression level specific to individual <span class="math"><em>i</em></span>, <span class="math"><em>b</em><sub><em>j</em></sub></span> is batch <span class="math"><em>j</em></span>‘s deviation of expression level from gene-specific expression levels, and <span class="math"><em>ϵ</em><sub><em>i</em><em>j</em><em>k</em></sub></span> is the models’ residual error.</p>
+<p>We assume that <span class="math"><em>b</em><sub><em>j</em></sub></span> follows a normal distribution with <span class="math"><em>b</em><sub><em>j</em></sub> ∼ <em>N</em>(0, <em>σ</em><sub><em>b</em></sub><sup>2</sup>)</span> for <span class="math"><em>j</em> = 1, …, 9</span>, and <span class="math"><em>ϵ</em><sub><em>i</em><em>j</em><em>k</em></sub> ∼ <em>N</em>(0, <em>σ</em><sub><em>ϵ</em></sub><sup>2</sup>)</span> for <span class="math"><em>i</em> = 1, 2, 3; <em>j</em> = 1, …, 9; <em>a</em><em>n</em><em>d</em><em>k</em> = 1, …, <em>n</em><sub><em>i</em><em>j</em></sub></span>, where <span class="math"><em>n</em><sub><em>i</em></sub><em>j</em></span> denotes the number of cells in individual <span class="math"><em>i</em></span>, batch <span class="math"><em>j</em></span>.</p>
+</div>
+<div id="remove-unwanted-variation" class="section level3">
+<h3>Remove unwanted variation</h3>
+<p>Load the <a href="https://github.com/jhsiao999/Humanzee">Humanzee</a> package.</p>
+<pre class="r"><code>library(&quot;Humanzee&quot;)</code></pre>
+<p>Create design matrix and compute a consensus correlation coefficient using limma’s duplicateCorrelation function.</p>
+<pre class="r"><code>block &lt;- anno_filter$batch
+design &lt;- model.matrix(~ 1 + individual, data = anno_filter)</code></pre>
+<pre class="r"><code>dup_corrs_file &lt;- &quot;../data/dup-corrs.rda&quot;
+if (file.exists(dup_corrs_file)) {
+  load(dup_corrs_file)
+} else{
+  dup_corrs &lt;- duplicateCorrelation(molecules_cpm_trans,
+                                    design = design, block = block)
+  save(dup_corrs, file = dup_corrs_file)
+}</code></pre>
+<p>Fit a mixed model with the 9 batches being the random effect.</p>
+<pre class="r"><code>if (file.exists(&quot;../data/limma-crossed.rda&quot;)) {
+  load(&quot;../data/limma-crossed.rda&quot;)
+} else {
+  gls_fit &lt;-
+      Humanzee::ruv_mixed_model(molecules_cpm_trans,
+                      ndups = 1,
+                      design = design, block = block,
+                      correlation = dup_corrs$cons)
+  save(gls_fit, file = &quot;../data/limma-crossed.rda&quot;)
+}</code></pre>
+<p>Compute expression levels after removing variation due to random effects.</p>
+<pre class="r"><code>molecules_final &lt;- t( design %*% t(gls_fit$coef) ) + gls_fit$resid</code></pre>
+<p>Output the cleaned data.</p>
+<pre class="r"><code>colnames(molecules_final) &lt;- colnames(molecules_cpm_trans)
+write.table(round(molecules_final, digits = 6), &quot;../data/molecules-final.txt&quot;, quote = FALSE,
+            sep = &quot;\t&quot;, col.names = NA)</code></pre>
+<pre class="r"><code>pca_final &lt;- run_pca(molecules_final)
+pca_final_plot &lt;- plot_pca(pca_final$PCs, explained = pca_final$explained,
+         metadata = anno_filter, color = &quot;individual&quot;,
+         shape = &quot;replicate&quot;) +
+  labs(title = &quot;Molecules (batch corrected) for single cells&quot;)
+pca_final_plot</code></pre>
+<p><img src="figure/data-transformation.Rmd/pca-molecules-final-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
+</div>
+<div id="data-transformation-figure" class="section level2">
+<h2>Data transformation figure</h2>
+<pre class="r"><code>theme_set(theme_bw(base_size = 8))
+plot_grid(pca_molecules_filter_plot + theme(legend.position = &quot;none&quot;),
+          pca_molecules_cpm_plot + theme(legend.position = &quot;none&quot;),
+          pca_molecules_cpm_trans_plot + theme(legend.position = &quot;none&quot;),
+          pca_final_plot + theme(legend.position = &quot;none&quot;),
+          labels = LETTERS[1:4])</code></pre>
+<p><img src="figure/data-transformation.Rmd/data-transformation-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] grid      stats     graphics  grDevices utils     datasets  methods  
+[8] base     
+
+other attached packages:
+ [1] Humanzee_0.1.0   testit_0.4       cowplot_0.3.1    ggplot2_1.0.1   
+ [5] edgeR_3.10.2     limma_3.24.9     dplyr_0.4.2      data.table_1.9.4
+ [9] biomaRt_2.24.0   knitr_1.10.5    
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.12.0          formatR_1.2          GenomeInfoDb_1.4.0  
+ [4] plyr_1.8.3           bitops_1.0-6         tools_3.2.0         
+ [7] digest_0.6.8         RSQLite_1.0.0        evaluate_0.7        
+[10] gtable_0.1.2         DBI_0.3.1            yaml_2.1.13         
+[13] parallel_3.2.0       proto_0.3-10         httr_0.6.1          
+[16] stringr_1.0.0        S4Vectors_0.6.0      IRanges_2.2.4       
+[19] stats4_3.2.0         Biobase_2.28.0       R6_2.1.1            
+[22] AnnotationDbi_1.30.1 XML_3.98-1.2         rmarkdown_0.6.1     
+[25] reshape2_1.4.1       magrittr_1.5         scales_0.2.4        
+[28] htmltools_0.2.6      BiocGenerics_0.14.0  MASS_7.3-40         
+[31] assertthat_0.1       colorspace_1.2-6     labeling_0.3        
+[34] stringi_0.4-1        lazyeval_0.1.10      RCurl_1.95-4.6      
+[37] munsell_0.4.2        chron_2.3-45        </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+
+</body>
+</html>

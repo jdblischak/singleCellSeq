@@ -11,7 +11,7 @@
 
 <meta name="date" content="2015-08-10" />
 
-<title>BASiCS</title>
+<title>BASiCS - 40,000 iterations</title>
 
 <script src="libs/jquery-1.11.0/jquery.min.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -118,17 +118,22 @@ img {
 </div><!--/.navbar -->
 
 <div id="header">
-<h1 class="title">BASiCS</h1>
+<h1 class="title">BASiCS - 40,000 iterations</h1>
 <h4 class="date"><em>2015-08-10</em></h4>
 </div>
 
 <div id="TOC">
 <ul>
 <li><a href="#input">Input</a></li>
-<li><a href="#filter">Filter</a></li>
 <li><a href="#fit-the-model">Fit the model</a></li>
-<li><a href="#cellular-mrna-content">Cellular mRNA content</a></li>
-<li><a href="#capture-efficiency">Capture efficiency</a></li>
+<li><a href="#batch-information">Batch information</a></li>
+<li><a href="#cell-specific-normalizing-constants">Cell-specific normalizing constants</a><ul>
+<li><a href="#phi-versus-gene-molecule-count">Phi versus gene molecule count</a></li>
+<li><a href="#phi-versus-ercc-molecule-count">Phi versus ERCC molecule count</a></li>
+<li><a href="#s-versus-ercc-molecule-count">S versus ERCC molecule count</a></li>
+<li><a href="#s-versus-gene-molecule-count">S versus gene molecule count</a></li>
+<li><a href="#phi-versus-s">Phi versus S</a></li>
+</ul></li>
 <li><a href="#denoised-data">Denoised data</a><ul>
 <li><a href="#pca---basics-denoised">PCA - BASiCS Denoised</a></li>
 <li><a href="#pca---basics-denoised-cpm">PCA - BASiCS Denoised cpm</a></li>
@@ -139,14 +144,18 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-08-12</p>
-<p><strong>Code version:</strong> aadaca7368bed05e4b91e502ca9186246c40eef5</p>
-<p>This was run on Ubuntu. A dependency, RccpArmadillo, cannot be installed on the cluster. Our systems admin has not been able to figure out the reason.</p>
+<p><strong>Last updated:</strong> 2015-11-11</p>
+<p><strong>Code version:</strong> 48d0a820ba6794f241a52faf89a214afeba506d9</p>
+<p>We analyzed our single cell data with <a href="https://github.com/catavallejos/BASiCS">BASiCS</a> developed by <a href="http://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1004333">Vallejos et al., 2015</a>. The results shown here are from a model fit with 40,000 iterations. This time we also modeled the unexplained technical noise with a separate parameter (theta) per batch.</p>
+<p>BASiCS and its dependency, RcppArmadillo, were able to be installed on the cluster using a new version of gcc. Since this took a long time to run, it was submitted via the following:</p>
+<pre class="bash"><code>echo &quot;Rscript -e &#39;library(rmarkdown); render(\&quot;basics.Rmd\&quot;)&#39;&quot; | \
+  qsub -l h_vmem=32g -cwd -V -j y -o ~/log/ -N basics</code></pre>
 <pre class="r"><code>library(&quot;BASiCS&quot;)
 library(&quot;data.table&quot;)
 source(&quot;functions.R&quot;)
 library(&quot;ggplot2&quot;)
 theme_set(theme_bw(base_size = 16))
+library(&quot;tidyr&quot;)
 library(&quot;edgeR&quot;)</code></pre>
 <pre><code>Loading required package: limma</code></pre>
 <div id="input" class="section level2">
@@ -161,34 +170,26 @@ library(&quot;edgeR&quot;)</code></pre>
 </ul>
 </blockquote>
 <p>Input annotation.</p>
-<pre class="r"><code>anno &lt;- read.table(&quot;../data/annotation.txt&quot;, header = TRUE,
-                   stringsAsFactors = FALSE)</code></pre>
+<pre class="r"><code>anno_filter &lt;- read.table(&quot;../data/annotation-filter.txt&quot;, header = TRUE,
+                          stringsAsFactors = FALSE)</code></pre>
 <p>Input molecule counts.</p>
-<pre class="r"><code>molecules &lt;- read.table(&quot;../data/molecules.txt&quot;, header = TRUE,
-                    stringsAsFactors = FALSE)</code></pre>
-<p>Input list of quality single cells.</p>
-<pre class="r"><code>quality_single_cells &lt;- scan(&quot;../data/quality-single-cells.txt&quot;,
-                             what = &quot;character&quot;)</code></pre>
-<p>Keep only the single cells that passed the <a href="qc-cell-ipsc.html">QC filters</a>. This also removes the bulk samples.</p>
-<pre class="r"><code>molecules_single &lt;- molecules[, colnames(molecules) %in% quality_single_cells]
-anno_single &lt;- anno[anno$sample_id %in% quality_single_cells, ]
-stopifnot(ncol(molecules_single) == nrow(anno_single),
-          colnames(molecules_single) == anno_single$sample_id)</code></pre>
-<p>Also remove batch 2 of individual 19098.</p>
-<pre class="r"><code>molecules_single &lt;- molecules_single[, !(anno_single$individual == 19098 &amp; anno_single$batch == 2)]
-anno_single &lt;- anno_single[!(anno_single$individual == 19098 &amp; anno_single$batch == 2), ]
-stopifnot(ncol(molecules_single) == nrow(anno_single))</code></pre>
-<p>Remove genes with zero read counts in the single cells.</p>
-<pre class="r"><code>expressed_single &lt;- rowSums(molecules_single) &gt; 0
-molecules_single &lt;- molecules_single[expressed_single, ]
-dim(molecules_single)</code></pre>
-<pre><code>[1] 17478   563</code></pre>
+<pre class="r"><code>molecules_filter &lt;- read.table(&quot;../data/molecules-filter.txt&quot;, header = TRUE,
+                               stringsAsFactors = FALSE)
+stopifnot(nrow(anno_filter) == ncol(molecules_filter),
+          colnames(molecules_filter) == anno_filter$sample_id,
+          anno_filter$well != &quot;bulk&quot;)</code></pre>
+<p>Remove outlier batch NA19098.r2.</p>
+<pre class="r"><code>molecules_filter &lt;- molecules_filter[, anno_filter$batch != &quot;NA19098.r2&quot;]
+anno_filter &lt;- anno_filter[anno_filter$batch != &quot;NA19098.r2&quot;, ]
+stopifnot(nrow(anno_filter) == ncol(molecules_filter),
+          colnames(molecules_filter) == anno_filter$sample_id,
+          anno_filter$well != &quot;bulk&quot;)</code></pre>
 <blockquote>
 <ul>
 <li><code>Tech</code>: a vector of <code>TRUE</code>/<code>FALSE</code> elements with length <span class="math"><em>q</em></span>. If <code>Tech[i] = FALSE</code> the gene <code>i</code> is biological; otherwise the gene is spike-in.</li>
 </ul>
 </blockquote>
-<pre class="r"><code>tech &lt;- grepl(&quot;ERCC&quot;, rownames(molecules_single))</code></pre>
+<pre class="r"><code>tech &lt;- grepl(&quot;ERCC&quot;, rownames(molecules_filter))</code></pre>
 <blockquote>
 <ul>
 <li><code>SpikeInput</code>: a vector of length <span class="math"><em>q</em> − <em>q</em><sub>0</sub></span> whose elements contain the input number of molecules for the spike-in genes (amount per cell).</li>
@@ -197,40 +198,21 @@ dim(molecules_single)</code></pre>
 <pre class="r"><code>spike &lt;- read.table(&quot;../data/expected-ercc-molecules.txt&quot;, header = TRUE,
                     sep = &quot;\t&quot;, stringsAsFactors = FALSE)</code></pre>
 <p>Only keep the spike-ins that were observed in at least one cell.</p>
-<pre class="r"><code>spike_input &lt;- spike$ercc_molecules_well[spike$id %in% rownames(molecules_single)]
-stopifnot(sum(tech) == length(spike_input))</code></pre>
-<p>81 of the ERCC spike-ins were observed in the single cell data.</p>
+<pre class="r"><code>spike_input &lt;- spike$ercc_molecules_well[spike$id %in% rownames(molecules_filter)]
+names(spike_input) &lt;- spike$id[spike$id %in% rownames(molecules_filter)]
+spike_input &lt;- spike_input[order(names(spike_input))]
+stopifnot(sum(tech) == length(spike_input),
+          rownames(molecules_filter)[tech] == names(spike_input))</code></pre>
+<p>34 of the ERCC spike-ins were observed in the single cell data.</p>
 <blockquote>
 <p>These elements must be stored into an object of class <code>BASiCS_Data</code>.</p>
 </blockquote>
-<pre class="r"><code>basics_data &lt;- newBASiCS_Data(as.matrix(molecules_single), tech, spike_input)</code></pre>
+<pre class="r"><code>basics_data &lt;- newBASiCS_Data(as.matrix(molecules_filter), tech, spike_input,
+                              BatchInfo = anno_filter$batch)</code></pre>
 <pre><code>An object of class BASiCS_Data
- Dataset contains 17478 genes (17397 biological and 81 technical) and 563 cells.
- Elements (slots): Counts, Tech and SpikeInput.
-
-NOTICE: BASiCS requires a pre-filtered dataset 
-    - You must remove poor quality cells before creating the BASiCS data object 
-    - We recommend to pre-filter very lowly expressed transcripts before creating the object. 
-      Inclusion criteria may vary for each data. For example, remove transcripts 
-          - with very low total counts across of all samples 
-          - that are only expressed in few cells 
-            (by default genes expressed in only 1 cell are not accepted) 
-          - with very low total counts across the samples where the transcript is expressed 
-
- BASiCS_Filter can be used for this purpose </code></pre>
-</div>
-<div id="filter" class="section level2">
-<h2>Filter</h2>
-<pre class="r"><code>basics_filter = BASiCS_Filter(as.matrix(molecules_single), tech, spike_input, 
-                              MinTotalCountsPerCell = 2,
-                              MinTotalCountsPerGene = 2, 
-                              MinCellsWithExpression = 2,
-                              MinAvCountsPerCellsWithExpression = 2)
-filter_data = newBASiCS_Data(basics_filter$Counts, basics_filter$Tech,
-                             basics_filter$SpikeInput)</code></pre>
-<pre><code>An object of class BASiCS_Data
- Dataset contains 9378 genes (9348 biological and 30 technical) and 563 cells.
- Elements (slots): Counts, Tech and SpikeInput.
+ Dataset contains 10598 genes (10564 biological and 34 technical) and 568 cells.
+ Elements (slots): Counts, Tech, SpikeInput and BatchInfo.
+ The data contains 8 batches.
 
 NOTICE: BASiCS requires a pre-filtered dataset 
     - You must remove poor quality cells before creating the BASiCS data object 
@@ -245,106 +227,135 @@ NOTICE: BASiCS requires a pre-filtered dataset
 </div>
 <div id="fit-the-model" class="section level2">
 <h2>Fit the model</h2>
-<pre class="r"><code>if (file.exists(&quot;../data/chain_phi_mcmc.txt&quot;)) {
-  chain_mu = as.matrix(fread(&quot;../data/chain_mu_mcmc.txt&quot;))
-  chain_delta = as.matrix(fread(&quot;../data/chain_delta_mcmc.txt&quot;))
-  chain_phi = as.matrix(fread(&quot;../data/chain_phi_mcmc.txt&quot;))
-  chain_s = as.matrix(fread(&quot;../data/chain_s_mcmc.txt&quot;))
-  chain_nu = as.matrix(fread(&quot;../data/chain_nu_mcmc.txt&quot;))#
-  chain_theta = as.matrix(fread(&quot;../data/chain_theta_mcmc.txt&quot;)[, 1, with = FALSE])
+<pre class="r"><code>store_dir &lt;- &quot;../data&quot;
+run_name &lt;- &quot;batch-clean&quot;
+if (file.exists(paste0(store_dir, &quot;/chain_phi_&quot;, run_name, &quot;.txt&quot;))) {
+  chain_mu = as.matrix(fread(paste0(store_dir, &quot;/chain_mu_&quot;, run_name, &quot;.txt&quot;)))
+  chain_delta = as.matrix(fread(paste0(store_dir, &quot;/chain_delta_&quot;, run_name, &quot;.txt&quot;)))
+  chain_phi = as.matrix(fread(paste0(store_dir, &quot;/chain_phi_&quot;, run_name, &quot;.txt&quot;)))
+  chain_s = as.matrix(fread(paste0(store_dir, &quot;/chain_s_&quot;, run_name, &quot;.txt&quot;)))
+  chain_nu = as.matrix(fread(paste0(store_dir, &quot;/chain_nu_&quot;, run_name, &quot;.txt&quot;)))
+  chain_theta = as.matrix(fread(paste0(store_dir, &quot;/chain_theta_&quot;, run_name, &quot;.txt&quot;)))
 
   mcmc_output &lt;- newBASiCS_Chain(mu = chain_mu, delta = chain_delta,
                                  phi = chain_phi, s = chain_s,
                                  nu = chain_nu, theta = chain_theta)
+
+  time_total &lt;- readRDS(paste0(store_dir, &quot;/time_total_&quot;, run_name, &quot;.rds&quot;))
 } else {
-  mcmc_output &lt;- BASiCS_MCMC(filter_data, N = 4000, Thin = 10, Burn = 2000,
+  time_start &lt;- Sys.time()
+  mcmc_output &lt;- BASiCS_MCMC(basics_data, N = 40000, Thin = 10, Burn = 20000,
                              PrintProgress = TRUE, StoreChains = TRUE,
-                             StoreDir = &quot;../data&quot;, RunName = &quot;mcmc&quot;)
+                             StoreDir = store_dir, RunName = run_name)
+  time_end &lt;- Sys.time()
+  time_total &lt;- difftime(time_end, time_start, units = &quot;hours&quot;)
+  saveRDS(time_total, paste0(store_dir, &quot;/time_total_&quot;, run_name, &quot;.rds&quot;))
 }</code></pre>
-<pre><code>An object of class BASiCS_Chain
- 200 MCMC samples.
- Dataset contains 9378 genes (9348 biological and 30 technical) and 563 cells.
+<pre><code>
+Read 0.0% of 2000 rows
+Read 2000 rows and 10598 (of 10598) columns from 0.333 GB file in 00:00:08
+
+Read 0.0% of 2000 rows
+Read 2000 rows and 10564 (of 10564) columns from 0.351 GB file in 00:00:09
+An object of class BASiCS_Chain
+ 2000 MCMC samples.
+ Dataset contains 10598 genes (10564 biological and 34 technical) and 568 cells (8 batches). 
  Elements (slots): mu, delta, phi, s, nu and theta.</code></pre>
+<p>Fitting the model took 79.66 hours.</p>
 <p>Summarize the results.</p>
 <pre class="r"><code>mcmc_summary &lt;- Summary(mcmc_output)</code></pre>
 </div>
-<div id="cellular-mrna-content" class="section level2">
-<h2>Cellular mRNA content</h2>
-<p>Phi is the cellular RNA content differences. They ascribe all these differences to true biological differences in RNA content from cell to cell, i.e. due to the cell cylce.</p>
+<div id="batch-information" class="section level2">
+<h2>Batch information</h2>
+<p>The unexplained technical noise is similar across batches.</p>
+<pre class="r"><code>colnames(mcmc_output@theta) &lt;- unique(anno_filter$batch)
+theta_long &lt;- gather(as.data.frame(mcmc_output@theta), key = &quot;batch&quot;,
+                     value = &quot;theta&quot;)
+ggplot(theta_long, aes(x = batch, y = theta)) +
+  geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 90)) +
+  labs(title = &quot;Modeling of separate technical effects per batch&quot;)</code></pre>
+<p><img src="figure/basics.Rmd/batch-theta-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="cell-specific-normalizing-constants" class="section level2">
+<h2>Cell-specific normalizing constants</h2>
+<p>BASiCS models two cell-specific parameters. Phi models the differences in gene molecules. S models the differences in ERCC molecules.</p>
 <pre class="r"><code>plot(mcmc_summary, Param = &quot;phi&quot;)</code></pre>
 <p><img src="figure/basics.Rmd/phi-rna-content-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<p>However, we have observed that</p>
-<ul>
-<li><a href="detect-genes.html#mean-number-of-total-counts">total molecule count increases with increasing sequencing depth</a></li>
-<li><a href="cell-cycle.html#total-molecule-counts-and-reads-counts-of-each-cell">this relationship holds within cell cycle phases</a></li>
-<li><a href="subsample-high-coverage-lcl.html#number-of-total-counts">molecules are not exhausted even after thorough sequencing</a></li>
-</ul>
-<p>It is no suprise that Phi and the total molecule counts are highly correlated. But we believe most of these differences are due to sequencing depth and the counts should be standardized.</p>
-<pre class="r"><code>phi &lt;- displaySummaryBASiCS(mcmc_summary, Param = &quot;phi&quot;)
-phi &lt;- cbind(phi, anno_single)
-phi$total_count &lt;- colSums(counts(filter_data))</code></pre>
-<pre class="r"><code>phi_molecule_plot &lt;- ggplot(phi, aes(x = total_count, y = Phi)) +
-  geom_point() +
-  labs(x = &quot;Total molecule count&quot;,
-       title = &quot;Phi measures total molecule count differences&quot;)
-phi_molecule_plot</code></pre>
-<p><img src="figure/basics.Rmd/phi-versus-molecule-count-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<p>Since read and molecule counts are highly correlated, we expect the same relationship to hold for read depth. But it does drive the point home more that we think this is due to sequencing depth and not a difference in cell size.</p>
-<p>Input read counts.</p>
-<pre class="r"><code>reads &lt;- read.table(&quot;../data/reads.txt&quot;, header = TRUE,
-                    stringsAsFactors = FALSE)</code></pre>
-<p>Subset to only include the quality single cells and the genes used in the BASiCS analysis.</p>
-<pre class="r"><code>reads_sub &lt;- reads[rownames(reads) %in% rownames(counts(filter_data)),
-                   colnames(reads) %in% colnames(counts(filter_data))]
-stopifnot(dim(reads_sub) == dim(counts(filter_data)))
-phi$total_read_count &lt;- colSums(reads_sub) / 10^6</code></pre>
-<p>While the fit is not as good, it is still clearly driving the pattern.</p>
-<pre class="r"><code>phi_read_plot &lt;- phi_molecule_plot %+% phi %+% aes(x = total_read_count) +
-  geom_smooth() +
-  labs(x = &quot;Total read count (x10^6)&quot;,
-       title = &quot;Phi measure total read count differences&quot;)
-phi_read_plot</code></pre>
-<pre><code>geom_smooth: method=&quot;auto&quot; and size of largest group is &lt;1000, so using loess. Use &#39;method = x&#39; to change the smoothing method.</code></pre>
-<p><img src="figure/basics.Rmd/phi-versus-read-count-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-</div>
-<div id="capture-efficiency" class="section level2">
-<h2>Capture efficiency</h2>
-<p>S is supposed to measure the capture efficiency.</p>
 <pre class="r"><code>plot(mcmc_summary, Param = &quot;s&quot;)</code></pre>
 <p><img src="figure/basics.Rmd/s-capture-efficiency-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>efficiency &lt;- numeric(length = ncol(counts(filter_data)))
-total_ercc_molecules &lt;- sum(spike$ercc_molecules_well)
-for (i in 1:ncol(counts(filter_data))) {
-  efficiency[i] &lt;- sum(counts(filter_data, type = &quot;technical&quot;)[, i]) /
-                   total_ercc_molecules
-}
-summary(efficiency)</code></pre>
-<pre><code>   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-0.04581 0.07525 0.08383 0.09030 0.10720 0.15850 </code></pre>
-<pre class="r"><code>s &lt;- displaySummaryBASiCS(mcmc_summary, Param = &quot;s&quot;)
-s &lt;- cbind(s, anno_single)
-s$efficiency &lt;- efficiency</code></pre>
-<p>This does not appear to be estimated very well. It may need more iterations, but it already takes ~5 hours to run the 4000 iterations.</p>
-<pre class="r"><code>ggplot(s, aes(x = efficiency, y = S)) +
+<pre class="r"><code>phi &lt;- displaySummaryBASiCS(mcmc_summary, Param = &quot;phi&quot;)
+s &lt;- displaySummaryBASiCS(mcmc_summary, Param = &quot;s&quot;)
+parameters &lt;- cbind(phi, s, anno_filter)
+parameters$gene_count &lt;- colSums(counts(basics_data, type = &quot;biological&quot;))
+parameters$ercc_count &lt;- colSums(counts(basics_data, type = &quot;technical&quot;))</code></pre>
+<div id="phi-versus-gene-molecule-count" class="section level3">
+<h3>Phi versus gene molecule count</h3>
+<pre class="r"><code>phi_gene_count &lt;- ggplot(parameters, aes(x = gene_count, y = Phi)) +
   geom_point() +
-  geom_errorbar(aes(ymin = lower, ymax = upper), alpha = 0.5) +
-  geom_smooth() +
-  labs(x = &quot;ERCC capture efficiency&quot;,
-       title = &quot;S poorly models differences in capture efficiency&quot;)</code></pre>
-<pre><code>geom_smooth: method=&quot;auto&quot; and size of largest group is &lt;1000, so using loess. Use &#39;method = x&#39; to change the smoothing method.</code></pre>
-<p><img src="figure/basics.Rmd/s-v-capture-efficiency-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+  geom_smooth(method = &quot;lm&quot;) +
+  labs(x = &quot;Gene molecule count&quot;,
+       title = paste0(&quot;Phi measures gene molecule count differences\nr = &quot;,
+                      round(cor(parameters$gene_count, parameters$Phi), 2)))
+phi_gene_count</code></pre>
+<p><img src="figure/basics.Rmd/phi-versus-gene-molecule-count-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="phi-versus-ercc-molecule-count" class="section level3">
+<h3>Phi versus ERCC molecule count</h3>
+<pre class="r"><code>phi_ercc_count &lt;- phi_gene_count %+% aes(x = ercc_count) +
+  labs(x = &quot;ERCC molecule count&quot;,
+       title = paste0(&quot;Phi does not measure ERCC molecule count differences\nr = &quot;,
+                      round(cor(parameters$ercc_count, parameters$Phi), 2)))
+phi_ercc_count</code></pre>
+<p><img src="figure/basics.Rmd/phi-versus-ercc-molecule-count-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="s-versus-ercc-molecule-count" class="section level3">
+<h3>S versus ERCC molecule count</h3>
+<pre class="r"><code>s_ercc_count &lt;- phi_ercc_count %+% aes(y = S) +
+  labs(y = &quot;S&quot;,
+       title = paste0(&quot;S measures ERCC molecule count differences\nr = &quot;,
+                      round(cor(parameters$ercc_count, parameters$S), 2)))
+s_ercc_count</code></pre>
+<p><img src="figure/basics.Rmd/s-versus-ercc-molecule-count-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="s-versus-gene-molecule-count" class="section level3">
+<h3>S versus gene molecule count</h3>
+<pre class="r"><code>s_gene_count &lt;- phi_gene_count %+% aes(y = S) +
+  labs(y = &quot;S&quot;,
+       title = paste0(&quot;S does not measure gene molecule count differences\nr = &quot;,
+                      round(cor(parameters$gene_count, parameters$S), 2)))
+s_gene_count</code></pre>
+<p><img src="figure/basics.Rmd/s-versus-gene-molecule-count-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="phi-versus-s" class="section level3">
+<h3>Phi versus S</h3>
+<pre class="r"><code>phi_s &lt;- ggplot(parameters, aes(x = S, y = Phi)) +
+  geom_point() +
+  geom_smooth(method = &quot;lm&quot;) +
+  labs(       title = paste0(&quot;Phi versus S\nr = &quot;,
+                      round(cor(parameters$S, parameters$Phi), 2)))
+phi_s</code></pre>
+<p><img src="figure/basics.Rmd/phi-versus-s-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
 </div>
 <div id="denoised-data" class="section level2">
 <h2>Denoised data</h2>
-<p>Remove technical noise (i.e. normalize using the ERCC spike-ins).</p>
-<pre class="r"><code>denoised = BASiCS_DenoisedCounts(Data = filter_data, Chain = mcmc_output)</code></pre>
+<p>Remove technical noise (i.e. normalize using the ERCC spike-ins). This takes a long time!</p>
+<pre class="r"><code>denoised = BASiCS_DenoisedCounts(Data = basics_data, Chain = mcmc_output)
+write.table(denoised, &quot;../data/basics-denoised.txt&quot;, quote = FALSE,
+            sep = &quot;\t&quot;, col.names = NA)
+denoised_rates = BASiCS_DenoisedRates(Data = basics_data, Chain = mcmc_output)</code></pre>
+<pre><code>[1] &quot;This calculation requires a loop across the 2000 MCMC iterations&quot;
+[1] &quot;You might need to be patient ... &quot;</code></pre>
+<pre class="r"><code>write.table(denoised_rates, &quot;../data/basics-denoised-rates.txt&quot;, quote = FALSE,
+            sep = &quot;\t&quot;, col.names = NA)</code></pre>
 <div id="pca---basics-denoised" class="section level3">
 <h3>PCA - BASiCS Denoised</h3>
-<p>Both the raw and the cpm versions of the BASiCS denoised data appear similar to the result with the <a href="#pca-non-normalized-cpm">non-normalized cpm data</a>.</p>
+<p>Both the raw and the cpm versions of the BASiCS denoised data appear similar to the result with the <a href="#pca-non-normalized-cpm">non-normalized cpm data</a>. This does not change substantially when increasing the iterations from a few thousands to a few tens of thousands.</p>
 <pre class="r"><code>pca_basics &lt;- run_pca(denoised)
 plot_pca(pca_basics$PCs, explained = pca_basics$explained,
-         metadata = anno_single, color = &quot;individual&quot;,
-         shape = &quot;batch&quot;, factors = c(&quot;individual&quot;, &quot;batch&quot;))</code></pre>
+         metadata = anno_filter, color = &quot;individual&quot;,
+         shape = &quot;replicate&quot;)</code></pre>
 <p><img src="figure/basics.Rmd/pca-basics-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
 <div id="pca---basics-denoised-cpm" class="section level3">
@@ -354,36 +365,35 @@ plot_pca(pca_basics$PCs, explained = pca_basics$explained,
                                calcNormFactors(denoised, method = &quot;TMM&quot;))
 pca_basics_cpm &lt;- run_pca(denoised_cpm)
 plot_pca(pca_basics_cpm$PCs, explained = pca_basics_cpm$explained,
-         metadata = anno_single, color = &quot;individual&quot;,
-         shape = &quot;batch&quot;, factors = c(&quot;individual&quot;, &quot;batch&quot;))</code></pre>
+         metadata = anno_filter, color = &quot;individual&quot;,
+         shape = &quot;replicate&quot;)</code></pre>
 <p><img src="figure/basics.Rmd/pca-basics-cpm-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
 <div id="pca---non-normalized" class="section level3">
 <h3>PCA - non-normalized</h3>
-<pre class="r"><code>pca_non &lt;- run_pca(counts(filter_data))
+<pre class="r"><code>pca_non &lt;- run_pca(counts(basics_data))
 plot_pca(pca_non$PCs, explained = pca_non$explained,
-         metadata = anno_single, color = &quot;individual&quot;,
-         shape = &quot;batch&quot;, factors = c(&quot;individual&quot;, &quot;batch&quot;))</code></pre>
+         metadata = anno_filter, color = &quot;individual&quot;,
+         shape = &quot;replicate&quot;)</code></pre>
 <p><img src="figure/basics.Rmd/pca-non-normalized-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
 <div id="pca---non-normalized-cpm" class="section level3">
 <h3>PCA - non-normalized cpm</h3>
-<pre class="r"><code>non_cpm &lt;- cpm(counts(filter_data), log = TRUE,
-               lib.size = colSums(counts(filter_data)) *
-                          calcNormFactors(counts(filter_data), method = &quot;TMM&quot;))
+<pre class="r"><code>non_cpm &lt;- cpm(counts(basics_data), log = TRUE,
+               lib.size = colSums(counts(basics_data)) *
+                          calcNormFactors(counts(basics_data), method = &quot;TMM&quot;))
 pca_non_cpm &lt;- run_pca(non_cpm)
 plot_pca(pca_non_cpm$PCs, explained = pca_non_cpm$explained,
-         metadata = anno_single, color = &quot;individual&quot;,
-         shape = &quot;batch&quot;, factors = c(&quot;individual&quot;, &quot;batch&quot;))</code></pre>
+         metadata = anno_filter, color = &quot;individual&quot;,
+         shape = &quot;replicate&quot;)</code></pre>
 <p><img src="figure/basics.Rmd/pca-non-normalized-cpm-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
 </div>
 <div id="session-information" class="section level2">
 <h2>Session information</h2>
 <pre class="r"><code>sessionInfo()</code></pre>
-<pre><code>R version 3.2.1 (2015-06-18)
-Platform: x86_64-pc-linux-gnu (64-bit)
-Running under: Ubuntu 14.04.3 LTS
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
 
 locale:
  [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
@@ -397,19 +407,20 @@ attached base packages:
 [1] stats     graphics  grDevices utils     datasets  methods   base     
 
 other attached packages:
-[1] testit_0.4       edgeR_3.10.2     limma_3.24.13    ggplot2_1.0.1   
-[5] data.table_1.9.4 BASiCS_0.2.0     knitr_1.10.5    
+[1] testit_0.4       edgeR_3.10.2     limma_3.24.9     tidyr_0.2.0     
+[5] ggplot2_1.0.1    data.table_1.9.4 BASiCS_0.3.0     knitr_1.10.5    
 
 loaded via a namespace (and not attached):
- [1] Rcpp_0.11.6         magrittr_1.5        BiocGenerics_0.14.0
- [4] MASS_7.3-43         munsell_0.4.2       colorspace_1.2-6   
- [7] lattice_0.20-33     stringr_1.0.0       plyr_1.8.3         
-[10] tools_3.2.1         parallel_3.2.1      grid_3.2.1         
-[13] gtable_0.1.2        coda_0.17-1         htmltools_0.2.6    
-[16] yaml_2.1.13         digest_0.6.8        reshape2_1.4.1     
-[19] formatR_1.2         evaluate_0.7        rmarkdown_0.7      
-[22] labeling_0.3        stringi_0.5-5       scales_0.2.5       
-[25] chron_2.3-47        proto_0.3-10       </code></pre>
+ [1] Rcpp_0.12.0         magrittr_1.5        MASS_7.3-40        
+ [4] BiocGenerics_0.14.0 munsell_0.4.2       colorspace_1.2-6   
+ [7] lattice_0.20-31     stringr_1.0.0       httr_0.6.1         
+[10] plyr_1.8.3          tools_3.2.0         parallel_3.2.0     
+[13] grid_3.2.0          gtable_0.1.2        coda_0.17-1        
+[16] htmltools_0.2.6     yaml_2.1.13         digest_0.6.8       
+[19] reshape2_1.4.1      formatR_1.2         bitops_1.0-6       
+[22] RCurl_1.95-4.6      evaluate_0.7        rmarkdown_0.6.1    
+[25] labeling_0.3        stringi_0.4-1       scales_0.2.4       
+[28] chron_2.3-45        proto_0.3-10       </code></pre>
 </div>
 
 
