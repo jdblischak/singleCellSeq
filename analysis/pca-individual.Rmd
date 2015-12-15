@@ -1,0 +1,101 @@
+---
+title: "Batch effect for each individual cell line..."
+author: "Joyce Hsiao"
+date: 2015-12-15
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+```
+
+## Objectives
+
+One of the ongoing debates in our data normalization project centers around the question: is there true individual difference between these cell lines in terms of global transcriptome profile? If so, then an analysis of the princiapl source of variation should reveal that individual is the the most defining source of variation. 
+
+I decided to do a quick check on batches within each indvidual cell line. We have been assessing the results of all cell lines together. To me, it is not immediately obvious whether batches are more similar with individuals or between individuals (despite results of statistical signficance). Hence, I performed principal component analysis for each individual cell lines and visualize the results to observe whether the batches occupy a major source of variation in the pricipal component analysis. If so, then I suspect the normalization step is doing a good job. If not, then I can say affirmatively that the normalization step for the current data step is doing a good job, regardless of whether I believe there to be true individual difference in the data or not....
+
+
+## Set-up
+
+I performed PCA on the data after ERCC linear transformation and after batch-effect correction.
+
+```{r}
+library("cowplot")
+theme_set(theme_bw(base_size = 12))
+source("functions.R")
+```
+
+
+## After linear transformation
+
+```{r}
+anno_filter <- read.table("../data/annotation-filter.txt", 
+                      header = TRUE,
+                      stringsAsFactors = FALSE)
+```
+
+
+```{r}
+molecules_cpm_trans <- read.table("../data/molecules-cpm-trans.txt",
+                                  header = TRUE,
+                                  stringsAsFactors = FALSE)
+```
+
+
+```{r}
+pca_molecules_cpm_trans_1 <- run_pca(molecules_cpm_trans[ , anno_filter$individual == "NA19098"])
+pca_molecules_cpm_trans_2 <- run_pca(molecules_cpm_trans[ , anno_filter$individual == "NA19101"])
+pca_molecules_cpm_trans_3 <- run_pca(molecules_cpm_trans[ , anno_filter$individual == "NA19239"])
+
+plot_grid(
+  plot_pca(pca_molecules_cpm_trans_1$PCs, explained = pca_molecules_cpm_trans_1$explained,
+           metadata = anno_filter[anno_filter$individual == "NA19098", ],
+           color = "batch") + theme(legend.position = "none"),
+  plot_pca(pca_molecules_cpm_trans_2$PCs, explained = pca_molecules_cpm_trans_2$explained,
+           metadata = anno_filter[anno_filter$individual == "NA19101", ],
+           color = "batch") + theme(legend.position = "none"),
+  plot_pca(pca_molecules_cpm_trans_3$PCs, explained = pca_molecules_cpm_trans_3$explained,
+           metadata = anno_filter[anno_filter$individual == "NA19239", ],
+           color = "batch") + theme(legend.position = "none"),
+  labels = LETTERS[1:3])
+```
+
+## Final data
+
+```{r import-ensg-final-transformed-log2counts}
+molecules_final <- read.table("../data/molecules-final.txt", 
+                             header = TRUE, stringsAsFactors = FALSE)
+```
+
+```{r}
+pca_final_1 <- run_pca(molecules_final[ , anno_filter$individual == "NA19098"])
+pca_final_2 <- run_pca(molecules_final[ , anno_filter$individual == "NA19101"])
+pca_final_3 <- run_pca(molecules_final[ , anno_filter$individual == "NA19239"])
+
+plot_grid(
+  plot_pca(pca_final_1$PCs, explained = pca_final_1$explained,
+         metadata = anno_filter[anno_filter$individual == "NA19098", ],
+         color = "batch") + theme(legend.position = "none"),
+  plot_pca(pca_final_2$PCs, explained = pca_final_2$explained,
+           metadata = anno_filter[anno_filter$individual == "NA19101", ],
+           color = "batch") + theme(legend.position = "none"),
+  plot_pca(pca_final_3$PCs, explained = pca_final_3$explained,
+           metadata = anno_filter[anno_filter$individual == "NA19239", ],
+           color = "batch") + theme(legend.position = "none"),
+  labels = LETTERS[1:3])
+```
+
+
+
+
+  
+## Session information
+
+```{r info}
+sessionInfo()
+```
+
