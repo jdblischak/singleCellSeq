@@ -65,39 +65,50 @@ Since all the library materials were used in these samples, the data collected f
 The subsampling results from these libraries showed that with the sequencing depth of 50 million reads, the numbers of endogenous genes started to plateau, whereas the total molecule counts were still increasing, suggesting that we have not yet reach the saturation point of molecule counts. 
 
 ### A novel normalization for scRNA-seq data analysis 
-To remove the technical variability arose from all the factors mentioned above without explicitly estimating the technical variability of ERCC spike-in molecule counts, here, we developed a pipeline which is applicable for studying cell-cell variability across multiple biological conditions with multiple C1 collections.  
+To remove the technical variability arose from all the factors mentioned above without explicitly estimating the technical variability of ERCC spike-in molecule counts, here, we developed a pipeline which is applicable for studying cell-to-cell variability across multiple biological conditions with multiple C1 collections. 
 
 #### Correct for collision probability
 Due to the stochasticity of the UMI sampling process, not all molecules will be tagged with an unique UMI and sequenced. 
 Thus, after removing genes with lower expression level in high quality cells, we first computed the molecule number of each gene by applying a mathematical correction to account for the effect of random counting statistics termed collision probability [@Fu2011]. 
 This step also removed the genes with molecule counts larger than 1024, which in our case were all mitochondrial genes, because of the alternative transcriptional start sites. 
 
-#### Standardization (cpm)
-We then checked if the sequencing depth played a role in total molecule counts per sample and found that the total read counts highly correlated with not only the total molecule counts but also the PC1 of overall gene expression.
-Not surprisingly, same results were also observed when we investigated the effects of sequencing depth on total molecule counts and PCA of ERCC spike-ins.
-Therefore, we performed standardization separately on endogenous genes and ERCC spike-ins within each sample using the unit of cpm (counts per million). 
+#### Standardization (counts-per-million)
+We then checked if the sequencing depth played a role in sample total molecule counts and read counts. We found that the sample total read count were highly correlated with not only the total molecule counts but also the first principal component of overall gene expression. 
+Not surprisingly, same results were also observed when we investigated the effects of sequencing depth on total molecule counts of the endogeneous genes and ERCC spike-ins.
+Therefore, we standardized sample molecule counts separately for endogenous genes and ERCC spike-ins within each sample using the unit of cpm (counts-per-million). 
+
+#### Poission regression of ERCC counts
 
 #### Linear transformation
 To eliminate the cell-to-cell technical variability coming from the differences of mRNA capture efficiency within one C1 collection, we next performed linear transformation on the log transformed molecule numbers using a fitted linear model generating from the observed and the expected molecule qualities of ERCC spike-ins in each sample.
 In other words, we used ERCC spike-ins to make a linear standard curve for each sample.  
 The PCA of gene expression after linear transformation showed that PC2 separated not only the three individuals but also the three C1 replicates of each individual, similar to the results of filtered raw molecule data, suggesting the batch effect from the C1 replicates were yet to be removed.
 
-shrunk linear transformation???
-
 #### Mixed model for batch effect correction
-Since the linear transformation with the ERCC spike-ins was not sufficient to get rid of all the unwanted technical variation, we used a mixed effect model to correct for batch effects across C1 replicates by adapting the algorithm from limma for estimating variance components due to random effects [@Smyth2005]. 
-Specifically, this analysis operated under the assumption that biological replicates (or C1 replicates within an individual in this case) share similar correlation across genes. 
-The results of PCA on the cleaned data showed that the samples from different C1 replicates of the same individual largely overlapped, indicating that we have successfully removed large proportion of the unwanted technical variation across C1 replicates using out normalization method.
+To directly remove unwanted techncial variation between C1 plates, we modeled between well correlation in gene expression within C1 plates. We assumed that C1 plates share similar techncial variation due to gene expression similarity between cells on the same plate. The results of PCA on the corrected data showed that the samples from different C1 replicates of the same individual largely overlapped, indicating that we have successfully removed large proportion of the unwanted technical variation across C1 replicates. 
+
 Furthermore, we were also confident to conclude that individual 19239 was the outlier of the three individuals.
 
-### Cell-cell variability of gene expression
-We evaluate the variability in gene expression profiles for each individual samples.
-The principal component analysis suggest that after our normalization steps, the major source of variation is not driven by replicate labels but instead is highly correlated with mean molecule counts across replicates. 
-Therefore, for transcriptome-wide comparison of cell-to-cell heterogeneity, we combine replicates of each individual samples and compute each gene’s coefficients of variation across the combined samples.
-To account for the confounding effect of mean molecule counts in the individual difference of coefficients of variation, we fit a data-wide PCA and filtered the first PC (29% of variation), which is highly correlated with mean molecule counts (r = .90).
+### Cell-to-cell variability of gene expression
 
-### Genes with differential cell-cell variability across individuals
+Poisson plot for each individual
+(poisson fit plot for all individuals)
+*gene annotation
 
+Top ranked CV similar between individuals due to mean similarity 
+(mean and cv venn diagram)
+
+High mean different CV
+low mean different CV
+
+SCV ranks are different between individuals
+(cv venn diagram)
+*gene annotation
+
+
+### Genes with differential cell-to-cell variability across individuals
+
+()
 
 1. study design and data collection (Fig. `r fig_main_qc`, sup fig.1 and 2)
 2. cpm (Fig. `r fig_main_cpm`, sup fig.3 and 4)
