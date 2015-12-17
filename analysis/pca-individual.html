@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+<meta name="author" content="Joyce Hsiao" />
+
+<meta name="date" content="2015-12-15" />
+
+<title>Batch effect for each individual cell line…</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Batch effect for each individual cell line…</h1>
+<h4 class="author"><em>Joyce Hsiao</em></h4>
+<h4 class="date"><em>2015-12-15</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#objectives">Objectives</a></li>
+<li><a href="#set-up">Set-up</a></li>
+<li><a href="#after-linear-transformation">After linear transformation</a></li>
+<li><a href="#final-data">Final data</a></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2015-12-17</p>
+<p><strong>Code version:</strong> 035bc098a6e8b06a27e2dab7c55453c5866ffe7b</p>
+<div id="objectives" class="section level2">
+<h2>Objectives</h2>
+<p>One of the ongoing debates in our data normalization project centers around the question: is there true individual difference between these cell lines in terms of global transcriptome profile? If so, then an analysis of the princiapl source of variation should reveal that individual is the the most defining source of variation.</p>
+<p>I decided to do a quick check on batches within each indvidual cell line. We have been assessing the results of all cell lines together. To me, it is not immediately obvious whether batches are more similar with individuals or between individuals (despite results of statistical signficance). Hence, I performed principal component analysis for each individual cell lines and visualize the results to observe whether the batches occupy a major source of variation in the pricipal component analysis. If so, then I suspect the normalization step is doing a good job. If not, then I can say affirmatively that the normalization step for the current data step is doing a good job, regardless of whether I believe there to be true individual difference in the data or not….</p>
+</div>
+<div id="set-up" class="section level2">
+<h2>Set-up</h2>
+<p>I performed PCA on the data after ERCC linear transformation and after batch-effect correction.</p>
+<pre class="r"><code>library(&quot;cowplot&quot;)</code></pre>
+<pre><code>Loading required package: ggplot2
+
+Attaching package: &#39;cowplot&#39;
+
+The following object is masked from &#39;package:ggplot2&#39;:
+
+    ggsave</code></pre>
+<pre class="r"><code>theme_set(theme_bw(base_size = 12))
+source(&quot;functions.R&quot;)</code></pre>
+</div>
+<div id="after-linear-transformation" class="section level2">
+<h2>After linear transformation</h2>
+<pre class="r"><code>anno_filter &lt;- read.table(&quot;../data/annotation-filter.txt&quot;, 
+                      header = TRUE,
+                      stringsAsFactors = FALSE)</code></pre>
+<pre class="r"><code>molecules_cpm_trans &lt;- read.table(&quot;../data/molecules-cpm-trans.txt&quot;,
+                                  header = TRUE,
+                                  stringsAsFactors = FALSE)</code></pre>
+<pre class="r"><code>pca_molecules_cpm_trans_1 &lt;- run_pca(molecules_cpm_trans[ , anno_filter$individual == &quot;NA19098&quot;])
+pca_molecules_cpm_trans_2 &lt;- run_pca(molecules_cpm_trans[ , anno_filter$individual == &quot;NA19101&quot;])
+pca_molecules_cpm_trans_3 &lt;- run_pca(molecules_cpm_trans[ , anno_filter$individual == &quot;NA19239&quot;])
+
+plot_grid(
+  plot_pca(pca_molecules_cpm_trans_1$PCs, explained = pca_molecules_cpm_trans_1$explained,
+           metadata = anno_filter[anno_filter$individual == &quot;NA19098&quot;, ],
+           color = &quot;batch&quot;) + theme(legend.position = &quot;none&quot;),
+  plot_pca(pca_molecules_cpm_trans_2$PCs, explained = pca_molecules_cpm_trans_2$explained,
+           metadata = anno_filter[anno_filter$individual == &quot;NA19101&quot;, ],
+           color = &quot;batch&quot;) + theme(legend.position = &quot;none&quot;),
+  plot_pca(pca_molecules_cpm_trans_3$PCs, explained = pca_molecules_cpm_trans_3$explained,
+           metadata = anno_filter[anno_filter$individual == &quot;NA19239&quot;, ],
+           color = &quot;batch&quot;) + theme(legend.position = &quot;none&quot;),
+  labels = LETTERS[1:3])</code></pre>
+<p><img src="figure/pca-individual.Rmd/unnamed-chunk-4-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="final-data" class="section level2">
+<h2>Final data</h2>
+<pre class="r"><code>molecules_final &lt;- read.table(&quot;../data/molecules-final.txt&quot;, 
+                             header = TRUE, stringsAsFactors = FALSE)</code></pre>
+<pre class="r"><code>pca_final_1 &lt;- run_pca(molecules_final[ , anno_filter$individual == &quot;NA19098&quot;])
+pca_final_2 &lt;- run_pca(molecules_final[ , anno_filter$individual == &quot;NA19101&quot;])
+pca_final_3 &lt;- run_pca(molecules_final[ , anno_filter$individual == &quot;NA19239&quot;])
+
+plot_grid(
+  plot_pca(pca_final_1$PCs, explained = pca_final_1$explained,
+         metadata = anno_filter[anno_filter$individual == &quot;NA19098&quot;, ],
+         color = &quot;batch&quot;) + theme(legend.position = &quot;none&quot;),
+  plot_pca(pca_final_2$PCs, explained = pca_final_2$explained,
+           metadata = anno_filter[anno_filter$individual == &quot;NA19101&quot;, ],
+           color = &quot;batch&quot;) + theme(legend.position = &quot;none&quot;),
+  plot_pca(pca_final_3$PCs, explained = pca_final_3$explained,
+           metadata = anno_filter[anno_filter$individual == &quot;NA19239&quot;, ],
+           color = &quot;batch&quot;) + theme(legend.position = &quot;none&quot;),
+  labels = LETTERS[1:3])</code></pre>
+<p><img src="figure/pca-individual.Rmd/unnamed-chunk-5-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] testit_0.4    cowplot_0.3.1 ggplot2_1.0.1 knitr_1.10.5 
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.12.0      magrittr_1.5     MASS_7.3-40      munsell_0.4.2   
+ [5] colorspace_1.2-6 stringr_1.0.0    httr_0.6.1       plyr_1.8.3      
+ [9] tools_3.2.0      grid_3.2.0       gtable_0.1.2     htmltools_0.2.6 
+[13] yaml_2.1.13      digest_0.6.8     reshape2_1.4.1   formatR_1.2     
+[17] bitops_1.0-6     RCurl_1.95-4.6   evaluate_0.7     rmarkdown_0.6.1 
+[21] labeling_0.3     stringi_0.4-1    scales_0.2.4     proto_0.3-10    </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+
+</body>
+</html>
