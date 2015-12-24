@@ -1,0 +1,132 @@
+---
+  title: "Poisson GLM normalization"
+date: 2015-12-22
+---
+  
+  **Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+opts_chunk$set(fig.width = 8, fig.height = 8)
+```
+
+```{r packages, message=FALSE}
+require(ggplot2)
+theme_set(theme_bw(base_size = 12))
+require(dplyr)
+require(doMC)
+require(gridExtra)
+registerDoMC(7)
+require(data.table)
+```
+
+Read raw data
+
+```{r load-data}
+anno=read.table("../data/annotation.txt",header=T,stringsAsFactors=F)
+quality_single_cells <- scan("../data/quality-single-cells.txt",
+                             what = "character")
+anno_filter <- anno %>% filter(sample_id %in% quality_single_cells)
+spike <- read.table("../data/expected-ercc-molecules.txt", header = TRUE,
+                    sep = "\t", stringsAsFactors = FALSE)
+molecules_filter <- read.table("../data/molecules-filter.txt", header = TRUE,
+                               stringsAsFactors = FALSE)
+
+spike_input <- spike$ercc_molecules_well[spike$id %in% rownames(molecules_filter)]
+names(spike_input) <- spike$id[spike$id %in% rownames(molecules_filter)]
+spike_input <- spike_input[order(names(spike_input))]
+tech <- grepl("ERCC", rownames(molecules_filter))
+molecules_filter=as.matrix(molecules_filter)
+batches=unique(anno_filter$batch)
+
+molecules_cpm = fread( "../data/molecules-cpm.txt", header = TRUE,
+                       stringsAsFactors = FALSE)
+setDF(molecules_cpm)
+rownames(molecules_cpm)=molecules_cpm$V1
+molecules_cpm$V1=NULL 
+molecules_cpm=as.matrix(molecules_cpm)
+
+molecules_cpm_trans_shrunk = read.table("../data/molecules-cpm-trans-shrunk.txt", header = TRUE, stringsAsFactors = FALSE)
+
+```
+
+## Poisson spike-in only model
+
+```{r pois-spikeonly}
+pois_glm_params <- lapply(1:3,function(g) numeric(ncol(molecules_cpm)))
+names(pois_glm_params) = c("intercept","nu","theta")
+for (i in 1:ncol(molecules_cpm)) {
+  fit <- glm(molecules_filter[names(spike_input), i] ~ log(spike_input), family="poisson")
+  pois_glm_params$intercept[i] <- fit$coefficients[1]
+  pois_glm_params$nu[i] <- fit$coefficients[2]
+}
+pois_glm_expression <- sweep( sweep( molecules_cpm, 2, pois_glm_params$intercept, "-"), 2, pois_glm_params$nu, "/" )
+```
+
+## Collate normalized matrices
+
+Collect together all the normalized expression matrices for analysis
+
+```{r cpm-matrices}
+cpm_mats <- list( raw=molecules_cpm,  pois_glm_expression=pois_glm_expression )
+```
+
+## Analysis of variance
+
+We need a nested ANOVA since the replicates are not common across the individuals. 
+
+```{r nested-anova-code}
+my_nested_anova=function(temp) {
+  global_mean=mean(temp$y)
+  
+  ind_means=temp %>% group_by(individual) %>% summarize(m=mean(y)) %>% as.data.frame
+  rownames(ind_means) = ind_means$individual
+  temp$ind_means=ind_means[ temp$individual, "m" ]
+  
+  batch_means=temp %>% group_by(batch) %>% summarise(m=mean(y)) %>% as.data.frame
+  rownames(batch_means) = batch_means$batch 
+  temp$batch_means=batch_means[ temp$batch, "m" ]
+  
+  c(ssa=sum( (temp$ind_means - global_mean)^2 ),
+  ssb=sum( (temp$batch_means - temp$ind_means)^2 ),
+  sse=sum( (temp$y - temp$batch_means)^2 ),
+  sst=sum( (temp$y - global_mean)^2  ))
+}
+
+#aov(x[i,] ~ Error(anno_filter$batch) + anno_filter$individual )
+```
+
+Run ANOVAs per gene for each matrix and calculate variance components
+
+```{r run-anovas}
+anovas <- lapply(cpm_mats, function(x) {
+  foreach(i=1:nrow(x)) %dopar% my_nested_anova(data.frame(y=x[i,], batch=anno_filter$batch, individual=anno_filter$individual))
+})
+
+variance_components <- lapply( as.list(names(anovas)), function(name) {
+  ss=do.call(rbind,anovas[[name]])[,1:3]
+  colnames(ss)=c("individual","batch","residual")
+  data.frame(sweep(ss,1,rowSums(ss),"/"), method=name)
+} )
+names(variance_components)=names(cpm_mats)
+
+batch_over_explained <- lapply( as.list(names(anovas)), function(name) {
+  ss=do.call(rbind,anovas[[name]])[,1:2]
+  colnames(ss)=c("individual","batch")
+  data.frame( prop_batch=ss[,"batch"] / rowSums(ss), method=name)
+} )
+names(batch_over_explained) = names(cpm_mats)
+```
+
+Plot proportions explained by batch vs. individual
+```{r plot-pve-batch-vs-individual}
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+ggplot( do.call(rbind,batch_over_explained), aes(prop_batch,col=method)) + geom_density(alpha=0.2, position="identity") + xlab("variance_batch / (variance_batch + variance_individual)") + theme(legend.position=c(.8,.8)) + scale_colour_manual(values=cbPalette)+ scale_fill_manual(values=cbPalette)
+```
+
+Plot overall percent variance explained
+```{r plot-pve-total}
+ggplot( do.call(rbind,variance_components), aes(1-residual,col=method)) + geom_density() + xlab("proportion variance explained") + xlim(0,.5)+ scale_colour_manual(values=cbPalette) + theme(legend.position=c(.8,.8))
+```
