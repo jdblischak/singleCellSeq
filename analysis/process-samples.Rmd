@@ -215,9 +215,23 @@ cat ~/log/index/* | head
 
 ## Remove duplicate UMIs
 
+[rmdup-umi.sh][] counts the number of UMIs at each start position using `umitools rmdup` ([v2.1.1][umitools]).
+To account for errors introduced during PCR amplification and sequencing, UMIs within an edit distance of 1 are merged into a single UMI (flag `--mismatches 1`).
+The output is written to the directory `bam-rmdup-umi`.
+
+Two different sets of BAM files are processed in this way.
+The BAM files in `bam-processed` contain the mapped reads for a given sample for a given sequencing lane.
+We exclude the bulk samples because we do not want their molecule counts (`grep -v bulk`).
+These lane-level molecule counts will be used to assess the technical effects of sequencing on different flow cells and lanes (anticipated to be minimal).
+The molecule counts from the combined single cell samples in `bam-combined` are used in downstream analysis.
+
 ```bash
-submit-array.sh rmdup-umi.sh 2g bam-processed/*bam
+submit-array.sh rmdup-umi.sh 2g `ls bam-processed/*bam | grep -v bulk` bam-combined/*bam
 ```
+
+[rmdup-umi.sh]: https://github.com/jdblischak/singleCellSeq/blob/update-pipeline/code/rmdup-umi.sh
+
+Expect 3,456 BAM files (864 combined samples + 3 individuals * 3 reps * 96 wells * 3 lanes).
 
 ```bash
 ls bam-rmdup-umi/*bam | wc -l
@@ -228,7 +242,7 @@ grep -w failure ~/log/rmdup-umi.sh/* | wc -l
 ## Count reads per gene
 
 ```bash
-submit-array.sh count-reads-per-gene.sh 2g bam-processed/*bam bam-rmdup-umi/*bam
+submit-array.sh count-reads-per-gene.sh 2g bam-processed/*bam bam-rmdup-umi/*bam bam-combined/*bam
 ```
 
 ```bash
