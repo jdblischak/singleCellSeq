@@ -145,6 +145,74 @@ Check for the presence of intermediate files output during sorting.
 ls bam-processed/*sorted*0*bam
 ```
 
+## Combine single cell samples
+
+Molecule counts are obtained by counting the number of unique UMIs observed at each start position.
+In order for this to be accurate for a given single cell, we need to combine all the sequencing data for a given sample.
+We merge the sorted BAM files using `samtools merge` and save the output BAM files in the directory `bam-combined`.
+
+```bash
+# From head node
+mkdir -p bam-combined
+mkdir -p ~/log/combine
+for IND in 19098 19101 19239
+do
+  for REP in {1..3}
+  do
+    for ROW in {A..H}
+    do
+      for COL in {1..12}
+      do
+        ID=`printf "%s.%s.%s%02d\n" $IND $REP $ROW $COL`
+        echo $ID
+        echo "samtools merge bam-combined/$ID.trim.sickle.sorted.combined.bam bam-processed/$ID*trim.sickle.sorted.bam" | qsub -l h_vmem=4g -N $ROW$COL.$IND.$REP.combine -cwd -o ~/log/combine.sh -j y -V
+      done
+    done
+  done
+done
+```
+
+Confirm that it worked.
+We only expect 864 samples (3 individuals * 3 replicates * 96 wells).
+The bulk samples are not combined because they violate the assumptions of a UMI protocol.
+In other words, they contain too many unique molecules for the 1,024 UMIs to properly tag them all.
+
+```bash
+ls bam-combined/*bam | wc -l
+# There should be no output from samtools merge
+cat ~/log/combine/* | head
+```
+
+Then index each merged sample:
+
+```bash
+# from head node
+mkdir -p ~/log/index
+for IND in 19098 19101 19239
+do
+  for REP in {1..3}
+  do
+    for ROW in {A..H}
+    do
+      for COL in {1..12}
+      do
+        ID=`printf "%s.%s.%s%02d\n" $IND $REP $ROW $COL`
+        echo $ID
+        echo "samtools index bam-combined/$ID.trim.sickle.sorted.combined.bam" | qsub -l h_vmem=2g -N $ROW$COL.$IND.$REP.index -cwd -o ~/log/index -j y -V -l 'hostname=!bigmem02'
+      done
+    done
+  done
+done
+```
+
+Confirm that it worked.
+
+```bash
+ls bam-combined/*bai | wc -l
+# There should be no output from samtools index
+cat ~/log/index/* | head
+```
+
 ## Remove duplicate UMIs
 
 ```bash
@@ -191,122 +259,4 @@ The counts for each gene for each sequencing lane.
 
 ```bash
 gather-gene-counts.py > gene-counts.txt
-```
-
-## Process at the sample level
-
-All the processing performed above is done at the level of the sequencing lane.
-Thus when removing reads that have the same UMI and start position, this is done at the level of lane instead of the whole sample.
-
-To get true molecule counts, need to run `umitools rmdup` on all the reads for a given sample.
-Only using sickle trimmed data.
-Starting with the sorted bam files, merge the files per sample.
-
-
-```bash
-# From head node
-cd $ssd
-mkdir -p bam-combined
-mkdir -p ~/log/combine.sh
-for IND in 19098 19101 19239
-do
-  for BATCH in {1..3}
-  do
-    for ROW in {A..H}
-    do
-      for COL in {1..12}
-      do
-        ID=`printf "%s.%s.%s%02d\n" $IND $BATCH $ROW $COL`
-        echo $ID
-        echo "samtools merge bam-combined/$ID.trim.sickle.sorted.bam bam-processed/$ID*trim.sickle.sorted.bam" | qsub -l h_vmem=4g -N $ROW$COL.$IND.$BATCH.combine -cwd -o ~/log/combine.sh -j y -V
-      done
-    done
-  done
-done
-```
-
-Then index each merged sample:
-
-```bash
-mkdir -p ~/log/combine2.sh
-for IND in 19098 19101 19239
-do
-  for BATCH in {1..3}
-  do
-    for ROW in {A..H}
-    do
-      for COL in {1..12}
-      do
-        ID=`printf "%s.%s.%s%02d\n" $IND $BATCH $ROW $COL`
-        echo $ID
-        echo "samtools index bam-combined/$ID.trim.sickle.sorted.bam" | qsub -l h_vmem=2g -N $ROW$COL.$IND.$BATCH.index -cwd -o ~/log/combine2.sh -j y -V
-      done
-    done
-  done
-done
-```
-
-Now can run `rmdup umitools` and `featureCounts` as above:
-
-```bash
-submit-array.sh rmdup-umi.sh 2g bam-combined/*bam
-```
-
-Since do not want to re-run all the samples, need to change the name so that it is clear it is a combined sample.
-
-```bash
-rename sorted.bam sorted.combined.bam *trim.sickle.sorted.bam
-rename sorted.bam.bai sorted.combined.bam.bai *trim.sickle.sorted.bam.bai
-```
-
-Now count the number of reads per gene for both the molecules and the reads:
-
-```bash
-submit-array.sh count-reads-per-gene.sh 2g bam-rmdup-umi/*combined.rmdup.bam bam-combined/*bam
-```
-
-Now need to do the same for the bulk samples:
-
-Merge bulk samples.
-
-```bash
-# From head node
-cd $ssd
-mkdir ~/log/bulk
-for IND in 19098 19101 19239
-do
-  for BATCH in {1..3}
-  do
-    ID=$IND.$BATCH.bulk
-    echo $ID
-    echo "samtools merge bam-combined/$ID.trim.sickle.sorted.combined.bam bam-processed/$ID*trim.sickle.sorted.bam" | qsub -l h_vmem=8g -N bulk.$IND.$BATCH.combine -cwd -o ~/log/bulk -j y -V
-  done
-done
-```
-
-Index bulk samples.
-
-```bash
-# From head node
-cd $ssd
-mkdir -p ~/log/bulk
-for IND in 19098 19101 19239
-do
-  for BATCH in {1..3}
-  do
-    ID=$IND.$BATCH.bulk
-    echo $ID
-    echo "samtools index bam-combined/$ID.trim.sickle.sorted.combined.bam" | qsub -l h_vmem=8g -N bulk.$IND.$BATCH.index -cwd -o ~/log/bulk -j y -V
-  done
-done
-```
-
-Remove duplicates and count reads per gene.
-
-```bash
-submit-array.sh rmdup-umi.sh 8g bam-combined/*bulk*bam
-```
-
-```bash
-submit-array.sh count-reads-per-gene.sh 2g bam-rmdup-umi/*bulk*combined.rmdup.bam bam-combined/*bulk*bam
 ```
