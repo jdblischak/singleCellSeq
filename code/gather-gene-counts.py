@@ -5,6 +5,8 @@
 #   e.g. gather-gene-counts.py counts/*genecounts.txt > gene-counts.txt
 # Should be run from data directory.
 
+# Note: This file can be run with either Python 2 or 3
+
 # Creates 6 files:
 #
 # 1. reads-raw-bulk-per-lane.txt
@@ -13,6 +15,20 @@
 # 4. reads-raw-single-per-sample.txt
 # 5. molecules-raw-single-per-lane.txt
 # 6. molecules-raw-single-per-sample.txt
+
+# Explanation of file names:
+#
+# reads vs. molecules:
+#     - reads are number of sequences per gene, as per traditional RNA-seq
+#     - molecules are the number of UMIs per gene
+# bulk vs. single:
+#     - bulk is sequencing of a population of cells, as per traditional RNA-seq
+#     - single is sequencing of single cells
+# lane vs. sample:
+#     - lane is the gene counts for a given sample from one lane of sequencing
+#     - sample is the sum of the gene counts from all lanes for a given sample
+
+################################################################################
 
 import glob
 import sys
@@ -24,6 +40,10 @@ else:
     files = glob.glob("counts/*genecounts.txt")
 
 # print(len(files))
+
+################################################################################
+# Collate per lane reads and per sample molecules
+################################################################################
 
 # Files 1, 3, 5, and 6 can be created directly from the data.
 
@@ -110,3 +130,62 @@ reads_raw_bulk_per_lane.close()
 reads_raw_single_per_lane.close()
 molecules_raw_single_per_lane.close()
 molecules_raw_single_per_sample.close()
+
+################################################################################
+# Sum reads per lane to obtain reads per sample
+################################################################################
+
+# 2. reads-raw-bulk-per-sample.txt
+reads_raw_bulk_per_lane_df = pd.read_table("reads-raw-bulk-per-lane.txt")
+reads_raw_bulk_per_sample_df = \
+    reads_raw_bulk_per_lane_df.groupby(["individual", "replicate", "well"],
+    as_index = False).sum()
+reads_raw_bulk_per_sample_df.to_csv("reads-raw-bulk-per-sample.txt",
+    sep = "\t", na_rep = "NA")
+
+# 4. reads-raw-single-per-sample.txt
+reads_raw_single_per_lane_df = pd.read_table("reads-raw-single-per-lane.txt")
+reads_raw_single_per_sample_df = \
+    reads_raw_single_per_lane_df.groupby(["individual", "replicate", "well"],
+    as_index = False).sum()
+reads_raw_single_per_sample_df.to_csv("reads-raw-single-per-sample.txt",
+    sep = "\t", na_rep = "NA")
+
+################################################################################
+# Test expected number of rows of each file
+################################################################################
+
+def check_line_num(fname, num_lines):
+    """
+    Assert that the file fname has num_lines lines.
+    """
+    handle = open(fname, "r")
+    line_count = 0
+    for line in handle:
+        line_count += 1
+    assert line_count == num_lines, "%s has %d lines, not %d"%(
+      fname, line_count, num_lines)
+
+# 1. reads-raw-bulk-per-lane.txt
+# *  bulk reads per lane: 3 individuals * 3 reps * 2 indexes * 4 lanes = 72
+check_line_num("reads-raw-bulk-per-lane.txt", 72 + 1)
+
+# 2. reads-raw-bulk-per-sample.txt
+# *  bulk reads per sample: 3 individuals * 3 reps = 9
+check_line_num("reads-raw-bulk-per-sample.txt", 9 + 1)
+
+# 3. reads-raw-single-per-lane.txt
+# *  single cell reads per lane: 3 individuals * 3 reps * 96 wells * 3 lanes = 2,592
+check_line_num("reads-raw-single-per-lane.txt", 2592 + 1)
+
+# 4. reads-raw-single-per-sample.txt
+# *  single cell reads per sample: 3 individuals * 3 reps * 96 wells = 864
+check_line_num("reads-raw-single-per-sample.txt", 864 + 1)
+
+# 5. molecules-raw-single-per-lane.txt
+# *  single cell molecules per lane: 3 individuals * 3 reps * 96 wells * 3 lanes = 2,592
+check_line_num("molecules-raw-single-per-lane.txt", 2592 + 1)
+
+# 6. molecules-raw-single-per-sample.txt
+# *  single cell molecules per sample: 3 individuals * 3 reps * 96 wells = 864
+check_line_num("molecules-raw-single-per-sample.txt", 864 + 1)
