@@ -14,6 +14,7 @@ source("chunk-options.R")
 ```{r message=FALSE}
 library("dplyr")
 library("ggplot2")
+library("cowplot")
 theme_set(theme_bw(base_size = 14))
 ```
 
@@ -86,7 +87,7 @@ For the analysis of molecule counts, a gene was detected if it had greater than 
 ### Endogenous genes
 
 ```{r subsample-genes-detected-ensg, fig.width=10, fig.height=10}
-p <- ggplot(genes_data[genes_data$features == "ENSG", ],
+genes <- ggplot(genes_data[genes_data$features == "ENSG", ],
             aes(x = as.factor(depth), y = genes)) +
   geom_boxplot() +
   geom_point(aes(color = as.factor(depth), shape = well)) +
@@ -95,13 +96,14 @@ p <- ggplot(genes_data[genes_data$features == "ENSG", ],
        y = "Number of genes detected",
        color = "Depth",
        title = "Subsample: Number of genes detected")
-p
+genes
 ```
 
 ### ERCC
 
 ```{r subsample-genes-detected-ercc, fig.width=10, fig.height=10}
-p %+% genes_data[genes_data$features == "ERCC", ]
+ercc <- genes %+% genes_data[genes_data$features == "ERCC", ]
+ercc
 ```
 
 ## Number of total counts
@@ -121,34 +123,38 @@ p <- ggplot(genes_data[genes_data$features == "ENSG" &
        y = "Total count",
        color = "Depth",
        title = "Subsample: Endogenous genes, reads")
-p
+reads_gene <- p
+reads_gene
 ```
 
 ### Endogenous genes - molecules
 
 ```{r subsample-total-counts-ensg-molecules}
-p %+% genes_data[genes_data$features == "ENSG" & 
-                 genes_data$type == "molecule", ] +
-  labs(y = "Total count",
-       title = "Subsample: Endogenous genes, molecules")
+molecule_gene <-  p %+% genes_data[genes_data$features == "ENSG" & 
+                  genes_data$type == "molecule", ] +
+                  labs(y = "Total count",
+                  title = "Subsample: Endogenous genes, molecules")
+molecule_gene
 ```
 
 ### ERCC - reads
 
 ```{r subsample-total-counts-ercc-reads}
-p %+% genes_data[genes_data$features == "ERCC" & 
+read_ercc <- p %+% genes_data[genes_data$features == "ERCC" & 
                  genes_data$type == "read", ] +
   labs(y = "Total count",
        title = "Subsample: ERCC, reads")
+read_ercc
 ```
 
 ### ERCC - molecules
 
 ```{r subsample-total-counts-ercc-molecules}
-p %+% genes_data[genes_data$features == "ERCC" & 
+molecule_ercc <- p %+% genes_data[genes_data$features == "ERCC" & 
                  genes_data$type == "molecule", ] +
   labs(y = "Total count",
        title = "Subsample: ERCC, molecules")
+molecule_ercc
 ```
 
 ## Sample concentrations
@@ -159,6 +165,23 @@ The cDNA concentrations are listed as followed:
 *  B2E2: 2.25 ng/ul
 *  B4H1: 1.74 ng/ul
 *  D2H2: 1.73 ng/ul
+
+```{r paper-figure, fig.width=12, fig.height=6}
+theme_set(theme_bw(base_size = 12))
+plot_grid(genes + theme(legend.position = c(.4,.35)),
+          ercc + labs(title = "Subsample: Number of ERCC detected") + theme(legend.position = "none"),
+          labels = LETTERS[1:2])
+```
+
+```{r paper-figure2, fig.width=12, fig.height=4}
+plot_grid(reads_gene + labs(title = "Genes-reads") + theme(legend.position = "none"),
+          molecule_gene + labs(title = "Genes-molecules") + theme(legend.position = "none"),
+          read_ercc + labs(title = "ERCC-reads") + theme(legend.position = "none"),
+          molecule_ercc + labs(title = "ERCC-molecules") + theme(legend.position = "none"),
+          nrow = 1,
+          labels = LETTERS[3:6])
+```
+
 
 ## Session information
 
