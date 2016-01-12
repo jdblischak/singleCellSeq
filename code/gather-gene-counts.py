@@ -1,11 +1,20 @@
 #!/usr/bin/env python
 
-# Gathers all the counts per gene.
-# usage: gather-gene-counts.py [files] > gene-counts.txt
-#   e.g. gather-gene-counts.py counts/*genecounts.txt > gene-counts.txt
-# Should be run from data directory.
+help_message = """\
+Gathers the gene counts for each sample.
 
-# Note: This file can be run with either Python 2 or 3
+Usage:
+    gather-gene-counts.py prefix [files]
+
+    prefix - prefix for names of output files,
+             e.g. outdir/ or outdir/name-
+    files - At least one featureCounts output filename,
+            e.g. counts/*genecounts.txt
+    """
+
+# Notes:
+#   * Should be run from data directory
+#   * This file can be run with either Python 2 or 3
 
 # Creates 6 files:
 #
@@ -30,16 +39,22 @@
 
 ################################################################################
 
-import glob
 import sys
 import pandas as pd
 
-if len(sys.argv) > 1:
-    files = sys.argv[1:]
+if "-h" in sys.argv or "--help" in sys.argv:
+    sys.exit(help_message)
+elif len(sys.argv) < 3:
+    sys.exit("Error: Need at least two arguments.\n\n%s"%(help_message))
 else:
-    files = glob.glob("counts/*genecounts.txt")
+    prefix = sys.argv[1]
+    files = sys.argv[2:]
 
+# For testing:
+# import glob
+# files = glob.glob("counts/*genecounts.txt")
 # print(len(files))
+# sys.exit()
 
 ################################################################################
 # Collate per lane reads and per sample molecules
@@ -47,10 +62,10 @@ else:
 
 # Files 1, 3, 5, and 6 can be created directly from the data.
 
-reads_raw_bulk_per_lane = open("reads-raw-bulk-per-lane.txt", "w")
-reads_raw_single_per_lane = open("reads-raw-single-per-lane.txt", "w")
-molecules_raw_single_per_lane = open("molecules-raw-single-per-lane.txt", "w")
-molecules_raw_single_per_sample = open("molecules-raw-single-per-sample.txt", "w")
+reads_raw_bulk_per_lane = open(prefix + "reads-raw-bulk-per-lane.txt", "w")
+reads_raw_single_per_lane = open(prefix + "reads-raw-single-per-lane.txt", "w")
+molecules_raw_single_per_lane = open(prefix + "molecules-raw-single-per-lane.txt", "w")
+molecules_raw_single_per_sample = open(prefix + "molecules-raw-single-per-sample.txt", "w")
 
 # Get gene names from first file
 gene_list = []
@@ -136,19 +151,19 @@ molecules_raw_single_per_sample.close()
 ################################################################################
 
 # 2. reads-raw-bulk-per-sample.txt
-reads_raw_bulk_per_lane_df = pd.read_table("reads-raw-bulk-per-lane.txt")
+reads_raw_bulk_per_lane_df = pd.read_table(prefix + "reads-raw-bulk-per-lane.txt")
 reads_raw_bulk_per_sample_df = \
     reads_raw_bulk_per_lane_df.groupby(["individual", "replicate", "well"],
     as_index = False).sum()
-reads_raw_bulk_per_sample_df.to_csv("reads-raw-bulk-per-sample.txt",
+reads_raw_bulk_per_sample_df.to_csv(prefix + "reads-raw-bulk-per-sample.txt",
     sep = "\t", na_rep = "NA")
 
 # 4. reads-raw-single-per-sample.txt
-reads_raw_single_per_lane_df = pd.read_table("reads-raw-single-per-lane.txt")
+reads_raw_single_per_lane_df = pd.read_table(prefix + "reads-raw-single-per-lane.txt")
 reads_raw_single_per_sample_df = \
     reads_raw_single_per_lane_df.groupby(["individual", "replicate", "well"],
     as_index = False).sum()
-reads_raw_single_per_sample_df.to_csv("reads-raw-single-per-sample.txt",
+reads_raw_single_per_sample_df.to_csv(prefix + "reads-raw-single-per-sample.txt",
     sep = "\t", na_rep = "NA")
 
 ################################################################################
@@ -168,24 +183,24 @@ def check_line_num(fname, num_lines):
 
 # 1. reads-raw-bulk-per-lane.txt
 # *  bulk reads per lane: 3 individuals * 3 reps * 2 indexes * 4 lanes = 72
-check_line_num("reads-raw-bulk-per-lane.txt", 72 + 1)
+check_line_num(prefix + "reads-raw-bulk-per-lane.txt", 72 + 1)
 
 # 2. reads-raw-bulk-per-sample.txt
 # *  bulk reads per sample: 3 individuals * 3 reps = 9
-check_line_num("reads-raw-bulk-per-sample.txt", 9 + 1)
+check_line_num(prefix + "reads-raw-bulk-per-sample.txt", 9 + 1)
 
 # 3. reads-raw-single-per-lane.txt
 # *  single cell reads per lane: 3 individuals * 3 reps * 96 wells * 3 lanes = 2,592
-check_line_num("reads-raw-single-per-lane.txt", 2592 + 1)
+check_line_num(prefix + "reads-raw-single-per-lane.txt", 2592 + 1)
 
 # 4. reads-raw-single-per-sample.txt
 # *  single cell reads per sample: 3 individuals * 3 reps * 96 wells = 864
-check_line_num("reads-raw-single-per-sample.txt", 864 + 1)
+check_line_num(prefix + "reads-raw-single-per-sample.txt", 864 + 1)
 
 # 5. molecules-raw-single-per-lane.txt
 # *  single cell molecules per lane: 3 individuals * 3 reps * 96 wells * 3 lanes = 2,592
-check_line_num("molecules-raw-single-per-lane.txt", 2592 + 1)
+check_line_num(prefix + "molecules-raw-single-per-lane.txt", 2592 + 1)
 
 # 6. molecules-raw-single-per-sample.txt
 # *  single cell molecules per sample: 3 individuals * 3 reps * 96 wells = 864
-check_line_num("molecules-raw-single-per-sample.txt", 864 + 1)
+check_line_num(prefix + "molecules-raw-single-per-sample.txt", 864 + 1)
