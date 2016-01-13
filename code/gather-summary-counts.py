@@ -7,11 +7,12 @@
 import glob
 import sys
 
-files = glob.glob("counts/*combined*summary")
+#files = glob.glob("counts/*combined*summary") # single cell molecules
+files = glob.glob("counts/*.[A-H][0-1][0-9].*sorted.genecounts*summary") # single cell reads
 
 # print(len(files))
 
-sys.stdout.write("individual\tbatch\twell\trmdup\tsickle\tAssigned\tUnassigned_Ambiguity\tUnassigned_MultiMapping\tUnassigned_NoFeatures\tUnassigned_Unmapped\tUnassigned_MappingQuality\tUnassigned_FragementLength\tUnassigned_Chimera\tUnassigned_Secondary\n")
+sys.stdout.write("individual\treplicate\twell\trmdup\tAssigned\tUnassigned_Ambiguity\tUnassigned_MultiMapping\tUnassigned_NoFeatures\tUnassigned_Unmapped\tUnassigned_MappingQuality\tUnassigned_FragmentLength\tUnassigned_Chimera\tUnassigned_Secondary\tUnassigned_Nonjunction\tUnassigned_Duplicate\n")
 
 for f in files:
     dir, fname = f.split("/")
@@ -23,28 +24,24 @@ for f in files:
     handle.close()
     # Get meta data from filename
     fname_parts = fname.split(".")
-    individual, batch, well = fname_parts[:3]
+    individual, replicate, well = fname_parts[:3]
     # Determine if sample is read or molecules counts, i.e. was
     # processed with umitools rmdup
     if "rmdup" in fname:
         rmdup = "molecules"
     else:
         rmdup = "reads"
-    # Determine if sample was quality trimmed with sickle
-    if "sickle" in fname:
-        sickle = "quality-trimmed"
-    else:
-        sickle = "not-quality-trimmed"
     # Output meta data with the featureCounts summary data
-    sys.stdout.write(individual + "\t" + batch + "\t" + \
-                     well + "\t" + \
-                     rmdup + "\t" + sickle + "\t" + \
+    sys.stdout.write(individual + "\t" + replicate + "\t" + \
+                     well + "\t" + rmdup + "\t" + \
                      d_counts["Assigned"] + "\t" + \
                      d_counts["Unassigned_Ambiguity"] + "\t" + \
                      d_counts["Unassigned_MultiMapping"] + "\t" + \
                      d_counts["Unassigned_NoFeatures"] + "\t" + \
                      d_counts["Unassigned_Unmapped"] + "\t" + \
                      d_counts["Unassigned_MappingQuality"] + "\t" + \
-                     d_counts["Unassigned_FragementLength"] + "\t" + \
+                     d_counts["Unassigned_FragmentLength"] + "\t" + \
                      d_counts["Unassigned_Chimera"] + "\t" + \
-                     d_counts["Unassigned_Secondary"] + "\n")
+                     d_counts["Unassigned_Secondary"] + "\t" + \
+                     d_counts["Unassigned_Nonjunction"] + "\t" + \
+                     d_counts["Unassigned_Duplicate"] + "\n")
