@@ -1,0 +1,197 @@
+---
+title: "Mixed effect model for batch correction"
+author: "Joyce Hsiao"
+date: 2016-01-12
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+```
+
+
+## Objective 
+
+Update the batch-corrected counts using data that were processed well-specific technical bias in molecule counts using ERCC molecule counts under a Poisson-based framework. See [link1] for details.
+
+[link1](http://jdblischak.github.io/singleCellSeq/analysis/poisson-glm-normalization.html)
+
+
+## Setup
+
+```{r}
+source("functions.R")
+require("limma")
+require("edgeR")
+require(ggplot2)
+require(dplyr)
+require(data.table)
+theme_set(theme_bw(base_size = 12))
+```
+
+
+## Poisson normalization
+
+Import data: ERCC counts after filtering out low quality single cells are used to compute well-specific bias in ENSG molecule counts. 
+
+```{r}
+# Annotation for single cells included in downstream analysis
+anno <- read.table("../data/annotation.txt",header=T,stringsAsFactors=F)
+quality_single_cells <- scan("../data/quality-single-cells.txt",
+                             what = "character")
+anno_filter <- anno %>% filter(sample_id %in% quality_single_cells)
+
+# Import expected ERCC counts
+spike <- read.table("../data/expected-ercc-molecules.txt", header = TRUE,
+                    sep = "\t", stringsAsFactors = FALSE)
+
+# Import molecule counts of all genes (ERCC + ENSG) after filtering out low 
+# quality single cells
+molecules_filter <- read.table("../data/molecules-filter.txt", header = TRUE,
+                               stringsAsFactors = FALSE)
+
+# ERCC observed count
+spike_input <- spike$ercc_molecules_well[spike$id %in% rownames(molecules_filter)]
+names(spike_input) <- spike$id[spike$id %in% rownames(molecules_filter)]
+spike_input <- spike_input[order(names(spike_input))]
+tech <- grepl("ERCC", rownames(molecules_filter))
+molecules_filter <- as.matrix(molecules_filter)
+batches <- unique(anno_filter$batch)
+
+# CPM corrected ENSG counts
+molecules_cpm <- fread( "../data/molecules-cpm.txt", header = TRUE,
+                         stringsAsFactors = FALSE)
+setDF(molecules_cpm)
+rownames(molecules_cpm) <- molecules_cpm$V1
+molecules_cpm$V1 <- NULL 
+molecules_cpm <- as.matrix(molecules_cpm)
+```
+
+Apply poisson regression to compute expected-to-observed count transformation paramters 
+using ERCC count infomration.
+
+```{r}
+pois_glm_params <- lapply(1:3,function(g) numeric(ncol(molecules_cpm)))
+names(pois_glm_params) = c("intercept","nu","theta")
+for (i in 1:ncol(molecules_cpm)) {
+  fit <- glm(molecules_filter[names(spike_input), i] ~ log(spike_input), family="poisson")
+  pois_glm_params$intercept[i] <- fit$coefficients[1]
+  pois_glm_params$nu[i] <- fit$coefficients[2]
+}
+pois_glm_expression <- sweep( sweep( molecules_cpm, 2, pois_glm_params$intercept, "-"), 2, pois_glm_params$nu, "/" )
+
+```
+
+
+PCA
+
+```{r}
+molecules_pois_transform <- run_pca(pois_glm_expression)
+molecules_pois_transform_plot <- plot_pca(molecules_pois_transform$PCs, 
+                                          explained = molecules_pois_transform$explained,
+                                          metadata = anno_filter, 
+                                          color = "individual",
+                                          shape = "replicate") +
+                                    labs(title = "After poisson normalization")
+```
+
+
+## Remove unwanted variation
+
+Load the Humanzee package
+
+```{r}
+if (!require(Humanzee, quietly = TRUE)) {
+  library(devtools)
+  install_github("jhsiao999/Humanzee")
+  library(Humanzee)
+}
+```
+
+Create design matrix and compute a consensus correlation coefficient using
+limma's duplicateCorrelation function.
+
+```{r}
+block <- anno_filter$batch
+design <- model.matrix(~ 1 + individual, data = anno_filter)
+```
+
+Compute correlation between replicates.
+
+```{r}
+dup_corrs_file <- "../data/dup-corrs-poisson.rda"
+if (file.exists(dup_corrs_file)) {
+  load(dup_corrs_file)
+} else{
+  dup_corrs <- duplicateCorrelation(pois_glm_expression,
+                                    design = design, block = block)
+  save(dup_corrs, file = dup_corrs_file)
+}
+str(dup_corrs)
+```
+
+Fit a mixed model with the 8 batches being the random effect.
+
+```{r}
+if (file.exists("../data/limma-crossed-poisson.rda")) {
+  load("../data/limma-crossed-poisson.rda")
+} else {
+  gls_fit <- Humanzee::ruv_mixed_model(pois_glm_expression,
+                      ndups = 1,
+                      design = design, block = block,
+                      correlation = dup_corrs$cons)
+  save(gls_fit, file = "../data/limma-crossed-poisson.rda")
+}
+```
+
+Compute expression levels after removing variation due to random effects.
+
+```{r remove-unwanted-variation}
+molecules_final <- t( design %*% t(gls_fit$coef) ) + gls_fit$resid
+colnames(molecules_final) <- anno_filter$sample_id
+rownames(molecules_final) <- rownames(molecules_filter)
+```
+
+Export final data
+
+```{r export-final-data}
+data_file <- "../data/molecules-final-pois.txt"
+if (!file.exists(data_file)) {
+  write.table(molecules_final, 
+              data_file, quote = FALSE, sep = "\t",
+              row.names = TRUE)
+}
+```
+
+
+```{r pca-molecules-final}
+pca_final <- run_pca(molecules_final)
+pca_final_plot <- plot_pca(pca_final$PCs, explained = pca_final$explained,
+         metadata = anno_filter, color = "individual",
+         shape = "replicate") +
+  labs(title = "Batch-corrected")
+```
+
+
+## PCA plots
+
+```{r, fig.height = 3}
+theme_set(theme_bw(base_size = 8))
+cowplot::plot_grid(
+    molecules_pois_transform_plot,
+    pca_final_plot,
+  ncol = 2,
+  labels = LETTERS[1:2])
+```
+
+
+
+
+## Session information
+
+```{r info}
+sessionInfo()
+```
