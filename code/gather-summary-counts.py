@@ -30,6 +30,8 @@ for f in files:
     # Get meta data from filename
     fname_parts = fname.split(".")
     individual, replicate, well = fname_parts[:3]
+    individual = "NA" + individual
+    replicate = "r" + replicate
     # Determine if sample is read or molecules counts, i.e. was
     # processed with umitools rmdup
     if "rmdup" in fname:
