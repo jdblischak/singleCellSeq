@@ -156,7 +156,7 @@ reads_raw_bulk_per_sample_df = \
     reads_raw_bulk_per_lane_df.groupby(["individual", "replicate", "well"],
     as_index = False).sum()
 reads_raw_bulk_per_sample_df.to_csv(prefix + "reads-raw-bulk-per-sample.txt",
-    sep = "\t", na_rep = "NA")
+    sep = "\t", na_rep = "NA", index = False)
 
 # 4. reads-raw-single-per-sample.txt
 reads_raw_single_per_lane_df = pd.read_table(prefix + "reads-raw-single-per-lane.txt")
@@ -164,7 +164,7 @@ reads_raw_single_per_sample_df = \
     reads_raw_single_per_lane_df.groupby(["individual", "replicate", "well"],
     as_index = False).sum()
 reads_raw_single_per_sample_df.to_csv(prefix + "reads-raw-single-per-sample.txt",
-    sep = "\t", na_rep = "NA")
+    sep = "\t", na_rep = "NA", index = False)
 
 ################################################################################
 # Test expected number of rows of each file
