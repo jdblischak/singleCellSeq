@@ -5,7 +5,10 @@ FILE=$1
 BASE=`basename ${FILE%.fastq.gz}`
 OUTDIR=trim
 
-mkdir -p $OUTDIR
+# Directory to send file with reads w/o UMIs
+INVALID_DIR=invalid
+
+mkdir -p $OUTDIR $INVALID_DIR
 
 if [ ! -s $FILE ]
 then
@@ -19,7 +22,12 @@ then
   exit 64
 fi
 
-umitools trim --end 5 <(zcat $FILE) NNNNNGGG --verbose --top 50 \
-  2> $OUTDIR/$BASE.trim.stats.txt | gzip -c 1> $OUTDIR/$BASE.trim.fastq.gz
+umitools trim --end 5 --verbose --top 50 $FILE NNNNNGGG \
+  --invalid $INVALID_DIR/$BASE.invalid.fastq \
+  2> $INVALID_DIR/$BASE.trim.stats.txt | gzip -c > $OUTDIR/$BASE.trim.fastq.gz
 
-zcat $OUTDIR/$BASE.trim.fastq.gz | grep "@" | wc -l > $OUTDIR/$BASE.trim.count.txt
+bioawk -c fastx 'END{print NR}' $OUTDIR/$BASE.trim.fastq.gz > $OUTDIR/$BASE.trim.count.txt
+
+bioawk -c fastx 'END{print NR}' $INVALID_DIR/$BASE.invalid.fastq > $INVALID_DIR/$BASE.invalid.count.txt
+
+gzip $INVALID_DIR/$BASE.invalid.fastq
