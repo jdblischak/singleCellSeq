@@ -115,7 +115,7 @@ ercc_molecule_plot <- ggplot(summary_per_sample_single_reads,
                    theme(axis.text.x = element_text(hjust=1, angle = 45))
 
 theme_set(theme_bw(base_size = 16))
-plot_grid(ercc_reads_plot + theme(legend.position = "none"),
+plot_grid(ercc_reads_plot + theme(legend.position=c(.8,.7)),
           ercc_molecule_plot + theme(legend.position = "none"),
           labels = LETTERS[1:2])
 ```
@@ -158,7 +158,7 @@ plot_reads <- ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads
        aes(x = total_mapped, fill = as.factor(cell_number))) + 
        geom_density(alpha = 0.5) +
        geom_vline(xintercept = cut_off_reads, colour="grey", linetype = "longdash") +
-       labs(x = "total mapped reads", title = "Total mappred reads")
+       labs(x = "Total mapped reads", title = "Number of Total mappred reads", fill = "Cell number")
 ```
 
 ## Unmapped ratios
@@ -184,7 +184,7 @@ plot_unmapped <- ggplot(summary_per_sample_reads_single_qc[summary_per_sample_re
        aes(x = unmapped_ratios *100, fill = as.factor(cell_number))) + 
        geom_density(alpha = 0.5) +
        geom_vline(xintercept = cut_off_unmapped *100, colour="grey", linetype = "longdash") +
-       labs(x = "unmapped reads/ total reads", title = "Unmapped reads percentage")
+       labs(x = "Unmapped reads/ total reads", title = "Unmapped reads percentage")
 ```
 
 ## ERCC percentage 
@@ -239,12 +239,12 @@ plot_gene <- ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_
        aes(x = gene_number, fill = as.factor(cell_number))) + 
        geom_density(alpha = 0.5) +
        geom_vline(xintercept = cut_off_genes, colour="grey", linetype = "longdash") +
-       labs(x = "gene numbers", title = "Numbers of detected genes")
+       labs(x = "Gene numbers", title = "Numbers of detected genes")
 ```
 
 ```{r density plots}
-theme_set(theme_bw(base_size = 10))
-plot_grid(plot_reads + theme(legend.position = "none"), 
+theme_set(theme_bw(base_size = 12))
+plot_grid(plot_reads + theme(legend.position=c(.7,.7)),
           plot_unmapped + theme(legend.position = "none"),
           plot_ercc + theme(legend.position = "none"), 
           plot_gene + theme(legend.position = "none"),
@@ -295,7 +295,7 @@ data_con <- data_lda %>% filter(batch != "NA19098.r1")
 plot_before <- ggplot(data_con, aes(x = concentration, y = total_gene_molecule / 10^3,
                color = as.factor(group))) +
                geom_text(aes(label = cell_number)) +
-               labs(x = "Concentration", y = "Gene molecules (thousands)") +
+               labs(x = "Concentration", y = "Gene molecules (thousands)", title = "Before") +
                scale_color_brewer(palette = "Dark2") +
                theme(legend.position = "none")
 
@@ -312,7 +312,7 @@ data_con$data_con_lda_p <- data_con_lda_p
 plot_after <- ggplot(data_con, aes(x = concentration, y = total_gene_molecule / 10^3,
                color = as.factor(data_con_lda_p))) +
                geom_text(aes(label = cell_number)) +
-               labs(x = "Concentration", y = "Gene molecules (thousands)") +
+               labs(x = "Concentration", y = "Gene molecules (thousands)", title = "After") +
                scale_color_brewer(palette = "Dark2") +
                theme(legend.position = "none")
 
@@ -324,7 +324,7 @@ outliers_lda$sample_id
 stopifnot(outliers %>% dplyr::select(sample_id) == outliers_lda$sample_id)
 
 theme_set(theme_bw(base_size = 16))
-plot_grid(plot_before + theme(legend.position = "none"), 
+plot_grid(plot_before + theme(legend.position=c(.8,.85)), 
           plot_after + theme(legend.position = "none"),
           labels = LETTERS[1:2])
 ```
@@ -371,14 +371,14 @@ summary_per_sample_reads_single_qc$conversion_outlier <- summary_per_sample_read
 plot_ercc_before <- ggplot(data_lda, aes(x = ERCC_conversion, y = conversion,
                color = as.factor(group))) +
                geom_text(aes(label = cell_number)) +
-               labs(x = "Convertion of ERCC", y = "Conversion of genes") +
+               labs(x = "Convertion of ERCC", y = "Conversion of genes", title = "Before") +
                scale_color_brewer(palette = "Dark2") +
                theme(legend.position = "none")
 
 plot_ercc_after <- ggplot(data_lda, aes(x = ERCC_conversion, y = conversion,
                color = as.factor(data_ercc_lda_p))) +
                geom_text(aes(label = cell_number)) +
-               labs(x = "Convertion of ERCC", y = "Conversion of genes") +
+               labs(x = "Convertion of ERCC", y = "Conversion of genes", title = "After") +
                scale_color_brewer(palette = "Dark2") +
                theme(legend.position = "none")
 
@@ -474,11 +474,10 @@ ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$fil
 ```
 
 ### plots
-```{r plots}
-## for figure 1
+```{r plots, fig.width=12, fig.heigh=6}
 genes_unmapped <-  ggplot(summary_per_sample_reads_single_qc,
                    aes(x = gene_number, y = unmapped_ratios * 100,
-                   col = as.factor(individual), shape = as.factor(batch), height = 600, width = 2000)) +
+                   col = as.factor(individual), height = 600, width = 2000)) +
                    geom_point(size = 3, alpha = 0.3) + 
                    geom_vline(xintercept = cut_off_genes, colour="grey", linetype = "longdash") +
                    geom_hline(yintercept = cut_off_unmapped * 100, colour="grey", linetype = "longdash") +
@@ -508,11 +507,40 @@ reads_ercc_num <-  ggplot(summary_per_sample_reads_single_qc,
                    geom_hline(yintercept = cut_off_ercc * 100, colour="grey", linetype = "longdash") +
                    labs(x = "Total mapped reads", y = "ERCC reads percentage (%)") 
 
-theme_set(theme_bw(base_size = 10))
+theme_set(theme_bw(base_size = 12))
 plot_grid(genes_unmapped + theme(legend.position = "none"), 
           genes_ercc + theme(legend.position = "none"),
           reads_unmapped_num + theme(legend.position = "none"), 
           reads_ercc_num + theme(legend.position = "none"),
+          labels = LETTERS[1:4])
+```
+
+```{r paper-fig1, fig.width=12, fig.heigh=4}
+plot_grid(genes_unmapped + theme(legend.position = c(.75,.9)) + labs(col = "Individual"), 
+          reads_unmapped_num + theme(legend.position = "none"), 
+          reads_ercc_num + theme(legend.position = "none"),
+          labels = LETTERS[3:5],
+          nrow = 1)
+```
+
+```{r paper-fig, fig.width=12, fig.height=16}
+theme_set(theme_bw(base_size = 12))
+plot_grid(ercc_reads_plot + theme(legend.position = "none"),
+          ercc_molecule_plot + theme(legend.position = "none"),
+          plot_reads + theme(legend.position=c(.8,.85)),
+          plot_unmapped + theme(legend.position = "none"),
+          plot_ercc + theme(legend.position = "none"), 
+          plot_gene + theme(legend.position = "none"),
+          labels = LETTERS[1:6],
+          ncol = 2)
+```
+
+```{r paper-fig-2, fig.width=12, fig.height=12}
+theme_set(theme_bw(base_size = 12))
+plot_grid(plot_before + theme(legend.position=c(.85,.85)) + labs(col = "Cell number"), 
+          plot_after + theme(legend.position = "none"),
+          plot_ercc_before, 
+          plot_ercc_after,
           labels = LETTERS[1:4])
 ```
 
