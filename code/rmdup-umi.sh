@@ -20,7 +20,8 @@ then
 fi
 
 echo "Removing reads with duplicate UMIs..."
-umitools rmdup $FILE $OUTDIR/$BASE.rmdup.bam > $OUTDIR/$BASE.rmdup.bed
+dedup_umi.py --method="directional-adjacency" --edit-distance-threshold=1 \
+  -I $FILE -v 0 -S $OUTDIR/$BASE.rmdup.bam
 
 echo "Counting number of reads..."
 samtools view -c $OUTDIR/$BASE.rmdup.bam > $OUTDIR/$BASE.rmdup.count.txt

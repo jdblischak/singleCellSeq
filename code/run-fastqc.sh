@@ -3,7 +3,7 @@ set -e
 
 FILE=$1
 BASE=`basename ${FILE%.fastq.gz}`
-OUTDIR=fastq
+OUTDIR=fastqc
 
 mkdir -p $OUTDIR
 
@@ -26,7 +26,7 @@ zcat $FILE > $OUTDIR/$BASE.fastq
 fastqc $OUTDIR/$BASE.fastq
 
 # Count number of reads
-grep "@" $OUTDIR/$BASE.fastq | wc -l > $OUTDIR/$BASE.raw.count.txt
+bioawk -c fastx 'END{print NR}' $OUTDIR/$BASE.fastq > $OUTDIR/$BASE.count.txt
 
 # Remove unzipped fastq file
 rm $OUTDIR/$BASE.fastq

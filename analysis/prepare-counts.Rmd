@@ -1,0 +1,195 @@
+---
+title: "Create gene-x-sample count matrices and annotation file"
+date: 2015-09-30
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+opts_chunk$set(fig.width = 8, fig.height = 8)
+```
+
+```{r packages, message=FALSE}
+library("data.table")
+library("dplyr")
+library("VennDiagram")
+```
+
+This file converts the gene counts results from the [analysis pipeline](process-samples.html#gather-gene-counts) from a sample-by-gene matrix into a standard gene-x-sample matrix.
+It also creates some annotation files and removes all genes with no observed sequencing data in our experiment.
+
+Specifically, it creates the following files:
+
+*  **[annotation.txt][]** - Annotation file for single cell samples
+*  **[annotation-bulk.txt][]** - Annotation file for bulk samples
+*  **[reads.txt][]** - Read counts in single cells for all genes with at least one observed read
+*  **[reads-bulk.txt][]** - Read counts in bulk samples for all genes with at least one observed read
+*  **[molecules.txt][]** - Molecule counts in single cells for all genes with at least one observed read
+
+[annotation.txt]: https://github.com/jdblischak/singleCellSeq/blob/master/data/annotation.txt
+[annotation-bulk.txt]: https://github.com/jdblischak/singleCellSeq/blob/master/data/annotation-bulk.txt
+[reads.txt]: https://github.com/jdblischak/singleCellSeq/blob/master/data/reads.txt
+[reads-bulk.txt]: https://github.com/jdblischak/singleCellSeq/blob/master/data/reads-bulk.txt
+[molecules.txt]: https://github.com/jdblischak/singleCellSeq/blob/master/data/molecules.txt
+
+## Read counts for single cell samples
+
+Import raw read counts for single cell samples.
+
+```{r import-reads}
+reads_raw <- fread("../data/reads-raw-single-per-sample.txt")
+setDF(reads_raw)
+```
+
+Create annotation file for single cell samples.
+
+```{r anno}
+anno <- reads_raw %>%
+  select(individual:well) %>%
+  mutate(batch = paste(individual, replicate, sep = "."),
+         sample_id = paste(batch, well, sep = "."))
+head(anno)
+```
+
+Transpose the matrix so that it is gene-x-sample.
+
+```{r transpose-reads}
+reads <- reads_raw %>%
+  select(starts_with("ENSG"), starts_with("ERCC")) %>%
+  t
+colnames(reads) <- anno$sample_id
+reads[1:5, 1:5]
+```
+
+## Molecule counts for single cell samples
+
+Import raw molecule counts for single cell samples.
+
+```{r import-molecules}
+molecules_raw <- fread("../data/molecules-raw-single-per-sample.txt")
+setDF(molecules_raw)
+```
+
+Confirm single cell samples in reads and molecules files are in the same order.
+
+```{r anno-test}
+stopifnot(anno$individual == molecules_raw$individual,
+          anno$replicate == molecules_raw$replicate,
+          anno$well == molecules_raw$well)
+```
+
+Transpose the matrix so that it is gene-x-sample.
+
+```{r transpose-molecules}
+molecules <- molecules_raw %>%
+  select(starts_with("ENSG"), starts_with("ERCC")) %>%
+  t
+colnames(molecules) <- anno$sample_id
+molecules[1:5, 1:5]
+```
+
+## Read counts for bulk samples
+
+Import raw read counts for bulk samples.
+
+```{r import-reads-bulk}
+reads_bulk_raw <- fread("../data/reads-raw-bulk-per-sample.txt")
+setDF(reads_bulk_raw)
+```
+
+Create annotation file for bulk samples.
+
+```{r anno-bulk}
+anno_bulk <- reads_bulk_raw %>%
+  select(individual:well) %>%
+  mutate(batch = paste(individual, replicate, sep = "."),
+         sample_id = paste(batch, well, sep = "."))
+head(anno_bulk)
+```
+
+Transpose the matrix so that it is gene-x-sample.
+
+```{r transpose-reads-bulk}
+reads_bulk <- reads_bulk_raw %>%
+  select(starts_with("ENSG"), starts_with("ERCC")) %>%
+  t
+colnames(reads_bulk) <- anno_bulk$sample_id
+reads_bulk[1:5, 1:5]
+```
+
+
+## Observed genes
+
+Not all of the `r nrow(reads_bulk)` genes were observed in the experiment.
+
+```{r observed-genes}
+stopifnot(rownames(reads_bulk) == rownames(reads),
+          rownames(reads) == rownames(molecules))
+
+genes_observed_reads_bulk <- rownames(reads_bulk)[rowSums(reads_bulk) > 0]
+genes_observed_reads <- rownames(reads)[rowSums(reads) > 0]
+genes_observed_molecules <- rownames(molecules)[rowSums(molecules) > 0]
+stopifnot(genes_observed_molecules %in% genes_observed_reads)
+```
+
+
+`r length(genes_observed_reads)` genes had at least one observation in the single cell read data,
+`r length(genes_observed_molecules)` genes had at least one observation in the single cell molecule data,
+and `r length(genes_observed_reads_bulk)` genes had at least one observation in the bulk read data.
+As expected, all genes with at least one observed molecule also had at least one observed read in the single cell samples.
+
+```{r observed-genes-venn}
+genes_venn <- venn.diagram(x = list("reads" = genes_observed_reads,
+                                    "molecules" = genes_observed_molecules,
+                                    "reads bulk" = genes_observed_reads_bulk),
+                           filename = NULL, euler.d = FALSE, scaled = FALSE)
+grid.newpage()
+grid.draw(genes_venn)
+```
+
+We remove all genes with no observed read in either the bulk or single cell samples.
+
+```{r genes-observed-filter}
+genes_observed <- intersect(genes_observed_reads, genes_observed_reads_bulk)
+reads <- reads[rownames(reads) %in% genes_observed, ]
+molecules <- molecules[rownames(molecules) %in% genes_observed, ]
+reads_bulk <- reads_bulk[rownames(reads_bulk) %in% genes_observed, ]
+```
+
+This leaves a total of `r length(genes_observed)` genes.
+
+## Write files
+
+Output annotation files.
+
+```{r write-anno}
+write.table(anno, "../data/annotation.txt", quote = FALSE, sep = "\t",
+            row.names = FALSE)
+write.table(anno_bulk, "../data/annotation-bulk.txt", quote = FALSE, sep = "\t",
+            row.names = FALSE)
+```
+
+Output read counts.
+
+```{r output-reads}
+write.table(reads, "../data/reads.txt", quote = FALSE, sep = "\t",
+            col.names = NA)
+write.table(reads_bulk, "../data/reads-bulk.txt", quote = FALSE, sep = "\t",
+            col.names = NA)
+```
+
+Output molecule counts.
+
+```{r output-molecules}
+write.table(molecules, "../data/molecules.txt", quote = FALSE, sep = "\t",
+            col.names = NA)
+```
+
+## Session information
+
+```{r info}
+sessionInfo()
+```

@@ -20,4 +20,4 @@ then
   exit 64
 fi
 
-subread-align -i $GENOME -r $FILE --gzFASTQinput --BAMoutput -uH > $OUTDIR/$BASE.bam
+subread-align -i $GENOME -r $FILE -t 0 -u > $OUTDIR/$BASE.bam
