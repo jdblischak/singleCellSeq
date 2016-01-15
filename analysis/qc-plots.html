@@ -130,13 +130,14 @@ img {
 <li><a href="#compare-reads-and-molecules">Compare reads and molecules</a></li>
 <li><a href="#distribution-of-fold-change-to-mean">Distribution of fold change to mean</a></li>
 <li><a href="#visualizing-capture-efficiency">Visualizing capture efficiency</a></li>
+<li><a href="#calculate-capture-efficiency-per-cell">Calculate capture efficiency per cell</a></li>
 <li><a href="#qc-plots">QC plots</a></li>
 <li><a href="#session-information">Session information</a></li>
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-11-02</p>
-<p><strong>Code version:</strong> f451005068e895a03d350370f836e185da999881</p>
+<p><strong>Last updated:</strong> 2016-01-15</p>
+<p><strong>Code version:</strong> ab0cf1f917a4c115e9ee44403eb62e837e1795ae</p>
 <div id="input" class="section level2">
 <h2>Input</h2>
 <pre class="r"><code>library(&quot;biomaRt&quot;)
@@ -210,7 +211,7 @@ cbPalette &lt;- c(&quot;#0000FF&quot;, &quot;#999999&quot;, &quot;#990033&quot;,
 plot_mean_log &lt;- ggplot(distribution, aes(x = molecules_mean, y = reads_mean, col = type)) + 
   geom_point(size = 3, alpha = 0.5) +  
   scale_colour_manual(values=cbPalette) + 
-  labs(x = &quot;mean molecule&quot;, y = &quot;mean reads&quot;, title = &quot;Reads vs. Molecules - log scale&quot;) + 
+  labs(x = &quot;Mean molecule&quot;, y = &quot;Mean reads&quot;, title = &quot;Reads vs. Molecules - log scale&quot;) + 
   scale_x_log10() + 
   scale_y_log10()
 
@@ -219,7 +220,7 @@ plot_mean_log</code></pre>
 <pre class="r"><code>plot_mean &lt;- ggplot(distribution, aes(x = molecules_mean, y = reads_mean, col = type)) + 
   geom_point(size = 3, alpha = 0.5) +  
   scale_colour_manual(values=cbPalette) + 
-  labs(x = &quot;mean molecule&quot;, y = &quot;mean reads&quot;, title = &quot;Reads vs. Molecules&quot;) +
+  labs(x = &quot;Mean molecule&quot;, y = &quot;Mean reads&quot;, title = &quot;Reads vs. Molecules&quot;) +
   geom_smooth(method = &quot;lm&quot;)
 
 plot_mean</code></pre>
@@ -264,6 +265,8 @@ str(ercc_plot)</code></pre>
  $ observed_mean: num  430.368 77.572 27.699 19.259 0.278 ...
  $ observed_sem : num  4.0635 0.8912 0.3991 0.3302 0.0332 ...
  $ expected     : num  4877.9 1219.5 304.9 152.4 76.2 ...</code></pre>
+<pre class="r"><code>cor(ercc_plot$observed_mean, ercc_plot$expected)</code></pre>
+<pre><code>[1] 0.9932053</code></pre>
 <pre class="r"><code>p_efficiency &lt;- ggplot(ercc_plot, aes(x = expected, y = observed_mean)) +
   geom_point(col = &quot;red&quot;) +
   geom_errorbar(aes(ymin = observed_mean - observed_sem,
@@ -283,14 +286,28 @@ p_efficiency</code></pre>
 p_efficiency_plot</code></pre>
 <p><img src="figure/qc-plots.Rmd/ercc-capture-efficiency-2.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 </div>
+<div id="calculate-capture-efficiency-per-cell" class="section level2">
+<h2>Calculate capture efficiency per cell</h2>
+<pre class="r"><code>ercc_index &lt;- grep(&quot;ERCC&quot;, rownames(molecules))
+length(ercc_index)</code></pre>
+<pre><code>[1] 85</code></pre>
+<pre class="r"><code>efficiency &lt;- numeric(length = ncol(molecules))
+total_ercc_molecules &lt;- sum(ercc_plot$expected)
+for (i in 1:ncol(molecules)) {
+  efficiency[i] &lt;- sum(molecules[ercc_index, i]) / total_ercc_molecules
+}
+summary(efficiency)</code></pre>
+<pre><code>   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+0.04987 0.07576 0.08414 0.09119 0.10780 0.15970 </code></pre>
+</div>
 <div id="qc-plots" class="section level2">
 <h2>QC plots</h2>
-<pre class="r"><code>theme_set(theme_bw(base_size = 10))
+<pre class="r"><code>theme_set(theme_bw(base_size = 12))
 plot_grid(plot_mean + theme(legend.position = &quot;none&quot;),
-          plot_mean_log + theme(legend.position = &quot;none&quot;),
           p_efficiency + theme(legend.position = &quot;none&quot;),
+          plot_mean_log + theme(legend.position = c(.85,.25)) + labs (col = &quot;&quot;),
           p_efficiency_plot + theme(legend.position = &quot;none&quot;),
-          labels = LETTERS[1:4])</code></pre>
+          labels = LETTERS[4:7])</code></pre>
 <p><img src="figure/qc-plots.Rmd/plots-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
 </div>
 <div id="session-information" class="section level2">
@@ -368,6 +385,15 @@ $(document).ready(function () {
 
 </script>
 
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
 
 </body>
 </html>

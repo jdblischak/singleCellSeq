@@ -140,10 +140,11 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-08-18</p>
-<p><strong>Code version:</strong> c9f21d3104d8d5b57ff63de56a4cf64155c81dcf</p>
+<p><strong>Last updated:</strong> 2016-01-15</p>
+<p><strong>Code version:</strong> ab0cf1f917a4c115e9ee44403eb62e837e1795ae</p>
 <pre class="r"><code>library(&quot;dplyr&quot;)
 library(&quot;ggplot2&quot;)
+library(&quot;cowplot&quot;)
 theme_set(theme_bw(base_size = 14))</code></pre>
 <div id="batch-process-each-subsampled-data-set" class="section level2">
 <h2>Batch process each subsampled data set</h2>
@@ -199,7 +200,7 @@ levels(genes_data$depth) &lt;- c(&quot;0.2&quot;, &quot;1&quot;, &quot;10&quot;,
 <p>For the analysis of read counts, a gene was detected if it had greater than 10 reads. For the analysis of molecule counts, a gene was detected if it had greater than 1 molecule.</p>
 <div id="endogenous-genes" class="section level3">
 <h3>Endogenous genes</h3>
-<pre class="r"><code>p &lt;- ggplot(genes_data[genes_data$features == &quot;ENSG&quot;, ],
+<pre class="r"><code>genes &lt;- ggplot(genes_data[genes_data$features == &quot;ENSG&quot;, ],
             aes(x = as.factor(depth), y = genes)) +
   geom_boxplot() +
   geom_point(aes(color = as.factor(depth), shape = well)) +
@@ -208,12 +209,13 @@ levels(genes_data$depth) &lt;- c(&quot;0.2&quot;, &quot;1&quot;, &quot;10&quot;,
        y = &quot;Number of genes detected&quot;,
        color = &quot;Depth&quot;,
        title = &quot;Subsample: Number of genes detected&quot;)
-p</code></pre>
+genes</code></pre>
 <p><img src="figure/subsample-high-coverage-lcl.Rmd/subsample-genes-detected-ensg-1.png" title="" alt="" width="960" style="display: block; margin: auto;" /></p>
 </div>
 <div id="ercc" class="section level3">
 <h3>ERCC</h3>
-<pre class="r"><code>p %+% genes_data[genes_data$features == &quot;ERCC&quot;, ]</code></pre>
+<pre class="r"><code>ercc &lt;- genes %+% genes_data[genes_data$features == &quot;ERCC&quot;, ]
+ercc</code></pre>
 <p><img src="figure/subsample-high-coverage-lcl.Rmd/subsample-genes-detected-ercc-1.png" title="" alt="" width="960" style="display: block; margin: auto;" /></p>
 </div>
 </div>
@@ -231,31 +233,35 @@ p</code></pre>
        y = &quot;Total count&quot;,
        color = &quot;Depth&quot;,
        title = &quot;Subsample: Endogenous genes, reads&quot;)
-p</code></pre>
+reads_gene &lt;- p
+reads_gene</code></pre>
 <p><img src="figure/subsample-high-coverage-lcl.Rmd/subsample-total-counts-ensg-reads-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
 <div id="endogenous-genes---molecules" class="section level3">
 <h3>Endogenous genes - molecules</h3>
-<pre class="r"><code>p %+% genes_data[genes_data$features == &quot;ENSG&quot; &amp; 
-                 genes_data$type == &quot;molecule&quot;, ] +
-  labs(y = &quot;Total count&quot;,
-       title = &quot;Subsample: Endogenous genes, molecules&quot;)</code></pre>
+<pre class="r"><code>molecule_gene &lt;-  p %+% genes_data[genes_data$features == &quot;ENSG&quot; &amp; 
+                  genes_data$type == &quot;molecule&quot;, ] +
+                  labs(y = &quot;Total count&quot;,
+                  title = &quot;Subsample: Endogenous genes, molecules&quot;)
+molecule_gene</code></pre>
 <p><img src="figure/subsample-high-coverage-lcl.Rmd/subsample-total-counts-ensg-molecules-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
 <div id="ercc---reads" class="section level3">
 <h3>ERCC - reads</h3>
-<pre class="r"><code>p %+% genes_data[genes_data$features == &quot;ERCC&quot; &amp; 
+<pre class="r"><code>read_ercc &lt;- p %+% genes_data[genes_data$features == &quot;ERCC&quot; &amp; 
                  genes_data$type == &quot;read&quot;, ] +
   labs(y = &quot;Total count&quot;,
-       title = &quot;Subsample: ERCC, reads&quot;)</code></pre>
+       title = &quot;Subsample: ERCC, reads&quot;)
+read_ercc</code></pre>
 <p><img src="figure/subsample-high-coverage-lcl.Rmd/subsample-total-counts-ercc-reads-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
 <div id="ercc---molecules" class="section level3">
 <h3>ERCC - molecules</h3>
-<pre class="r"><code>p %+% genes_data[genes_data$features == &quot;ERCC&quot; &amp; 
+<pre class="r"><code>molecule_ercc &lt;- p %+% genes_data[genes_data$features == &quot;ERCC&quot; &amp; 
                  genes_data$type == &quot;molecule&quot;, ] +
   labs(y = &quot;Total count&quot;,
-       title = &quot;Subsample: ERCC, molecules&quot;)</code></pre>
+       title = &quot;Subsample: ERCC, molecules&quot;)
+molecule_ercc</code></pre>
 <p><img src="figure/subsample-high-coverage-lcl.Rmd/subsample-total-counts-ercc-molecules-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
 </div>
@@ -268,6 +274,18 @@ p</code></pre>
 <li>B4H1: 1.74 ng/ul</li>
 <li>D2H2: 1.73 ng/ul</li>
 </ul>
+<pre class="r"><code>theme_set(theme_bw(base_size = 12))
+plot_grid(genes + theme(legend.position = c(.4,.35)),
+          ercc + labs(title = &quot;Subsample: Number of ERCC detected&quot;) + theme(legend.position = &quot;none&quot;),
+          labels = LETTERS[1:2])</code></pre>
+<p><img src="figure/subsample-high-coverage-lcl.Rmd/paper-figure-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>plot_grid(reads_gene + labs(title = &quot;Genes-reads&quot;) + theme(legend.position = &quot;none&quot;),
+          molecule_gene + labs(title = &quot;Genes-molecules&quot;) + theme(legend.position = &quot;none&quot;),
+          read_ercc + labs(title = &quot;ERCC-reads&quot;) + theme(legend.position = &quot;none&quot;),
+          molecule_ercc + labs(title = &quot;ERCC-molecules&quot;) + theme(legend.position = &quot;none&quot;),
+          nrow = 1,
+          labels = LETTERS[3:6])</code></pre>
+<p><img src="figure/subsample-high-coverage-lcl.Rmd/paper-figure2-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
 </div>
 <div id="session-information" class="section level2">
 <h2>Session information</h2>
@@ -287,15 +305,16 @@ attached base packages:
 [1] stats     graphics  grDevices utils     datasets  methods   base     
 
 other attached packages:
-[1] ggplot2_1.0.1 dplyr_0.4.1   knitr_1.10.5 
+[1] cowplot_0.3.1 ggplot2_1.0.1 dplyr_0.4.2   knitr_1.10.5 
 
 loaded via a namespace (and not attached):
- [1] Rcpp_0.11.6      digest_0.6.8     assertthat_0.1   MASS_7.3-40     
- [5] plyr_1.8.2       grid_3.2.0       gtable_0.1.2     DBI_0.3.1       
- [9] formatR_1.2      magrittr_1.5     scales_0.2.4     evaluate_0.7    
-[13] stringi_0.4-1    reshape2_1.4.1   rmarkdown_0.6.1  labeling_0.3    
-[17] proto_0.3-10     tools_3.2.0      stringr_1.0.0    munsell_0.4.2   
-[21] yaml_2.1.13      parallel_3.2.0   colorspace_1.2-6 htmltools_0.2.6 </code></pre>
+ [1] Rcpp_0.12.0      magrittr_1.5     MASS_7.3-40      munsell_0.4.2   
+ [5] colorspace_1.2-6 R6_2.1.1         stringr_1.0.0    httr_0.6.1      
+ [9] plyr_1.8.3       tools_3.2.0      parallel_3.2.0   grid_3.2.0      
+[13] gtable_0.1.2     DBI_0.3.1        htmltools_0.2.6  yaml_2.1.13     
+[17] assertthat_0.1   digest_0.6.8     reshape2_1.4.1   formatR_1.2     
+[21] bitops_1.0-6     RCurl_1.95-4.6   evaluate_0.7     rmarkdown_0.6.1 
+[25] labeling_0.3     stringi_0.4-1    scales_0.2.4     proto_0.3-10    </code></pre>
 </div>
 
 
@@ -335,6 +354,15 @@ $(document).ready(function () {
 
 </script>
 
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
 
 </body>
 </html>
