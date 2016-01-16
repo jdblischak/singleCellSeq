@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+
+<meta name="date" content="2015-09-30" />
+
+<title>Create gene-x-sample count matrices and annotation file</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Create gene-x-sample count matrices and annotation file</h1>
+<h4 class="date"><em>2015-09-30</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#read-counts-for-single-cell-samples">Read counts for single cell samples</a></li>
+<li><a href="#molecule-counts-for-single-cell-samples">Molecule counts for single cell samples</a></li>
+<li><a href="#read-counts-for-bulk-samples">Read counts for bulk samples</a></li>
+<li><a href="#observed-genes">Observed genes</a></li>
+<li><a href="#write-files">Write files</a></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2016-01-15</p>
+<p><strong>Code version:</strong> c37876c8fae1a8599d70d7c77155aca9c48264c5</p>
+<pre class="r"><code>library(&quot;data.table&quot;)
+library(&quot;dplyr&quot;)
+library(&quot;VennDiagram&quot;)</code></pre>
+<p>This file converts the gene counts results from the <a href="process-samples.html#gather-gene-counts">analysis pipeline</a> from a sample-by-gene matrix into a standard gene-x-sample matrix. It also creates some annotation files and removes all genes with no observed sequencing data in our experiment.</p>
+<p>Specifically, it creates the following files:</p>
+<ul>
+<li><strong><a href="https://github.com/jdblischak/singleCellSeq/blob/master/data/annotation.txt">annotation.txt</a></strong> - Annotation file for single cell samples</li>
+<li><strong><a href="https://github.com/jdblischak/singleCellSeq/blob/master/data/annotation-bulk.txt">annotation-bulk.txt</a></strong> - Annotation file for bulk samples</li>
+<li><strong><a href="https://github.com/jdblischak/singleCellSeq/blob/master/data/reads.txt">reads.txt</a></strong> - Read counts in single cells for all genes with at least one observed read</li>
+<li><strong><a href="https://github.com/jdblischak/singleCellSeq/blob/master/data/reads-bulk.txt">reads-bulk.txt</a></strong> - Read counts in bulk samples for all genes with at least one observed read</li>
+<li><strong><a href="https://github.com/jdblischak/singleCellSeq/blob/master/data/molecules.txt">molecules.txt</a></strong> - Molecule counts in single cells for all genes with at least one observed read</li>
+</ul>
+<div id="read-counts-for-single-cell-samples" class="section level2">
+<h2>Read counts for single cell samples</h2>
+<p>Import raw read counts for single cell samples.</p>
+<pre class="r"><code>reads_raw &lt;- fread(&quot;../data/reads-raw-single-per-sample.txt&quot;)
+setDF(reads_raw)</code></pre>
+<p>Create annotation file for single cell samples.</p>
+<pre class="r"><code>anno &lt;- reads_raw %&gt;%
+  select(individual:well) %&gt;%
+  mutate(batch = paste(individual, replicate, sep = &quot;.&quot;),
+         sample_id = paste(batch, well, sep = &quot;.&quot;))
+head(anno)</code></pre>
+<pre><code>  individual replicate well      batch      sample_id
+1    NA19098        r1  A01 NA19098.r1 NA19098.r1.A01
+2    NA19098        r1  A02 NA19098.r1 NA19098.r1.A02
+3    NA19098        r1  A03 NA19098.r1 NA19098.r1.A03
+4    NA19098        r1  A04 NA19098.r1 NA19098.r1.A04
+5    NA19098        r1  A05 NA19098.r1 NA19098.r1.A05
+6    NA19098        r1  A06 NA19098.r1 NA19098.r1.A06</code></pre>
+<p>Transpose the matrix so that it is gene-x-sample.</p>
+<pre class="r"><code>reads &lt;- reads_raw %&gt;%
+  select(starts_with(&quot;ENSG&quot;), starts_with(&quot;ERCC&quot;)) %&gt;%
+  t
+colnames(reads) &lt;- anno$sample_id
+reads[1:5, 1:5]</code></pre>
+<pre><code>                NA19098.r1.A01 NA19098.r1.A02 NA19098.r1.A03
+ENSG00000186092              0              0              0
+ENSG00000237683              0              0              0
+ENSG00000235249              0              0              0
+ENSG00000185097              0              0              0
+ENSG00000269831              0              0              0
+                NA19098.r1.A04 NA19098.r1.A05
+ENSG00000186092              0              0
+ENSG00000237683             44              0
+ENSG00000235249              0              0
+ENSG00000185097              0              0
+ENSG00000269831              0              0</code></pre>
+</div>
+<div id="molecule-counts-for-single-cell-samples" class="section level2">
+<h2>Molecule counts for single cell samples</h2>
+<p>Import raw molecule counts for single cell samples.</p>
+<pre class="r"><code>molecules_raw &lt;- fread(&quot;../data/molecules-raw-single-per-sample.txt&quot;)
+setDF(molecules_raw)</code></pre>
+<p>Confirm single cell samples in reads and molecules files are in the same order.</p>
+<pre class="r"><code>stopifnot(anno$individual == molecules_raw$individual,
+          anno$replicate == molecules_raw$replicate,
+          anno$well == molecules_raw$well)</code></pre>
+<p>Transpose the matrix so that it is gene-x-sample.</p>
+<pre class="r"><code>molecules &lt;- molecules_raw %&gt;%
+  select(starts_with(&quot;ENSG&quot;), starts_with(&quot;ERCC&quot;)) %&gt;%
+  t
+colnames(molecules) &lt;- anno$sample_id
+molecules[1:5, 1:5]</code></pre>
+<pre><code>                NA19098.r1.A01 NA19098.r1.A02 NA19098.r1.A03
+ENSG00000186092              0              0              0
+ENSG00000237683              0              0              0
+ENSG00000235249              0              0              0
+ENSG00000185097              0              0              0
+ENSG00000269831              0              0              0
+                NA19098.r1.A04 NA19098.r1.A05
+ENSG00000186092              0              0
+ENSG00000237683              1              0
+ENSG00000235249              0              0
+ENSG00000185097              0              0
+ENSG00000269831              0              0</code></pre>
+</div>
+<div id="read-counts-for-bulk-samples" class="section level2">
+<h2>Read counts for bulk samples</h2>
+<p>Import raw read counts for bulk samples.</p>
+<pre class="r"><code>reads_bulk_raw &lt;- fread(&quot;../data/reads-raw-bulk-per-sample.txt&quot;)
+setDF(reads_bulk_raw)</code></pre>
+<p>Create annotation file for bulk samples.</p>
+<pre class="r"><code>anno_bulk &lt;- reads_bulk_raw %&gt;%
+  select(individual:well) %&gt;%
+  mutate(batch = paste(individual, replicate, sep = &quot;.&quot;),
+         sample_id = paste(batch, well, sep = &quot;.&quot;))
+head(anno_bulk)</code></pre>
+<pre><code>  individual replicate well      batch       sample_id
+1    NA19098        r1 bulk NA19098.r1 NA19098.r1.bulk
+2    NA19098        r2 bulk NA19098.r2 NA19098.r2.bulk
+3    NA19098        r3 bulk NA19098.r3 NA19098.r3.bulk
+4    NA19101        r1 bulk NA19101.r1 NA19101.r1.bulk
+5    NA19101        r2 bulk NA19101.r2 NA19101.r2.bulk
+6    NA19101        r3 bulk NA19101.r3 NA19101.r3.bulk</code></pre>
+<p>Transpose the matrix so that it is gene-x-sample.</p>
+<pre class="r"><code>reads_bulk &lt;- reads_bulk_raw %&gt;%
+  select(starts_with(&quot;ENSG&quot;), starts_with(&quot;ERCC&quot;)) %&gt;%
+  t
+colnames(reads_bulk) &lt;- anno_bulk$sample_id
+reads_bulk[1:5, 1:5]</code></pre>
+<pre><code>                NA19098.r1.bulk NA19098.r2.bulk NA19098.r3.bulk
+ENSG00000186092               0               0               0
+ENSG00000237683              51              67              40
+ENSG00000235249               0               0               0
+ENSG00000185097               0               0               0
+ENSG00000269831               0               0               0
+                NA19101.r1.bulk NA19101.r2.bulk
+ENSG00000186092               0               0
+ENSG00000237683              59              42
+ENSG00000235249               0               0
+ENSG00000185097               0               0
+ENSG00000269831               0               0</code></pre>
+</div>
+<div id="observed-genes" class="section level2">
+<h2>Observed genes</h2>
+<p>Not all of the 20419 genes were observed in the experiment.</p>
+<pre class="r"><code>stopifnot(rownames(reads_bulk) == rownames(reads),
+          rownames(reads) == rownames(molecules))
+
+genes_observed_reads_bulk &lt;- rownames(reads_bulk)[rowSums(reads_bulk) &gt; 0]
+genes_observed_reads &lt;- rownames(reads)[rowSums(reads) &gt; 0]
+genes_observed_molecules &lt;- rownames(molecules)[rowSums(molecules) &gt; 0]
+stopifnot(genes_observed_molecules %in% genes_observed_reads)</code></pre>
+<p>17370 genes had at least one observation in the single cell read data, 17356 genes had at least one observation in the single cell molecule data, and 17733 genes had at least one observation in the bulk read data. As expected, all genes with at least one observed molecule also had at least one observed read in the single cell samples.</p>
+<pre class="r"><code>genes_venn &lt;- venn.diagram(x = list(&quot;reads&quot; = genes_observed_reads,
+                                    &quot;molecules&quot; = genes_observed_molecules,
+                                    &quot;reads bulk&quot; = genes_observed_reads_bulk),
+                           filename = NULL, euler.d = FALSE, scaled = FALSE)
+grid.newpage()
+grid.draw(genes_venn)</code></pre>
+<p><img src="figure/prepare-counts.Rmd/observed-genes-venn-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p>We remove all genes with no observed read in either the bulk or single cell samples.</p>
+<pre class="r"><code>genes_observed &lt;- intersect(genes_observed_reads, genes_observed_reads_bulk)
+reads &lt;- reads[rownames(reads) %in% genes_observed, ]
+molecules &lt;- molecules[rownames(molecules) %in% genes_observed, ]
+reads_bulk &lt;- reads_bulk[rownames(reads_bulk) %in% genes_observed, ]</code></pre>
+<p>This leaves a total of 16940 genes.</p>
+</div>
+<div id="write-files" class="section level2">
+<h2>Write files</h2>
+<p>Output annotation files.</p>
+<pre class="r"><code>write.table(anno, &quot;../data/annotation.txt&quot;, quote = FALSE, sep = &quot;\t&quot;,
+            row.names = FALSE)
+write.table(anno_bulk, &quot;../data/annotation-bulk.txt&quot;, quote = FALSE, sep = &quot;\t&quot;,
+            row.names = FALSE)</code></pre>
+<p>Output read counts.</p>
+<pre class="r"><code>write.table(reads, &quot;../data/reads.txt&quot;, quote = FALSE, sep = &quot;\t&quot;,
+            col.names = NA)
+write.table(reads_bulk, &quot;../data/reads-bulk.txt&quot;, quote = FALSE, sep = &quot;\t&quot;,
+            col.names = NA)</code></pre>
+<p>Output molecule counts.</p>
+<pre class="r"><code>write.table(molecules, &quot;../data/molecules.txt&quot;, quote = FALSE, sep = &quot;\t&quot;,
+            col.names = NA)</code></pre>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] grid      stats     graphics  grDevices utils     datasets  methods  
+[8] base     
+
+other attached packages:
+[1] VennDiagram_1.6.9 dplyr_0.4.2       data.table_1.9.4  knitr_1.10.5     
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.12.0     magrittr_1.5    R6_2.1.1        stringr_1.0.0  
+ [5] httr_0.6.1      plyr_1.8.3      tools_3.2.0     parallel_3.2.0 
+ [9] DBI_0.3.1       htmltools_0.2.6 lazyeval_0.1.10 yaml_2.1.13    
+[13] digest_0.6.8    assertthat_0.1  reshape2_1.4.1  formatR_1.2    
+[17] bitops_1.0-6    RCurl_1.95-4.6  evaluate_0.7    rmarkdown_0.6.1
+[21] stringi_0.4-1   chron_2.3-45   </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>

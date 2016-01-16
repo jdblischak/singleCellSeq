@@ -126,27 +126,33 @@ img {
 
 <div id="TOC">
 <ul>
+<li><a href="#create-genome-for-mapping">Create genome for mapping</a></li>
 <li><a href="#run-fastqc">Run FastQC</a></li>
 <li><a href="#trim-umi">Trim UMI</a></li>
 <li><a href="#quality-trim-3-end-of-reads">Quality trim 3’ end of reads</a></li>
 <li><a href="#assess-sequence-characteristics">Assess sequence characteristics</a></li>
 <li><a href="#map-to-genome">Map to genome</a></li>
 <li><a href="#process-bam-files">Process bam files</a></li>
+<li><a href="#combine-single-cell-samples">Combine single cell samples</a></li>
 <li><a href="#remove-duplicate-umis">Remove duplicate UMIs</a></li>
 <li><a href="#count-reads-per-gene">Count reads per gene</a></li>
 <li><a href="#gather-total-counts">Gather total counts</a></li>
 <li><a href="#gather-summary-counts">Gather summary counts</a></li>
 <li><a href="#gather-gene-counts">Gather gene counts</a></li>
-<li><a href="#process-at-the-sample-level">Process at the sample level</a></li>
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-06-11</p>
-<p><strong>Code version:</strong> 44338a0a5f347c0c7a565729f2a86161eb3229d3</p>
+<p><strong>Last updated:</strong> 2016-01-15</p>
+<p><strong>Code version:</strong> c37876c8fae1a8599d70d7c77155aca9c48264c5</p>
 <p>All processing scripts were run from the data directory.</p>
 <pre class="bash"><code>cd /mnt/gluster/data/internal_supp/singleCellSeq</code></pre>
 <p>The raw fastq files were write-protected to avoid accidental deletion.</p>
 <pre class="bash"><code>chmod uga=r fastq/*fastq.gz</code></pre>
+<div id="create-genome-for-mapping" class="section level2">
+<h2>Create genome for mapping</h2>
+<p><a href="https://github.com/jdblischak/singleCellSeq/blob/master/code/create-genome.sh">create-genome.sh</a> downloads the fasta files for human genome hg19 (chromosomes 1-22, X, Y, M) and the ERRC spike-ins. It indexes the genome with <code>subread-buildindex</code>.</p>
+<pre class="bash"><code>submit-array.sh create-genome.sh 8g genome</code></pre>
+</div>
 <div id="run-fastqc" class="section level2">
 <h2>Run FastQC</h2>
 <pre class="bash"><code>submit-array.sh run-fastqc.sh 2g fastq/*fastq.gz</code></pre>
@@ -156,15 +162,18 @@ grep -w failure ~/log/run-fastqc.sh/* | wc -l</code></pre>
 </div>
 <div id="trim-umi" class="section level2">
 <h2>Trim UMI</h2>
+<p><a href="https://github.com/jdblischak/singleCellSeq/blob/master/code/trim.sh">trim.sh</a> removes the 5 bp UMI at the 5’ end of the read using the program <code>umitools trim</code>. We used <a href="https://github.com/brwnj/umitools/releases/tag/v2.1.1">umitools v2.1.1</a>. Output fastq files are written to the directory <code>trim</code>. Reads without a valid UMI are written to the directory <code>invalid</code>.</p>
 <pre class="bash"><code>submit-array.sh trim.sh 2g fastq/*fastq.gz</code></pre>
 <p>To confirm that the jobs ran successfully:</p>
 <pre class="bash"><code>ls trim/*fastq.gz | wc -l
+ls invalid/*fastq.gz | wc -l
 grep -w success ~/log/trim.sh/* | wc -l
 grep -w failure ~/log/trim.sh/* | wc -l</code></pre>
 <p>To re-run failed jobs, I re-ran the original command. If the output file already exists, the code is not run and “success” is not echo’d to the log file.</p>
 </div>
 <div id="quality-trim-3-end-of-reads" class="section level2">
 <h2>Quality trim 3’ end of reads</h2>
+<p><a href="https://github.com/jdblischak/singleCellSeq/blob/master/code/sickle.sh">sickle.sh</a> performs quality trimming of the 3’ end of the reads (flag <code>-x</code>). We used the default quality thresholds. We used <a href="https://github.com/najoshi/sickle/releases/tag/v1.33">sickle version 1.33</a>. Output is written to the directory <code>sickle</code>.</p>
 <pre class="bash"><code>submit-array.sh sickle.sh 2g trim/*fastq.gz</code></pre>
 <p>To confirm that the jobs ran successfully:</p>
 <pre class="bash"><code>ls sickle/*fastq.gz | wc -l
@@ -180,17 +189,15 @@ grep -w failure ~/log/qc.sh/* | wc -l</code></pre>
 </div>
 <div id="map-to-genome" class="section level2">
 <h2>Map to genome</h2>
-<pre class="bash"><code>submit-array.sh map-subread.sh 8g trim/*fastq.gz sickle/*fastq.gz</code></pre>
+<p><a href="https://github.com/jdblischak/singleCellSeq/blob/master/code/map-subread.sh">map-subread.sh</a> maps the reads to the combined genome described above. We used <a href="http://sourceforge.net/projects/subread/files/subread-1.5.0-p1/">Subread version 1.5.0-p1</a> with the default thresholds and reporting only uniquely mapping reads (flag <code>-u</code>). Output BAM files are written to the directory <code>bam</code>.</p>
+<pre class="bash"><code>submit-array.sh map-subread.sh 12g sickle/*fastq.gz</code></pre>
 <pre class="bash"><code>ls bam/*bam | wc -l
 grep -w success ~/log/map-subread.sh/* | wc -l
 grep -w failure ~/log/map-subread.sh/* | wc -l</code></pre>
 </div>
 <div id="process-bam-files" class="section level2">
 <h2>Process bam files</h2>
-<ul>
-<li>Sort bam</li>
-<li>Index bam</li>
-</ul>
+<p><a href="https://github.com/jdblischak/singleCellSeq/blob/master/code/process-bam.sh">process-bam.sh</a> uses <a href="http://sourceforge.net/projects/samtools/files/samtools/0.1.18/">samtools version 0.1.18-dev (r982:313)</a> to sort and index each BAM file. The output is written to the directory <code>bam-processed</code>.</p>
 <pre class="bash"><code>submit-array.sh process-bam.sh 8g bam/*bam</code></pre>
 <pre class="bash"><code>ls bam-processed/*bam | wc -l
 grep -w success ~/log/process-bam.sh/* | wc -l
@@ -198,16 +205,75 @@ grep -w failure ~/log/process-bam.sh/* | wc -l</code></pre>
 <p>Check for the presence of intermediate files output during sorting.</p>
 <pre class="bash"><code>ls bam-processed/*sorted*0*bam</code></pre>
 </div>
+<div id="combine-single-cell-samples" class="section level2">
+<h2>Combine single cell samples</h2>
+<p>Molecule counts are obtained by counting the number of unique UMIs observed at each start position. In order for this to be accurate for a given single cell, we need to combine all the sequencing data for a given sample. We merge the sorted BAM files using <code>samtools merge</code> and save the output BAM files in the directory <code>bam-combined</code>.</p>
+<pre class="bash"><code># From head node
+mkdir -p bam-combined
+mkdir -p ~/log/combine
+for IND in 19098 19101 19239
+do
+  for REP in {1..3}
+  do
+    for ROW in {A..H}
+    do
+      for COL in {1..12}
+      do
+        ID=`printf &quot;%s.%s.%s%02d\n&quot; $IND $REP $ROW $COL`
+        echo $ID
+        echo &quot;samtools merge bam-combined/$ID.trim.sickle.sorted.combined.bam bam-processed/$ID*trim.sickle.sorted.bam&quot; | qsub -l h_vmem=4g -N $ROW$COL.$IND.$REP.combine -cwd -o ~/log/combine.sh -j y -V
+      done
+    done
+  done
+done</code></pre>
+<p>Confirm that it worked. We only expect 864 samples (3 individuals * 3 replicates * 96 wells). The bulk samples are not combined because they violate the assumptions of a UMI protocol. In other words, they contain too many unique molecules for the 1,024 UMIs to properly tag them all.</p>
+<pre class="bash"><code>ls bam-combined/*bam | wc -l
+# There should be no output from samtools merge
+cat ~/log/combine/* | head</code></pre>
+<p>Then index each merged sample:</p>
+<pre class="bash"><code># from head node
+mkdir -p ~/log/index
+for IND in 19098 19101 19239
+do
+  for REP in {1..3}
+  do
+    for ROW in {A..H}
+    do
+      for COL in {1..12}
+      do
+        ID=`printf &quot;%s.%s.%s%02d\n&quot; $IND $REP $ROW $COL`
+        echo $ID
+        echo &quot;samtools index bam-combined/$ID.trim.sickle.sorted.combined.bam&quot; | qsub -l h_vmem=2g -N $ROW$COL.$IND.$REP.index -cwd -o ~/log/index -j y -V -l &#39;hostname=!bigmem02&#39;
+      done
+    done
+  done
+done</code></pre>
+<p>Confirm that it worked.</p>
+<pre class="bash"><code>ls bam-combined/*bai | wc -l
+# There should be no output from samtools index
+cat ~/log/index/* | head</code></pre>
+</div>
 <div id="remove-duplicate-umis" class="section level2">
 <h2>Remove duplicate UMIs</h2>
-<pre class="bash"><code>submit-array.sh rmdup-umi.sh 2g bam-processed/*bam</code></pre>
+<p><a href="https://github.com/jdblischak/singleCellSeq/blob/update-pipeline/code/rmdup-umi.sh">rmdup-umi.sh</a> counts the number of UMIs at each start position using <a href="https://github.com/CGATOxford/UMI-tools">UMI-tools</a> (<a href="https://github.com/CGATOxford/UMI-tools/commit/e0ade5d0aad632cc95b6dfb95106e18c55ceecf9">version e0ade5d</a>). To account for errors introduced during PCR amplification and sequencing, UMIs are merged using the method “directional adjacency” (flags <code>--method=&quot;directional-adjacency&quot;</code> and <code>--edit-distance-threshold=1</code>), which is described in this <a href="https://cgatoxford.wordpress.com/2015/08/14/unique-molecular-identifiers-the-problem-the-solution-and-the-proof/">blog post</a>. The output is written to the directory <code>bam-rmdup-umi</code>.</p>
+<p>Two different sets of BAM files are processed in this way. The BAM files in <code>bam-processed</code> contain the mapped reads for a given sample for a given sequencing lane. We exclude the bulk samples because we do not want their molecule counts (<code>grep -v bulk</code>). These lane-level molecule counts will be used to assess the technical effects of sequencing on different flow cells and lanes (anticipated to be minimal). The molecule counts from the combined single cell samples in <code>bam-combined</code> are used in downstream analysis.</p>
+<pre class="bash"><code>submit-array.sh rmdup-umi.sh 2g `ls bam-processed/*bam | grep -v bulk` bam-combined/*bam</code></pre>
+<p>Expect 3,456 BAM files (864 combined samples + 3 individuals * 3 reps * 96 wells * 3 lanes).</p>
 <pre class="bash"><code>ls bam-rmdup-umi/*bam | wc -l
 grep -w success ~/log/rmdup-umi.sh/* | wc -l
 grep -w failure ~/log/rmdup-umi.sh/* | wc -l</code></pre>
 </div>
 <div id="count-reads-per-gene" class="section level2">
 <h2>Count reads per gene</h2>
+<p><a href="https://github.com/jdblischak/singleCellSeq/blob/update-pipeline/code/count-reads-per-gene.sh">count-reads-per-gene.sh</a> uses <a href="http://sourceforge.net/projects/subread/files/subread-1.5.0-p1/">featureCounts version 1.5.0-p1</a> to count the number or reads or molecules per gene. We perform strand-specific counting (flag <code>-s 1</code>) because the UMI protocol preserves sequence strand information. The per lane reads for both the bulk and single cell samples are in <code>bam-processed</code>. The per lane and combined molecules for the single cells only are contained in <code>bam-rmdup-umi</code>. The ouptut is written to the directory <code>counts</code>.</p>
 <pre class="bash"><code>submit-array.sh count-reads-per-gene.sh 2g bam-processed/*bam bam-rmdup-umi/*bam</code></pre>
+<p>Expect 6120 files:</p>
+<ul>
+<li>bulk reads per lane: 3 individuals * 3 reps * 2 indexes * 4 lanes = 72</li>
+<li>single cell reads per lane: 3 individuals * 3 reps * 96 wells * 3 lanes = 2,592</li>
+<li>single cell molecules per lane: 3 individuals * 3 reps * 96 wells * 3 lanes = 2,592</li>
+<li>single cell molecules per sample: 3 individuals * 3 reps * 96 wells = 864</li>
+</ul>
 <pre class="bash"><code>ls counts/*genecounts.txt | wc -l
 grep -w success ~/log/count-reads-per-gene.sh/* | wc -l
 grep -w failure ~/log/count-reads-per-gene.sh/* | wc -l</code></pre>
@@ -219,91 +285,47 @@ grep -w failure ~/log/count-reads-per-gene.sh/* | wc -l</code></pre>
 </div>
 <div id="gather-summary-counts" class="section level2">
 <h2>Gather summary counts</h2>
-<p>The classification of reads by featureCounts.</p>
+<p><a href="https://github.com/jdblischak/singleCellSeq/blob/update-pipeline/code/gather-summary-counts.py">gather-summary-counts.py</a> gathers the classification of reads assigned by featureCounts. It only gathers from the single cell samples, because this information is used for quality control filtering.</p>
 <pre class="bash"><code>gather-summary-counts.py &gt; summary-counts.txt</code></pre>
 </div>
 <div id="gather-gene-counts" class="section level2">
 <h2>Gather gene counts</h2>
-<p>The counts for each gene for each sequencing lane.</p>
-<pre class="bash"><code>gather-gene-counts.py &gt; gene-counts.txt</code></pre>
-</div>
-<div id="process-at-the-sample-level" class="section level2">
-<h2>Process at the sample level</h2>
-<p>All the processing performed above is done at the level of the sequencing lane. Thus when removing reads that have the same UMI and start position, this is done at the level of lane instead of the whole sample.</p>
-<p>To get true molecule counts, need to run <code>umitools rmdup</code> on all the reads for a given sample. Only using sickle trimmed data. Starting with the sorted bam files, merge the files per sample.</p>
-<pre class="bash"><code># From head node
-cd $ssd
-mkdir -p bam-combined
-mkdir -p ~/log/combine.sh
-for IND in 19098 19101 19239
-do
-  for BATCH in {1..3}
-  do
-    for ROW in {A..H}
-    do
-      for COL in {1..12}
-      do
-        ID=`printf &quot;%s.%s.%s%02d\n&quot; $IND $BATCH $ROW $COL`
-        echo $ID
-        echo &quot;samtools merge bam-combined/$ID.trim.sickle.sorted.bam bam-processed/$ID*trim.sickle.sorted.bam&quot; | qsub -l h_vmem=4g -N $ROW$COL.$IND.$BATCH.combine -cwd -o ~/log/combine.sh -j y -V
-      done
-    done
-  done
-done</code></pre>
-<p>Then index each merged sample:</p>
-<pre class="bash"><code>mkdir -p ~/log/combine2.sh
-for IND in 19098 19101 19239
-do
-  for BATCH in {1..3}
-  do
-    for ROW in {A..H}
-    do
-      for COL in {1..12}
-      do
-        ID=`printf &quot;%s.%s.%s%02d\n&quot; $IND $BATCH $ROW $COL`
-        echo $ID
-        echo &quot;samtools index bam-combined/$ID.trim.sickle.sorted.bam&quot; | qsub -l h_vmem=2g -N $ROW$COL.$IND.$BATCH.index -cwd -o ~/log/combine2.sh -j y -V
-      done
-    done
-  done
-done</code></pre>
-<p>Now can run <code>rmdup umitools</code> and <code>featureCounts</code> as above:</p>
-<pre class="bash"><code>submit-array.sh rmdup-umi.sh 2g bam-combined/*bam</code></pre>
-<p>Since do not want to re-run all the samples, need to change the name so that it is clear it is a combined sample.</p>
-<pre class="bash"><code>rename sorted.bam sorted.combined.bam *trim.sickle.sorted.bam
-rename sorted.bam.bai sorted.combined.bam.bai *trim.sickle.sorted.bam.bai</code></pre>
-<p>Now count the number of reads per gene for both the molecules and the reads:</p>
-<pre class="bash"><code>submit-array.sh count-reads-per-gene.sh 2g bam-rmdup-umi/*combined.rmdup.bam bam-combined/*bam</code></pre>
-<p>Now need to do the same for the bulk samples:</p>
-<p>Merge bulk samples.</p>
-<pre class="bash"><code># From head node
-cd $ssd
-mkdir ~/log/bulk
-for IND in 19098 19101 19239
-do
-  for BATCH in {1..3}
-  do
-    ID=$IND.$BATCH.bulk
-    echo $ID
-    echo &quot;samtools merge bam-combined/$ID.trim.sickle.sorted.combined.bam bam-processed/$ID*trim.sickle.sorted.bam&quot; | qsub -l h_vmem=8g -N bulk.$IND.$BATCH.combine -cwd -o ~/log/bulk -j y -V
-  done
-done</code></pre>
-<p>Index bulk samples.</p>
-<pre class="bash"><code># From head node
-cd $ssd
-mkdir -p ~/log/bulk
-for IND in 19098 19101 19239
-do
-  for BATCH in {1..3}
-  do
-    ID=$IND.$BATCH.bulk
-    echo $ID
-    echo &quot;samtools index bam-combined/$ID.trim.sickle.sorted.combined.bam&quot; | qsub -l h_vmem=8g -N bulk.$IND.$BATCH.index -cwd -o ~/log/bulk -j y -V
-  done
-done</code></pre>
-<p>Remove duplicates and count reads per gene.</p>
-<pre class="bash"><code>submit-array.sh rmdup-umi.sh 8g bam-combined/*bulk*bam</code></pre>
-<pre class="bash"><code>submit-array.sh count-reads-per-gene.sh 2g bam-rmdup-umi/*bulk*combined.rmdup.bam bam-combined/*bulk*bam</code></pre>
+<p><a href="https://github.com/jdblischak/singleCellSeq/blob/update-pipeline/code/gather-gene-counts.py">gather-gene-counts.py</a> gathers the featureCounts results and creates count matrices.</p>
+<pre class="bash"><code>mkdir -p counts-matrix
+gather-gene-counts.py counts-matrix/ counts/*genecounts.txt</code></pre>
+<p>It creates six files:</p>
+<ul>
+<li>reads-raw-bulk-per-lane.txt
+<ul>
+<li>read counts from each lane of sequencing for the bulk samples</li>
+<li>3 individuals * 3 reps * 2 indexes * 4 lanes = 72 entries</li>
+</ul></li>
+<li>reads-raw-bulk-per-sample.txt
+<ul>
+<li>read counts for each bulk sample</li>
+<li>3 individuals * 3 reps = 9 entries</li>
+</ul></li>
+<li>reads-raw-single-per-lane.txt
+<ul>
+<li>read counts from each sequencing lane for the single cell samples</li>
+<li>3 individuals * 3 reps * 96 wells * 3 lanes = 2,592 entries</li>
+</ul></li>
+<li>reads-raw-single-per-sample.txt
+<ul>
+<li>read counts for each single cell sample</li>
+<li>3 individuals * 3 reps * 96 wells = 864 entries</li>
+</ul></li>
+<li>molecules-raw-single-per-lane.txt
+<ul>
+<li>molecule counts from each sequencing lane for the single cell samples (<strong>QC only</strong>)</li>
+<li>3 individuals * 3 reps * 96 wells * 3 lanes = 2,592 entries</li>
+</ul></li>
+<li>molecules-raw-single-per-sample.txt
+<ul>
+<li>molecule counts for each single cell sample</li>
+<li>3 individuals * 3 reps * 96 wells = 864 entries</li>
+</ul></li>
+</ul>
 </div>
 
 
@@ -343,6 +365,15 @@ $(document).ready(function () {
 
 </script>
 
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
 
 </body>
 </html>

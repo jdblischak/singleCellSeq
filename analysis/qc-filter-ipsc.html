@@ -127,7 +127,7 @@ img {
 <div id="TOC">
 <ul>
 <li><a href="#input">Input</a></li>
-<li><a href="#total-ercc-and-removal-of-19098.r2">Total ERCC and removal of 19098.r2</a></li>
+<li><a href="#total-ercc-and-removal-of-na19098.r2">Total ERCC and removal of NA19098.r2</a></li>
 <li><a href="#total-mapped-reads-reads">Total mapped reads reads</a></li>
 <li><a href="#unmapped-ratios">Unmapped ratios</a></li>
 <li><a href="#ercc-percentage">ERCC percentage</a></li>
@@ -147,7 +147,7 @@ img {
 </div>
 
 <p><strong>Last updated:</strong> 2016-01-15</p>
-<p><strong>Code version:</strong> ab0cf1f917a4c115e9ee44403eb62e837e1795ae</p>
+<p><strong>Code version:</strong> c37876c8fae1a8599d70d7c77155aca9c48264c5</p>
 <div id="input" class="section level2">
 <h2>Input</h2>
 <pre class="r"><code>library(&quot;dplyr&quot;)
@@ -157,19 +157,36 @@ library(&quot;cowplot&quot;)
 theme_set(theme_bw(base_size = 16))
 source(&quot;functions.R&quot;)</code></pre>
 <p>Summary counts from featureCounts. Created with <a href="https://github.com/jdblischak/singleCellSeq/blob/master/code/gather-summary-counts.py">gather-summary-counts.py</a>. These data were collected from the summary files of the full combined samples.</p>
-<pre class="r"><code>summary_counts &lt;- read.table(&quot;../data/summary-counts.txt&quot;, header = TRUE,
-                             stringsAsFactors = FALSE)</code></pre>
-<p>Currently this file only contains data from sickle-trimmed reads, so the code below simply ensures this and then removes the column.</p>
-<pre class="r"><code>summary_per_sample &lt;- summary_counts %&gt;%
-  filter(sickle == &quot;quality-trimmed&quot;) %&gt;%
-  dplyr :: select(-sickle) %&gt;%
-  arrange(individual, batch, well, rmdup) %&gt;%
-  as.data.frame
-
-summary_per_sample_single &lt;- summary_per_sample[summary_per_sample$well != &quot;bulk&quot;, ]</code></pre>
+<pre class="r"><code>summary_per_sample &lt;- read.table(&quot;../data/summary-counts.txt&quot;, header = TRUE,
+                             stringsAsFactors = FALSE)
+stopifnot(summary_per_sample$well != &quot;bulk&quot;,
+          sum(summary_per_sample$rmdup == &quot;reads&quot;) == 864,
+          sum(summary_per_sample$rmdup == &quot;molecules&quot;) == 864)</code></pre>
+<p>Remove featureCounts classifications with zero counts.</p>
+<pre class="r"><code>stopifnot(colSums(summary_per_sample[, c(7, 10:15)]) == 0)
+summary_per_sample &lt;- summary_per_sample[, c(-7, -10:-15)]
+head(summary_per_sample)</code></pre>
+<pre><code>  individual replicate well     rmdup Assigned Unassigned_Ambiguity
+1    NA19098        r1  A01 molecules    67043                 2520
+2    NA19098        r1  A01     reads  1953434                71505
+3    NA19098        r1  A02 molecules    68222                 2598
+4    NA19098        r1  A02     reads  2064909                78380
+5    NA19098        r1  A03 molecules    45901                 1681
+6    NA19098        r1  A03     reads  1019557                31762
+  Unassigned_NoFeatures Unassigned_Unmapped
+1                 44570                   0
+2                810666             1116473
+3                 39183                   0
+4                643671             1175385
+5                 27282                   0
+6                380232              755641</code></pre>
 <p>Input annotation.</p>
 <pre class="r"><code>anno &lt;- read.table(&quot;../data/annotation.txt&quot;, header = TRUE,
                    stringsAsFactors = FALSE)
+stopifnot(anno$well != &quot;bulk&quot;, nrow(anno) == 864,
+          rep(anno$individual, each = 2) == summary_per_sample$individual,
+          rep(anno$replicate, each = 2) == summary_per_sample$replicate,
+          rep(anno$well, each = 2) == summary_per_sample$well)
 head(anno)</code></pre>
 <pre><code>  individual replicate well      batch      sample_id
 1    NA19098        r1  A01 NA19098.r1 NA19098.r1.A01
@@ -178,52 +195,58 @@ head(anno)</code></pre>
 4    NA19098        r1  A04 NA19098.r1 NA19098.r1.A04
 5    NA19098        r1  A05 NA19098.r1 NA19098.r1.A05
 6    NA19098        r1  A06 NA19098.r1 NA19098.r1.A06</code></pre>
-<pre class="r"><code>anno_single &lt;- anno[anno$well != &quot;bulk&quot;,]</code></pre>
 <p>Input read counts.</p>
 <pre class="r"><code>reads &lt;- read.table(&quot;../data/reads.txt&quot;, header = TRUE,
-                    stringsAsFactors = FALSE)</code></pre>
+                    stringsAsFactors = FALSE)
+stopifnot(ncol(reads) == nrow(anno),
+          colnames(reads) == anno$sample_id)</code></pre>
 <p>Input molecule counts.</p>
 <pre class="r"><code>molecules &lt;- read.table(&quot;../data/molecules.txt&quot;, header = TRUE,
-                    stringsAsFactors = FALSE)</code></pre>
+                    stringsAsFactors = FALSE)
+stopifnot(ncol(molecules) == nrow(anno),
+          colnames(reads) == anno$sample_id)</code></pre>
 <p>Input single cell observational quality control data.</p>
 <pre class="r"><code>qc &lt;- read.table(&quot;../data/qc-ipsc.txt&quot;, header = TRUE,
                  stringsAsFactors = FALSE)
+stopifnot(qc$individual == anno$individual,
+          qc$replicate == anno$replicate,
+          qc$well == anno$well)
 head(qc)</code></pre>
-<pre><code>  individual batch well cell_number concentration tra1.60
-1      19098     1  A01           1      1.734785       1
-2      19098     1  A02           1      1.723038       1
-3      19098     1  A03           1      1.512786       1
-4      19098     1  A04           1      1.347492       1
-5      19098     1  A05           1      2.313047       1
-6      19098     1  A06           1      2.056803       1</code></pre>
+<pre><code>  individual replicate well cell_number concentration tra1.60
+1    NA19098        r1  A01           1      1.734785       1
+2    NA19098        r1  A02           1      1.723038       1
+3    NA19098        r1  A03           1      1.512786       1
+4    NA19098        r1  A04           1      1.347492       1
+5    NA19098        r1  A05           1      2.313047       1
+6    NA19098        r1  A06           1      2.056803       1</code></pre>
 </div>
-<div id="total-ercc-and-removal-of-19098.r2" class="section level2">
-<h2>Total ERCC and removal of 19098.r2</h2>
-<p>Show the evidence that removing 19098 batch 2 is the first thing to do.</p>
-<pre class="r"><code>summary_per_sample_single_reads &lt;- summary_per_sample_single[summary_per_sample_single$rmdup == &quot;reads&quot;,]
+<div id="total-ercc-and-removal-of-na19098.r2" class="section level2">
+<h2>Total ERCC and removal of NA19098.r2</h2>
+<p>Show the evidence that removing NA19098 batch 2 is the first thing to do.</p>
+<pre class="r"><code>summary_per_sample_reads &lt;- summary_per_sample[summary_per_sample$rmdup == &quot;reads&quot;,]
 
-summary_per_sample_single_reads$sample_id &lt;- anno_single$sample_id
-summary_per_sample_single_reads$batch_9 &lt;- anno_single$batch
-stopifnot(colnames(reads) == summary_per_sample_single_reads$sample_id )
+summary_per_sample_reads$sample_id &lt;- anno$sample_id
+summary_per_sample_reads$batch &lt;- anno$batch
+stopifnot(colnames(reads) == summary_per_sample_reads$sample_id )
 
-summary_per_sample_single_reads$ERCC_reads &lt;- apply(reads[grep(&quot;ERCC&quot;, rownames(reads)), ],2,sum)
-summary_per_sample_single_reads$ERCC_molecules &lt;- apply(molecules[grep(&quot;ERCC&quot;, rownames(molecules)), ],2,sum)</code></pre>
+summary_per_sample_reads$ERCC_reads &lt;- apply(reads[grep(&quot;ERCC&quot;, rownames(reads)), ],2,sum)
+summary_per_sample_reads$ERCC_molecules &lt;- apply(molecules[grep(&quot;ERCC&quot;, rownames(molecules)), ],2,sum)</code></pre>
 <pre class="r"><code>## create a color palette with one color per individual and different shades for repplicates
 great_color &lt;- c(&quot;#CC3300&quot;, &quot;#FF9966&quot;, &quot;#FFCC99&quot;, &quot;#006633&quot;, &quot;#009900&quot;, &quot;#99FF99&quot;, &quot;#3366FF&quot;, &quot;#6699FF&quot;, &quot;#66CCFF&quot;)
 great_color_8 &lt;- c(&quot;#CC3300&quot;, &quot;#FF9966&quot;, &quot;#006633&quot;, &quot;#009900&quot;, &quot;#99FF99&quot;, &quot;#3366FF&quot;, &quot;#6699FF&quot;, &quot;#66CCFF&quot;)
 
-ercc_reads_plot &lt;- ggplot(summary_per_sample_single_reads,
-                   aes(x = factor(batch_9), y = ERCC_reads,
-                   fill = factor(batch_9)), height = 600, width = 2000) +
+ercc_reads_plot &lt;- ggplot(summary_per_sample_reads,
+                   aes(x = factor(batch), y = ERCC_reads,
+                   fill = factor(batch)), height = 600, width = 2000) +
                    geom_violin(alpha = .5) + 
                    geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
                    scale_fill_manual(values = great_color) + 
                    labs(x = &quot;&quot;, y = &quot;ERCC reads&quot;, title = &quot;Total ERCC read counts per cell&quot;) +
                    theme(axis.text.x = element_text(hjust=1, angle = 45))
 
-ercc_molecule_plot &lt;- ggplot(summary_per_sample_single_reads,
-                   aes(x = factor(batch_9), y = ERCC_molecules,
-                   fill = factor(batch_9)), height = 600, width = 2000) +
+ercc_molecule_plot &lt;- ggplot(summary_per_sample_reads,
+                   aes(x = factor(batch), y = ERCC_molecules,
+                   fill = factor(batch)), height = 600, width = 2000) +
                    geom_violin(alpha = .5) + 
                    geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
                    scale_fill_manual(values = great_color) + 
@@ -235,39 +258,39 @@ plot_grid(ercc_reads_plot + theme(legend.position=c(.8,.7)),
           ercc_molecule_plot + theme(legend.position = &quot;none&quot;),
           labels = LETTERS[1:2])</code></pre>
 <p><img src="figure/qc-filter-ipsc.Rmd/sad-ercc-plot-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
-<p>Remove 19098r2 for all the following analysis</p>
-<pre class="r"><code>remove_19098r2 &lt;- anno_single$batch != &quot;NA19098.r2&quot;
-anno_single_rm &lt;- anno_single[remove_19098r2,]
-summary_per_sample_single_reads_rm &lt;- summary_per_sample_single_reads[remove_19098r2,]
+<p>Remove NA19098r2 for all the following analysis</p>
+<pre class="r"><code>remove_19098r2 &lt;- anno$batch != &quot;NA19098.r2&quot;
+anno_rm &lt;- anno[remove_19098r2,]
+summary_per_sample_reads_rm &lt;- summary_per_sample_reads[remove_19098r2,]
 reads_rm &lt;- reads[, remove_19098r2]
 molecules_rm &lt;- molecules[, remove_19098r2]
 
-stopifnot(summary_per_sample_single_reads_rm$sample_id == colnames(reads_rm))</code></pre>
+stopifnot(summary_per_sample_reads_rm$sample_id == colnames(reads_rm))</code></pre>
 </div>
 <div id="total-mapped-reads-reads" class="section level2">
 <h2>Total mapped reads reads</h2>
 <pre class="r"><code>## add cell number per well by merging qc file
-summary_per_sample_reads_single_qc &lt;- merge(summary_per_sample_single_reads_rm,qc,by=c(&quot;individual&quot;,&quot;batch&quot;,&quot;well&quot;))
+summary_per_sample_reads_qc &lt;- merge(summary_per_sample_reads_rm,qc,by=c(&quot;individual&quot;,&quot;replicate&quot;,&quot;well&quot;))
 
 ## calculate total mapped reads per sample
-summary_per_sample_reads_single_qc$total_mapped &lt;- apply(summary_per_sample_reads_single_qc[,5:8],1,sum)
+summary_per_sample_reads_qc$total_mapped &lt;- apply(summary_per_sample_reads_qc[,5:7],1,sum)
 
 ## cut off 
-cut_off_reads &lt;- quantile(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0,&quot;total_mapped&quot;], 0.95)
+cut_off_reads &lt;- quantile(summary_per_sample_reads_qc[summary_per_sample_reads_qc$cell_number == 0,&quot;total_mapped&quot;], 0.95)
 
 cut_off_reads</code></pre>
 <pre><code>    95% 
-1581061 </code></pre>
-<pre class="r"><code>summary_per_sample_reads_single_qc$cut_off_reads &lt;- summary_per_sample_reads_single_qc$total_mapped &gt; cut_off_reads
+1538579 </code></pre>
+<pre class="r"><code>summary_per_sample_reads_qc$cut_off_reads &lt;- summary_per_sample_reads_qc$total_mapped &gt; cut_off_reads
 
 ## numbers of cells 
-sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, &quot;total_mapped&quot;] &gt; cut_off_reads)</code></pre>
-<pre><code>[1] 601</code></pre>
-<pre class="r"><code>sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, &quot;total_mapped&quot;] &lt;= cut_off_reads)</code></pre>
-<pre><code>[1] 98</code></pre>
+sum(summary_per_sample_reads_qc[summary_per_sample_reads_qc$cell_number == 1, &quot;total_mapped&quot;] &gt; cut_off_reads)</code></pre>
+<pre><code>[1] 602</code></pre>
+<pre class="r"><code>sum(summary_per_sample_reads_qc[summary_per_sample_reads_qc$cell_number == 1, &quot;total_mapped&quot;] &lt;= cut_off_reads)</code></pre>
+<pre><code>[1] 97</code></pre>
 <pre class="r"><code>## density plots
-plot_reads &lt;- ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0 |
-                                           summary_per_sample_reads_single_qc$cell_number == 1 , ],
+plot_reads &lt;- ggplot(summary_per_sample_reads_qc[summary_per_sample_reads_qc$cell_number == 0 |
+                                           summary_per_sample_reads_qc$cell_number == 1 , ],
        aes(x = total_mapped, fill = as.factor(cell_number))) + 
        geom_density(alpha = 0.5) +
        geom_vline(xintercept = cut_off_reads, colour=&quot;grey&quot;, linetype = &quot;longdash&quot;) +
@@ -276,24 +299,24 @@ plot_reads &lt;- ggplot(summary_per_sample_reads_single_qc[summary_per_sample_re
 <div id="unmapped-ratios" class="section level2">
 <h2>Unmapped ratios</h2>
 <pre class="r"><code>## calculate unmapped ratios
-summary_per_sample_reads_single_qc$unmapped_ratios &lt;- summary_per_sample_reads_single_qc[,9]/apply(summary_per_sample_reads_single_qc[,5:13],1,sum)
+summary_per_sample_reads_qc$unmapped_ratios &lt;- summary_per_sample_reads_qc[,8]/apply(summary_per_sample_reads_qc[,5:8],1,sum)
 
 ## cut off 
-cut_off_unmapped &lt;- quantile(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0,&quot;unmapped_ratios&quot;], 0.05)
+cut_off_unmapped &lt;- quantile(summary_per_sample_reads_qc[summary_per_sample_reads_qc$cell_number == 0,&quot;unmapped_ratios&quot;], 0.05)
 
 cut_off_unmapped</code></pre>
 <pre><code>       5% 
-0.3746674 </code></pre>
-<pre class="r"><code>summary_per_sample_reads_single_qc$cut_off_unmapped &lt;- summary_per_sample_reads_single_qc$unmapped_ratios &lt; cut_off_unmapped
+0.3715408 </code></pre>
+<pre class="r"><code>summary_per_sample_reads_qc$cut_off_unmapped &lt;- summary_per_sample_reads_qc$unmapped_ratios &lt; cut_off_unmapped
 
 ## numbers of cells 
-sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, &quot;unmapped_ratios&quot;] &gt;= cut_off_unmapped)</code></pre>
-<pre><code>[1] 85</code></pre>
-<pre class="r"><code>sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, &quot;unmapped_ratios&quot;] &lt; cut_off_unmapped)</code></pre>
-<pre><code>[1] 614</code></pre>
+sum(summary_per_sample_reads_qc[summary_per_sample_reads_qc$cell_number == 1, &quot;unmapped_ratios&quot;] &gt;= cut_off_unmapped)</code></pre>
+<pre><code>[1] 102</code></pre>
+<pre class="r"><code>sum(summary_per_sample_reads_qc[summary_per_sample_reads_qc$cell_number == 1, &quot;unmapped_ratios&quot;] &lt; cut_off_unmapped)</code></pre>
+<pre><code>[1] 597</code></pre>
 <pre class="r"><code>## density plots
-plot_unmapped &lt;- ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0 |
-                                           summary_per_sample_reads_single_qc$cell_number == 1 , ],
+plot_unmapped &lt;- ggplot(summary_per_sample_reads_qc[summary_per_sample_reads_qc$cell_number == 0 |
+                                           summary_per_sample_reads_qc$cell_number == 1 , ],
        aes(x = unmapped_ratios *100, fill = as.factor(cell_number))) + 
        geom_density(alpha = 0.5) +
        geom_vline(xintercept = cut_off_unmapped *100, colour=&quot;grey&quot;, linetype = &quot;longdash&quot;) +
@@ -302,24 +325,24 @@ plot_unmapped &lt;- ggplot(summary_per_sample_reads_single_qc[summary_per_sample
 <div id="ercc-percentage" class="section level2">
 <h2>ERCC percentage</h2>
 <pre class="r"><code>## calculate ercc reads percentage
-summary_per_sample_reads_single_qc$ercc_percentage &lt;- apply(reads_rm[grep(&quot;ERCC&quot;, rownames(reads_rm)), ],2,sum)/apply(summary_per_sample_reads_single_qc[,5:8],1,sum) 
+summary_per_sample_reads_qc$ercc_percentage &lt;- apply(reads_rm[grep(&quot;ERCC&quot;, rownames(reads_rm)), ],2,sum)/apply(summary_per_sample_reads_qc[,5:7],1,sum) 
 
 ## cut off 
-cut_off_ercc &lt;- quantile(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0,&quot;ercc_percentage&quot;], 0.05)
+cut_off_ercc &lt;- quantile(summary_per_sample_reads_qc[summary_per_sample_reads_qc$cell_number == 0,&quot;ercc_percentage&quot;], 0.05)
 
 cut_off_ercc</code></pre>
 <pre><code>        5% 
-0.03223869 </code></pre>
-<pre class="r"><code>summary_per_sample_reads_single_qc$cut_off_ercc &lt;- summary_per_sample_reads_single_qc$ercc_percentage &lt; cut_off_ercc
+0.03245405 </code></pre>
+<pre class="r"><code>summary_per_sample_reads_qc$cut_off_ercc &lt;- summary_per_sample_reads_qc$ercc_percentage &lt; cut_off_ercc
 
 ## numbers of cells 
-sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, &quot;ercc_percentage&quot;] &gt;= cut_off_ercc)</code></pre>
-<pre><code>[1] 90</code></pre>
-<pre class="r"><code>sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, &quot;ercc_percentage&quot;] &lt; cut_off_ercc)</code></pre>
-<pre><code>[1] 609</code></pre>
+sum(summary_per_sample_reads_qc[summary_per_sample_reads_qc$cell_number == 1, &quot;ercc_percentage&quot;] &gt;= cut_off_ercc)</code></pre>
+<pre><code>[1] 92</code></pre>
+<pre class="r"><code>sum(summary_per_sample_reads_qc[summary_per_sample_reads_qc$cell_number == 1, &quot;ercc_percentage&quot;] &lt; cut_off_ercc)</code></pre>
+<pre><code>[1] 607</code></pre>
 <pre class="r"><code>## density plots
-plot_ercc &lt;- ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0 |
-                                           summary_per_sample_reads_single_qc$cell_number == 1 , ],
+plot_ercc &lt;- ggplot(summary_per_sample_reads_qc[summary_per_sample_reads_qc$cell_number == 0 |
+                                           summary_per_sample_reads_qc$cell_number == 1 , ],
        aes(x = ercc_percentage *100, fill = as.factor(cell_number))) + 
        geom_density(alpha = 0.5) +
        geom_vline(xintercept = cut_off_ercc *100, colour=&quot;grey&quot;, linetype = &quot;longdash&quot;) +
@@ -331,24 +354,24 @@ plot_ercc &lt;- ggplot(summary_per_sample_reads_single_qc[summary_per_sample_rea
 reads_rm_gene &lt;- reads_rm[grep(&quot;ENSG&quot;, rownames(reads_rm)), ]
 
 ## number of genes detected 
-summary_per_sample_reads_single_qc$gene_number &lt;- colSums(reads_rm_gene &gt;= 1)
+summary_per_sample_reads_qc$gene_number &lt;- colSums(reads_rm_gene &gt;= 1)
 
 ## cut off 
-cut_off_genes &lt;- quantile(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0,&quot;gene_number&quot;], 0.95)
+cut_off_genes &lt;- quantile(summary_per_sample_reads_qc[summary_per_sample_reads_qc$cell_number == 0,&quot;gene_number&quot;], 0.95)
 
 cut_off_genes</code></pre>
 <pre><code>   95% 
-6875.6 </code></pre>
-<pre class="r"><code>summary_per_sample_reads_single_qc$cut_off_genes &lt;- summary_per_sample_reads_single_qc$gene_number &gt; cut_off_genes
+6862.1 </code></pre>
+<pre class="r"><code>summary_per_sample_reads_qc$cut_off_genes &lt;- summary_per_sample_reads_qc$gene_number &gt; cut_off_genes
 
 ## numbers of cells 
-sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, &quot;gene_number&quot;] &gt; cut_off_genes)</code></pre>
-<pre><code>[1] 629</code></pre>
-<pre class="r"><code>sum(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1, &quot;gene_number&quot;] &lt;= cut_off_genes)</code></pre>
-<pre><code>[1] 70</code></pre>
+sum(summary_per_sample_reads_qc[summary_per_sample_reads_qc$cell_number == 1, &quot;gene_number&quot;] &gt; cut_off_genes)</code></pre>
+<pre><code>[1] 625</code></pre>
+<pre class="r"><code>sum(summary_per_sample_reads_qc[summary_per_sample_reads_qc$cell_number == 1, &quot;gene_number&quot;] &lt;= cut_off_genes)</code></pre>
+<pre><code>[1] 74</code></pre>
 <pre class="r"><code>## density plots
-plot_gene &lt;- ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 0 |
-                                           summary_per_sample_reads_single_qc$cell_number == 1 , ],
+plot_gene &lt;- ggplot(summary_per_sample_reads_qc[summary_per_sample_reads_qc$cell_number == 0 |
+                                           summary_per_sample_reads_qc$cell_number == 1 , ],
        aes(x = gene_number, fill = as.factor(cell_number))) + 
        geom_density(alpha = 0.5) +
        geom_vline(xintercept = cut_off_genes, colour=&quot;grey&quot;, linetype = &quot;longdash&quot;) +
@@ -364,36 +387,30 @@ plot_grid(plot_reads + theme(legend.position=c(.7,.7)),
 <div id="total-molecule-counts" class="section level2">
 <h2>Total molecule counts</h2>
 <pre class="r"><code>## calculate total gene molecule counts
-summary_per_sample_reads_single_qc$total_gene_molecule &lt;- colSums(molecules_rm[grep(&quot;ENSG&quot;, rownames(molecules_rm)),])
+summary_per_sample_reads_qc$total_gene_molecule &lt;- colSums(molecules_rm[grep(&quot;ENSG&quot;, rownames(molecules_rm)),])
 
 ## look for outiers
-ggplot(summary_per_sample_reads_single_qc, aes(x = concentration, y = total_gene_molecule / 10^3,
+ggplot(summary_per_sample_reads_qc, aes(x = concentration, y = total_gene_molecule / 10^3,
   color = as.factor(cell_number))) +
   geom_text(aes(label = cell_number)) +
   labs(x = &quot;Concentration&quot;, y = &quot;Gene molecules (thousands)&quot;) +
   scale_color_brewer(palette = &quot;Dark2&quot;) +
   theme(legend.position = &quot;none&quot;)</code></pre>
 <p><img src="figure/qc-filter-ipsc.Rmd/total-mol-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>outliers &lt;- summary_per_sample_reads_single_qc %&gt;% filter(cell_number == 1, concentration &lt; 1.25, concentration &gt; .15,
+<pre class="r"><code>outliers &lt;- summary_per_sample_reads_qc %&gt;% filter(cell_number == 1, concentration &lt; 1.25, concentration &gt; .15,
                                    total_gene_molecule &gt; 140000)
 
 outliers %&gt;% dplyr::select(sample_id)</code></pre>
-<pre><code>        sample_id
-1  NA19098.r3.B04
-2  NA19098.r3.B11
-3  NA19101.r1.B10
-4  NA19101.r2.D07
-5  NA19101.r3.C07
-6  NA19101.r3.D08
-7  NA19101.r3.D10
-8  NA19101.r3.F05
-9  NA19101.r3.F10
-10 NA19239.r2.A12
-11 NA19239.r2.B07</code></pre>
-<pre class="r"><code>summary_per_sample_reads_single_qc$molecule_outlier &lt;- summary_per_sample_reads_single_qc$cell_number == 1 &amp;
-  summary_per_sample_reads_single_qc$concentration &lt; 1.25 &amp;
-  summary_per_sample_reads_single_qc$concentration &gt; .15 &amp;
-  summary_per_sample_reads_single_qc$total_gene_molecule &gt; 140000</code></pre>
+<pre><code>       sample_id
+1 NA19101.r2.D07
+2 NA19101.r3.D08
+3 NA19101.r3.F05
+4 NA19101.r3.F10
+5 NA19239.r2.A12</code></pre>
+<pre class="r"><code>summary_per_sample_reads_qc$molecule_outlier &lt;- summary_per_sample_reads_qc$cell_number == 1 &amp;
+  summary_per_sample_reads_qc$concentration &lt; 1.25 &amp;
+  summary_per_sample_reads_qc$concentration &gt; .15 &amp;
+  summary_per_sample_reads_qc$total_gene_molecule &gt; 140000</code></pre>
 <div id="linear-discriminat-analysis" class="section level3">
 <h3>Linear Discriminat Analysis</h3>
 <pre class="r"><code>library(MASS)</code></pre>
@@ -404,15 +421,15 @@ The following object is masked from &#39;package:dplyr&#39;:
 
     select</code></pre>
 <pre class="r"><code>## create 3 groups according to cell number
-group_3 &lt;- rep(&quot;two&quot;,dim(summary_per_sample_reads_single_qc)[1])
-         group_3[grep(&quot;0&quot;, summary_per_sample_reads_single_qc$cell_number)] &lt;- &quot;no&quot;
-         group_3[grep(&quot;1&quot;, summary_per_sample_reads_single_qc$cell_number)] &lt;- &quot;one&quot;
+group_3 &lt;- rep(&quot;two&quot;,dim(summary_per_sample_reads_qc)[1])
+         group_3[grep(&quot;0&quot;, summary_per_sample_reads_qc$cell_number)] &lt;- &quot;no&quot;
+         group_3[grep(&quot;1&quot;, summary_per_sample_reads_qc$cell_number)] &lt;- &quot;one&quot;
 
 ## create data frame
-data_lda &lt;- data.frame(anno_single_rm,
-                       cell_number = summary_per_sample_reads_single_qc$cell_number,
-                       concentration = summary_per_sample_reads_single_qc$concentration,
-                       total_gene_molecule = summary_per_sample_reads_single_qc$total_gene_molecule,
+data_lda &lt;- data.frame(anno_rm,
+                       cell_number = summary_per_sample_reads_qc$cell_number,
+                       concentration = summary_per_sample_reads_qc$concentration,
+                       total_gene_molecule = summary_per_sample_reads_qc$total_gene_molecule,
                        group = group_3)
 
 ## remove 19098.r1
@@ -435,8 +452,8 @@ table(data_con_lda_p, data_con[, &quot;group&quot;])</code></pre>
 <pre><code>              
 data_con_lda_p  no one two
            no    1   0   0
-           one  16 595  15
-           two   0  11  34</code></pre>
+           one  16 595  16
+           two   0  11  33</code></pre>
 <pre class="r"><code>data_con$data_con_lda_p &lt;- data_con_lda_p
 
 plot_after &lt;- ggplot(data_con, aes(x = concentration, y = total_gene_molecule / 10^3,
@@ -452,8 +469,8 @@ outliers_lda$sample_id</code></pre>
 <pre><code> [1] &quot;NA19098.r3.B04&quot; &quot;NA19098.r3.B11&quot; &quot;NA19101.r1.B10&quot; &quot;NA19101.r2.D07&quot;
  [5] &quot;NA19101.r3.C07&quot; &quot;NA19101.r3.D08&quot; &quot;NA19101.r3.D10&quot; &quot;NA19101.r3.F05&quot;
  [9] &quot;NA19101.r3.F10&quot; &quot;NA19239.r2.A12&quot; &quot;NA19239.r2.B07&quot;</code></pre>
-<pre class="r"><code>## the results are the same!!
-stopifnot(outliers %&gt;% dplyr::select(sample_id) == outliers_lda$sample_id)
+<pre class="r"><code>## The lds method identifies more outliers
+#stopifnot(outliers %&gt;% dplyr::select(sample_id) == outliers_lda$sample_id)
 
 theme_set(theme_bw(base_size = 16))
 plot_grid(plot_before + theme(legend.position=c(.8,.85)), 
@@ -465,22 +482,22 @@ plot_grid(plot_before + theme(legend.position=c(.8,.85)),
 <div id="reads-to-molecule-conversion" class="section level2">
 <h2>Reads to molecule conversion</h2>
 <pre class="r"><code>## calculate convertion
-summary_per_sample_reads_single_qc$ERCC_conversion &lt;- summary_per_sample_reads_single_qc$ERCC_molecules / summary_per_sample_reads_single_qc$ERCC_reads
+summary_per_sample_reads_qc$ERCC_conversion &lt;- summary_per_sample_reads_qc$ERCC_molecules / summary_per_sample_reads_qc$ERCC_reads
 
-summary_per_sample_reads_single_qc$conversion &lt;- summary_per_sample_reads_single_qc$total_gene_molecule /  colSums(reads_rm[grep(&quot;ENSG&quot;, rownames(reads_rm)),])
+summary_per_sample_reads_qc$conversion &lt;- summary_per_sample_reads_qc$total_gene_molecule /  colSums(reads_rm[grep(&quot;ENSG&quot;, rownames(reads_rm)),])
 
-ggplot(summary_per_sample_reads_single_qc, aes(x = ERCC_conversion, y = conversion,
+ggplot(summary_per_sample_reads_qc, aes(x = ERCC_conversion, y = conversion,
   color = as.factor(cell_number))) +
   geom_text(aes(label = cell_number)) +
   labs(x = &quot;Convertion of ERCC&quot;, y = &quot;Conversion of genes&quot;) +
   scale_color_brewer(palette = &quot;Dark2&quot;) +
   theme(legend.position = &quot;none&quot;)</code></pre>
 <p><img src="figure/qc-filter-ipsc.Rmd/convertion-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>out_ercc_con &lt;- summary_per_sample_reads_single_qc %&gt;% filter(cell_number == &quot;1&quot;, ERCC_conversion &gt; .094)
+<pre class="r"><code>out_ercc_con &lt;- summary_per_sample_reads_qc %&gt;% filter(cell_number == &quot;1&quot;, ERCC_conversion &gt; .094)
 
 ## try lda
-data_lda$conversion &lt;- summary_per_sample_reads_single_qc$conversion
-data_lda$ERCC_conversion &lt;- summary_per_sample_reads_single_qc$ERCC_conversion
+data_lda$conversion &lt;- summary_per_sample_reads_qc$conversion
+data_lda$ERCC_conversion &lt;- summary_per_sample_reads_qc$ERCC_conversion
 
 data_ercc_lda &lt;- lda(group ~ ERCC_conversion + conversion,
                     data = data_lda)
@@ -490,8 +507,8 @@ table(data_con_lda_p, data_con[, &quot;group&quot;])</code></pre>
 <pre><code>              
 data_con_lda_p  no one two
            no    1   0   0
-           one  16 595  15
-           two   0  11  34</code></pre>
+           one  16 595  16
+           two   0  11  33</code></pre>
 <pre class="r"><code>data_lda$data_ercc_lda_p &lt;- data_ercc_lda_p
 
 ## identify the outlier 
@@ -501,11 +518,12 @@ outliers_ercc$sample_id</code></pre>
  [5] &quot;NA19101.r3.C07&quot; &quot;NA19101.r3.D08&quot; &quot;NA19101.r3.F05&quot; &quot;NA19101.r3.F10&quot;
  [9] &quot;NA19239.r2.A12&quot; &quot;NA19239.r2.B07&quot; &quot;NA19239.r3.G02&quot;</code></pre>
 <pre class="r"><code>## cutoff
-out_ercc_con &lt;- summary_per_sample_reads_single_qc %&gt;% filter(cell_number == &quot;1&quot;, ERCC_conversion &gt; .094)
-stopifnot(out_ercc_con %&gt;% dplyr::select(sample_id) == outliers_ercc$sample_id)
+out_ercc_con &lt;- summary_per_sample_reads_qc %&gt;% filter(cell_number == &quot;1&quot;, ERCC_conversion &gt; .094)
+# The two methods no longer give identical results
+# stopifnot(out_ercc_con %&gt;% dplyr::select(sample_id) == outliers_ercc$sample_id)
 
-summary_per_sample_reads_single_qc$conversion_outlier &lt;- summary_per_sample_reads_single_qc$cell_number == 1 &amp;
-                                                         summary_per_sample_reads_single_qc$ERCC_conversion &gt; .094
+summary_per_sample_reads_qc$conversion_outlier &lt;- summary_per_sample_reads_qc$cell_number == 1 &amp;
+                                                         summary_per_sample_reads_qc$ERCC_conversion &gt; .094
 
 plot_ercc_before &lt;- ggplot(data_lda, aes(x = ERCC_conversion, y = conversion,
                color = as.factor(group))) +
@@ -537,14 +555,14 @@ mtgene &lt;- c(&quot;ENSG00000198899&quot;, &quot;ENSG00000198727&quot;, &quot;E
 mt_reads &lt;- reads_rm_gene[mtgene,]
 dim(mt_reads)</code></pre>
 <pre><code>[1]  13 768</code></pre>
-<pre class="r"><code>stopifnot(colnames(reads_rm) == rownames(summary_per_sample_reads_single_qc$sample_id))
+<pre class="r"><code>stopifnot(colnames(reads_rm) == rownames(summary_per_sample_reads_qc$sample_id))
 
 ## mt ratio of single cell
-summary_per_sample_reads_single_qc$mt_reads &lt;- apply(mt_reads, 2, sum)
-summary_per_sample_reads_single_qc$mt_reads_ratio &lt;- summary_per_sample_reads_single_qc$mt_reads /summary_per_sample_reads_single_qc$total_mapped
+summary_per_sample_reads_qc$mt_reads &lt;- apply(mt_reads, 2, sum)
+summary_per_sample_reads_qc$mt_reads_ratio &lt;- summary_per_sample_reads_qc$mt_reads /summary_per_sample_reads_qc$total_mapped
 
 ## vs. number of genes detected
-ggplot(summary_per_sample_reads_single_qc,
+ggplot(summary_per_sample_reads_qc,
        aes(x = gene_number, y = mt_reads_ratio, 
        color = as.factor(cell_number))) +
        geom_text(aes(label = cell_number)) +
@@ -558,24 +576,24 @@ ggplot(summary_per_sample_reads_single_qc,
 <div id="final-list" class="section level3">
 <h3>Final list</h3>
 <pre class="r"><code>## all filter
-summary_per_sample_reads_single_qc$filter_all &lt;- summary_per_sample_reads_single_qc$cell_number == 1 &amp;
-                                                 summary_per_sample_reads_single_qc$cut_off_reads &amp;
-                                                 summary_per_sample_reads_single_qc$cut_off_unmapped &amp;
-                                                 summary_per_sample_reads_single_qc$cut_off_ercc &amp;
-                                                 summary_per_sample_reads_single_qc$cut_off_genes &amp;
-                                                 summary_per_sample_reads_single_qc$molecule_outlier == &quot;FALSE&quot; &amp;
-                                                 summary_per_sample_reads_single_qc$conversion_outlier == &quot;FALSE&quot;
+summary_per_sample_reads_qc$filter_all &lt;- summary_per_sample_reads_qc$cell_number == 1 &amp;
+                                                 summary_per_sample_reads_qc$cut_off_reads &amp;
+                                                 summary_per_sample_reads_qc$cut_off_unmapped &amp;
+                                                 summary_per_sample_reads_qc$cut_off_ercc &amp;
+                                                 summary_per_sample_reads_qc$cut_off_genes &amp;
+                                                 summary_per_sample_reads_qc$molecule_outlier == &quot;FALSE&quot; &amp;
+                                                 summary_per_sample_reads_qc$conversion_outlier == &quot;FALSE&quot;
                                                  
-table(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$filter_all,
-                           c(&quot;individual&quot;, &quot;batch&quot;)])    </code></pre>
-<pre><code>          batch
-individual  1  2  3
-     19098 85  0 57
-     19101 80 71 50
-     19239 78 68 79</code></pre>
-<pre class="r"><code>stopifnot(nrow(summary_per_sample_reads_single_qc) == nrow(anno_single_rm))
-quality_single_cells &lt;- anno_single_rm %&gt;%
-  filter(summary_per_sample_reads_single_qc$filter_all) %&gt;%
+table(summary_per_sample_reads_qc[summary_per_sample_reads_qc$filter_all,
+                           c(&quot;individual&quot;, &quot;replicate&quot;)])    </code></pre>
+<pre><code>          replicate
+individual r1 r2 r3
+   NA19098 85  0 58
+   NA19101 81 70 50
+   NA19239 73 69 80</code></pre>
+<pre class="r"><code>stopifnot(nrow(summary_per_sample_reads_qc) == nrow(anno_rm))
+quality_single_cells &lt;- anno_rm %&gt;%
+  filter(summary_per_sample_reads_qc$filter_all) %&gt;%
   dplyr :: select(sample_id)
 
 write.table(quality_single_cells,
@@ -584,14 +602,14 @@ write.table(quality_single_cells,
 </div>
 <div id="mito-ratios" class="section level3">
 <h3>Mito ratios</h3>
-<pre class="r"><code>ggplot(summary_per_sample_reads_single_qc,
+<pre class="r"><code>ggplot(summary_per_sample_reads_qc,
        aes(x = gene_number, y = mt_reads_ratio, 
        color = as.factor(filter_all))) +
        geom_text(aes(label = cell_number)) +
        labs(x = &quot;Number of genes&quot;, y = &quot;Mitochondrial ratio&quot;) +
        theme(legend.position = &quot;none&quot;)</code></pre>
 <p><img src="figure/qc-filter-ipsc.Rmd/mito-filter-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$cell_number == 1,],
+<pre class="r"><code>ggplot(summary_per_sample_reads_qc[summary_per_sample_reads_qc$cell_number == 1,],
        aes(x = factor(filter_all), y = mt_reads_ratio,
            fill = factor(filter_all)), height = 600, width = 2000) +
 geom_violin(alpha = .5) + 
@@ -599,19 +617,16 @@ geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
 labs(x = &quot;Quality&quot;, y = &quot;Mitochonrial ratio&quot;, title = &quot;Mitochondrial ratio of libraries with 1 cell&quot;)</code></pre>
 <p><img src="figure/qc-filter-ipsc.Rmd/mito-filter-2.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>## check the batch of those outliers
-mito_outliers &lt;- summary_per_sample_reads_single_qc %&gt;% filter(filter_all == &quot;TRUE&quot;, mt_reads_ratio &gt; .15)
+mito_outliers &lt;- summary_per_sample_reads_qc %&gt;% filter(filter_all == &quot;TRUE&quot;, mt_reads_ratio &gt; .15)
 mito_outliers  %&gt;% dplyr::select(sample_id, mt_reads_ratio)</code></pre>
 <pre><code>       sample_id mt_reads_ratio
-1 NA19098.r1.D07      0.1738694
-2 NA19098.r3.A05      0.2086959
-3 NA19098.r3.G03      0.1736603
-4 NA19098.r3.G04      0.1646779
-5 NA19101.r3.A09      0.1881994
-6 NA19239.r3.A11      0.1504436</code></pre>
+1 NA19098.r1.D07      0.1593539
+2 NA19098.r3.G03      0.1625643
+3 NA19098.r3.G04      0.1511902</code></pre>
 <pre class="r"><code>## check if 19098 have high mt genes
-ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$filter_all == &quot;TRUE&quot;,],
-                   aes(x = factor(batch_9), y = mt_reads_ratio,
-                   fill = factor(batch_9)), height = 600, width = 2000) +
+ggplot(summary_per_sample_reads_qc[summary_per_sample_reads_qc$filter_all == &quot;TRUE&quot;,],
+                   aes(x = factor(batch), y = mt_reads_ratio,
+                   fill = factor(batch)), height = 600, width = 2000) +
                    geom_violin(alpha = .5) + 
                    geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
                    scale_fill_manual(values = great_color_8) +  
@@ -621,7 +636,7 @@ ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$fil
 </div>
 <div id="plots" class="section level3">
 <h3>plots</h3>
-<pre class="r"><code>genes_unmapped &lt;-  ggplot(summary_per_sample_reads_single_qc,
+<pre class="r"><code>genes_unmapped &lt;-  ggplot(summary_per_sample_reads_qc,
                    aes(x = gene_number, y = unmapped_ratios * 100,
                    col = as.factor(individual), height = 600, width = 2000)) +
                    geom_point(size = 3, alpha = 0.3) + 
@@ -629,7 +644,7 @@ ggplot(summary_per_sample_reads_single_qc[summary_per_sample_reads_single_qc$fil
                    geom_hline(yintercept = cut_off_unmapped * 100, colour=&quot;grey&quot;, linetype = &quot;longdash&quot;) +
                    labs(x = &quot;Number of genes&quot;, y = &quot;Unmapped reads percentage (%)&quot;) 
 
-genes_ercc &lt;-  ggplot(summary_per_sample_reads_single_qc,
+genes_ercc &lt;-  ggplot(summary_per_sample_reads_qc,
                    aes(x = gene_number, y = ercc_percentage * 100,
                    col = as.factor(individual), shape = as.factor(batch), height = 600, width = 2000)) +
                    geom_point(size = 3, alpha = 0.3) +
@@ -637,7 +652,7 @@ genes_ercc &lt;-  ggplot(summary_per_sample_reads_single_qc,
                    geom_hline(yintercept = cut_off_ercc * 100, colour=&quot;grey&quot;, linetype = &quot;longdash&quot;) +
                    labs(x = &quot;Number of genes&quot;, y = &quot;ERCC reads percentage (%)&quot;) 
 
-reads_unmapped_num &lt;-  ggplot(summary_per_sample_reads_single_qc,
+reads_unmapped_num &lt;-  ggplot(summary_per_sample_reads_qc,
                    aes(x = total_mapped, y = unmapped_ratios * 100,
                    col = as.factor(individual), label = as.character(cell_number), height = 600, width = 2000)) +
                    geom_text(fontface = 3, alpha = 0.5) + 
@@ -645,7 +660,7 @@ reads_unmapped_num &lt;-  ggplot(summary_per_sample_reads_single_qc,
                    geom_hline(yintercept = cut_off_unmapped * 100, colour=&quot;grey&quot;, linetype = &quot;longdash&quot;) +
                    labs(x = &quot;Total mapped reads&quot;, y = &quot;Unmapped reads percentage (%)&quot;) 
 
-reads_ercc_num &lt;-  ggplot(summary_per_sample_reads_single_qc,
+reads_ercc_num &lt;-  ggplot(summary_per_sample_reads_qc,
                    aes(x = total_mapped, y = ercc_percentage * 100,
                    col = as.factor(individual), label = as.character(cell_number), height = 600, width = 2000)) +
                    geom_text(fontface = 3, alpha = 0.5) + 
@@ -659,6 +674,10 @@ plot_grid(genes_unmapped + theme(legend.position = &quot;none&quot;),
           reads_unmapped_num + theme(legend.position = &quot;none&quot;), 
           reads_ercc_num + theme(legend.position = &quot;none&quot;),
           labels = LETTERS[1:4])</code></pre>
+<pre><code>Warning: The shape palette can deal with a maximum of 6 discrete values
+because more than 6 becomes difficult to discriminate; you have 8.
+Consider specifying shapes manually. if you must have them.</code></pre>
+<pre><code>Warning: Removed 192 rows containing missing values (geom_point).</code></pre>
 <p><img src="figure/qc-filter-ipsc.Rmd/plots-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>plot_grid(genes_unmapped + theme(legend.position = c(.75,.9)) + labs(col = &quot;Individual&quot;), 
           reads_unmapped_num + theme(legend.position = &quot;none&quot;), 
