@@ -34,8 +34,10 @@ run_pca <- function(x, retx = TRUE, center = TRUE, scale = TRUE) {
 #                       aesthetic
 #   factors: character vector which contains the column names of metadata that
 #            need to be explicitly converted to a factor
+#   ... : Additional arguments passed to geom_point
 plot_pca <- function(x, pcx = 1, pcy = 2, explained = NULL, metadata = NULL,
-                     color = NULL, shape = NULL, size = NULL, factors = NULL) {
+                     color = NULL, shape = NULL, factors = NULL,
+                     ...) {
   library("ggplot2")
   library("testit")
 
@@ -64,8 +66,10 @@ plot_pca <- function(x, pcx = 1, pcy = 2, explained = NULL, metadata = NULL,
   }
   # Plot
   p <- ggplot(plot_data, aes_string(x = paste0("PC", pcx),
-                                    y = paste0("PC", pcy))) +
-    geom_point(aes_string(color = color, shape = shape, size = size)) +
+                                    y = paste0("PC", pcy),
+                                    color = color,
+                                    shape = shape)) +
+    geom_point(...) +
     labs(x = xaxis, y = yaxis)
   p
 }

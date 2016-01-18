@@ -13,640 +13,106 @@ opts_chunk$set(fig.width = 8, fig.height = 8)
 ```
 
 ```{r packages, message=FALSE}
-library("biomaRt")
-library("data.table")
-library("dplyr")
-library("limma")
-library("edgeR")
 library("ggplot2")
-library("grid")
 library("cowplot")
 theme_set(theme_bw(base_size = 12))
 source("functions.R")
 ```
 
-This file performs the transformations and outputs various intermediate data files used for our analysis.
+## Input
 
-Creates the following files:
+Input filtered annotation.
 
-*  Annotation
-    *  **[annotation.txt][]** - Annotation file
-    *  **[annotation-filter.txt][]** - Annotation file with only the high quality single cells
-*  Reads
-    *  **[reads.txt][]** - Read counts in single cells for all genes with at least one observed read
-    *  **[reads-bulk.txt][]** - Read counts in bulk samples for all genes with at least one observed read
-    *  **[reads-filter.txt][]** - Read counts in high quality single cells for filtered genes
-    *  **[reads-bulk-filter.txt][]** - Read counts in bulk samples for filtered genes
-    *  **[reads-bulk-cpm.txt][]** - Reads (log~2~ cpm) in bulk samples for endogenous genes
-    *  **[reads-bulk-cpm-ercc.txt][]** - Reads (log~2~ cpm) in bulk samples for ERCC genes
-*  Molecules
-    *  **[molecules.txt][]** - Molecule counts in single cells for all genes with at least one observed read
-    *  **[molecules-per-lane.txt][]** - (for QC purposes only) Inflated molecule counts in single cell and bulk samples obtained by summing each lane
-    *  **[molecules-filter.txt][]** - Molecule counts in high quality single cells for filtered genes
-    *  **[molecules-cpm.txt][]** - Molecules (log~2~ cpm) in high quality single cells for endogenous genes
-    *  **[molecules-cpm-ercc.txt][]** - Molecules (log~2~ cpm) in high quality single cells for ERCC genes
-    *  **[molecules-cpm-trans.txt][]** - Molecules in high quality single cells after linear transformation with ERCC
-    *  **[molecules-final.txt][]** - Molecules in high quality single cells after removing unwanted variation with mixed model
-
-[annotation.txt]: https://github.com/jdblischak/singleCellSeq/blob/master/data/annotation.txt
-[annotation-filter.txt]: https://github.com/jdblischak/singleCellSeq/blob/master/data/annotation-filter.txt
-[reads.txt]: https://github.com/jdblischak/singleCellSeq/blob/master/data/reads.txt
-[reads-bulk.txt]: https://github.com/jdblischak/singleCellSeq/blob/master/data/reads-bulk.txt
-[reads-filter.txt]: https://github.com/jdblischak/singleCellSeq/blob/master/data/reads-filter.txt
-[reads-bulk-filter.txt]: https://github.com/jdblischak/singleCellSeq/blob/master/data/reads-bulk-filter.txt
-[reads-bulk-cpm.txt]: https://github.com/jdblischak/singleCellSeq/blob/master/data/reads-bulk-cpm.txt
-[reads-bulk-cpm-ercc.txt]: https://github.com/jdblischak/singleCellSeq/blob/master/data/reads-bulk-cpm-ercc.txt
-[molecules.txt]: https://github.com/jdblischak/singleCellSeq/blob/master/data/molecules.txt
-[molecules-per-lane.txt]: https://github.com/jdblischak/singleCellSeq/blob/master/data/molecules-per-lane.txt
-[molecules-filter.txt]: https://github.com/jdblischak/singleCellSeq/blob/master/data/molecules-filter.txt
-[molecules-cpm.txt]: https://github.com/jdblischak/singleCellSeq/blob/master/data/molecules-cpm.txt
-[molecules-cpm-ercc.txt]: https://github.com/jdblischak/singleCellSeq/blob/master/data/molecules-cpm-ercc.txt
-[molecules-cpm-trans.txt]: https://github.com/jdblischak/singleCellSeq/blob/master/data/molecules-cpm-trans.txt
-[molecules-final.txt]: https://github.com/jdblischak/singleCellSeq/blob/master/data/molecules-final.txt
-
-## Start with raw gene counts
-
-We start with the gene counts file produced by our [pipeline for processing the sequencing data](process-samples.html).
-
-```{r input, cache = TRUE}
-counts <- fread("/mnt/gluster/data/internal_supp/singleCellSeq/gene-counts.txt")
+```{r input-annotation-filter}
+anno_filter <- read.table("../data/annotation-filter.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno_filter)
 ```
 
-It is a very large file, and when read into R it uses `r format(object.size(counts), units = "GB")` of memory.
-Each row corresponds to a specific sample processed in a specific manner.
+Input filtered molecule counts.
 
-```{r inspect}
-counts %>% select(1:10) %>% slice(1:10)
+```{r input-molecule-counts-filter}
+molecules_filter <- read.table("../data/molecules-filter.txt", header = TRUE,
+                               stringsAsFactors = FALSE)
+stopifnot(ncol(molecules_filter) == nrow(anno_filter),
+          colnames(molecules_filter) == anno_filter$sample_id)
 ```
 
-This granular data is used for performing [quality control at the level of sequencing lane](qc-by-lane.html).
+Input standardized molecule counts.
 
-## Sum counts per lane by sample
-
-For downstream analyses, we need to sum the number of reads or molecules for every gene for each sample across sequencing runs.
-The molecule counts derived using this method will be inflated because duplicate reads (i.e. have the same UMI and start site) will only be removed within a lane.
-Thus these per-lane molecule count levels are only used for QC purposes.
-
-```{r summarise}
-counts_by_sample <- counts %>%
-  filter(!is.na(lane), sickle == "quality-trimmed") %>%
-  select(individual, batch, well, rmdup, starts_with("ENSG"), starts_with("ERCC")) %>%
-  group_by(individual, batch, well, rmdup) %>%
-  summarise_each(funs(sum)) %>%
-  arrange(individual, batch, well, rmdup) %>%
-  ungroup
+```{r input-molecule-counts-cpm}
+molecules_cpm <- read.table("../data/molecules-cpm.txt", header = TRUE,
+                            stringsAsFactors = FALSE)
+stopifnot(ncol(molecules_cpm) == nrow(anno_filter),
+          colnames(molecules_cpm) == anno_filter$sample_id)
 ```
 
-## Create annotation file
+Input Poisson GLM transformed molecule counts per million.
 
-The annotation file contains the meta-information for each sample.
-
-```{r annotation}
-anno <- counts_by_sample %>%
-  filter(rmdup == "molecules") %>%
-  select(individual:well) %>%
-  as.data.frame
+```{r input-molecule-counts-trans}
+molecules_cpm_trans <- read.table("../data/molecules-cpm-trans.txt", header = TRUE,
+                               stringsAsFactors = FALSE)
+stopifnot(ncol(molecules_cpm_trans) == nrow(anno_filter),
+          colnames(molecules_cpm_trans) == anno_filter$sample_id)
 ```
 
-Reformat the annotation file:
+Input final batch-corrected molecule counts per million.
 
-*  Add the string "NA" in front of the individual ID's so that they are not interpreted as numeric
-*  The column denoting the 3 replicates is now named `replicate`
-*  Add the string "r" in front of the replciate numbers so that they are not interpreted as numeric
-*  Create new column called `batch` which corresponds to the 9 batches (3 individuals x 3 reps)
-
-```{r reformat-annotation}
-anno <- anno %>% rename(replicate = batch) %>%
-  mutate(individual = paste0("NA", individual),
-         replicate = paste0("r", replicate),
-         batch = paste(individual, replicate, sep = "."),
-         sample_id = paste(batch, well, sep = "."))
-head(anno)
+```{r input-molecule-counts-final}
+molecules_final <- read.table("../data/molecules-final.txt", header = TRUE,
+                              stringsAsFactors = FALSE)
+stopifnot(ncol(molecules_final) == nrow(anno_filter),
+          colnames(molecules_final) == anno_filter$sample_id)
 ```
 
-Output annotation file.
-
-```{r write-anno}
-write.table(anno, "../data/annotation.txt", quote = FALSE, sep = "\t",
-            row.names = FALSE)
-```
-
-## Create reads file
-
-The reads file contains only the counts.
-Each row is a gene and each column is a sample.
-The columns in the reads file correspond to the rows in the annotation file.
-
-```{r transpose-reads}
-reads <- counts_by_sample %>%
-  filter(rmdup == "reads") %>%
-  select(-(individual:rmdup)) %>%
-  t
-dim(reads)
-colnames(reads) <- anno$sample_id
-reads[1:10, 1:5]
-```
-
-Only genes with at least one read observed in at least one of the single cell or bulk samples are maintained.
-
-```{r genes-observed}
-genes_observed <- rownames(reads)[rowSums(reads) > 0]
-reads <- reads[rownames(reads) %in% genes_observed, ]
-```
-
-There are `r length(genes_observed)` genes with at least one read.
-
-Separate the bulk samples from the single cells.
-
-```{r separate-bulk-reads}
-reads_bulk <- reads[, anno$well == "bulk"]
-reads <- reads[, anno$well != "bulk"]
-stopifnot(ncol(reads_bulk) == 3 * 3, ncol(reads) == 3 * 3 * 96)
-```
-
-Output read counts.
-
-```{r output-reads}
-write.table(reads, "../data/reads.txt", quote = FALSE, sep = "\t",
-            col.names = NA)
-write.table(reads_bulk, "../data/reads-bulk.txt", quote = FALSE, sep = "\t",
-            col.names = NA)
-```
-
-## Create molecules per lane file
-
-Create a molecules per lane file similar to the reads file.
-
-```{r transpose-molecules-per-lane}
-molecules_per_lane <- counts_by_sample %>%
-  filter(rmdup == "molecules") %>%
-  select(-(individual:rmdup)) %>%
-  t
-dim(molecules_per_lane)
-colnames(molecules_per_lane) <- anno$sample_id
-```
-
-Only genes with at least one read observed in at least one of the single cell or bulk samples are maintained.
-
-```{r filter-genes-observed-molecules-per-lane}
-molecules_per_lane <- molecules_per_lane[rownames(molecules_per_lane) %in% genes_observed, ]
-stopifnot(nrow(molecules_per_lane) == nrow(reads))
-```
-
-Output molecule per lane counts.
-
-```{r output-molecules-per-lane}
-write.table(molecules_per_lane, "../data/molecules-per-lane.txt", quote = FALSE, sep = "\t",
-            col.names = NA)
-```
-
-## Create molecules file
-
-Reads with the same UMI and start position need to be removed using all the data for a given sample.
-Otherwise the counts will be inflated because the same read can be sequenced across multiple lanes.
-Post-mapping we combined all the reads per sample and removed duplicate UMIs ([pipeline][]).
-The data from these combined samples have `NA` recorded for index, lane, and flow_cell.
-
-[pipeline]: process-samples.html#process-at-the-sample-level
-
-```{r select-sort-combined-counts}
-counts_combined <- counts %>%
-  filter(is.na(lane), sickle == "quality-trimmed") %>%
-  select(individual, batch, well, rmdup, starts_with("ENSG"), starts_with("ERCC")) %>%
-  arrange(individual, batch, well, rmdup)
-stopifnot(counts_combined$individual[c(TRUE, FALSE)] == substr(anno$individual, 3, 8),
-          counts_combined$batch[c(TRUE, FALSE)] == substr(anno$replicate, 2, 2),
-          counts_combined$well[c(TRUE, FALSE)] == anno$well)
-```
-
-Create molecules file similar to reads file.
-
-```{r transpose-molecules}
-molecules <- counts_combined %>%
-  filter(rmdup == "molecules") %>%
-  select(-(individual:rmdup)) %>%
-  t
-dim(molecules)
-colnames(molecules) <- anno$sample_id
-```
-
-Only genes with at least one read observed in at least one of the single cell or bulk samples are maintained.
-
-```{r filter-genes-observed-molecules}
-molecules <- molecules[rownames(molecules) %in% genes_observed, ]
-stopifnot(nrow(molecules) == nrow(reads))
-```
-
-Remove bulk samples from molecules file.
-Because bulk samples have many more molecules than a single cell, the UMIs are not valid.
-
-```{r remove-bulk-molecules}
-molecules <- molecules[, anno$well != "bulk"]
-stopifnot(ncol(molecules) == 3 * 3 * 96)
-```
-
-Output molecule counts.
-
-```{r output-molecules}
-write.table(molecules, "../data/molecules.txt", quote = FALSE, sep = "\t",
-            col.names = NA)
-```
-
-## Filter data
-
-### Filter cells
-
-We performed [quality control at the level of single cell samples](qc-cell-ipsc.html) to identify low quality single cells.
-
-Input list of quality single cells.
-
-```{r input-quality-single-cells}
-quality_single_cells <- scan("../data/quality-single-cells.txt",
-                             what = "character")
-```
-
-We filter the annotation, reads, and molecules data to only include quality single cells.
-Note that this means the filtered annotation file no longer contains information of the bulk samples.
-
-```{r filter-quality-cells}
-anno_filter <- anno %>% filter(sample_id %in% quality_single_cells)
-reads_filter <- reads[, colnames(reads) %in% quality_single_cells]
-molecules_filter <- molecules[, colnames(molecules) %in% quality_single_cells]
-stopifnot(nrow(anno_filter) == ncol(reads_filter),
-          nrow(anno_filter) == ncol(molecules_filter),
-          anno_filter$sample_id == colnames(reads_filter),
-          anno_filter$sample_id == colnames(molecules_filter))
-```
-
-The number of good quality cells is not even across batches.
-
-```{r good-cells-per-batch}
-table(anno_filter$individual, anno_filter$replicate)
-```
-
-### Filter genes
-
-We filter the genes to exlude both those that are lowly expressed or over-expressed (>= 1024 molecules in a given cell).
-
-We identify the lower cutoff using the mean log~2~ molecule counts per million (cpm) in the `r length(quality_single_cells)` high quality single cells.
-
-```{r identify-lower-expression-cutoff}
-molecules_cpm_mean <- rowMeans(cpm(molecules_filter, log = TRUE))
-hist(molecules_cpm_mean, xlab = "Mean log2 molecule cpm in single cells",
-     ylab = "Number of genes", main = "Identifying expression cutoff")
-lower_exp_cutoff <- 2
-abline(v = lower_exp_cutoff, col = "red")
-genes_pass_filter <- rownames(molecules_filter)[molecules_cpm_mean > lower_exp_cutoff]
-```
-
-`r length(genes_pass_filter)` genes have a mean log~2~ molecule cpm greater than `r lower_exp_cutoff`,
-including `r sum(grepl("ERCC", genes_pass_filter))` ERCC genes.
-
-Next we identify any genes which have greater than 1024 molecules in any given single cell.
-These are above our theoretical maximum number of UMIs (it can happen when a highly expressed gene as multiple start sites),
-and thus we cannot correct them for the [collision probability](#collision-probability).
-
-```{r identify-over-expressed}
-overexpressed_rows <- apply(molecules_filter, 1, function(x) any(x >= 1024))
-overexpressed_genes <- rownames(molecules_filter)[overexpressed_rows]
-overexpressed_genes
-
-ensembl <- useMart(host = "grch37.ensembl.org",
-                   biomart = "ENSEMBL_MART_ENSEMBL",
-                   dataset = "hsapiens_gene_ensembl")
-overexpressed_genes_info <- getBM(attributes = c("ensembl_gene_id", "chromosome_name",
-                                                 "external_gene_name", "transcript_count",
-                                                 "description"),
-                                  filters = "ensembl_gene_id",
-                                  values = overexpressed_genes[grep("ENSG", overexpressed_genes)],
-                                  mart = ensembl)
-overexpressed_genes_info
-```
-
-`r length(overexpressed_genes)` genes have molecule counts greater than or equal to 1024 in at least one single cell,
-including `r sum(grepl("ERCC", overexpressed_genes))`.
-
-Update the list of genes passing the filters.
-
-```{r update-filtered-genes}
-genes_pass_filter <- setdiff(genes_pass_filter, overexpressed_genes)
-```
-
-Filter the data to only include the subset of `r length(genes_pass_filter)` genes which pass the lower and upper expression cutoffs.
-This subset includes `r sum(grepl("ERCC", genes_pass_filter))` ERCC genes.
-
-```{r filter-genes}
-reads_filter <- reads_filter[rownames(reads_filter) %in% genes_pass_filter, ]
-molecules_filter <- molecules_filter[rownames(molecules_filter) %in% genes_pass_filter, ]
-reads_bulk_filter <- reads_bulk[rownames(reads_bulk) %in% genes_pass_filter, ]
-stopifnot(nrow(reads_filter) == length(genes_pass_filter),
-          dim(reads_filter) == dim(molecules_filter),
-          nrow(reads_bulk_filter) == nrow(molecules_filter))
-```
-
-Output filtered data.
-
-```{r output-filtered-data}
-write.table(anno_filter, "../data/annotation-filter.txt", quote = FALSE,
-            sep = "\t", row.names = FALSE)
-write.table(reads_filter, "../data/reads-filter.txt", quote = FALSE,
-            sep = "\t", col.names = NA)
-write.table(molecules_filter, "../data/molecules-filter.txt", quote = FALSE,
-            sep = "\t", col.names = NA)
-write.table(reads_bulk_filter, "../data/reads-bulk-filter.txt", quote = FALSE,
-            sep = "\t", col.names = NA)
-```
+## PCA
 
 ### PCA of filtered data
 
-```{r pca-reads-filter}
-pca_reads_filter <- run_pca(reads_filter)
-pca_reads_filter_plot <- plot_pca(pca_reads_filter$PCs, explained = pca_reads_filter$explained,
-         metadata = anno_filter, color = "individual",
-         shape = "replicate") +
-  labs(title = "Filtered raw reads for single cells")
-pca_reads_filter_plot
-```
-
 ```{r pca-molecules-filter}
 pca_molecules_filter <- run_pca(molecules_filter)
-pca_molecules_filter_plot <- plot_pca(pca_molecules_filter$PCs, explained = pca_molecules_filter$explained,
+pca_molecules_filter_plot <- plot_pca(pca_molecules_filter$PCs,
+         explained = pca_molecules_filter$explained,
          metadata = anno_filter, color = "individual",
-         shape = "replicate") +
-  labs(title = "Filtered raw molecules for single cells")
-pca_molecules_filter_plot
+         shape = "replicate", alpha = 0.5, size = 1.5) +
+  labs(title = "Counts")
 ```
 
-```{r pca-reads-bulk-filter}
-pca_reads_bulk_filter <- run_pca(reads_bulk_filter)
-pca_reads_bulk_filter_plot <- plot_pca(pca_reads_bulk_filter$PCs, explained = pca_reads_bulk_filter$explained,
-         metadata = anno[anno$well == "bulk", ], color = "individual",
-         shape = "replicate") +
-  labs(title = "Filtered raw reads for bulk samples")
-pca_reads_bulk_filter_plot
-```
-
-## Correct for collision probability
-
-Due to the stochasticity of the sampling process, not all molecules will be tagged with a UMI and sequenced.
-We correct for this "collision probability" following the method applied in [Grun et al. 2014][Grun2014].
-
-[Grun2014]: http://www.nature.com/nmeth/journal/v11/n6/full/nmeth.2930.html#methods
-
-```{r collision-probability}
-molecules_collision <- -1024 * log(1 - molecules_filter / 1024)
-```
-
-```{r pca-molecules-collision}
-pca_molecules_collision <- run_pca(molecules_collision)
-pca_molecules_collision_plot <- plot_pca(pca_molecules_collision$PCs, explained = pca_molecules_collision$explained,
-         metadata = anno_filter, color = "individual",
-         shape = "replicate") +
-  labs(title = "Collision probability corrected molecules for single cells")
-pca_molecules_collision_plot
-```
-
-## Calculating counts per million
-
-We calculate the log~2~ counts per million (cpm) separately for the endogenous and ERCC genes.
-
-```{r index-ercc-genes}
-ercc_rows <- grepl("ERCC", rownames(reads_bulk_filter))
-```
-
-### Reads bulk endogenous
-
-```{r reads-bulk-endogenous}
-reads_bulk_cpm <- cpm(reads_bulk_filter[!ercc_rows, ], log = TRUE)
-write.table(round(reads_bulk_cpm, digits = 6), "../data/reads-bulk-cpm.txt", quote = FALSE,
-            sep = "\t", col.names = NA)
-```
-
-```{r pca-reads-cpm}
-pca_reads_bulk_cpm <- run_pca(reads_bulk_cpm)
-pca_reads_bulk_cpm_plot <- plot_pca(pca_reads_bulk_cpm$PCs, explained = pca_reads_bulk_cpm$explained,
-         metadata = anno[anno$well == "bulk", ], color = "individual",
-         shape = "replicate") +
-  labs(title = "Reads (log2 cpm) for bulk samples")
-pca_reads_bulk_cpm_plot
-```
-
-### Reads bulk ERCC
-
-```{r reads-bulk-ercc}
-reads_bulk_cpm_ercc <- cpm(reads_bulk_filter[ercc_rows, ], log = TRUE)
-write.table(round(reads_bulk_cpm_ercc, digits = 6), "../data/reads-bulk-cpm-ercc.txt", quote = FALSE,
-            sep = "\t", col.names = NA)
-```
-
-### Molecules single cell endogenous
-
-```{r molecules-single-endogenous}
-molecules_cpm <- cpm(molecules_collision[!ercc_rows, ], log = TRUE)
-write.table(round(molecules_cpm, digits = 6), "../data/molecules-cpm.txt", quote = FALSE,
-            sep = "\t", col.names = NA)
-```
+### PCA of standardized data
 
 ```{r pca-molecules-cpm}
 pca_molecules_cpm <- run_pca(molecules_cpm)
-pca_molecules_cpm_plot <- plot_pca(pca_molecules_cpm$PCs, explained = pca_molecules_cpm$explained,
+pca_molecules_cpm_plot <- plot_pca(pca_molecules_cpm$PCs,
+         explained = pca_molecules_cpm$explained,
          metadata = anno_filter, color = "individual",
-         shape = "replicate") +
-  labs(title = "Molecules (log2 cpm) for single cells")
-pca_molecules_cpm_plot
+         shape = "replicate", alpha = 0.5, size = 1.5) +
+  labs(title = "Counts per million (log)")
 ```
 
-### Molecules single cell ERCC
-
-```{r molecules-single-ercc}
-molecules_cpm_ercc <- cpm(molecules_collision[ercc_rows, ], log = TRUE)
-write.table(round(molecules_cpm_ercc, digits = 6), "../data/molecules-cpm-ercc.txt", quote = FALSE,
-            sep = "\t", col.names = NA)
-```
-
-## Linear transformation with ERCC controls
-
-To correct for technical effects across the single cells, we use the ERCC spike-in genes.
-We compare the observed number of ERCC molecules in each sample to the expected number of ERCC molecules and fit the relationship with a linear model.
-We then use this model to linearly transform the observed gene molecule counts within each single cell.
-
-The expected number of ERCC molecules per well was calculated in [another analysis](capture-efficiency.html).
-
-```{r input-ercc}
-ercc <- read.table("../data/expected-ercc-molecules.txt", header = TRUE,
-                   stringsAsFactors = FALSE)
-head(ercc)
-```
-
-We need to filter the `r nrow(ercc)` ERCC genes to only include those that passed the expression filters.
-
-```{r filter-ercc}
-ercc <- ercc[ercc$id %in% rownames(molecules_cpm_ercc), ]
-ercc <- ercc[order(ercc$id), ]
-stopifnot(ercc$id == rownames(molecules_cpm_ercc))
-```
-
-Because the molecule counts have been converted to log~2~ cpm, we also convert the expected ERCC molecule counts to log~2~ cpm.
-
-```{r cpm-expected-ercc}
-ercc$log2_cpm <- cpm(ercc$ercc_molecules_well, log = TRUE)
-```
-
-We perform the linear transformation per single cell.
-
-```{r linear-transformation}
-molecules_cpm_trans <- molecules_cpm
-molecules_cpm_trans[, ] <- NA
-intercept <- numeric(length = ncol(molecules_cpm_trans))
-slope <- numeric(length = ncol(molecules_cpm_trans))
-for (i in 1:ncol(molecules_cpm_trans)) {
-  fit <- lm(molecules_cpm_ercc[, i] ~ ercc$log2_cpm)
-  intercept[i] <- fit$coefficients[1]
-  slope[i] <- fit$coefficients[2]
-  # Y = mX + b -> X = (Y - b) / m
-  molecules_cpm_trans[, i] <- (molecules_cpm[, i] - intercept[i]) / slope[i]
-}
-stopifnot(!is.na(molecules_cpm_trans))
-```
-
-Here is a visualization of what happened using the first single cell as an example.
-
-```{r linear-transformation-example}
-plot(ercc$log2_cpm, molecules_cpm_ercc[, 1],
-     xlab = "Expected log2 cpm", ylab = "Observed log2 cpm",
-     main = "Example linear transformation - endogenous genes in red")
-abline(intercept[1], slope[1])
-points(molecules_cpm_trans[, 1], molecules_cpm[, 1], col = "red")
-```
-
-The distribution of the slope and intercept across the batches was similar, with the exception of the outlier 19098 batch 2.
-
-```{r linear-transformation-intercept}
-boxplot(intercept ~ anno_filter$batch,
-        xlab = "", ylab = "Intercept", las = 3,
-        main = "Variation in intercept from linear transformation")
-```
-
-```{r linear-transformation-slope}
-boxplot(slope ~ anno_filter$batch,
-        xlab = "", ylab = "Slope", las = 3,
-        main = "Variation in slope from linear transformation")
-```
-
-Output linearly transformed molecules.
-
-```{r ouptut-linear-transformation}
-write.table(round(molecules_cpm_trans, digits = 6), "../data/molecules-cpm-trans.txt", quote = FALSE,
-            sep = "\t", col.names = NA)
-```
-
-PCA of linearly transformed data.
+### PCA of Poisson GLM transformed molecule counts per million
 
 ```{r pca-molecules-cpm-trans}
 pca_molecules_cpm_trans <- run_pca(molecules_cpm_trans)
-pca_molecules_cpm_trans_plot <- plot_pca(pca_molecules_cpm_trans$PCs, explained = pca_molecules_cpm_trans$explained,
+pca_molecules_cpm_trans_plot <- plot_pca(pca_molecules_cpm_trans$PCs,
+         explained = pca_molecules_cpm_trans$explained,
          metadata = anno_filter, color = "individual",
-         shape = "replicate") +
-  labs(title = "Molecules (linearly transformed with ERCC) for single cells")
-pca_molecules_cpm_trans_plot
+         shape = "replicate",  alpha = 0.5, size = 1.5) +
+  labs(title = "Poisson transformation")
 ```
 
-## Mixed model for batch-effect correction
-
-Because the linear transformation with the ERCC controls was not sufficient to remove all the unwanted technical variation, we used a mixed model to correct for batch effects.
-
-We adapted limma's algorithm for estimating variance components due to random effects. 
-This analysis operates under the assumption that biological replicates (or batches within an individual
-in this case) share similar correlation across genes. Morever, the analysis permits negative
-correlation between replicates. 
-
-### Crossed Model
-
-For every single gene, we will fit a mixed model assuming
-differences between batches are not individual-specific as follows
-
-$$ y_{ijk} = \mu + \alpha_i + b_j + \epsilon_{ijk} $$,
-
-where $y_{ijk}$ is the log2 counts-per-million (cpm) for any gene 
-in individual $i$, batch $j$, and cell $k$, $\mu$ is the gene-specific
-expression level across all cells, $\alpha_i$ is the expression level
-specific to individual $i$, $b_j$ is batch $j$'s deviation of expression
-level from gene-specific expression levels, and $\epsilon_{ijk}$ is 
-the models' residual error. 
-
-We assume that $b_j$ follows a normal distribution with $b_j \sim N(0, \sigma^2_b)$ for $j = 1, \dots, 9$, and $\epsilon_{ijk} \sim N(0, \sigma^2_\epsilon)$ for $i = 1, 2, 3; j = 1, \dots, 9; and k = 1, \dots, n_{ij}$, where $n_ij$ denotes the number of cells in individual $i$, batch $j$.
-
-### Remove unwanted variation 
-
-Load the [Humanzee][] package.
-
-[Humanzee]: https://github.com/jhsiao999/Humanzee
-
-```{r load-humanzee}
-library("Humanzee")
-```
-
-Create design matrix and compute a consensus correlation coefficient using
-limma's duplicateCorrelation function.
-
-```{r design-matrix}
-block <- anno_filter$batch
-design <- model.matrix(~ 1 + individual, data = anno_filter)
-```
-
-```{r duplicate-correlation}
-dup_corrs_file <- "../data/dup-corrs.rda"
-if (file.exists(dup_corrs_file)) {
-  load(dup_corrs_file)
-} else{
-  dup_corrs <- duplicateCorrelation(molecules_cpm_trans,
-                                    design = design, block = block)
-  save(dup_corrs, file = dup_corrs_file)
-}
-```
-
-Fit a mixed model with the 9 batches being the random effect.
-
-```{r fit-mixed-model}
-if (file.exists("../data/limma-crossed.rda")) {
-  load("../data/limma-crossed.rda")
-} else {
-  gls_fit <-
-      Humanzee::ruv_mixed_model(molecules_cpm_trans,
-                      ndups = 1,
-                      design = design, block = block,
-                      correlation = dup_corrs$cons)
-  save(gls_fit, file = "../data/limma-crossed.rda")
-}
-```
-
-Compute expression levels after removing variation due to random effects.
-
-```{r remove-unwanted-variation}
-molecules_final <- t( design %*% t(gls_fit$coef) ) + gls_fit$resid
-```
-
-Output the cleaned data.
-
-```{r ouptut-mixed-model}
-colnames(molecules_final) <- colnames(molecules_cpm_trans)
-write.table(round(molecules_final, digits = 6), "../data/molecules-final.txt", quote = FALSE,
-            sep = "\t", col.names = NA)
-```
+### PCA of final batch-corrected data
 
 ```{r pca-molecules-final}
 pca_final <- run_pca(molecules_final)
 pca_final_plot <- plot_pca(pca_final$PCs, explained = pca_final$explained,
          metadata = anno_filter, color = "individual",
-         shape = "replicate") +
-  labs(title = "Molecules (batch corrected) for single cells")
-pca_final_plot
+         shape = "replicate", alpha = 0.5, size = 1.5) +
+  labs(title = "Batch corrected")
 ```
 
 ## Data transformation figure
 
 ```{r data-transformation, fig.width=8, fig.height=8}
-theme_set(theme_bw(base_size = 8))
 plot_grid(pca_molecules_filter_plot + theme(legend.position = "none"),
           pca_molecules_cpm_plot + theme(legend.position = "none"),
           pca_molecules_cpm_trans_plot + theme(legend.position = "none"),
