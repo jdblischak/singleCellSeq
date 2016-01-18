@@ -1,9 +1,9 @@
 ---
-title: "Poisson GLM normalization"
+title: "Account for technical noise measured with ERCC controls using Poisson GLM transformation"
 date: 2015-12-22
 ---
   
-  **Last updated:** `r Sys.Date()`
+**Last updated:** `r Sys.Date()`
 
 **Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
 
@@ -13,43 +13,60 @@ opts_chunk$set(fig.width = 8, fig.height = 8)
 ```
 
 ```{r packages, message=FALSE}
-require(ggplot2)
-theme_set(theme_bw(base_size = 12))
-require(dplyr)
-require(doMC)
-require(gridExtra)
+library("dplyr")
+library("doMC")
 registerDoMC(7)
-require(data.table)
+library("ggplot2")
+theme_set(theme_bw(base_size = 12))
+source("functions.R")
 ```
 
-Read raw data
+This file tranforms the standardized molecule counts by modeling the ERCC counts using a Poisson generalized linear model (glm).
 
-```{r load-data}
-anno=read.table("../data/annotation.txt",header=T,stringsAsFactors=F)
-quality_single_cells <- scan("../data/quality-single-cells.txt",
-                             what = "character")
-anno_filter <- anno %>% filter(sample_id %in% quality_single_cells)
-spike <- read.table("../data/expected-ercc-molecules.txt", header = TRUE,
-                    sep = "\t", stringsAsFactors = FALSE)
+Creates the following file:
+
+**[molecules-cpm-trans.txt][]** - Molecules in high quality single cells after linear transformation with ERCC
+
+[molecules-cpm-trans.txt]: https://github.com/jdblischak/singleCellSeq/blob/master/data/molecules-cpm-trans.txt
+
+## Input
+
+Input filtered annotation.
+
+```{r input-annotation-filter}
+anno_filter <- read.table("../data/annotation-filter.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno_filter)
+```
+
+Input filtered molecule counts.
+
+```{r input-molecule-counts-filter}
 molecules_filter <- read.table("../data/molecules-filter.txt", header = TRUE,
                                stringsAsFactors = FALSE)
+stopifnot(ncol(molecules_filter) == nrow(anno_filter),
+          colnames(molecules_filter) == anno_filter$sample_id)
+```
 
+Input standardized molecule counts.
+
+```{r input-molecule-counts-cpm}
+molecules_cpm <- read.table("../data/molecules-cpm.txt", header = TRUE,
+                            stringsAsFactors = FALSE)
+stopifnot(ncol(molecules_cpm) == nrow(anno_filter),
+          colnames(molecules_cpm) == anno_filter$sample_id)
+```
+
+Input expected ERCC molecule counts (calculated in [another analysis](capture-efficiency.html)).
+Filter to only include those ERCC controls that passed the [expression filter](filter.html).
+
+```{r input-spike}
+spike <- read.table("../data/expected-ercc-molecules.txt", header = TRUE,
+                    sep = "\t", stringsAsFactors = FALSE)
 spike_input <- spike$ercc_molecules_well[spike$id %in% rownames(molecules_filter)]
 names(spike_input) <- spike$id[spike$id %in% rownames(molecules_filter)]
 spike_input <- spike_input[order(names(spike_input))]
-tech <- grepl("ERCC", rownames(molecules_filter))
-molecules_filter=as.matrix(molecules_filter)
-batches=unique(anno_filter$batch)
-
-molecules_cpm = fread( "../data/molecules-cpm.txt", header = TRUE,
-                       stringsAsFactors = FALSE)
-setDF(molecules_cpm)
-rownames(molecules_cpm)=molecules_cpm$V1
-molecules_cpm$V1=NULL 
-molecules_cpm=as.matrix(molecules_cpm)
-
-molecules_cpm_trans_shrunk = read.table("../data/molecules-cpm-trans-shrunk.txt", header = TRUE, stringsAsFactors = FALSE)
-
+stopifnot(names(spike_input) == grep("ERCC", rownames(molecules_filter), value = TRUE))
 ```
 
 ## Poisson spike-in only model
@@ -62,18 +79,34 @@ for (i in 1:ncol(molecules_cpm)) {
   pois_glm_params$intercept[i] <- fit$coefficients[1]
   pois_glm_params$nu[i] <- fit$coefficients[2]
 }
-pois_glm_expression <- sweep( sweep( molecules_cpm, 2, pois_glm_params$intercept, "-"), 2, pois_glm_params$nu, "/" )
+molecules_cpm_trans <- sweep( sweep( molecules_cpm, 2, pois_glm_params$intercept, "-"), 2, pois_glm_params$nu, "/" )
 ```
 
-## Collate normalized matrices
+Write to file.
+
+```{r ouptut-poisson-transformation}
+write.table(round(molecules_cpm_trans, digits = 6), "../data/molecules-cpm-trans.txt", quote = FALSE,
+            sep = "\t", col.names = NA)
+```
+
+## PCA
+
+```{r pca-molecules-cpm-trans}
+pca_molecules_cpm_trans <- run_pca(molecules_cpm_trans)
+pca_molecules_cpm_trans_plot <- plot_pca(pca_molecules_cpm_trans$PCs, explained = pca_molecules_cpm_trans$explained,
+         metadata = anno_filter, color = "individual",
+         shape = "replicate") +
+  labs(title = "Molecules (Poisson transformation with ERCC) for single cells")
+pca_molecules_cpm_trans_plot
+```
+
+## Analysis of variance
 
 Collect together all the normalized expression matrices for analysis
 
 ```{r cpm-matrices}
-cpm_mats <- list( raw=molecules_cpm,  pois_glm_expression=pois_glm_expression )
+cpm_mats <- list( raw=molecules_cpm,  molecules_cpm_trans=molecules_cpm_trans )
 ```
-
-## Analysis of variance
 
 We need a nested ANOVA since the replicates are not common across the individuals. 
 
@@ -94,15 +127,13 @@ my_nested_anova=function(temp) {
   sse=sum( (temp$y - temp$batch_means)^2 ),
   sst=sum( (temp$y - global_mean)^2  ))
 }
-
-#aov(x[i,] ~ Error(anno_filter$batch) + anno_filter$individual )
 ```
 
 Run ANOVAs per gene for each matrix and calculate variance components
 
 ```{r run-anovas}
 anovas <- lapply(cpm_mats, function(x) {
-  foreach(i=1:nrow(x)) %dopar% my_nested_anova(data.frame(y=x[i,], batch=anno_filter$batch, individual=anno_filter$individual))
+  foreach(i=1:nrow(x)) %dopar% my_nested_anova(data.frame(y=as.numeric(x[i,]), batch=anno_filter$batch, individual=anno_filter$individual))
 })
 
 variance_components <- lapply( as.list(names(anovas)), function(name) {
