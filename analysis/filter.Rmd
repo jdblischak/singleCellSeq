@@ -1,0 +1,220 @@
+---
+title: "Filter genes and low-quality single cells"
+date: 2016-01-18
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+opts_chunk$set(fig.width = 8, fig.height = 8)
+```
+
+```{r packages, message=FALSE}
+library("biomaRt")
+library("dplyr")
+library("edgeR")
+library("ggplot2")
+theme_set(theme_bw(base_size = 12))
+source("functions.R")
+```
+
+This file uses the [list of quality single cells][quality-single-cells] defined by the [quality control analysis](qc-filter-ipsc.html) to filter the [count matrices](prepare-counts.html).
+It also removes lowly expressed genes and genes with invalid molecule counts (greater than the maximum allowlable 1024).
+
+[quality-single-cells]: https://github.com/jdblischak/singleCellSeq/blob/master/data/quality-single-cells.txt
+
+Creates the following files:
+
+*  **[annotation-filter.txt][]** - Annotation file with only the high quality single cells
+*  **[reads-filter.txt][]** - Read counts in high quality single cells for filtered genes
+*  **[reads-bulk-filter.txt][]** - Read counts in bulk samples for filtered genes
+*  **[molecules-filter.txt][]** - Molecule counts in high quality single cells for filtered genes
+
+[annotation-filter.txt]: https://github.com/jdblischak/singleCellSeq/blob/master/data/annotation-filter.txt
+[reads-filter.txt]: https://github.com/jdblischak/singleCellSeq/blob/master/data/reads-filter.txt
+[reads-bulk-filter.txt]: https://github.com/jdblischak/singleCellSeq/blob/master/data/reads-bulk-filter.txt
+[molecules-filter.txt]: https://github.com/jdblischak/singleCellSeq/blob/master/data/molecules-filter.txt
+
+## Input
+
+Input annotation.
+
+```{r input-annotation}
+anno <- read.table("../data/annotation.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno)
+```
+
+Input read counts.
+
+```{r input-read-counts}
+reads <- read.table("../data/reads.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+stopifnot(ncol(reads) == nrow(anno),
+          colnames(reads) == anno$sample_id)
+```
+
+Input molecule counts.
+
+```{r input-molecule-counts}
+molecules <- read.table("../data/molecules.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+stopifnot(ncol(molecules) == nrow(anno),
+          colnames(reads) == anno$sample_id)
+```
+
+Input read counts for bulk samples (in order to filter genes).
+
+```{r input-read-counts-bulk}
+reads_bulk <- read.table("../data/reads-bulk.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+stopifnot(ncol(reads_bulk) == 9)
+```
+
+Input annotation for bulk samples (for PCA plot).
+
+```{r input-annotation-bulk}
+anno_bulk <- read.table("../data/annotation-bulk.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno_bulk)
+```
+
+## Filter low quality single cells
+
+We performed [quality control](qc-filter-ipsc.html) to identify low quality single cells.
+
+Input list of quality single cells.
+
+```{r input-quality-single-cells}
+quality_single_cells <- scan("../data/quality-single-cells.txt",
+                             what = "character")
+```
+
+We filter the annotation, reads, and molecules data to only include quality single cells.
+
+```{r filter-quality-cells}
+anno_filter <- anno %>% filter(sample_id %in% quality_single_cells)
+reads_filter <- reads[, colnames(reads) %in% quality_single_cells]
+molecules_filter <- molecules[, colnames(molecules) %in% quality_single_cells]
+stopifnot(nrow(anno_filter) == ncol(reads_filter),
+          nrow(anno_filter) == ncol(molecules_filter),
+          anno_filter$sample_id == colnames(reads_filter),
+          anno_filter$sample_id == colnames(molecules_filter))
+```
+
+The number of good quality cells is not even across batches.
+
+```{r good-cells-per-batch}
+table(anno_filter$individual, anno_filter$replicate)
+```
+
+### Filter genes
+
+We filter the genes to exlude both those that are lowly expressed or over-expressed (>= 1024 molecules in a given cell).
+
+We identify the lower cutoff using the mean log~2~ molecule counts per million (cpm) in the `r length(quality_single_cells)` high quality single cells.
+
+```{r identify-lower-expression-cutoff}
+molecules_cpm_mean <- rowMeans(cpm(molecules_filter, log = TRUE))
+hist(molecules_cpm_mean, xlab = "Mean log2 molecule cpm in single cells",
+     ylab = "Number of genes", main = "Identifying expression cutoff")
+lower_exp_cutoff <- 2
+abline(v = lower_exp_cutoff, col = "red")
+genes_pass_filter <- rownames(molecules_filter)[molecules_cpm_mean > lower_exp_cutoff]
+```
+
+`r length(genes_pass_filter)` genes have a mean log~2~ molecule cpm greater than `r lower_exp_cutoff`,
+including `r sum(grepl("ERCC", genes_pass_filter))` ERCC genes.
+
+Next we identify any genes which have greater than 1024 molecules in any given single cell.
+These are above our theoretical maximum number of UMIs (it can happen when a highly expressed gene as multiple start sites),
+and thus we cannot correct them for the [collision probability](#collision-probability) (Note: We need to update this link).
+
+```{r identify-over-expressed}
+overexpressed_rows <- apply(molecules_filter, 1, function(x) any(x >= 1024))
+overexpressed_genes <- rownames(molecules_filter)[overexpressed_rows]
+overexpressed_genes
+
+ensembl <- useMart(host = "grch37.ensembl.org",
+                   biomart = "ENSEMBL_MART_ENSEMBL",
+                   dataset = "hsapiens_gene_ensembl")
+overexpressed_genes_info <- getBM(attributes = c("ensembl_gene_id", "chromosome_name",
+                                                 "external_gene_name", "transcript_count",
+                                                 "description"),
+                                  filters = "ensembl_gene_id",
+                                  values = overexpressed_genes[grep("ENSG", overexpressed_genes)],
+                                  mart = ensembl)
+overexpressed_genes_info
+```
+
+`r length(overexpressed_genes)` genes have molecule counts greater than or equal to 1024 in at least one single cell,
+which includes `r sum(grepl("ERCC", overexpressed_genes))` ERCC control genes.
+
+Update the list of genes passing the filters.
+
+```{r update-filtered-genes}
+genes_pass_filter <- setdiff(genes_pass_filter, overexpressed_genes)
+```
+
+Filter the data to only include the subset of `r length(genes_pass_filter)` genes which pass the lower and upper expression cutoffs.
+This subset includes `r sum(grepl("ERCC", genes_pass_filter))` ERCC genes.
+
+```{r filter-genes}
+reads_filter <- reads_filter[rownames(reads_filter) %in% genes_pass_filter, ]
+molecules_filter <- molecules_filter[rownames(molecules_filter) %in% genes_pass_filter, ]
+reads_bulk_filter <- reads_bulk[rownames(reads_bulk) %in% genes_pass_filter, ]
+stopifnot(nrow(reads_filter) == length(genes_pass_filter),
+          dim(reads_filter) == dim(molecules_filter),
+          nrow(reads_bulk_filter) == nrow(molecules_filter))
+```
+
+Output filtered data.
+
+```{r output-filtered-data}
+write.table(anno_filter, "../data/annotation-filter.txt", quote = FALSE,
+            sep = "\t", row.names = FALSE)
+write.table(reads_filter, "../data/reads-filter.txt", quote = FALSE,
+            sep = "\t", col.names = NA)
+write.table(molecules_filter, "../data/molecules-filter.txt", quote = FALSE,
+            sep = "\t", col.names = NA)
+write.table(reads_bulk_filter, "../data/reads-bulk-filter.txt", quote = FALSE,
+            sep = "\t", col.names = NA)
+```
+
+### PCA of filtered data
+
+```{r pca-reads-filter}
+pca_reads_filter <- run_pca(reads_filter)
+pca_reads_filter_plot <- plot_pca(pca_reads_filter$PCs, explained = pca_reads_filter$explained,
+         metadata = anno_filter, color = "individual",
+         shape = "replicate") +
+  labs(title = "Filtered raw reads for single cells")
+pca_reads_filter_plot
+```
+
+```{r pca-molecules-filter}
+pca_molecules_filter <- run_pca(molecules_filter)
+pca_molecules_filter_plot <- plot_pca(pca_molecules_filter$PCs, explained = pca_molecules_filter$explained,
+         metadata = anno_filter, color = "individual",
+         shape = "replicate") +
+  labs(title = "Filtered raw molecules for single cells")
+pca_molecules_filter_plot
+```
+
+```{r pca-reads-bulk-filter}
+pca_reads_bulk_filter <- run_pca(reads_bulk_filter)
+pca_reads_bulk_filter_plot <- plot_pca(pca_reads_bulk_filter$PCs, explained = pca_reads_bulk_filter$explained,
+         metadata = anno_bulk, color = "individual",
+         shape = "replicate") +
+  labs(title = "Filtered raw reads for bulk samples")
+pca_reads_bulk_filter_plot
+```
+
+## Session information
+
+```{r info}
+sessionInfo()
+```
