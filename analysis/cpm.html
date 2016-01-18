@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+
+<meta name="date" content="2015-09-30" />
+
+<title>Standardize with counts per million</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Standardize with counts per million</h1>
+<h4 class="date"><em>2015-09-30</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#input">Input</a></li>
+<li><a href="#correct-for-collision-probability">Correct for collision probability</a></li>
+<li><a href="#calculating-counts-per-million">Calculating counts per million</a><ul>
+<li><a href="#reads-bulk-endogenous">Reads bulk endogenous</a></li>
+<li><a href="#reads-bulk-ercc">Reads bulk ERCC</a></li>
+<li><a href="#molecules-single-cell-endogenous">Molecules single cell endogenous</a></li>
+<li><a href="#molecules-single-cell-ercc">Molecules single cell ERCC</a></li>
+</ul></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2016-01-18</p>
+<p><strong>Code version:</strong> 384c1a73cd413b558e806e4928853f487bc37547</p>
+<pre class="r"><code>library(&quot;dplyr&quot;)
+library(&quot;limma&quot;)
+library(&quot;edgeR&quot;)
+library(&quot;ggplot2&quot;)
+theme_set(theme_bw(base_size = 12))
+source(&quot;functions.R&quot;)</code></pre>
+<p>This file standardizes the counts to the log<sub>2</sub> counts per million (cpm). The endogenous genes and ERCC controls are standardized separately because the same number of ERCC controls are spiked into each sample.</p>
+<p>The reads for the bulk samples are processed as in traditional RNA-seq. On the other hand, the single cell samples are processed differently. First, only their molecule counts are standardized. Second, the molecule counts are adjusted to account for the <a href="#correct-for-collision-probability">collision probability</a> before standardization.</p>
+<p>Creates the following files:</p>
+<ul>
+<li><strong><a href="https://github.com/jdblischak/singleCellSeq/blob/master/data/reads-bulk-cpm.txt">reads-bulk-cpm.txt</a></strong> - Reads (log<sub>2</sub> cpm) in bulk samples for endogenous genes</li>
+<li><strong><a href="https://github.com/jdblischak/singleCellSeq/blob/master/data/reads-bulk-cpm-ercc.txt">reads-bulk-cpm-ercc.txt</a></strong> - Reads (log<sub>2</sub> cpm) in bulk samples for ERCC genes</li>
+<li><strong><a href="https://github.com/jdblischak/singleCellSeq/blob/master/data/molecules-cpm.txt">molecules-cpm.txt</a></strong> - Molecules (log<sub>2</sub> cpm) in high quality single cells for endogenous genes</li>
+<li><strong><a href="https://github.com/jdblischak/singleCellSeq/blob/master/data/molecules-cpm-ercc.txt">molecules-cpm-ercc.txt</a></strong> - Molecules (log<sub>2</sub> cpm) in high quality single cells for ERCC genes</li>
+</ul>
+<div id="input" class="section level2">
+<h2>Input</h2>
+<p>Input filtered annotation.</p>
+<pre class="r"><code>anno_filter &lt;- read.table(&quot;../data/annotation-filter.txt&quot;, header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno_filter)</code></pre>
+<pre><code>  individual replicate well      batch      sample_id
+1    NA19098        r1  A01 NA19098.r1 NA19098.r1.A01
+2    NA19098        r1  A02 NA19098.r1 NA19098.r1.A02
+3    NA19098        r1  A04 NA19098.r1 NA19098.r1.A04
+4    NA19098        r1  A05 NA19098.r1 NA19098.r1.A05
+5    NA19098        r1  A06 NA19098.r1 NA19098.r1.A06
+6    NA19098        r1  A07 NA19098.r1 NA19098.r1.A07</code></pre>
+<p>Input filtered read counts.</p>
+<pre class="r"><code>reads_filter &lt;- read.table(&quot;../data/reads-filter.txt&quot;, header = TRUE,
+                    stringsAsFactors = FALSE)
+stopifnot(ncol(reads_filter) == nrow(anno_filter),
+          colnames(reads_filter) == anno_filter$sample_id)</code></pre>
+<p>Input filtered molecule counts.</p>
+<pre class="r"><code>molecules_filter &lt;- read.table(&quot;../data/molecules-filter.txt&quot;, header = TRUE,
+                    stringsAsFactors = FALSE)
+stopifnot(ncol(molecules_filter) == nrow(anno_filter),
+          colnames(molecules_filter) == anno_filter$sample_id)</code></pre>
+<p>Input filtered read counts for bulk samples.</p>
+<pre class="r"><code>reads_bulk_filter &lt;- read.table(&quot;../data/reads-bulk-filter.txt&quot;, header = TRUE,
+                    stringsAsFactors = FALSE)
+stopifnot(ncol(reads_bulk_filter) == 9)</code></pre>
+<p>Input annotation for bulk samples.</p>
+<pre class="r"><code>anno_bulk &lt;- read.table(&quot;../data/annotation-bulk.txt&quot;, header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno_bulk)</code></pre>
+<pre><code>  individual replicate well      batch       sample_id
+1    NA19098        r1 bulk NA19098.r1 NA19098.r1.bulk
+2    NA19098        r2 bulk NA19098.r2 NA19098.r2.bulk
+3    NA19098        r3 bulk NA19098.r3 NA19098.r3.bulk
+4    NA19101        r1 bulk NA19101.r1 NA19101.r1.bulk
+5    NA19101        r2 bulk NA19101.r2 NA19101.r2.bulk
+6    NA19101        r3 bulk NA19101.r3 NA19101.r3.bulk</code></pre>
+</div>
+<div id="correct-for-collision-probability" class="section level2">
+<h2>Correct for collision probability</h2>
+<p>Due to the stochasticity of the sampling process, not all molecules will be tagged with a UMI and sequenced. We correct for this “collision probability” following the method applied in <a href="http://www.nature.com/nmeth/journal/v11/n6/full/nmeth.2930.html#methods">Grun et al. 2014</a>.</p>
+<pre class="r"><code>molecules_collision &lt;- -1024 * log(1 - molecules_filter / 1024)</code></pre>
+<pre class="r"><code>pca_molecules_collision &lt;- run_pca(molecules_collision)
+pca_molecules_collision_plot &lt;- plot_pca(pca_molecules_collision$PCs, explained = pca_molecules_collision$explained,
+         metadata = anno_filter, color = &quot;individual&quot;,
+         shape = &quot;replicate&quot;) +
+  labs(title = &quot;Collision probability corrected molecules for single cells&quot;)
+pca_molecules_collision_plot</code></pre>
+<p><img src="figure/cpm.Rmd/pca-molecules-collision-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
+<div id="calculating-counts-per-million" class="section level2">
+<h2>Calculating counts per million</h2>
+<p>We calculate the log<sub>2</sub> counts per million (cpm) separately for the endogenous and ERCC genes.</p>
+<pre class="r"><code>ercc_rows &lt;- grepl(&quot;ERCC&quot;, rownames(reads_bulk_filter))</code></pre>
+<div id="reads-bulk-endogenous" class="section level3">
+<h3>Reads bulk endogenous</h3>
+<pre class="r"><code>reads_bulk_cpm &lt;- cpm(reads_bulk_filter[!ercc_rows, ], log = TRUE)
+write.table(round(reads_bulk_cpm, digits = 6), &quot;../data/reads-bulk-cpm.txt&quot;, quote = FALSE,
+            sep = &quot;\t&quot;, col.names = NA)</code></pre>
+<pre class="r"><code>pca_reads_bulk_cpm &lt;- run_pca(reads_bulk_cpm)
+pca_reads_bulk_cpm_plot &lt;- plot_pca(pca_reads_bulk_cpm$PCs, explained = pca_reads_bulk_cpm$explained,
+         metadata = anno_bulk, color = &quot;individual&quot;,
+         shape = &quot;replicate&quot;) +
+  labs(title = &quot;Reads (log2 cpm) for bulk samples&quot;)
+pca_reads_bulk_cpm_plot</code></pre>
+<p><img src="figure/cpm.Rmd/pca-reads-cpm-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
+<div id="reads-bulk-ercc" class="section level3">
+<h3>Reads bulk ERCC</h3>
+<pre class="r"><code>reads_bulk_cpm_ercc &lt;- cpm(reads_bulk_filter[ercc_rows, ], log = TRUE)
+write.table(round(reads_bulk_cpm_ercc, digits = 6), &quot;../data/reads-bulk-cpm-ercc.txt&quot;, quote = FALSE,
+            sep = &quot;\t&quot;, col.names = NA)</code></pre>
+</div>
+<div id="molecules-single-cell-endogenous" class="section level3">
+<h3>Molecules single cell endogenous</h3>
+<pre class="r"><code>molecules_cpm &lt;- cpm(molecules_collision[!ercc_rows, ], log = TRUE)
+write.table(round(molecules_cpm, digits = 6), &quot;../data/molecules-cpm.txt&quot;, quote = FALSE,
+            sep = &quot;\t&quot;, col.names = NA)</code></pre>
+<pre class="r"><code>pca_molecules_cpm &lt;- run_pca(molecules_cpm)
+pca_molecules_cpm_plot &lt;- plot_pca(pca_molecules_cpm$PCs, explained = pca_molecules_cpm$explained,
+         metadata = anno_filter, color = &quot;individual&quot;,
+         shape = &quot;replicate&quot;) +
+  labs(title = &quot;Molecules (log2 cpm) for single cells&quot;)
+pca_molecules_cpm_plot</code></pre>
+<p><img src="figure/cpm.Rmd/pca-molecules-cpm-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
+<div id="molecules-single-cell-ercc" class="section level3">
+<h3>Molecules single cell ERCC</h3>
+<pre class="r"><code>molecules_cpm_ercc &lt;- cpm(molecules_collision[ercc_rows, ], log = TRUE)
+write.table(round(molecules_cpm_ercc, digits = 6), &quot;../data/molecules-cpm-ercc.txt&quot;, quote = FALSE,
+            sep = &quot;\t&quot;, col.names = NA)</code></pre>
+</div>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] testit_0.4    ggplot2_1.0.1 edgeR_3.10.2  limma_3.24.9  dplyr_0.4.2  
+[6] knitr_1.10.5 
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.12.0      magrittr_1.5     MASS_7.3-40      munsell_0.4.2   
+ [5] colorspace_1.2-6 R6_2.1.1         stringr_1.0.0    httr_0.6.1      
+ [9] plyr_1.8.3       tools_3.2.0      parallel_3.2.0   grid_3.2.0      
+[13] gtable_0.1.2     DBI_0.3.1        htmltools_0.2.6  yaml_2.1.13     
+[17] assertthat_0.1   digest_0.6.8     reshape2_1.4.1   formatR_1.2     
+[21] bitops_1.0-6     RCurl_1.95-4.6   evaluate_0.7     rmarkdown_0.6.1 
+[25] labeling_0.3     stringi_0.4-1    scales_0.2.4     proto_0.3-10    </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>

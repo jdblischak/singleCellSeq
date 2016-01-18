@@ -11,7 +11,7 @@
 
 <meta name="date" content="2015-12-22" />
 
-<title>Poisson GLM normalization</title>
+<title>Account for technical noise measured with ERCC controls using Poisson GLM transformation</title>
 
 <script src="libs/jquery-1.11.0/jquery.min.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -118,53 +118,62 @@ img {
 </div><!--/.navbar -->
 
 <div id="header">
-<h1 class="title">Poisson GLM normalization</h1>
+<h1 class="title">Account for technical noise measured with ERCC controls using Poisson GLM transformation</h1>
 <h4 class="date"><em>2015-12-22</em></h4>
 </div>
 
 <div id="TOC">
 <ul>
+<li><a href="#input">Input</a></li>
 <li><a href="#poisson-spike-in-only-model">Poisson spike-in only model</a></li>
-<li><a href="#collate-normalized-matrices">Collate normalized matrices</a></li>
+<li><a href="#pca">PCA</a></li>
 <li><a href="#analysis-of-variance">Analysis of variance</a></li>
 <li><a href="#session-information">Session information</a></li>
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2016-01-05</p>
-<p><strong>Code version:</strong> 917277f117d98ba0cbeb73313655e946154e3b27</p>
-<pre class="r"><code>require(ggplot2)
-theme_set(theme_bw(base_size = 12))
-require(dplyr)
-require(doMC)
-require(gridExtra)
+<p><strong>Last updated:</strong> 2016-01-18</p>
+<p><strong>Code version:</strong> 384c1a73cd413b558e806e4928853f487bc37547</p>
+<pre class="r"><code>library(&quot;dplyr&quot;)
+library(&quot;doMC&quot;)
 registerDoMC(7)
-require(data.table)</code></pre>
-<p>Read raw data</p>
-<pre class="r"><code>anno=read.table(&quot;../data/annotation.txt&quot;,header=T,stringsAsFactors=F)
-quality_single_cells &lt;- scan(&quot;../data/quality-single-cells.txt&quot;,
-                             what = &quot;character&quot;)
-anno_filter &lt;- anno %&gt;% filter(sample_id %in% quality_single_cells)
-spike &lt;- read.table(&quot;../data/expected-ercc-molecules.txt&quot;, header = TRUE,
-                    sep = &quot;\t&quot;, stringsAsFactors = FALSE)
-molecules_filter &lt;- read.table(&quot;../data/molecules-filter.txt&quot;, header = TRUE,
+library(&quot;ggplot2&quot;)
+theme_set(theme_bw(base_size = 12))
+source(&quot;functions.R&quot;)</code></pre>
+<p>This file tranforms the standardized molecule counts by modeling the ERCC counts using a Poisson generalized linear model (glm).</p>
+<p>Creates the following file:</p>
+<p><strong><a href="https://github.com/jdblischak/singleCellSeq/blob/master/data/molecules-cpm-trans.txt">molecules-cpm-trans.txt</a></strong> - Molecules in high quality single cells after linear transformation with ERCC</p>
+<div id="input" class="section level2">
+<h2>Input</h2>
+<p>Input filtered annotation.</p>
+<pre class="r"><code>anno_filter &lt;- read.table(&quot;../data/annotation-filter.txt&quot;, header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno_filter)</code></pre>
+<pre><code>  individual replicate well      batch      sample_id
+1    NA19098        r1  A01 NA19098.r1 NA19098.r1.A01
+2    NA19098        r1  A02 NA19098.r1 NA19098.r1.A02
+3    NA19098        r1  A04 NA19098.r1 NA19098.r1.A04
+4    NA19098        r1  A05 NA19098.r1 NA19098.r1.A05
+5    NA19098        r1  A06 NA19098.r1 NA19098.r1.A06
+6    NA19098        r1  A07 NA19098.r1 NA19098.r1.A07</code></pre>
+<p>Input filtered molecule counts.</p>
+<pre class="r"><code>molecules_filter &lt;- read.table(&quot;../data/molecules-filter.txt&quot;, header = TRUE,
                                stringsAsFactors = FALSE)
-
+stopifnot(ncol(molecules_filter) == nrow(anno_filter),
+          colnames(molecules_filter) == anno_filter$sample_id)</code></pre>
+<p>Input standardized molecule counts.</p>
+<pre class="r"><code>molecules_cpm &lt;- read.table(&quot;../data/molecules-cpm.txt&quot;, header = TRUE,
+                            stringsAsFactors = FALSE)
+stopifnot(ncol(molecules_cpm) == nrow(anno_filter),
+          colnames(molecules_cpm) == anno_filter$sample_id)</code></pre>
+<p>Input expected ERCC molecule counts (calculated in <a href="capture-efficiency.html">another analysis</a>). Filter to only include those ERCC controls that passed the <a href="filter.html">expression filter</a>.</p>
+<pre class="r"><code>spike &lt;- read.table(&quot;../data/expected-ercc-molecules.txt&quot;, header = TRUE,
+                    sep = &quot;\t&quot;, stringsAsFactors = FALSE)
 spike_input &lt;- spike$ercc_molecules_well[spike$id %in% rownames(molecules_filter)]
 names(spike_input) &lt;- spike$id[spike$id %in% rownames(molecules_filter)]
 spike_input &lt;- spike_input[order(names(spike_input))]
-tech &lt;- grepl(&quot;ERCC&quot;, rownames(molecules_filter))
-molecules_filter=as.matrix(molecules_filter)
-batches=unique(anno_filter$batch)
-
-molecules_cpm = fread( &quot;../data/molecules-cpm.txt&quot;, header = TRUE,
-                       stringsAsFactors = FALSE)
-setDF(molecules_cpm)
-rownames(molecules_cpm)=molecules_cpm$V1
-molecules_cpm$V1=NULL 
-molecules_cpm=as.matrix(molecules_cpm)
-
-molecules_cpm_trans_shrunk = read.table(&quot;../data/molecules-cpm-trans-shrunk.txt&quot;, header = TRUE, stringsAsFactors = FALSE)</code></pre>
+stopifnot(names(spike_input) == grep(&quot;ERCC&quot;, rownames(molecules_filter), value = TRUE))</code></pre>
+</div>
 <div id="poisson-spike-in-only-model" class="section level2">
 <h2>Poisson spike-in only model</h2>
 <pre class="r"><code>pois_glm_params &lt;- lapply(1:3,function(g) numeric(ncol(molecules_cpm)))
@@ -174,15 +183,25 @@ for (i in 1:ncol(molecules_cpm)) {
   pois_glm_params$intercept[i] &lt;- fit$coefficients[1]
   pois_glm_params$nu[i] &lt;- fit$coefficients[2]
 }
-pois_glm_expression &lt;- sweep( sweep( molecules_cpm, 2, pois_glm_params$intercept, &quot;-&quot;), 2, pois_glm_params$nu, &quot;/&quot; )</code></pre>
+molecules_cpm_trans &lt;- sweep( sweep( molecules_cpm, 2, pois_glm_params$intercept, &quot;-&quot;), 2, pois_glm_params$nu, &quot;/&quot; )</code></pre>
+<p>Write to file.</p>
+<pre class="r"><code>write.table(round(molecules_cpm_trans, digits = 6), &quot;../data/molecules-cpm-trans.txt&quot;, quote = FALSE,
+            sep = &quot;\t&quot;, col.names = NA)</code></pre>
 </div>
-<div id="collate-normalized-matrices" class="section level2">
-<h2>Collate normalized matrices</h2>
-<p>Collect together all the normalized expression matrices for analysis</p>
-<pre class="r"><code>cpm_mats &lt;- list( raw=molecules_cpm,  pois_glm_expression=pois_glm_expression )</code></pre>
+<div id="pca" class="section level2">
+<h2>PCA</h2>
+<pre class="r"><code>pca_molecules_cpm_trans &lt;- run_pca(molecules_cpm_trans)
+pca_molecules_cpm_trans_plot &lt;- plot_pca(pca_molecules_cpm_trans$PCs, explained = pca_molecules_cpm_trans$explained,
+         metadata = anno_filter, color = &quot;individual&quot;,
+         shape = &quot;replicate&quot;) +
+  labs(title = &quot;Molecules (Poisson transformation with ERCC) for single cells&quot;)
+pca_molecules_cpm_trans_plot</code></pre>
+<p><img src="figure/poisson-glm-normalization.Rmd/pca-molecules-cpm-trans-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 </div>
 <div id="analysis-of-variance" class="section level2">
 <h2>Analysis of variance</h2>
+<p>Collect together all the normalized expression matrices for analysis</p>
+<pre class="r"><code>cpm_mats &lt;- list( raw=molecules_cpm,  molecules_cpm_trans=molecules_cpm_trans )</code></pre>
 <p>We need a nested ANOVA since the replicates are not common across the individuals.</p>
 <pre class="r"><code>my_nested_anova=function(temp) {
   global_mean=mean(temp$y)
@@ -199,12 +218,10 @@ pois_glm_expression &lt;- sweep( sweep( molecules_cpm, 2, pois_glm_params$interc
   ssb=sum( (temp$batch_means - temp$ind_means)^2 ),
   sse=sum( (temp$y - temp$batch_means)^2 ),
   sst=sum( (temp$y - global_mean)^2  ))
-}
-
-#aov(x[i,] ~ Error(anno_filter$batch) + anno_filter$individual )</code></pre>
+}</code></pre>
 <p>Run ANOVAs per gene for each matrix and calculate variance components</p>
 <pre class="r"><code>anovas &lt;- lapply(cpm_mats, function(x) {
-  foreach(i=1:nrow(x)) %dopar% my_nested_anova(data.frame(y=x[i,], batch=anno_filter$batch, individual=anno_filter$individual))
+  foreach(i=1:nrow(x)) %dopar% my_nested_anova(data.frame(y=as.numeric(x[i,]), batch=anno_filter$batch, individual=anno_filter$individual))
 })
 
 variance_components &lt;- lapply( as.list(names(anovas)), function(name) {
@@ -226,8 +243,8 @@ ggplot( do.call(rbind,batch_over_explained), aes(prop_batch,col=method)) + geom_
 <p><img src="figure/poisson-glm-normalization.Rmd/plot-pve-batch-vs-individual-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <p>Plot overall percent variance explained</p>
 <pre class="r"><code>ggplot( do.call(rbind,variance_components), aes(1-residual,col=method)) + geom_density() + xlab(&quot;proportion variance explained&quot;) + xlim(0,.5)+ scale_colour_manual(values=cbPalette) + theme(legend.position=c(.8,.8))</code></pre>
-<pre><code>Warning: Removed 49 rows containing non-finite values (stat_density).</code></pre>
-<pre><code>Warning: Removed 76 rows containing non-finite values (stat_density).</code></pre>
+<pre><code>Warning: Removed 68 rows containing non-finite values (stat_density).</code></pre>
+<pre><code>Warning: Removed 150 rows containing non-finite values (stat_density).</code></pre>
 <p><img src="figure/poisson-glm-normalization.Rmd/plot-pve-total-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 </div>
 <div id="session-information" class="section level2">
@@ -249,18 +266,18 @@ attached base packages:
 [8] base     
 
 other attached packages:
-[1] data.table_1.9.4 gridExtra_2.0.0  doMC_1.3.4       iterators_1.0.7 
-[5] foreach_1.4.2    dplyr_0.4.2      ggplot2_1.0.1    knitr_1.10.5    
+[1] testit_0.4      ggplot2_1.0.1   doMC_1.3.4      iterators_1.0.7
+[5] foreach_1.4.2   dplyr_0.4.2     knitr_1.10.5   
 
 loaded via a namespace (and not attached):
  [1] Rcpp_0.12.0      magrittr_1.5     MASS_7.3-40      munsell_0.4.2   
- [5] colorspace_1.2-6 R6_2.1.1         stringr_1.0.0    httr_0.6.1      
- [9] plyr_1.8.3       tools_3.2.0      grid_3.2.0       gtable_0.1.2    
-[13] DBI_0.3.1        htmltools_0.2.6  lazyeval_0.1.10  assertthat_0.1  
-[17] yaml_2.1.13      digest_0.6.8     reshape2_1.4.1   formatR_1.2     
-[21] codetools_0.2-11 bitops_1.0-6     RCurl_1.95-4.6   evaluate_0.7    
-[25] rmarkdown_0.6.1  labeling_0.3     stringi_0.4-1    compiler_3.2.0  
-[29] scales_0.2.4     chron_2.3-45     proto_0.3-10    </code></pre>
+ [5] colorspace_1.2-6 R6_2.1.1         plyr_1.8.3       stringr_1.0.0   
+ [9] httr_0.6.1       tools_3.2.0      grid_3.2.0       gtable_0.1.2    
+[13] DBI_0.3.1        htmltools_0.2.6  yaml_2.1.13      assertthat_0.1  
+[17] digest_0.6.8     reshape2_1.4.1   formatR_1.2      bitops_1.0-6    
+[21] codetools_0.2-11 RCurl_1.95-4.6   evaluate_0.7     rmarkdown_0.6.1 
+[25] labeling_0.3     stringi_0.4-1    compiler_3.2.0   scales_0.2.4    
+[29] proto_0.3-10    </code></pre>
 </div>
 
 
@@ -300,6 +317,15 @@ $(document).ready(function () {
 
 </script>
 
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
 
 </body>
 </html>

@@ -9,9 +9,9 @@
 <meta name="generator" content="pandoc" />
 
 
-<meta name="date" content="2015-09-30" />
+<meta name="date" content="2015-09-09" />
 
-<title>Data transformation</title>
+<title>Mixed effect model for batch correction</title>
 
 <script src="libs/jquery-1.11.0/jquery.min.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -118,30 +118,33 @@ img {
 </div><!--/.navbar -->
 
 <div id="header">
-<h1 class="title">Data transformation</h1>
-<h4 class="date"><em>2015-09-30</em></h4>
+<h1 class="title">Mixed effect model for batch correction</h1>
+<h4 class="date"><em>2015-09-09</em></h4>
 </div>
 
 <div id="TOC">
 <ul>
 <li><a href="#input">Input</a></li>
-<li><a href="#pca">PCA</a><ul>
-<li><a href="#pca-of-filtered-data">PCA of filtered data</a></li>
-<li><a href="#pca-of-standardized-data">PCA of standardized data</a></li>
-<li><a href="#pca-of-poisson-glm-transformed-molecule-counts-per-million">PCA of Poisson GLM transformed molecule counts per million</a></li>
-<li><a href="#pca-of-final-batch-corrected-data">PCA of final batch-corrected data</a></li>
+<li><a href="#mixed-model-for-batch-effect-correction">Mixed model for batch-effect correction</a><ul>
+<li><a href="#crossed-model">Crossed Model</a></li>
+<li><a href="#remove-unwanted-variation">Remove unwanted variation</a></li>
 </ul></li>
-<li><a href="#data-transformation-figure">Data transformation figure</a></li>
+<li><a href="#pca">PCA</a></li>
 <li><a href="#session-information">Session information</a></li>
 </ul>
 </div>
 
 <p><strong>Last updated:</strong> 2016-01-18</p>
 <p><strong>Code version:</strong> 384c1a73cd413b558e806e4928853f487bc37547</p>
-<pre class="r"><code>library(&quot;ggplot2&quot;)
-library(&quot;cowplot&quot;)
+<pre class="r"><code>library(&quot;limma&quot;)
+library(&quot;edgeR&quot;)
+library(&quot;ggplot2&quot;)
 theme_set(theme_bw(base_size = 12))
-source(&quot;functions.R&quot;)</code></pre>
+source(&quot;functions.R&quot;)
+library(&quot;Humanzee&quot;)</code></pre>
+<p>This file uses a mixed effects model to remove technical batch effects. The modeling function is adapted from the package <a href="http://www.bioconductor.org/packages/release/bioc/html/limma.html">limma</a> and is implemented in the package <a href="https://github.com/jhsiao999/Humanzee">Humanzee</a>.</p>
+<p>Creates the following file:</p>
+<p><strong><a href="https://github.com/jdblischak/singleCellSeq/blob/master/data/molecules-final.txt">molecules-final.txt</a></strong> - Molecules in high quality single cells after removing unwanted variation with mixed model</p>
 <div id="input" class="section level2">
 <h2>Input</h2>
 <p>Input filtered annotation.</p>
@@ -155,73 +158,53 @@ head(anno_filter)</code></pre>
 4    NA19098        r1  A05 NA19098.r1 NA19098.r1.A05
 5    NA19098        r1  A06 NA19098.r1 NA19098.r1.A06
 6    NA19098        r1  A07 NA19098.r1 NA19098.r1.A07</code></pre>
-<p>Input filtered molecule counts.</p>
-<pre class="r"><code>molecules_filter &lt;- read.table(&quot;../data/molecules-filter.txt&quot;, header = TRUE,
-                               stringsAsFactors = FALSE)
-stopifnot(ncol(molecules_filter) == nrow(anno_filter),
-          colnames(molecules_filter) == anno_filter$sample_id)</code></pre>
-<p>Input standardized molecule counts.</p>
-<pre class="r"><code>molecules_cpm &lt;- read.table(&quot;../data/molecules-cpm.txt&quot;, header = TRUE,
-                            stringsAsFactors = FALSE)
-stopifnot(ncol(molecules_cpm) == nrow(anno_filter),
-          colnames(molecules_cpm) == anno_filter$sample_id)</code></pre>
 <p>Input Poisson GLM transformed molecule counts per million.</p>
 <pre class="r"><code>molecules_cpm_trans &lt;- read.table(&quot;../data/molecules-cpm-trans.txt&quot;, header = TRUE,
                                stringsAsFactors = FALSE)
 stopifnot(ncol(molecules_cpm_trans) == nrow(anno_filter),
           colnames(molecules_cpm_trans) == anno_filter$sample_id)</code></pre>
-<p>Input final batch-corrected molecule counts per million.</p>
-<pre class="r"><code>molecules_final &lt;- read.table(&quot;../data/molecules-final.txt&quot;, header = TRUE,
-                              stringsAsFactors = FALSE)
-stopifnot(ncol(molecules_final) == nrow(anno_filter),
-          colnames(molecules_final) == anno_filter$sample_id)</code></pre>
+</div>
+<div id="mixed-model-for-batch-effect-correction" class="section level2">
+<h2>Mixed model for batch-effect correction</h2>
+<p>Because the <a href="poison-glm-normalization.html">Poisson transformation with the ERCC controls</a> was not sufficient to remove all the unwanted technical variation, we used a mixed model to correct for batch effects.</p>
+<p>We adapted limma’s algorithm for estimating variance components due to random effects. This analysis operates under the assumption that biological replicates (or batches within an individual in this case) share similar correlation across genes. Morever, the analysis permits negative correlation between replicates.</p>
+<div id="crossed-model" class="section level3">
+<h3>Crossed Model</h3>
+<p>For every single gene, we will fit a mixed model assuming differences between batches are not individual-specific as follows</p>
+<p><span class="math">\[ y_{ijk} = \mu + \alpha_i + b_j + \epsilon_{ijk} \]</span>,</p>
+<p>where <span class="math">\(y_{ijk}\)</span> is the log2 counts-per-million (cpm) for any gene in individual <span class="math">\(i\)</span>, batch <span class="math">\(j\)</span>, and cell <span class="math">\(k\)</span>, <span class="math">\(\mu\)</span> is the gene-specific expression level across all cells, <span class="math">\(\alpha_i\)</span> is the expression level specific to individual <span class="math">\(i\)</span>, <span class="math">\(b_j\)</span> is batch <span class="math">\(j\)</span>‘s deviation of expression level from gene-specific expression levels, and <span class="math">\(\epsilon_{ijk}\)</span> is the models’ residual error.</p>
+<p>We assume that <span class="math">\(b_j\)</span> follows a normal distribution with <span class="math">\(b_j \sim N(0, \sigma^2_b)\)</span> for <span class="math">\(j = 1, \dots, 9\)</span>, and <span class="math">\(\epsilon_{ijk} \sim N(0, \sigma^2_\epsilon)\)</span> for <span class="math">\(i = 1, 2, 3; j = 1, \dots, 9; and k = 1, \dots, n_{ij}\)</span>, where <span class="math">\(n_ij\)</span> denotes the number of cells in individual <span class="math">\(i\)</span>, batch <span class="math">\(j\)</span>.</p>
+</div>
+<div id="remove-unwanted-variation" class="section level3">
+<h3>Remove unwanted variation</h3>
+<p>Create design matrix and compute a consensus correlation coefficient using limma’s duplicateCorrelation function.</p>
+<pre class="r"><code>block &lt;- anno_filter$batch
+design &lt;- model.matrix(~ 1 + individual, data = anno_filter)</code></pre>
+<pre class="r"><code>dup_corrs &lt;- duplicateCorrelation(molecules_cpm_trans, design = design,
+                                  block = block)</code></pre>
+<p>Fit a mixed model with the 9 batches being the random effect.</p>
+<pre class="r"><code>gls_fit &lt;- Humanzee::ruv_mixed_model(molecules_cpm_trans,
+                                     ndups = 1,
+                                     design = design,
+                                     block = block,
+                                     correlation = dup_corrs$cons)</code></pre>
+<p>Compute expression levels after removing variation due to random effects.</p>
+<pre class="r"><code>molecules_final &lt;- t( design %*% t(gls_fit$coef) ) + gls_fit$resid</code></pre>
+<p>Output the cleaned data.</p>
+<pre class="r"><code>colnames(molecules_final) &lt;- colnames(molecules_cpm_trans)
+write.table(round(molecules_final, digits = 6), &quot;../data/molecules-final.txt&quot;, quote = FALSE,
+            sep = &quot;\t&quot;, col.names = NA)</code></pre>
+</div>
 </div>
 <div id="pca" class="section level2">
 <h2>PCA</h2>
-<div id="pca-of-filtered-data" class="section level3">
-<h3>PCA of filtered data</h3>
-<pre class="r"><code>pca_molecules_filter &lt;- run_pca(molecules_filter)
-pca_molecules_filter_plot &lt;- plot_pca(pca_molecules_filter$PCs,
-         explained = pca_molecules_filter$explained,
-         metadata = anno_filter, color = &quot;individual&quot;,
-         shape = &quot;replicate&quot;, alpha = 0.5, size = 1.5) +
-  labs(title = &quot;Counts&quot;)</code></pre>
-</div>
-<div id="pca-of-standardized-data" class="section level3">
-<h3>PCA of standardized data</h3>
-<pre class="r"><code>pca_molecules_cpm &lt;- run_pca(molecules_cpm)
-pca_molecules_cpm_plot &lt;- plot_pca(pca_molecules_cpm$PCs,
-         explained = pca_molecules_cpm$explained,
-         metadata = anno_filter, color = &quot;individual&quot;,
-         shape = &quot;replicate&quot;, alpha = 0.5, size = 1.5) +
-  labs(title = &quot;Counts per million (log)&quot;)</code></pre>
-</div>
-<div id="pca-of-poisson-glm-transformed-molecule-counts-per-million" class="section level3">
-<h3>PCA of Poisson GLM transformed molecule counts per million</h3>
-<pre class="r"><code>pca_molecules_cpm_trans &lt;- run_pca(molecules_cpm_trans)
-pca_molecules_cpm_trans_plot &lt;- plot_pca(pca_molecules_cpm_trans$PCs,
-         explained = pca_molecules_cpm_trans$explained,
-         metadata = anno_filter, color = &quot;individual&quot;,
-         shape = &quot;replicate&quot;,  alpha = 0.5, size = 1.5) +
-  labs(title = &quot;Poisson transformation&quot;)</code></pre>
-</div>
-<div id="pca-of-final-batch-corrected-data" class="section level3">
-<h3>PCA of final batch-corrected data</h3>
 <pre class="r"><code>pca_final &lt;- run_pca(molecules_final)
 pca_final_plot &lt;- plot_pca(pca_final$PCs, explained = pca_final$explained,
          metadata = anno_filter, color = &quot;individual&quot;,
-         shape = &quot;replicate&quot;, alpha = 0.5, size = 1.5) +
-  labs(title = &quot;Batch corrected&quot;)</code></pre>
-</div>
-</div>
-<div id="data-transformation-figure" class="section level2">
-<h2>Data transformation figure</h2>
-<pre class="r"><code>plot_grid(pca_molecules_filter_plot + theme(legend.position = &quot;none&quot;),
-          pca_molecules_cpm_plot + theme(legend.position = &quot;none&quot;),
-          pca_molecules_cpm_trans_plot + theme(legend.position = &quot;none&quot;),
-          pca_final_plot + theme(legend.position = &quot;none&quot;),
-          labels = LETTERS[1:4])</code></pre>
-<p><img src="figure/data-transformation.Rmd/data-transformation-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+         shape = &quot;replicate&quot;) +
+  labs(title = &quot;Batch corrected&quot;)
+pca_final_plot</code></pre>
+<p><img src="figure/batch-correction.Rmd/pca-molecules-final-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 </div>
 <div id="session-information" class="section level2">
 <h2>Session information</h2>
@@ -241,7 +224,8 @@ attached base packages:
 [1] stats     graphics  grDevices utils     datasets  methods   base     
 
 other attached packages:
-[1] testit_0.4    cowplot_0.3.1 ggplot2_1.0.1 knitr_1.10.5 
+[1] testit_0.4     Humanzee_0.1.0 ggplot2_1.0.1  edgeR_3.10.2  
+[5] limma_3.24.9   knitr_1.10.5  
 
 loaded via a namespace (and not attached):
  [1] Rcpp_0.12.0      magrittr_1.5     MASS_7.3-40      munsell_0.4.2   
