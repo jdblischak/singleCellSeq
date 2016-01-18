@@ -1,0 +1,170 @@
+---
+title: "Standardize with counts per million"
+date: 2015-09-30
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+opts_chunk$set(fig.width = 8, fig.height = 8)
+```
+
+```{r packages, message=FALSE}
+library("dplyr")
+library("limma")
+library("edgeR")
+library("ggplot2")
+theme_set(theme_bw(base_size = 12))
+source("functions.R")
+```
+
+This file standardizes the counts to the log~2~ counts per million (cpm).
+The endogenous genes and ERCC controls are standardized separately because the same number of ERCC controls are spiked into each sample.
+
+The reads for the bulk samples are processed as in traditional RNA-seq.
+On the other hand, the single cell samples are processed differently.
+First, only their molecule counts are standardized.
+Second, the molecule counts are adjusted to account for the [collision probability](#correct-for-collision-probability) before standardization.
+
+Creates the following files:
+
+*  **[reads-bulk-cpm.txt][]** - Reads (log~2~ cpm) in bulk samples for endogenous genes
+*  **[reads-bulk-cpm-ercc.txt][]** - Reads (log~2~ cpm) in bulk samples for ERCC genes
+*  **[molecules-cpm.txt][]** - Molecules (log~2~ cpm) in high quality single cells for endogenous genes
+*  **[molecules-cpm-ercc.txt][]** - Molecules (log~2~ cpm) in high quality single cells for ERCC genes
+
+[reads-bulk-cpm.txt]: https://github.com/jdblischak/singleCellSeq/blob/master/data/reads-bulk-cpm.txt
+[reads-bulk-cpm-ercc.txt]: https://github.com/jdblischak/singleCellSeq/blob/master/data/reads-bulk-cpm-ercc.txt
+[molecules-cpm.txt]: https://github.com/jdblischak/singleCellSeq/blob/master/data/molecules-cpm.txt
+[molecules-cpm-ercc.txt]: https://github.com/jdblischak/singleCellSeq/blob/master/data/molecules-cpm-ercc.txt
+
+## Input
+
+Input filtered annotation.
+
+```{r input-annotation-filter}
+anno_filter <- read.table("../data/annotation-filter.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno_filter)
+```
+
+Input filtered read counts.
+
+```{r input-read-counts-filter}
+reads_filter <- read.table("../data/reads-filter.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+stopifnot(ncol(reads_filter) == nrow(anno_filter),
+          colnames(reads_filter) == anno_filter$sample_id)
+```
+
+Input filtered molecule counts.
+
+```{r input-molecule-counts-filter}
+molecules_filter <- read.table("../data/molecules-filter.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+stopifnot(ncol(molecules_filter) == nrow(anno_filter),
+          colnames(molecules_filter) == anno_filter$sample_id)
+```
+
+Input filtered read counts for bulk samples.
+
+```{r input-read-counts-bulk-filter}
+reads_bulk_filter <- read.table("../data/reads-bulk-filter.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+stopifnot(ncol(reads_bulk_filter) == 9)
+```
+
+Input annotation for bulk samples.
+
+```{r input-annotation-bulk}
+anno_bulk <- read.table("../data/annotation-bulk.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno_bulk)
+```
+
+## Correct for collision probability
+
+Due to the stochasticity of the sampling process, not all molecules will be tagged with a UMI and sequenced.
+We correct for this "collision probability" following the method applied in [Grun et al. 2014][Grun2014].
+
+[Grun2014]: http://www.nature.com/nmeth/journal/v11/n6/full/nmeth.2930.html#methods
+
+```{r collision-probability}
+molecules_collision <- -1024 * log(1 - molecules_filter / 1024)
+```
+
+```{r pca-molecules-collision}
+pca_molecules_collision <- run_pca(molecules_collision)
+pca_molecules_collision_plot <- plot_pca(pca_molecules_collision$PCs, explained = pca_molecules_collision$explained,
+         metadata = anno_filter, color = "individual",
+         shape = "replicate") +
+  labs(title = "Collision probability corrected molecules for single cells")
+pca_molecules_collision_plot
+```
+
+## Calculating counts per million
+
+We calculate the log~2~ counts per million (cpm) separately for the endogenous and ERCC genes.
+
+```{r index-ercc-genes}
+ercc_rows <- grepl("ERCC", rownames(reads_bulk_filter))
+```
+
+### Reads bulk endogenous
+
+```{r reads-bulk-endogenous}
+reads_bulk_cpm <- cpm(reads_bulk_filter[!ercc_rows, ], log = TRUE)
+write.table(round(reads_bulk_cpm, digits = 6), "../data/reads-bulk-cpm.txt", quote = FALSE,
+            sep = "\t", col.names = NA)
+```
+
+```{r pca-reads-cpm}
+pca_reads_bulk_cpm <- run_pca(reads_bulk_cpm)
+pca_reads_bulk_cpm_plot <- plot_pca(pca_reads_bulk_cpm$PCs, explained = pca_reads_bulk_cpm$explained,
+         metadata = anno_bulk, color = "individual",
+         shape = "replicate") +
+  labs(title = "Reads (log2 cpm) for bulk samples")
+pca_reads_bulk_cpm_plot
+```
+
+### Reads bulk ERCC
+
+```{r reads-bulk-ercc}
+reads_bulk_cpm_ercc <- cpm(reads_bulk_filter[ercc_rows, ], log = TRUE)
+write.table(round(reads_bulk_cpm_ercc, digits = 6), "../data/reads-bulk-cpm-ercc.txt", quote = FALSE,
+            sep = "\t", col.names = NA)
+```
+
+### Molecules single cell endogenous
+
+```{r molecules-single-endogenous}
+molecules_cpm <- cpm(molecules_collision[!ercc_rows, ], log = TRUE)
+write.table(round(molecules_cpm, digits = 6), "../data/molecules-cpm.txt", quote = FALSE,
+            sep = "\t", col.names = NA)
+```
+
+```{r pca-molecules-cpm}
+pca_molecules_cpm <- run_pca(molecules_cpm)
+pca_molecules_cpm_plot <- plot_pca(pca_molecules_cpm$PCs, explained = pca_molecules_cpm$explained,
+         metadata = anno_filter, color = "individual",
+         shape = "replicate") +
+  labs(title = "Molecules (log2 cpm) for single cells")
+pca_molecules_cpm_plot
+```
+
+### Molecules single cell ERCC
+
+```{r molecules-single-ercc}
+molecules_cpm_ercc <- cpm(molecules_collision[ercc_rows, ], log = TRUE)
+write.table(round(molecules_cpm_ercc, digits = 6), "../data/molecules-cpm-ercc.txt", quote = FALSE,
+            sep = "\t", col.names = NA)
+```
+
+## Session information
+
+```{r info}
+sessionInfo()
+```
