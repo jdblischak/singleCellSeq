@@ -1,0 +1,133 @@
+---
+title: "Mixed effect model for batch correction"
+date: 2015-09-09
+---
+  
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+opts_chunk$set(fig.width = 8, fig.height = 8)
+```
+
+```{r packages, message=FALSE}
+library("limma")
+library("edgeR")
+library("ggplot2")
+theme_set(theme_bw(base_size = 12))
+source("functions.R")
+library("Humanzee")
+```
+
+This file uses a mixed effects model to remove technical batch effects.
+The modeling function is adapted from the package [limma][] and is implemented in the package [Humanzee][].
+
+Creates the following file:
+
+**[molecules-final.txt][]** - Molecules in high quality single cells after removing unwanted variation with mixed model
+
+[molecules-final.txt]: https://github.com/jdblischak/singleCellSeq/blob/master/data/molecules-final.txt
+[limma]: http://www.bioconductor.org/packages/release/bioc/html/limma.html
+[Humanzee]: https://github.com/jhsiao999/Humanzee
+
+## Input
+
+Input filtered annotation.
+
+```{r input-annotation-filter}
+anno_filter <- read.table("../data/annotation-filter.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno_filter)
+```
+
+Input Poisson GLM transformed molecule counts per million.
+
+```{r input-molecule-counts-trans}
+molecules_cpm_trans <- read.table("../data/molecules-cpm-trans.txt", header = TRUE,
+                               stringsAsFactors = FALSE)
+stopifnot(ncol(molecules_cpm_trans) == nrow(anno_filter),
+          colnames(molecules_cpm_trans) == anno_filter$sample_id)
+```
+
+## Mixed model for batch-effect correction
+
+Because the [Poisson transformation with the ERCC controls](poison-glm-normalization.html) was not sufficient to remove all the unwanted technical variation, we used a mixed model to correct for batch effects.
+
+We adapted limma's algorithm for estimating variance components due to random effects. 
+This analysis operates under the assumption that biological replicates (or batches within an individual
+in this case) share similar correlation across genes. Morever, the analysis permits negative
+correlation between replicates. 
+
+### Crossed Model
+
+For every single gene, we will fit a mixed model assuming
+differences between batches are not individual-specific as follows
+
+$$ y_{ijk} = \mu + \alpha_i + b_j + \epsilon_{ijk} $$,
+
+where $y_{ijk}$ is the log2 counts-per-million (cpm) for any gene 
+in individual $i$, batch $j$, and cell $k$, $\mu$ is the gene-specific
+expression level across all cells, $\alpha_i$ is the expression level
+specific to individual $i$, $b_j$ is batch $j$'s deviation of expression
+level from gene-specific expression levels, and $\epsilon_{ijk}$ is 
+the models' residual error. 
+
+We assume that $b_j$ follows a normal distribution with $b_j \sim N(0, \sigma^2_b)$ for $j = 1, \dots, 9$, and $\epsilon_{ijk} \sim N(0, \sigma^2_\epsilon)$ for $i = 1, 2, 3; j = 1, \dots, 9; and k = 1, \dots, n_{ij}$, where $n_ij$ denotes the number of cells in individual $i$, batch $j$.
+
+### Remove unwanted variation 
+
+Create design matrix and compute a consensus correlation coefficient using
+limma's duplicateCorrelation function.
+
+```{r design-matrix}
+block <- anno_filter$batch
+design <- model.matrix(~ 1 + individual, data = anno_filter)
+```
+
+```{r duplicate-correlation, cache=TRUE}
+dup_corrs <- duplicateCorrelation(molecules_cpm_trans, design = design,
+                                  block = block)
+```
+
+Fit a mixed model with the 9 batches being the random effect.
+
+```{r fit-mixed-model, cache=TRUE}
+gls_fit <- Humanzee::ruv_mixed_model(molecules_cpm_trans,
+                                     ndups = 1,
+                                     design = design,
+                                     block = block,
+                                     correlation = dup_corrs$cons)
+```
+
+Compute expression levels after removing variation due to random effects.
+
+```{r remove-unwanted-variation}
+molecules_final <- t( design %*% t(gls_fit$coef) ) + gls_fit$resid
+```
+
+Output the cleaned data.
+
+```{r ouptut-mixed-model}
+colnames(molecules_final) <- colnames(molecules_cpm_trans)
+write.table(round(molecules_final, digits = 6), "../data/molecules-final.txt", quote = FALSE,
+            sep = "\t", col.names = NA)
+```
+
+## PCA
+
+```{r pca-molecules-final}
+pca_final <- run_pca(molecules_final)
+pca_final_plot <- plot_pca(pca_final$PCs, explained = pca_final$explained,
+         metadata = anno_filter, color = "individual",
+         shape = "replicate") +
+  labs(title = "Batch corrected")
+pca_final_plot
+```
+
+## Session information
+
+```{r info}
+sessionInfo()
+```
