@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+
+<meta name="date" content="2016-01-18" />
+
+<title>Filter genes and low-quality single cells</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Filter genes and low-quality single cells</h1>
+<h4 class="date"><em>2016-01-18</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#input">Input</a></li>
+<li><a href="#filter-low-quality-single-cells">Filter low quality single cells</a><ul>
+<li><a href="#filter-genes">Filter genes</a></li>
+<li><a href="#pca-of-filtered-data">PCA of filtered data</a></li>
+</ul></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2016-01-18</p>
+<p><strong>Code version:</strong> 384c1a73cd413b558e806e4928853f487bc37547</p>
+<pre class="r"><code>library(&quot;biomaRt&quot;)
+library(&quot;dplyr&quot;)
+library(&quot;edgeR&quot;)
+library(&quot;ggplot2&quot;)
+theme_set(theme_bw(base_size = 12))
+source(&quot;functions.R&quot;)</code></pre>
+<p>This file uses the <a href="https://github.com/jdblischak/singleCellSeq/blob/master/data/quality-single-cells.txt">list of quality single cells</a> defined by the <a href="qc-filter-ipsc.html">quality control analysis</a> to filter the <a href="prepare-counts.html">count matrices</a>. It also removes lowly expressed genes and genes with invalid molecule counts (greater than the maximum allowlable 1024).</p>
+<p>Creates the following files:</p>
+<ul>
+<li><strong><a href="https://github.com/jdblischak/singleCellSeq/blob/master/data/annotation-filter.txt">annotation-filter.txt</a></strong> - Annotation file with only the high quality single cells</li>
+<li><strong><a href="https://github.com/jdblischak/singleCellSeq/blob/master/data/reads-filter.txt">reads-filter.txt</a></strong> - Read counts in high quality single cells for filtered genes</li>
+<li><strong><a href="https://github.com/jdblischak/singleCellSeq/blob/master/data/reads-bulk-filter.txt">reads-bulk-filter.txt</a></strong> - Read counts in bulk samples for filtered genes</li>
+<li><strong><a href="https://github.com/jdblischak/singleCellSeq/blob/master/data/molecules-filter.txt">molecules-filter.txt</a></strong> - Molecule counts in high quality single cells for filtered genes</li>
+</ul>
+<div id="input" class="section level2">
+<h2>Input</h2>
+<p>Input annotation.</p>
+<pre class="r"><code>anno &lt;- read.table(&quot;../data/annotation.txt&quot;, header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno)</code></pre>
+<pre><code>  individual replicate well      batch      sample_id
+1    NA19098        r1  A01 NA19098.r1 NA19098.r1.A01
+2    NA19098        r1  A02 NA19098.r1 NA19098.r1.A02
+3    NA19098        r1  A03 NA19098.r1 NA19098.r1.A03
+4    NA19098        r1  A04 NA19098.r1 NA19098.r1.A04
+5    NA19098        r1  A05 NA19098.r1 NA19098.r1.A05
+6    NA19098        r1  A06 NA19098.r1 NA19098.r1.A06</code></pre>
+<p>Input read counts.</p>
+<pre class="r"><code>reads &lt;- read.table(&quot;../data/reads.txt&quot;, header = TRUE,
+                    stringsAsFactors = FALSE)
+stopifnot(ncol(reads) == nrow(anno),
+          colnames(reads) == anno$sample_id)</code></pre>
+<p>Input molecule counts.</p>
+<pre class="r"><code>molecules &lt;- read.table(&quot;../data/molecules.txt&quot;, header = TRUE,
+                    stringsAsFactors = FALSE)
+stopifnot(ncol(molecules) == nrow(anno),
+          colnames(molecules) == anno$sample_id)</code></pre>
+<p>Input read counts for bulk samples (in order to filter genes).</p>
+<pre class="r"><code>reads_bulk &lt;- read.table(&quot;../data/reads-bulk.txt&quot;, header = TRUE,
+                    stringsAsFactors = FALSE)
+stopifnot(ncol(reads_bulk) == 9)</code></pre>
+<p>Input annotation for bulk samples (for PCA plot).</p>
+<pre class="r"><code>anno_bulk &lt;- read.table(&quot;../data/annotation-bulk.txt&quot;, header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno_bulk)</code></pre>
+<pre><code>  individual replicate well      batch       sample_id
+1    NA19098        r1 bulk NA19098.r1 NA19098.r1.bulk
+2    NA19098        r2 bulk NA19098.r2 NA19098.r2.bulk
+3    NA19098        r3 bulk NA19098.r3 NA19098.r3.bulk
+4    NA19101        r1 bulk NA19101.r1 NA19101.r1.bulk
+5    NA19101        r2 bulk NA19101.r2 NA19101.r2.bulk
+6    NA19101        r3 bulk NA19101.r3 NA19101.r3.bulk</code></pre>
+</div>
+<div id="filter-low-quality-single-cells" class="section level2">
+<h2>Filter low quality single cells</h2>
+<p>We performed <a href="qc-filter-ipsc.html">quality control</a> to identify low quality single cells.</p>
+<p>Input list of quality single cells.</p>
+<pre class="r"><code>quality_single_cells &lt;- scan(&quot;../data/quality-single-cells.txt&quot;,
+                             what = &quot;character&quot;)</code></pre>
+<p>We filter the annotation, reads, and molecules data to only include quality single cells.</p>
+<pre class="r"><code>anno_filter &lt;- anno %&gt;% filter(sample_id %in% quality_single_cells)
+reads_filter &lt;- reads[, colnames(reads) %in% quality_single_cells]
+molecules_filter &lt;- molecules[, colnames(molecules) %in% quality_single_cells]
+stopifnot(nrow(anno_filter) == ncol(reads_filter),
+          nrow(anno_filter) == ncol(molecules_filter),
+          anno_filter$sample_id == colnames(reads_filter),
+          anno_filter$sample_id == colnames(molecules_filter))</code></pre>
+<p>The number of good quality cells is not even across batches.</p>
+<pre class="r"><code>table(anno_filter$individual, anno_filter$replicate)</code></pre>
+<pre><code>         
+          r1 r2 r3
+  NA19098 85  0 58
+  NA19101 81 70 50
+  NA19239 73 69 80</code></pre>
+<div id="filter-genes" class="section level3">
+<h3>Filter genes</h3>
+<p>We filter the genes to exlude both those that are lowly expressed or over-expressed (&gt;= 1024 molecules in a given cell).</p>
+<p>We identify the lower cutoff using the mean log<sub>2</sub> molecule counts per million (cpm) in the 566 high quality single cells.</p>
+<pre class="r"><code>molecules_cpm_mean &lt;- rowMeans(cpm(molecules_filter, log = TRUE))
+hist(molecules_cpm_mean, xlab = &quot;Mean log2 molecule cpm in single cells&quot;,
+     ylab = &quot;Number of genes&quot;, main = &quot;Identifying expression cutoff&quot;)
+lower_exp_cutoff &lt;- 2
+abline(v = lower_exp_cutoff, col = &quot;red&quot;)</code></pre>
+<p><img src="figure/filter.Rmd/identify-lower-expression-cutoff-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>genes_pass_filter &lt;- rownames(molecules_filter)[molecules_cpm_mean &gt; lower_exp_cutoff]</code></pre>
+<p>12213 genes have a mean log<sub>2</sub> molecule cpm greater than 2, including 43 ERCC genes.</p>
+<p>Next we identify any genes which have greater than 1024 molecules in any given single cell. These are above our theoretical maximum number of UMIs (it can happen when a highly expressed gene as multiple start sites), and thus we cannot correct them for the <a href="cpm.html#correct-for-collision-probability">collision probability</a>.</p>
+<pre class="r"><code>overexpressed_rows &lt;- apply(molecules_filter, 1, function(x) any(x &gt;= 1024))
+overexpressed_genes &lt;- rownames(molecules_filter)[overexpressed_rows]
+overexpressed_genes</code></pre>
+<pre><code>[1] &quot;ENSG00000198888&quot; &quot;ENSG00000198804&quot; &quot;ENSG00000198712&quot; &quot;ENSG00000198938&quot;
+[5] &quot;ENSG00000198886&quot;</code></pre>
+<pre class="r"><code>ensembl &lt;- useMart(host = &quot;grch37.ensembl.org&quot;,
+                   biomart = &quot;ENSEMBL_MART_ENSEMBL&quot;,
+                   dataset = &quot;hsapiens_gene_ensembl&quot;)
+overexpressed_genes_info &lt;- getBM(attributes = c(&quot;ensembl_gene_id&quot;, &quot;chromosome_name&quot;,
+                                                 &quot;external_gene_name&quot;, &quot;transcript_count&quot;,
+                                                 &quot;description&quot;),
+                                  filters = &quot;ensembl_gene_id&quot;,
+                                  values = overexpressed_genes[grep(&quot;ENSG&quot;, overexpressed_genes)],
+                                  mart = ensembl)
+overexpressed_genes_info</code></pre>
+<pre><code>  ensembl_gene_id chromosome_name external_gene_name transcript_count
+1 ENSG00000198712              MT             MT-CO2                1
+2 ENSG00000198804              MT             MT-CO1                1
+3 ENSG00000198886              MT             MT-ND4                1
+4 ENSG00000198888              MT             MT-ND1                1
+5 ENSG00000198938              MT             MT-CO3                1
+                                                                     description
+1  mitochondrially encoded cytochrome c oxidase II [Source:HGNC Symbol;Acc:7421]
+2   mitochondrially encoded cytochrome c oxidase I [Source:HGNC Symbol;Acc:7419]
+3     mitochondrially encoded NADH dehydrogenase 4 [Source:HGNC Symbol;Acc:7459]
+4     mitochondrially encoded NADH dehydrogenase 1 [Source:HGNC Symbol;Acc:7455]
+5 mitochondrially encoded cytochrome c oxidase III [Source:HGNC Symbol;Acc:7422]</code></pre>
+<p>5 genes have molecule counts greater than or equal to 1024 in at least one single cell, which includes 0 ERCC control genes.</p>
+<p>Update the list of genes passing the filters.</p>
+<pre class="r"><code>genes_pass_filter &lt;- setdiff(genes_pass_filter, overexpressed_genes)</code></pre>
+<p>Filter the data to only include the subset of 12208 genes which pass the lower and upper expression cutoffs. This subset includes 43 ERCC genes.</p>
+<pre class="r"><code>reads_filter &lt;- reads_filter[rownames(reads_filter) %in% genes_pass_filter, ]
+molecules_filter &lt;- molecules_filter[rownames(molecules_filter) %in% genes_pass_filter, ]
+reads_bulk_filter &lt;- reads_bulk[rownames(reads_bulk) %in% genes_pass_filter, ]
+stopifnot(nrow(reads_filter) == length(genes_pass_filter),
+          dim(reads_filter) == dim(molecules_filter),
+          nrow(reads_bulk_filter) == nrow(molecules_filter))</code></pre>
+<p>Output filtered data.</p>
+<pre class="r"><code>write.table(anno_filter, &quot;../data/annotation-filter.txt&quot;, quote = FALSE,
+            sep = &quot;\t&quot;, row.names = FALSE)
+write.table(reads_filter, &quot;../data/reads-filter.txt&quot;, quote = FALSE,
+            sep = &quot;\t&quot;, col.names = NA)
+write.table(molecules_filter, &quot;../data/molecules-filter.txt&quot;, quote = FALSE,
+            sep = &quot;\t&quot;, col.names = NA)
+write.table(reads_bulk_filter, &quot;../data/reads-bulk-filter.txt&quot;, quote = FALSE,
+            sep = &quot;\t&quot;, col.names = NA)</code></pre>
+</div>
+<div id="pca-of-filtered-data" class="section level3">
+<h3>PCA of filtered data</h3>
+<pre class="r"><code>pca_reads_filter &lt;- run_pca(reads_filter)
+pca_reads_filter_plot &lt;- plot_pca(pca_reads_filter$PCs, explained = pca_reads_filter$explained,
+         metadata = anno_filter, color = &quot;individual&quot;,
+         shape = &quot;replicate&quot;) +
+  labs(title = &quot;Filtered raw reads for single cells&quot;)
+pca_reads_filter_plot</code></pre>
+<p><img src="figure/filter.Rmd/pca-reads-filter-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>pca_molecules_filter &lt;- run_pca(molecules_filter)
+pca_molecules_filter_plot &lt;- plot_pca(pca_molecules_filter$PCs, explained = pca_molecules_filter$explained,
+         metadata = anno_filter, color = &quot;individual&quot;,
+         shape = &quot;replicate&quot;) +
+  labs(title = &quot;Filtered raw molecules for single cells&quot;)
+pca_molecules_filter_plot</code></pre>
+<p><img src="figure/filter.Rmd/pca-molecules-filter-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>pca_reads_bulk_filter &lt;- run_pca(reads_bulk_filter)
+pca_reads_bulk_filter_plot &lt;- plot_pca(pca_reads_bulk_filter$PCs, explained = pca_reads_bulk_filter$explained,
+         metadata = anno_bulk, color = &quot;individual&quot;,
+         shape = &quot;replicate&quot;) +
+  labs(title = &quot;Filtered raw reads for bulk samples&quot;)
+pca_reads_bulk_filter_plot</code></pre>
+<p><img src="figure/filter.Rmd/pca-reads-bulk-filter-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] testit_0.4     ggplot2_1.0.1  edgeR_3.10.2   limma_3.24.9  
+[5] dplyr_0.4.2    biomaRt_2.24.0 knitr_1.10.5  
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.12.0          formatR_1.2          GenomeInfoDb_1.4.0  
+ [4] plyr_1.8.3           bitops_1.0-6         tools_3.2.0         
+ [7] digest_0.6.8         RSQLite_1.0.0        evaluate_0.7        
+[10] gtable_0.1.2         DBI_0.3.1            yaml_2.1.13         
+[13] parallel_3.2.0       proto_0.3-10         httr_0.6.1          
+[16] stringr_1.0.0        S4Vectors_0.6.0      IRanges_2.2.4       
+[19] stats4_3.2.0         grid_3.2.0           Biobase_2.28.0      
+[22] R6_2.1.1             AnnotationDbi_1.30.1 XML_3.98-1.2        
+[25] rmarkdown_0.6.1      reshape2_1.4.1       magrittr_1.5        
+[28] scales_0.2.4         htmltools_0.2.6      BiocGenerics_0.14.0 
+[31] MASS_7.3-40          assertthat_0.1       colorspace_1.2-6    
+[34] labeling_0.3         stringi_0.4-1        RCurl_1.95-4.6      
+[37] lazyeval_0.1.10      munsell_0.4.2       </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>
