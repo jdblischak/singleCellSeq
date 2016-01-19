@@ -51,6 +51,13 @@ reads <- read.table("../data/reads.txt", header = TRUE,
                     stringsAsFactors = FALSE)
 ```
 
+Input read counts in high quality cells for filtered genes
+
+```{r input-read-filter-counts}
+reads_filter <- read.table("../data/reads-filter.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+```
+
 Input molecule counts.
 
 ```{r input-molecule-counts}
@@ -58,21 +65,11 @@ molecules <- read.table("../data/molecules.txt", header = TRUE,
                     stringsAsFactors = FALSE)
 ```
 
-Input list of quality single cells.
+Input molecule counts in high quality cells for filtered genes
 
-```{r input-quality-single-cells}
-quality_single_cells <- scan("../data/quality-single-cells.txt",
-                             what = "character")
-```
-
-Keep only the single cells that passed the [QC filters](qc-filter-ipsc.html).
-
-```{r filter-cells}
-reads <- reads[, colnames(reads) %in% quality_single_cells]
-molecules <- molecules[, colnames(molecules) %in% quality_single_cells]
-anno <- anno[anno$sample_id %in% quality_single_cells, ]
-stopifnot(dim(reads) == dim(molecules),
-          nrow(anno) == ncol(reads))
+```{r input-molecule-filter-counts}
+molecules_filter <- read.table("../data/molecules-filter.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
 ```
 
 ## Compare reads and molecules
@@ -85,16 +82,22 @@ reads_mean     <- apply(reads, 1, mean)
 molecules_mean <- apply(molecules, 1, mean)
 distribution <- data.frame(reads_mean, molecules_mean)
 
+reads_filter_mean <- apply(reads_filter, 1, mean)
+molecules_filter_mean <- apply(molecules_filter, 1, mean)
+distribution_filter <- data.frame(reads_filter_mean, molecules_filter_mean)
+
 ## correlation between reads and molecules
 cor(distribution)
+cor(distribution_filter)
 
 ## select ERCC
 distribution$type <- ifelse(grepl("ERCC", rownames(distribution)), "ERCC", "gene")
+distribution_filter$type <- ifelse(grepl("ERCC", rownames(distribution_filter)), "ERCC", "gene")
 
 ## color palette
 cbPalette <- c("#0000FF", "#999999", "#990033", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#009E73")
 
-## plot
+## plots
 plot_mean_log <- ggplot(distribution, aes(x = molecules_mean, y = reads_mean, col = type)) + 
   geom_point(size = 3, alpha = 0.5) +  
   scale_colour_manual(values=cbPalette) + 
@@ -104,6 +107,15 @@ plot_mean_log <- ggplot(distribution, aes(x = molecules_mean, y = reads_mean, co
 
 plot_mean_log
 
+plot_mean_filter_log <- ggplot(distribution_filter, aes(x = molecules_filter_mean, y = reads_filter_mean, col = type)) + 
+  geom_point(size = 3, alpha = 0.5) +  
+  scale_colour_manual(values=cbPalette) + 
+  labs(x = "Mean molecule", y = "Mean reads", title = "Reads vs. Molecules - log scale (filtered)") + 
+  scale_x_log10() + 
+  scale_y_log10()
+
+plot_mean_filter_log
+
 plot_mean <- ggplot(distribution, aes(x = molecules_mean, y = reads_mean, col = type)) + 
   geom_point(size = 3, alpha = 0.5) +  
   scale_colour_manual(values=cbPalette) + 
@@ -111,6 +123,7 @@ plot_mean <- ggplot(distribution, aes(x = molecules_mean, y = reads_mean, col = 
   geom_smooth(method = "lm")
 
 plot_mean
+
 ```
 
 ## Distribution of fold change to mean
@@ -154,6 +167,27 @@ str(ercc_plot)
 cor(ercc_plot$observed_mean, ercc_plot$expected)
 ```
 
+Use molecule filter file. 
+
+```{r capture-efficiency-filter}
+ercc_list_filter <- list()
+for (spike in ercc$id[ercc$ercc_molecules_well >= 0]) {
+  if (spike %in% rownames(molecules_filter)) {
+    ercc_list_filter$id <- c(ercc_list_filter$id, spike)
+    ercc_list_filter$observed_mean <- c(ercc_list_filter$observed_mean,
+                                 mean(as.numeric(molecules_filter[spike, ])))
+    ercc_list_filter$observed_sem <- c(ercc_list_filter$observed_sem,
+                                 sd(as.numeric(molecules_filter[spike, ])) /
+                                 sqrt(ncol(molecules_filter)))
+    ercc_list_filter$expected <- c(ercc_list_filter$expected,
+                            ercc$ercc_molecules_well[ercc$id == spike])
+  }
+}
+ercc_filter_plot <- as.data.frame(ercc_list_filter, stringsAsFactors = FALSE)
+str(ercc_filter_plot)
+cor(ercc_filter_plot$observed_mean, ercc_filter_plot$expected)
+```
+
 ```{r ercc-capture-efficiency, fig.width=8, fig.height=8}
 p_efficiency <- ggplot(ercc_plot, aes(x = expected, y = observed_mean)) +
   geom_point(col = "red") +
@@ -163,8 +197,6 @@ p_efficiency <- ggplot(ercc_plot, aes(x = expected, y = observed_mean)) +
        y = "Observed ERCC molecules\n(mean +/- sem)",
        title = "ERCC capture efficiency")
 
-p_efficiency
-
 p_efficiency_plot <- p_efficiency + scale_x_log10() +
   scale_y_log10() +
   labs(x = "Expected ERCC molecules",
@@ -172,17 +204,28 @@ p_efficiency_plot <- p_efficiency + scale_x_log10() +
        title = "ERCC capture efficiency - log scale")
 
 p_efficiency_plot
+
+p_efficiency_filter_plot <- ggplot(ercc_filter_plot, aes(x = expected, y = observed_mean)) +
+  geom_point(col = "red") +
+  geom_errorbar(aes(ymin = observed_mean - observed_sem,
+                    ymax = observed_mean + observed_sem), width = 0) +
+                    scale_x_log10() + scale_y_log10() +
+                    labs(x = "Expected ERCC molecules",
+                    y = "Observed ERCC molecules\n(mean +/- sem)",
+                    title = "ERCC capture efficiency - log scale (filtered)")
+
+p_efficiency_filter_plot
 ```
 
 ## Calculate capture efficiency per cell
 ```{r capture-efficiency-cell}
-ercc_index <- grep("ERCC", rownames(molecules))
+ercc_index <- grep("ERCC", rownames(molecules_filter))
 length(ercc_index)
 
-efficiency <- numeric(length = ncol(molecules))
-total_ercc_molecules <- sum(ercc_plot$expected)
-for (i in 1:ncol(molecules)) {
-  efficiency[i] <- sum(molecules[ercc_index, i]) / total_ercc_molecules
+efficiency <- numeric(length = ncol(molecules_filter))
+total_ercc_molecules <- sum(ercc_filter_plot$expected)
+for (i in 1:ncol(molecules_filter)) {
+  efficiency[i] <- sum(molecules_filter[ercc_index, i]) / total_ercc_molecules
 }
 summary(efficiency)
 ```
@@ -190,10 +233,10 @@ summary(efficiency)
 ## QC plots
 ```{r plots, fig.width=12, fig.height=8}
 theme_set(theme_bw(base_size = 12))
-plot_grid(plot_mean + theme(legend.position = "none"),
-          p_efficiency + theme(legend.position = "none"),
-          plot_mean_log + theme(legend.position = c(.85,.25)) + labs (col = ""),
+plot_grid(plot_mean_log + theme(legend.position = c(.85,.25)) + labs (col = ""),
           p_efficiency_plot + theme(legend.position = "none"),
+          plot_mean_filter_log + theme(legend.position = c(.85,.25)) + labs (col = ""),
+          p_efficiency_filter_plot + theme(legend.position = "none"),
           labels = LETTERS[4:7])
 ```
 
