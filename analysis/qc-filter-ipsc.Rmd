@@ -274,14 +274,14 @@ ggplot(summary_per_sample_reads_qc, aes(x = concentration, y = total_gene_molecu
   theme(legend.position = "none")
 
 outliers <- summary_per_sample_reads_qc %>% filter(cell_number == 1, concentration < 1.25, concentration > .15,
-                                   total_gene_molecule > 140000)
+                                   total_gene_molecule > 100000)
 
 outliers %>% dplyr::select(sample_id)
 
 summary_per_sample_reads_qc$molecule_outlier <- summary_per_sample_reads_qc$cell_number == 1 &
   summary_per_sample_reads_qc$concentration < 1.25 &
   summary_per_sample_reads_qc$concentration > .15 &
-  summary_per_sample_reads_qc$total_gene_molecule > 140000
+  summary_per_sample_reads_qc$total_gene_molecule > 100000
 ```
 
 ### Linear Discriminat Analysis
@@ -329,8 +329,8 @@ plot_after <- ggplot(data_con, aes(x = concentration, y = total_gene_molecule / 
 outliers_lda <- data_con %>% filter(cell_number == 1, data_con_lda_p == "two")
 outliers_lda$sample_id
 
-## The lds method identifies more outliers
-#stopifnot(outliers %>% dplyr::select(sample_id) == outliers_lda$sample_id)
+## The lds method identifies outliers
+stopifnot(outliers %>% dplyr::select(sample_id) == outliers_lda$sample_id)
 
 theme_set(theme_bw(base_size = 16))
 plot_grid(plot_before + theme(legend.position=c(.8,.85)), 
@@ -371,12 +371,12 @@ outliers_ercc <- data_lda %>% filter(cell_number == 1, data_ercc_lda_p == "two")
 outliers_ercc$sample_id
 
 ## cutoff
-out_ercc_con <- summary_per_sample_reads_qc %>% filter(cell_number == "1", ERCC_conversion > .094)
+out_ercc_con <- summary_per_sample_reads_qc %>% filter(cell_number == "1", ERCC_conversion > .08)
 # The two methods no longer give identical results
-# stopifnot(out_ercc_con %>% dplyr::select(sample_id) == outliers_ercc$sample_id)
+stopifnot(out_ercc_con %>% dplyr::select(sample_id) == outliers_ercc$sample_id)
 
 summary_per_sample_reads_qc$conversion_outlier <- summary_per_sample_reads_qc$cell_number == 1 &
-                                                         summary_per_sample_reads_qc$ERCC_conversion > .094
+                                                         summary_per_sample_reads_qc$ERCC_conversion > .08
 
 plot_ercc_before <- ggplot(data_lda, aes(x = ERCC_conversion, y = conversion,
                color = as.factor(group))) +
@@ -495,7 +495,7 @@ genes_unmapped <-  ggplot(summary_per_sample_reads_qc,
 
 genes_ercc <-  ggplot(summary_per_sample_reads_qc,
                    aes(x = gene_number, y = ercc_percentage * 100,
-                   col = as.factor(individual), shape = as.factor(batch), height = 600, width = 2000)) +
+                   col = as.factor(individual), shape = as.factor(replicate), height = 600, width = 2000)) +
                    geom_point(size = 3, alpha = 0.3) +
                    geom_vline(xintercept = cut_off_genes, colour="grey", linetype = "longdash") +
                    geom_hline(yintercept = cut_off_ercc * 100, colour="grey", linetype = "longdash") +
