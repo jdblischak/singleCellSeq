@@ -44,11 +44,14 @@ anno <- read.table("../data/annotation.txt", header = TRUE,
 head(anno)
 ```
 
-Input read counts.
+Input read counts and filter for quality cells.
 
 ```{r input-read-counts}
 reads <- read.table("../data/reads.txt", header = TRUE,
                     stringsAsFactors = FALSE)
+
+quality_single_cells <- scan("../data/quality-single-cells.txt", what = "character")
+reads <- reads[, colnames(reads) %in% quality_single_cells]
 ```
 
 Input read counts in high quality cells for filtered genes
@@ -58,11 +61,13 @@ reads_filter <- read.table("../data/reads-filter.txt", header = TRUE,
                     stringsAsFactors = FALSE)
 ```
 
-Input molecule counts.
+Input molecule counts and filter for quality cell.
 
 ```{r input-molecule-counts}
 molecules <- read.table("../data/molecules.txt", header = TRUE,
                     stringsAsFactors = FALSE)
+
+molecules <- molecules[, colnames(molecules) %in% quality_single_cells]
 ```
 
 Input molecule counts in high quality cells for filtered genes
@@ -189,7 +194,7 @@ cor(ercc_filter_plot$observed_mean, ercc_filter_plot$expected)
 ```
 
 ```{r ercc-capture-efficiency, fig.width=8, fig.height=8}
-p_efficiency <- ggplot(ercc_plot, aes(x = expected, y = observed_mean)) +
+p_efficiency <- ggplot(ercc_plot, aes(x = expected, y = observed_mean, label = id)) +
   geom_point(col = "red") +
   geom_errorbar(aes(ymin = observed_mean - observed_sem,
                     ymax = observed_mean + observed_sem), width = 0) +
@@ -203,7 +208,7 @@ p_efficiency_plot <- p_efficiency + scale_x_log10() +
        y = "Observed ERCC molecules\n(mean +/- sem)",
        title = "ERCC capture efficiency - log scale")
 
-p_efficiency_plot
+p_efficiency_plot + geom_text(hjust = 0, nudge_x = 0.05, size = 4)
 
 p_efficiency_filter_plot <- ggplot(ercc_filter_plot, aes(x = expected, y = observed_mean)) +
   geom_point(col = "red") +
@@ -233,9 +238,9 @@ summary(efficiency)
 ## QC plots
 ```{r plots, fig.width=12, fig.height=8}
 theme_set(theme_bw(base_size = 12))
-plot_grid(plot_mean_log + theme(legend.position = c(.85,.25)) + labs (col = ""),
+plot_grid(plot_mean_filter_log + theme(legend.position = c(.85,.25)) + labs (col = ""),
           p_efficiency_plot + theme(legend.position = "none"),
-          plot_mean_filter_log + theme(legend.position = c(.85,.25)) + labs (col = ""),
+          plot_mean_log + theme(legend.position = c(.85,.25)) + labs (col = ""),
           p_efficiency_filter_plot + theme(legend.position = "none"),
           labels = LETTERS[4:7])
 ```
