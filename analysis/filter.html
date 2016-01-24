@@ -133,8 +133,8 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2016-01-18</p>
-<p><strong>Code version:</strong> 384c1a73cd413b558e806e4928853f487bc37547</p>
+<p><strong>Last updated:</strong> 2016-01-23</p>
+<p><strong>Code version:</strong> 71bca2eedc500d1e5da32d526ba2127cb9aa7a63</p>
 <pre class="r"><code>library(&quot;biomaRt&quot;)
 library(&quot;dplyr&quot;)
 library(&quot;edgeR&quot;)
@@ -206,13 +206,13 @@ stopifnot(nrow(anno_filter) == ncol(reads_filter),
 <pre class="r"><code>table(anno_filter$individual, anno_filter$replicate)</code></pre>
 <pre><code>         
           r1 r2 r3
-  NA19098 85  0 58
-  NA19101 81 70 50
-  NA19239 73 69 80</code></pre>
+  NA19098 85  0 56
+  NA19101 80 70 49
+  NA19239 73 68 79</code></pre>
 <div id="filter-genes" class="section level3">
 <h3>Filter genes</h3>
 <p>We filter the genes to exlude both those that are lowly expressed or over-expressed (&gt;= 1024 molecules in a given cell).</p>
-<p>We identify the lower cutoff using the mean log<sub>2</sub> molecule counts per million (cpm) in the 566 high quality single cells.</p>
+<p>We identify the lower cutoff using the mean log<sub>2</sub> molecule counts per million (cpm) in the 560 high quality single cells.</p>
 <pre class="r"><code>molecules_cpm_mean &lt;- rowMeans(cpm(molecules_filter, log = TRUE))
 hist(molecules_cpm_mean, xlab = &quot;Mean log2 molecule cpm in single cells&quot;,
      ylab = &quot;Number of genes&quot;, main = &quot;Identifying expression cutoff&quot;)
@@ -220,7 +220,7 @@ lower_exp_cutoff &lt;- 2
 abline(v = lower_exp_cutoff, col = &quot;red&quot;)</code></pre>
 <p><img src="figure/filter.Rmd/identify-lower-expression-cutoff-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>genes_pass_filter &lt;- rownames(molecules_filter)[molecules_cpm_mean &gt; lower_exp_cutoff]</code></pre>
-<p>12213 genes have a mean log<sub>2</sub> molecule cpm greater than 2, including 43 ERCC genes.</p>
+<p>12240 genes have a mean log<sub>2</sub> molecule cpm greater than 2, including 43 ERCC genes.</p>
 <p>Next we identify any genes which have greater than 1024 molecules in any given single cell. These are above our theoretical maximum number of UMIs (it can happen when a highly expressed gene as multiple start sites), and thus we cannot correct them for the <a href="cpm.html#correct-for-collision-probability">collision probability</a>.</p>
 <pre class="r"><code>overexpressed_rows &lt;- apply(molecules_filter, 1, function(x) any(x &gt;= 1024))
 overexpressed_genes &lt;- rownames(molecules_filter)[overexpressed_rows]
@@ -252,7 +252,7 @@ overexpressed_genes_info</code></pre>
 <p>5 genes have molecule counts greater than or equal to 1024 in at least one single cell, which includes 0 ERCC control genes.</p>
 <p>Update the list of genes passing the filters.</p>
 <pre class="r"><code>genes_pass_filter &lt;- setdiff(genes_pass_filter, overexpressed_genes)</code></pre>
-<p>Filter the data to only include the subset of 12208 genes which pass the lower and upper expression cutoffs. This subset includes 43 ERCC genes.</p>
+<p>Filter the data to only include the subset of 12235 genes which pass the lower and upper expression cutoffs. This subset includes 43 ERCC genes.</p>
 <pre class="r"><code>reads_filter &lt;- reads_filter[rownames(reads_filter) %in% genes_pass_filter, ]
 molecules_filter &lt;- molecules_filter[rownames(molecules_filter) %in% genes_pass_filter, ]
 reads_bulk_filter &lt;- reads_bulk[rownames(reads_bulk) %in% genes_pass_filter, ]

@@ -146,8 +146,8 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2016-01-15</p>
-<p><strong>Code version:</strong> c37876c8fae1a8599d70d7c77155aca9c48264c5</p>
+<p><strong>Last updated:</strong> 2016-01-23</p>
+<p><strong>Code version:</strong> 71bca2eedc500d1e5da32d526ba2127cb9aa7a63</p>
 <div id="input" class="section level2">
 <h2>Input</h2>
 <pre class="r"><code>library(&quot;dplyr&quot;)
@@ -398,19 +398,25 @@ ggplot(summary_per_sample_reads_qc, aes(x = concentration, y = total_gene_molecu
   theme(legend.position = &quot;none&quot;)</code></pre>
 <p><img src="figure/qc-filter-ipsc.Rmd/total-mol-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>outliers &lt;- summary_per_sample_reads_qc %&gt;% filter(cell_number == 1, concentration &lt; 1.25, concentration &gt; .15,
-                                   total_gene_molecule &gt; 140000)
+                                   total_gene_molecule &gt; 100000)
 
 outliers %&gt;% dplyr::select(sample_id)</code></pre>
-<pre><code>       sample_id
-1 NA19101.r2.D07
-2 NA19101.r3.D08
-3 NA19101.r3.F05
-4 NA19101.r3.F10
-5 NA19239.r2.A12</code></pre>
+<pre><code>        sample_id
+1  NA19098.r3.B04
+2  NA19098.r3.B11
+3  NA19101.r1.B10
+4  NA19101.r2.D07
+5  NA19101.r3.C07
+6  NA19101.r3.D08
+7  NA19101.r3.D10
+8  NA19101.r3.F05
+9  NA19101.r3.F10
+10 NA19239.r2.A12
+11 NA19239.r2.B07</code></pre>
 <pre class="r"><code>summary_per_sample_reads_qc$molecule_outlier &lt;- summary_per_sample_reads_qc$cell_number == 1 &amp;
   summary_per_sample_reads_qc$concentration &lt; 1.25 &amp;
   summary_per_sample_reads_qc$concentration &gt; .15 &amp;
-  summary_per_sample_reads_qc$total_gene_molecule &gt; 140000</code></pre>
+  summary_per_sample_reads_qc$total_gene_molecule &gt; 100000</code></pre>
 <div id="linear-discriminat-analysis" class="section level3">
 <h3>Linear Discriminat Analysis</h3>
 <pre class="r"><code>library(MASS)</code></pre>
@@ -469,8 +475,8 @@ outliers_lda$sample_id</code></pre>
 <pre><code> [1] &quot;NA19098.r3.B04&quot; &quot;NA19098.r3.B11&quot; &quot;NA19101.r1.B10&quot; &quot;NA19101.r2.D07&quot;
  [5] &quot;NA19101.r3.C07&quot; &quot;NA19101.r3.D08&quot; &quot;NA19101.r3.D10&quot; &quot;NA19101.r3.F05&quot;
  [9] &quot;NA19101.r3.F10&quot; &quot;NA19239.r2.A12&quot; &quot;NA19239.r2.B07&quot;</code></pre>
-<pre class="r"><code>## The lds method identifies more outliers
-#stopifnot(outliers %&gt;% dplyr::select(sample_id) == outliers_lda$sample_id)
+<pre class="r"><code>## The lds method identifies outliers
+stopifnot(outliers %&gt;% dplyr::select(sample_id) == outliers_lda$sample_id)
 
 theme_set(theme_bw(base_size = 16))
 plot_grid(plot_before + theme(legend.position=c(.8,.85)), 
@@ -518,12 +524,12 @@ outliers_ercc$sample_id</code></pre>
  [5] &quot;NA19101.r3.C07&quot; &quot;NA19101.r3.D08&quot; &quot;NA19101.r3.F05&quot; &quot;NA19101.r3.F10&quot;
  [9] &quot;NA19239.r2.A12&quot; &quot;NA19239.r2.B07&quot; &quot;NA19239.r3.G02&quot;</code></pre>
 <pre class="r"><code>## cutoff
-out_ercc_con &lt;- summary_per_sample_reads_qc %&gt;% filter(cell_number == &quot;1&quot;, ERCC_conversion &gt; .094)
+out_ercc_con &lt;- summary_per_sample_reads_qc %&gt;% filter(cell_number == &quot;1&quot;, ERCC_conversion &gt; .08)
 # The two methods no longer give identical results
-# stopifnot(out_ercc_con %&gt;% dplyr::select(sample_id) == outliers_ercc$sample_id)
+stopifnot(out_ercc_con %&gt;% dplyr::select(sample_id) == outliers_ercc$sample_id)
 
 summary_per_sample_reads_qc$conversion_outlier &lt;- summary_per_sample_reads_qc$cell_number == 1 &amp;
-                                                         summary_per_sample_reads_qc$ERCC_conversion &gt; .094
+                                                         summary_per_sample_reads_qc$ERCC_conversion &gt; .08
 
 plot_ercc_before &lt;- ggplot(data_lda, aes(x = ERCC_conversion, y = conversion,
                color = as.factor(group))) +
@@ -588,9 +594,9 @@ table(summary_per_sample_reads_qc[summary_per_sample_reads_qc$filter_all,
                            c(&quot;individual&quot;, &quot;replicate&quot;)])    </code></pre>
 <pre><code>          replicate
 individual r1 r2 r3
-   NA19098 85  0 58
-   NA19101 81 70 50
-   NA19239 73 69 80</code></pre>
+   NA19098 85  0 56
+   NA19101 80 70 49
+   NA19239 73 68 79</code></pre>
 <pre class="r"><code>stopifnot(nrow(summary_per_sample_reads_qc) == nrow(anno_rm))
 quality_single_cells &lt;- anno_rm %&gt;%
   filter(summary_per_sample_reads_qc$filter_all) %&gt;%
@@ -646,7 +652,7 @@ ggplot(summary_per_sample_reads_qc[summary_per_sample_reads_qc$filter_all == &qu
 
 genes_ercc &lt;-  ggplot(summary_per_sample_reads_qc,
                    aes(x = gene_number, y = ercc_percentage * 100,
-                   col = as.factor(individual), shape = as.factor(batch), height = 600, width = 2000)) +
+                   col = as.factor(individual), shape = as.factor(replicate), height = 600, width = 2000)) +
                    geom_point(size = 3, alpha = 0.3) +
                    geom_vline(xintercept = cut_off_genes, colour=&quot;grey&quot;, linetype = &quot;longdash&quot;) +
                    geom_hline(yintercept = cut_off_ercc * 100, colour=&quot;grey&quot;, linetype = &quot;longdash&quot;) +
@@ -674,10 +680,6 @@ plot_grid(genes_unmapped + theme(legend.position = &quot;none&quot;),
           reads_unmapped_num + theme(legend.position = &quot;none&quot;), 
           reads_ercc_num + theme(legend.position = &quot;none&quot;),
           labels = LETTERS[1:4])</code></pre>
-<pre><code>Warning: The shape palette can deal with a maximum of 6 discrete values
-because more than 6 becomes difficult to discriminate; you have 8.
-Consider specifying shapes manually. if you must have them.</code></pre>
-<pre><code>Warning: Removed 192 rows containing missing values (geom_point).</code></pre>
 <p><img src="figure/qc-filter-ipsc.Rmd/plots-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>plot_grid(genes_unmapped + theme(legend.position = c(.75,.9)) + labs(col = &quot;Individual&quot;), 
           reads_unmapped_num + theme(legend.position = &quot;none&quot;), 

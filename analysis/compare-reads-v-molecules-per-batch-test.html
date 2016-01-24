@@ -138,13 +138,12 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2016-01-15</p>
-<p><strong>Code version:</strong> ab0cf1f917a4c115e9ee44403eb62e837e1795ae</p>
+<p><strong>Last updated:</strong> 2016-01-23</p>
+<p><strong>Code version:</strong> 71bca2eedc500d1e5da32d526ba2127cb9aa7a63</p>
 <div id="objective" class="section level2">
 <h2>Objective</h2>
 <p>Compute conversion efficiency of each cell using the filerted set of cells. Compare conversion efficiency between batches: is there an individual effect or batch effect of coversion efficiency?</p>
 <p>The definition of conversion efficiency: total molecule counts/ total read counts</p>
-<p>Note that we will remove the NA19098 batch 2 in the following analyses.</p>
 <p>We will use analysis of variance to test whether conversion rates are significantly different between individuals. Results below are described at an alpha level of .05.</p>
 </div>
 <div id="input" class="section level2">
@@ -166,11 +165,11 @@ head(anno)</code></pre>
 4    NA19098        r1  A04 NA19098.r1 NA19098.r1.A04
 5    NA19098        r1  A05 NA19098.r1 NA19098.r1.A05
 6    NA19098        r1  A06 NA19098.r1 NA19098.r1.A06</code></pre>
-<p>Input read counts.</p>
-<pre class="r"><code>reads &lt;- read.table(&quot;../data/reads.txt&quot;, header = TRUE,
+<p>Input filtered read counts.</p>
+<pre class="r"><code>reads &lt;- read.table(&quot;../data/reads-filter.txt&quot;, header = TRUE,
                     stringsAsFactors = FALSE)</code></pre>
-<p>Input molecule counts.</p>
-<pre class="r"><code>molecules &lt;- read.table(&quot;../data/molecules.txt&quot;, header = TRUE,
+<p>Input filtered molecule counts.</p>
+<pre class="r"><code>molecules &lt;- read.table(&quot;../data/molecules-filter.txt&quot;, header = TRUE,
                     stringsAsFactors = FALSE)</code></pre>
 <p>Input list of quality single cells.</p>
 <pre class="r"><code>quality_single_cells &lt;- scan(&quot;../data/quality-single-cells.txt&quot;,
@@ -195,25 +194,25 @@ molecules_ERCC &lt;- molecules[grep(&quot;ERCC&quot;, rownames(molecules), inver
 total_counts_ERCC$conversion &lt;- with(total_counts_ERCC,
                                      total_molecules/total_reads)
 summary(total_counts_ERCC)</code></pre>
-<pre><code>  total_reads    total_molecules   conversion     
- Min.   :10720   Min.   : 839    Min.   :0.02450  
- 1st Qu.:31360   1st Qu.:1274    1st Qu.:0.03362  
- Median :38633   Median :1416    Median :0.03865  
- Mean   :39422   Mean   :1534    Mean   :0.04092  
- 3rd Qu.:46087   3rd Qu.:1814    3rd Qu.:0.04630  
- Max.   :87655   Max.   :2687    Max.   :0.09229  </code></pre>
+<pre><code>  total_reads    total_molecules    conversion     
+ Min.   :10900   Min.   : 660.0   Min.   :0.01398  
+ 1st Qu.:31498   1st Qu.: 911.8   1st Qu.:0.02318  
+ Median :38848   Median :1021.5   Median :0.02742  
+ Mean   :39656   Mean   :1097.4   Mean   :0.02954  
+ 3rd Qu.:46406   3rd Qu.:1270.5   3rd Qu.:0.03412  
+ Max.   :88510   Max.   :2022.0   Max.   :0.07786  </code></pre>
 <pre class="r"><code>total_counts_ENSG &lt;- data.frame(total_reads = colSums(reads_ENSG),
                                 total_molecules = colSums(molecules_ENSG))
 total_counts_ENSG$conversion &lt;- with(total_counts_ENSG,
                                      total_molecules/total_reads)
 summary(total_counts_ENSG)</code></pre>
 <pre><code>  total_reads      total_molecules    conversion     
- Min.   : 848534   Min.   : 43633   Min.   :0.02964  
- 1st Qu.:2025098   1st Qu.: 86051   1st Qu.:0.03789  
- Median :2477972   Median :102548   Median :0.04249  
- Mean   :2417688   Mean   :103274   Mean   :0.04348  
- 3rd Qu.:2818138   3rd Qu.:120559   3rd Qu.:0.04824  
- Max.   :4169020   Max.   :173620   Max.   :0.07259  </code></pre>
+ Min.   : 651937   Min.   : 33039   Min.   :0.01820  
+ 1st Qu.:2002940   1st Qu.: 59998   1st Qu.:0.02599  
+ Median :2454926   Median : 70424   Median :0.03042  
+ Mean   :2383629   Mean   : 71705   Mean   :0.03094  
+ 3rd Qu.:2778747   3rd Qu.: 83695   3rd Qu.:0.03494  
+ Max.   :4219108   Max.   :123211   Max.   :0.07224  </code></pre>
 <pre class="r"><code>## create a color palette with one color per individual and different shades for repplicates
 great_color &lt;- c(&quot;#CC3300&quot;, &quot;#FF9966&quot;, &quot;#006633&quot;, &quot;#009900&quot;, &quot;#99FF99&quot;, &quot;#3366FF&quot;, &quot;#6699FF&quot;, &quot;#66CCFF&quot;)
 
@@ -277,9 +276,9 @@ anova(lmer_ENSG_null, lmer_ENSG_full)</code></pre>
 Models:
 lmer_ENSG_null: conversion ~ 1 + (1 | individual:replicate)
 lmer_ENSG_full: conversion ~ individual + (1 | individual:replicate)
-               Df     AIC     BIC logLik deviance  Chisq Chi Df Pr(&gt;Chisq)
-lmer_ENSG_null  3 -4597.8 -4584.8 2301.9  -4603.8                         
-lmer_ENSG_full  5 -4612.0 -4590.3 2311.0  -4622.0 18.248      2   0.000109
+               Df     AIC     BIC logLik deviance Chisq Chi Df Pr(&gt;Chisq)
+lmer_ENSG_null  3 -4492.5 -4479.5 2249.3  -4498.5                        
+lmer_ENSG_full  5 -4508.7 -4487.1 2259.3  -4518.7 20.17      2  4.169e-05
                   
 lmer_ENSG_null    
 lmer_ENSG_full ***
@@ -293,21 +292,21 @@ Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&
                      data = df_ENSG[select_individual, ]) ) )
 }</code></pre>
 <pre><code>[1] &quot;NA19098&quot;
-             Df   Sum Sq   Mean Sq F value   Pr(&gt;F)    
-batch         1 0.000538 0.0005379   20.43 1.31e-05 ***
-Residuals   140 0.003686 0.0000263                     
+             Df   Sum Sq   Mean Sq F value Pr(&gt;F)  
+batch         1 0.000106 1.060e-04   2.896  0.091 .
+Residuals   139 0.005088 3.661e-05                 
 ---
 Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
 [1] &quot;NA19101&quot;
-             Df    Sum Sq   Mean Sq F value  Pr(&gt;F)   
-batch         2 0.0001421 7.107e-05   5.764 0.00369 **
-Residuals   198 0.0024412 1.233e-05                   
+             Df    Sum Sq   Mean Sq F value   Pr(&gt;F)    
+batch         2 0.0001597 7.983e-05   7.737 0.000584 ***
+Residuals   196 0.0020226 1.032e-05                     
 ---
 Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
 [1] &quot;NA19239&quot;
-             Df   Sum Sq  Mean Sq F value Pr(&gt;F)    
-batch         2 0.001286 0.000643    45.9 &lt;2e-16 ***
-Residuals   222 0.003110 0.000014                   
+             Df    Sum Sq  Mean Sq F value   Pr(&gt;F)    
+batch         2 0.0007899 3.95e-04   31.51 9.65e-13 ***
+Residuals   217 0.0027196 1.25e-05                     
 ---
 Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
 </div>
@@ -345,8 +344,8 @@ Models:
 lmer_ERCC_null: conversion ~ 1 + (1 | individual:replicate)
 lmer_ERCC_full: conversion ~ individual + (1 | individual:replicate)
                Df     AIC     BIC logLik deviance  Chisq Chi Df Pr(&gt;Chisq)
-lmer_ERCC_null  3 -3764.3 -3751.2 1885.1  -3770.3                         
-lmer_ERCC_full  5 -3780.5 -3758.8 1895.2  -3790.5 20.229      2   4.05e-05
+lmer_ERCC_null  3 -3800.1 -3787.1 1903.0  -3806.1                         
+lmer_ERCC_full  5 -3815.8 -3794.2 1912.9  -3825.8 19.761      2  5.117e-05
                   
 lmer_ERCC_null    
 lmer_ERCC_full ***
@@ -361,16 +360,16 @@ Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&
 }</code></pre>
 <pre><code>[1] &quot;NA19098&quot;
              Df   Sum Sq   Mean Sq F value Pr(&gt;F)
-batch         1 0.000015 1.534e-05   0.128  0.721
-Residuals   140 0.016821 1.202e-04               
+batch         1 0.000217 2.166e-04   2.196  0.141
+Residuals   139 0.013711 9.864e-05               
 [1] &quot;NA19101&quot;
              Df   Sum Sq   Mean Sq F value Pr(&gt;F)
-batch         2 0.000060 2.987e-05   0.869  0.421
-Residuals   198 0.006805 3.437e-05               
+batch         2 0.000026 1.321e-05   0.458  0.633
+Residuals   196 0.005650 2.883e-05               
 [1] &quot;NA19239&quot;
              Df   Sum Sq   Mean Sq F value   Pr(&gt;F)    
-batch         2 0.001791 0.0008956   11.57 1.66e-05 ***
-Residuals   222 0.017189 0.0000774                     
+batch         2 0.001151 0.0005755   8.322 0.000329 ***
+Residuals   217 0.015007 0.0000692                     
 ---
 Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
 </div>

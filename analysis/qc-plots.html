@@ -136,8 +136,8 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2016-01-19</p>
-<p><strong>Code version:</strong> 295525e64a0fc6326e597a5288375dcea952476f</p>
+<p><strong>Last updated:</strong> 2016-01-23</p>
+<p><strong>Code version:</strong> 71bca2eedc500d1e5da32d526ba2127cb9aa7a63</p>
 <div id="input" class="section level2">
 <h2>Input</h2>
 <pre class="r"><code>library(&quot;biomaRt&quot;)
@@ -172,15 +172,20 @@ head(anno)</code></pre>
 4    NA19098        r1  A04 NA19098.r1 NA19098.r1.A04
 5    NA19098        r1  A05 NA19098.r1 NA19098.r1.A05
 6    NA19098        r1  A06 NA19098.r1 NA19098.r1.A06</code></pre>
-<p>Input read counts.</p>
+<p>Input read counts and filter for quality cells.</p>
 <pre class="r"><code>reads &lt;- read.table(&quot;../data/reads.txt&quot;, header = TRUE,
-                    stringsAsFactors = FALSE)</code></pre>
+                    stringsAsFactors = FALSE)
+
+quality_single_cells &lt;- scan(&quot;../data/quality-single-cells.txt&quot;, what = &quot;character&quot;)
+reads &lt;- reads[, colnames(reads) %in% quality_single_cells]</code></pre>
 <p>Input read counts in high quality cells for filtered genes</p>
 <pre class="r"><code>reads_filter &lt;- read.table(&quot;../data/reads-filter.txt&quot;, header = TRUE,
                     stringsAsFactors = FALSE)</code></pre>
-<p>Input molecule counts.</p>
+<p>Input molecule counts and filter for quality cell.</p>
 <pre class="r"><code>molecules &lt;- read.table(&quot;../data/molecules.txt&quot;, header = TRUE,
-                    stringsAsFactors = FALSE)</code></pre>
+                    stringsAsFactors = FALSE)
+
+molecules &lt;- molecules[, colnames(molecules) %in% quality_single_cells]</code></pre>
 <p>Input molecule counts in high quality cells for filtered genes</p>
 <pre class="r"><code>molecules_filter &lt;- read.table(&quot;../data/molecules-filter.txt&quot;, header = TRUE,
                     stringsAsFactors = FALSE)</code></pre>
@@ -200,12 +205,12 @@ distribution_filter &lt;- data.frame(reads_filter_mean, molecules_filter_mean)
 ## correlation between reads and molecules
 cor(distribution)</code></pre>
 <pre><code>               reads_mean molecules_mean
-reads_mean      1.0000000      0.9177281
-molecules_mean  0.9177281      1.0000000</code></pre>
+reads_mean      1.0000000      0.9191001
+molecules_mean  0.9191001      1.0000000</code></pre>
 <pre class="r"><code>cor(distribution_filter)</code></pre>
 <pre><code>                      reads_filter_mean molecules_filter_mean
-reads_filter_mean             1.0000000             0.9360014
-molecules_filter_mean         0.9360014             1.0000000</code></pre>
+reads_filter_mean             1.0000000             0.9361685
+molecules_filter_mean         0.9361685             1.0000000</code></pre>
 <pre class="r"><code>## select ERCC
 distribution$type &lt;- ifelse(grepl(&quot;ERCC&quot;, rownames(distribution)), &quot;ERCC&quot;, &quot;gene&quot;)
 distribution_filter$type &lt;- ifelse(grepl(&quot;ERCC&quot;, rownames(distribution_filter)), &quot;ERCC&quot;, &quot;gene&quot;)
@@ -277,11 +282,11 @@ ercc_plot &lt;- as.data.frame(ercc_list, stringsAsFactors = FALSE)
 str(ercc_plot)</code></pre>
 <pre><code>&#39;data.frame&#39;:   50 obs. of  4 variables:
  $ id           : chr  &quot;ERCC-00130&quot; &quot;ERCC-00004&quot; &quot;ERCC-00136&quot; &quot;ERCC-00108&quot; ...
- $ observed_mean: num  440.381 88.112 32.47 20.884 0.101 ...
- $ observed_sem : num  15.4244 3.287 1.3047 0.8097 0.0119 ...
+ $ observed_mean: num  297.8089 57.2786 20.1589 13.5911 0.0607 ...
+ $ observed_sem : num  2.8525 0.6367 0.285 0.2146 0.0107 ...
  $ expected     : num  4877.9 1219.5 304.9 152.4 76.2 ...</code></pre>
 <pre class="r"><code>cor(ercc_plot$observed_mean, ercc_plot$expected)</code></pre>
-<pre><code>[1] 0.9889903</code></pre>
+<pre><code>[1] 0.9914999</code></pre>
 <p>Use molecule filter file.</p>
 <pre class="r"><code>ercc_list_filter &lt;- list()
 for (spike in ercc$id[ercc$ercc_molecules_well &gt;= 0]) {
@@ -300,12 +305,12 @@ ercc_filter_plot &lt;- as.data.frame(ercc_list_filter, stringsAsFactors = FALSE)
 str(ercc_filter_plot)</code></pre>
 <pre><code>&#39;data.frame&#39;:   43 obs. of  4 variables:
  $ id           : chr  &quot;ERCC-00130&quot; &quot;ERCC-00004&quot; &quot;ERCC-00136&quot; &quot;ERCC-00108&quot; ...
- $ observed_mean: num  297.42 57.24 20.13 13.57 2.16 ...
- $ observed_sem : num  2.848 0.6355 0.283 0.2144 0.0678 ...
+ $ observed_mean: num  297.81 57.28 20.16 13.59 2.15 ...
+ $ observed_sem : num  2.8525 0.6367 0.285 0.2146 0.0677 ...
  $ expected     : num  4877.9 1219.5 304.9 152.4 38.1 ...</code></pre>
 <pre class="r"><code>cor(ercc_filter_plot$observed_mean, ercc_filter_plot$expected)</code></pre>
-<pre><code>[1] 0.991372</code></pre>
-<pre class="r"><code>p_efficiency &lt;- ggplot(ercc_plot, aes(x = expected, y = observed_mean)) +
+<pre><code>[1] 0.9913803</code></pre>
+<pre class="r"><code>p_efficiency &lt;- ggplot(ercc_plot, aes(x = expected, y = observed_mean, label = id)) +
   geom_point(col = &quot;red&quot;) +
   geom_errorbar(aes(ymin = observed_mean - observed_sem,
                     ymax = observed_mean + observed_sem), width = 0) +
@@ -319,7 +324,7 @@ p_efficiency_plot &lt;- p_efficiency + scale_x_log10() +
        y = &quot;Observed ERCC molecules\n(mean +/- sem)&quot;,
        title = &quot;ERCC capture efficiency - log scale&quot;)
 
-p_efficiency_plot</code></pre>
+p_efficiency_plot + geom_text(hjust = 0, nudge_x = 0.05, size = 4)</code></pre>
 <p><img src="figure/qc-plots.Rmd/ercc-capture-efficiency-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>p_efficiency_filter_plot &lt;- ggplot(ercc_filter_plot, aes(x = expected, y = observed_mean)) +
   geom_point(col = &quot;red&quot;) +
@@ -345,14 +350,14 @@ for (i in 1:ncol(molecules_filter)) {
 }
 summary(efficiency)</code></pre>
 <pre><code>   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-0.03943 0.05437 0.06094 0.06549 0.07597 0.12080 </code></pre>
+0.03943 0.05448 0.06103 0.06557 0.07591 0.12080 </code></pre>
 </div>
 <div id="qc-plots" class="section level2">
 <h2>QC plots</h2>
 <pre class="r"><code>theme_set(theme_bw(base_size = 12))
-plot_grid(plot_mean_log + theme(legend.position = c(.85,.25)) + labs (col = &quot;&quot;),
+plot_grid(plot_mean_filter_log + theme(legend.position = c(.85,.25)) + labs (col = &quot;&quot;),
           p_efficiency_plot + theme(legend.position = &quot;none&quot;),
-          plot_mean_filter_log + theme(legend.position = c(.85,.25)) + labs (col = &quot;&quot;),
+          plot_mean_log + theme(legend.position = c(.85,.25)) + labs (col = &quot;&quot;),
           p_efficiency_filter_plot + theme(legend.position = &quot;none&quot;),
           labels = LETTERS[4:7])</code></pre>
 <p><img src="figure/qc-plots.Rmd/plots-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
