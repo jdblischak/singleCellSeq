@@ -112,13 +112,13 @@ First, we corrected for the collision probability using a method similar to that
 Essentially we are correcting for the fact that we did not observe all the molecules originally in the cell.
 The main difference between our approach and that of @Grun2014 is that we apply the correction at the level of gene counts and not individual molecule counts.
 Second, we standardized the molecule counts to log~2~ counts per million (cpm).
-This standardization was performed separately for the gene and ERCC molecules.
+This standardization was performed using only the endogenous gene molecules and not the ERCC molecules.
 Third, we corrected for cell-to-cell technical noise using the ERCC spike-in controls.
-For each single cell, we fit a linear regression between the expected ERCC molecule counts and the observed ERCC molecule counts (both were transformed to log~2~ cpm).
-Next we used the slope and intercept of the least squares regression line to linearly transform the log~2~ cpm for the genes in that cell.
+For each single cell, we fit a Poisson generalized linear model (GLM) between the expected ERCC molecule counts and the observed ERCC molecule counts.
+Next we used the slope and intercept of the Poisson GLM regression line to transform the log~2~ cpm for the genes in that cell.
 This is analogous to the standard curves used for qPCR measurements.
 Fourth, we removed technical noise between the eight batches (three replicates each for 19101 and 19239 and two replicates for 19098).
-We fit a linear mixed model with a fixed effect for individual and a random effect for the eight batches and removed the variation captured by the random effect.
+We fit a linear mixed model with a fixed effect for individual and a random effect for the eight batches and removed the variation captured by the random effect (see the next section for a detailed explanation).
 
 For the bulk samples, we used read counts even though the reads contained UMIs.
 Because these samples contained RNA molecules from millions of cells, we could not assume that the 1,024 UMIs we added could accurately estimate the true number of molecules.
@@ -126,13 +126,13 @@ We standardized them to log~2~ cpm.
 
 ### Remove batch effect due to within-plate cell-to-cell gene expression variability
 
-Our last normalization step adjusts the transformed log2 gene expression levels for cell-to-cell correlation within each C1 plate. The algorithm mimics a method that was initially develops for adjusting within-replicate correlation in microarray data [@Smyth2005]. We assumed that for each gene $g$, cells that belong to the same batch $j$ are correlated, for batches $j = 1, \dots, 8$. The batch effect is specific to each C1 plate and is independent of biological variation across cell lines. 
+Our last normalization step adjusts the transformed log~2~ gene expression levels for cell-to-cell correlation within each C1 plate. The algorithm mimics a method that was initially develops for adjusting within-replicate correlation in microarray data [@Smyth2005]. We assumed that for each gene $g$, cells that belong to the same batch $j$ are correlated, for batches $j = 1, \dots, 8$. The batch effect is specific to each C1 plate and is independent of biological variation across cell lines. 
 
 We then fit a linear mixed model for each gene $g$ that includes a fixed effect of individual cell lines and a random effect for within-batch variation attributed to cell-to-cell correlation within each C1 plate: 
 
 $$ y_{g,ijk} = \mu_{g} + \alpha_{g,i} + b_{g,j} + \epsilon_{g,ijk}, $$
 
-where $y_{g,ijk}$ denotes log2 counts-per-million (cpm) for gene $g$ in individual cell line $i$, batch $j$, and cell $k$, and $i = NA19098, NA19101, NA19239$, $j = 1, \dots, 8$, $k = 1, \dots, n_{g,j}$ with $n_{g,j}$ denotes the number of cells in batch $j$; $\mu_g$ describes gene-specific expression level across cells, $\alpha_{g,i}$ quantifies mean gene expression level for individaul cell line $i$, $b_{g,j}$ models cell-to-cell correlation in batch $j$, and $\epsilon_{g,ijk}$ describes residual variation in gene expression levels. We assumed $b_{g,j}$ are independent and identically distribued with mean 0 and variance $\sigma^2_{g,b})$ for $j = 1, \dots, 8$.
+where $y_{g,ijk}$ denotes log~2~ counts-per-million (cpm) for gene $g$ in individual cell line $i$, batch $j$, and cell $k$, and $i = NA19098, NA19101, NA19239$, $j = 1, \dots, 8$, $k = 1, \dots, n_{g,j}$ with $n_{g,j}$ denotes the number of cells in batch $j$; $\mu_g$ describes gene-specific expression level across cells, $\alpha_{g,i}$ quantifies mean gene expression level for individaul cell line $i$, $b_{g,j}$ models cell-to-cell correlation in batch $j$, and $\epsilon_{g,ijk}$ describes residual variation in gene expression levels. We assumed $b_{g,j}$ are independent and identically distribued with mean 0 and variance $\sigma^2_{g,b})$ for $j = 1, \dots, 8$.
 
 Next, we applied Least-Squared (LS) method and computed the batch-corrected expression as:
 
