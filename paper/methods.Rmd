@@ -131,31 +131,32 @@ $$ \widehat{y}_{g,ijk} = y_{g,ijk} - \widehat{b}_{g,j}, $$
 where $\widehat{b}_{g,j}$ is the LS estimate of batch-effect specific to replicate $j$. The computations in this step are performed with the gls.series function of the limma package [@limma].
 
 
-### Analysis of cell-to-cell transcriptional variability
+### Analysis of cell-to-cell transcriptional variation
 
-#### Quantify cell-to-cell heterogeneity
+#### Calculating the measure of noise 
 
-We quantified cell-to-cell heterogeneity in transcriptional expression as a function of transcript abundance. First, squared coefficents of variations (CVs) were computed for each cell line on the normalized, batch-corrected molecule counts. To account for the confounding effect of mean gene expression level on CVs, we followed the approach described in Kolodziejczyk et al., 2015 [@Kolodziejczyk2015]: 
+We computed a measure of noise for transcriptional variability that is independent of RNA abundance levels across individuals [@Kolodziejczyk2015, @Newman2006]. First, squared coefficients of variation (CVs) for each gene were computed for each individual and across cell lines, using molecule counts after collision correction and transformations. Then we computed the distance of individual-specific CVs to the rolling median of global CVs among genes that have similar RNA abundance levels. The transformed individual-specific values are referred to as distance-to-the-median (DM). We outline the computations in the following:
 
-1. Sort genes by mean gene expression levels across cell lines.
 
-2. Compute squared CVs for each gene. 
+1. Compute squared CVs of molecule counts in individual cell lines and across individuals. 
 
-3. Starting from the genes with the lowest gene expression level, for every sliding window of 50 genes, substract the log10 median squared CVs from the log10 squared CVs of each cell line, and the number of overlapping genes between windows is 25. The computation was performed with the rollapply function of the R zoo package [@Zeileis2005]. 
+2. Order genes by the global average molecule counts.
 
-4. Standardize each cell line's adjusted log10 CVs by substracting the respective mean and standard deviation across genes. The final adjusted measurements are referred to as *SSCV* (Standardized Squared Coefficients of Variation).
+3. Starting from the genes with the lowest global average gene expression level, for every sliding window of 50 genes, substract log10 median squared CVs from log10 squared CVs of each cell line, and set 25 overlapping genes between windows. The computation was performed with the rollapply function of the R zoo package [@Zeileis2005]. 
 
-#### Individual differences in cell-to-cell heterogeneity
 
-To evaluate individual differences in cell-to-cell heterogeneity, we computed a dissimilarity metric SSM (Sum of Squared Deviation from the Median) for SSCVs between individuals 
+#### Identifying differential genes
 
-$$ SSCV_{g} = \sum_{i=1}^{3} \left( SSCV_{gi} - \overline{SSCV}_{g} \right)^2$$
+To identify differential DM between individuals, we computed median absolute deviation (MAD) - a robust and distribution-free dissimilarity measure for gene $g$: 
 
-for gene $g$ and individual cell lines $i = 1, \dots, 3$, where $\overline{SSCV}_{g}$ denotes the median of SSCVs of gene $g$. We then computed permutation-based p-values for each gene based on 10,000 permutation, in which the individual cell line labels are shuffled between cells, and 
+$$ MAD_{g} = Median_{i= 1,2,3} \left| DM_{g,i} - Median{DM}_{g} \right|$$
 
-$$ \frac{1}{B} \sum_{B=1}^{10,000} \mathbb{I} \left( SSCV_{g} \gt  SSCV_{g,B} \right),$$
+. Large values of $MAD_{g}$ suggest large deviation from the median of the DM values. We then computed permutation-based p-values for each gene based on 12,192 permutation - equals to the number of genes included in the filtered and transformed data. In each permutation, the cell line labels are shuffled between cells, and the permutation-based p-value is 
 
-where $SSCV_{g,B}$ is the SSCV of gene $g$ in permutation $B$, and $\mathbb{I}$ equals 1 if $\left( SSCV_{g} \gt  SSCV_{g,B} \right)$ and 0 otherwise.  
+$$ \frac{1}{B} \sum_{B=1}^{12,192} \mathbb{I} \left( MAD_{g} \gt  MAD_{g,B} \right),$$
+
+where $MAD_{g,B}$ is the gene $g$ MAD value in permutation $B$, and $\mathbb{I}$ equals 1 if $\left( MAD_{g} \gt  MAD_{g,B} \right)$ and 0 otherwise.  
+
 
 ### Data and code availability
 
