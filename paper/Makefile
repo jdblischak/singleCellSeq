@@ -17,7 +17,7 @@ pdf: $(NAME).pdf $(SUPP).pdf
 ## Build paper
 
 $(NAME).html: $(TARGETS)
-	pandoc $^ --to html --output $@ --self-contained --standalone --section-divs --toc $(PANDOC_OPTS)
+	pandoc $^ --to html --output $@ --standalone --section-divs --toc $(PANDOC_OPTS) --mathjax
 
 $(NAME).docx: $(TARGETS)
 	pandoc $^ --to docx --output $@ $(PANDOC_OPTS)
@@ -25,10 +25,14 @@ $(NAME).docx: $(TARGETS)
 $(NAME).pdf: $(TARGETS)
 	pandoc $^ --to latex --output $@ --toc $(PANDOC_OPTS)
 
+# For debugging purposes, create intermediate tex file:
+$(NAME).tex: $(TARGETS)
+	pandoc $^ --to latex --output $@ --toc $(PANDOC_OPTS) --standalone
+
 ## Build supplement
 
 $(SUPP).html: $(SUPP).md
-	pandoc $^ --to html --output $@ --self-contained --standalone --section-divs --toc $(PANDOC_OPTS)
+	pandoc $^ --to html --output $@ --standalone --section-divs --toc $(PANDOC_OPTS) --mathjax
 
 $(SUPP).docx: $(SUPP).md
 	pandoc $^ --to docx --output $@ --self-contained --standalone --section-divs --toc $(PANDOC_OPTS)
