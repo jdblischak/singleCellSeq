@@ -5,6 +5,17 @@
 # utilizing the pysam module.
 # http://seqanswers.com/forums/showpost.php?p=60581&postcount=12
 
+# usage:
+#  python subsample-bam.py seed num outdir filename
+#
+#    seed - integer to seed random number generator
+#    num - Number of reads to subsample
+#    outdir - Path to directory to write file, is created if does not exist
+#    filename - BAM file to be subsampled
+#
+# Should be used with Python 2
+# Creates output file: outdir/basename.num.bam
+
 ################################################################################
 
 import sys

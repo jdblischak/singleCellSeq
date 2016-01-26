@@ -7,7 +7,8 @@ Usage:
     gather-gene-counts.py prefix [files]
 
     prefix - prefix for names of output files,
-             e.g. outdir/ or outdir/name-
+             e.g. outdir/ or outdir/name-,
+             outdir must already exist
     files - At least one featureCounts output filename,
             e.g. counts/*genecounts.txt
     """
