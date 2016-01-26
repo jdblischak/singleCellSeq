@@ -1,7 +1,7 @@
 ---
 title: "Generate gene symbols"
 author: "Joyce Hsiao"
-date: 2015-10-29
+date: 2016-01-25
 ---
 
 **Last updated:** `r Sys.Date()`
@@ -37,21 +37,21 @@ source("functions.R")
 
 ## Prepare data
 
-Input annotation of only QC-filtered single cells. Remove NA19098.r2
+Input annotation of QC-filtered data.
 
 ```{r}
-anno_qc <- read.table("../data/annotation-filter.txt", header = TRUE,
-                   stringsAsFactors = FALSE)
-is_include <- anno_qc$batch != "NA19098.r2"
-anno_qc_filter <- anno_qc[which(is_include), ]
+anno_filter <- read.table("../data/annotation-filter.txt", 
+                          header = TRUE,
+                          stringsAsFactors = FALSE)
 ```
 
 
-Import endogeneous gene molecule counts that are QC-filtered, CPM-normalized, ERCC-normalized, and also processed to remove unwanted variation from batch effet. ERCC genes are removed from this file.
+Import endogeneous genes in the final file.
 
 ```{r}
-molecules_ENSG <- read.table("../data/molecules-final.txt", header = TRUE, stringsAsFactors = FALSE)
-molecules_ENSG <- molecules_ENSG[ , is_include]
+molecules_final <- read.table("../data/molecules-final.txt", 
+                             header = TRUE, 
+                             stringsAsFactors = FALSE)
 ```
 
 
@@ -59,7 +59,11 @@ molecules_ENSG <- molecules_ENSG[ , is_include]
 
 
 ```{r}
-if(!file.exists("../data/gene-info.txt")) {
+if(file.exists("../data/gene-info.txt")) {
+   gene_info <- read.table(file = "../data/gene-info.txt", sep = "\t",
+                          header = TRUE, stringsAsFactors = FALSE, quote = "")
+   head(gene_info)
+} else {
   library("biomaRt")
   ensembl <- useMart(host = "grch37.ensembl.org",
                      biomart = "ENSEMBL_MART_ENSEMBL",
@@ -71,16 +75,15 @@ if(!file.exists("../data/gene-info.txt")) {
                                "transcript_count",
                                "description"),
                       filters = "ensembl_gene_id",
-                      values = rownames(molecules_ENSG),
+                      values = rownames(molecules_final),
                       mart = ensembl)
 
   write.table(gene_info, row.names = FALSE,
               file = "../data/gene-info.txt", quote = FALSE, sep = "\t") 
-} else {
-  gene_info <- read.table(file = "../data/gene-info.txt", sep = "\t",
-                          header = TRUE, stringsAsFactors = FALSE, quote = "")
+
+  write.table(gene_info$external_gene_name, row.names = FALSE, col.names = F,
+            file = "../data/gene-info-symbol-only.txt", quote = FALSE, sep = "\t") 
 }
-str(gene_info)
 ```
 
 
