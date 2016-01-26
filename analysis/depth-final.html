@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+<meta name="author" content="Po-Yuan Tung" />
+
+<meta name="date" content="2016-01-25" />
+
+<title>Cellular content</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Cellular content</h1>
+<h4 class="author"><em>Po-Yuan Tung</em></h4>
+<h4 class="date"><em>2016-01-25</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#setup">Setup</a></li>
+<li><a href="#filtering">Filtering</a></li>
+<li><a href="#can-we-infer-cellular-mrna-content-from-single-cell-rna-sequencing-data">Can we infer cellular mRNA content from single cell RNA sequencing data?</a></li>
+<li><a href="#relationship-between-ercc-metrics-and-total-gene-molecules">Relationship between ERCC metrics and total gene molecules</a></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2016-01-26</p>
+<p><strong>Code version:</strong> a6478d5228e9af6afb1f1b70e4ef8e1730a6d9ba</p>
+<p>Recreate the <a href="depth.html">Sequencing depth and cellular RNA content</a> using updated data files to make figures for the paper.</p>
+<div id="setup" class="section level2">
+<h2>Setup</h2>
+<pre class="r"><code>library(&quot;dplyr&quot;)
+library(&quot;tidyr&quot;)
+library(&quot;edgeR&quot;)
+library(&quot;ggplot2&quot;)
+library(&quot;cowplot&quot;)
+theme_set(theme_bw(base_size = 12))
+source(&quot;functions.R&quot;)</code></pre>
+<p>Input annotation</p>
+<pre class="r"><code>anno_single &lt;- read.table(&quot;../data/annotation.txt&quot;, header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno_single)</code></pre>
+<pre><code>  individual replicate well      batch      sample_id
+1    NA19098        r1  A01 NA19098.r1 NA19098.r1.A01
+2    NA19098        r1  A02 NA19098.r1 NA19098.r1.A02
+3    NA19098        r1  A03 NA19098.r1 NA19098.r1.A03
+4    NA19098        r1  A04 NA19098.r1 NA19098.r1.A04
+5    NA19098        r1  A05 NA19098.r1 NA19098.r1.A05
+6    NA19098        r1  A06 NA19098.r1 NA19098.r1.A06</code></pre>
+<p>Input read counts.</p>
+<pre class="r"><code>reads &lt;- read.table(&quot;../data/reads.txt&quot;, header = TRUE,
+                    stringsAsFactors = FALSE)
+stopifnot(colnames(reads) == anno_single$sample_id)
+ercc_index &lt;- grepl(&quot;ERCC&quot;, rownames(reads))
+anno_single$total_reads_gene = colSums(reads[!ercc_index, ])
+anno_single$total_reads_ercc = colSums(reads[ercc_index, ])
+anno_single$total_reads = colSums(reads)</code></pre>
+<p>Input molecule counts</p>
+<pre class="r"><code>molecules &lt;- read.table(&quot;../data/molecules.txt&quot;, header = TRUE,
+                    stringsAsFactors = FALSE)
+stopifnot(colnames(molecules) == anno_single$sample_id,
+          rownames(molecules) == rownames(reads))
+anno_single$total_molecules_gene = colSums(molecules[!ercc_index, ])
+anno_single$total_molecules_ercc = colSums(molecules[ercc_index, ])
+anno_single$total_molecules = colSums(molecules)</code></pre>
+<p>Input summary counts</p>
+<pre class="r"><code>summary_counts &lt;- read.table(&quot;../data/summary-counts.txt&quot;, header = TRUE,
+                             stringsAsFactors = FALSE)
+summary_per_sample &lt;- as.data.frame(summary_counts)</code></pre>
+<p>Calculate the total number of mapped reads, unmapped reads, and sequencing depth (mapped + unmapped reads).</p>
+<pre class="r"><code>colnames(summary_per_sample)</code></pre>
+<pre><code> [1] &quot;individual&quot;                &quot;replicate&quot;                
+ [3] &quot;well&quot;                      &quot;rmdup&quot;                    
+ [5] &quot;Assigned&quot;                  &quot;Unassigned_Ambiguity&quot;     
+ [7] &quot;Unassigned_MultiMapping&quot;   &quot;Unassigned_NoFeatures&quot;    
+ [9] &quot;Unassigned_Unmapped&quot;       &quot;Unassigned_MappingQuality&quot;
+[11] &quot;Unassigned_FragmentLength&quot; &quot;Unassigned_Chimera&quot;       
+[13] &quot;Unassigned_Secondary&quot;      &quot;Unassigned_Nonjunction&quot;   
+[15] &quot;Unassigned_Duplicate&quot;     </code></pre>
+<pre class="r"><code>summary_per_sample &lt;- summary_per_sample %&gt;%
+  mutate(total_mapped = Assigned + Unassigned_Ambiguity + Unassigned_NoFeatures,
+         total_unmapped = Unassigned_Unmapped,
+         depth = total_mapped + total_unmapped)
+anno_single$total_mapped &lt;- summary_per_sample[summary_per_sample$rmdup == &quot;reads&quot;,
+                                               &quot;total_mapped&quot;]
+anno_single$total_unmapped &lt;- summary_per_sample[summary_per_sample$rmdup == &quot;reads&quot;,
+                                                 &quot;total_unmapped&quot;]
+anno_single$depth &lt;- summary_per_sample[summary_per_sample$rmdup == &quot;reads&quot;,
+                                        &quot;depth&quot;]</code></pre>
+<p>Input single cell observational quality control data.</p>
+<pre class="r"><code>qc &lt;- read.table(&quot;../data/qc-ipsc.txt&quot;, header = TRUE,
+                 stringsAsFactors = FALSE)
+qc &lt;- qc %&gt;% arrange(individual, replicate, well)
+stopifnot(qc$individual == anno_single$individual,
+          qc$replicate == anno_single$replicate,
+          qc$well == anno_single$well)
+head(qc)</code></pre>
+<pre><code>  individual replicate well cell_number concentration tra1.60
+1    NA19098        r1  A01           1      1.734785       1
+2    NA19098        r1  A02           1      1.723038       1
+3    NA19098        r1  A03           1      1.512786       1
+4    NA19098        r1  A04           1      1.347492       1
+5    NA19098        r1  A05           1      2.313047       1
+6    NA19098        r1  A06           1      2.056803       1</code></pre>
+<p>Incorporate informatin on cell number, concentration, and TRA1-60 status.</p>
+<pre class="r"><code>anno_single$cell_number &lt;- qc$cell_number
+anno_single$concentration &lt;- qc$concentration
+anno_single$tra1.60 &lt;- qc$tra1.60</code></pre>
+<p>Calculate percentage of ERCC reads (out of all reads assigned to a feature), ERCC molecules, and unmapped reads.</p>
+<pre class="r"><code>anno_single &lt;- anno_single %&gt;%
+  mutate(perc_ercc_reads = total_reads_ercc / total_reads * 100,
+         perc_ercc_molecules = total_molecules_ercc / total_molecules * 100,
+         perc_unmapped = total_unmapped / depth * 100)
+anno_single$num_genes = apply(reads[!ercc_index, ], 2, function(x) sum(x &gt; 0))</code></pre>
+<p>Calculate capture efficiency, here defined as the percentage of input ERCC molecules that were observed.</p>
+<pre class="r"><code>spike &lt;- read.table(&quot;../data/expected-ercc-molecules.txt&quot;, header = TRUE,
+                    sep = &quot;\t&quot;, stringsAsFactors = FALSE)</code></pre>
+<p>Only keep the spike-ins that were observed in at least one cell.</p>
+<pre class="r"><code>spike_input &lt;- spike$ercc_molecules_well[spike$id %in% rownames(molecules)]
+names(spike_input) &lt;- spike$id[spike$id %in% rownames(molecules)]
+spike_input &lt;- spike_input[order(names(spike_input))]
+stopifnot(rownames(molecules)[ercc_index] == names(spike_input))</code></pre>
+<p>This data set has not been subjected to the expression level filter, thus it includes 69 ERCC spike-ins.</p>
+<pre class="r"><code>efficiency_vec &lt;- numeric(length = ncol(molecules))
+total_ercc_molecules &lt;- sum(spike$ercc_molecules_well)
+for (i in 1:ncol(molecules)) {
+  efficiency_vec[i] &lt;- sum(molecules[ercc_index, i]) / total_ercc_molecules * 100
+}
+anno_single$efficiency &lt;- efficiency_vec
+summary(efficiency_vec)</code></pre>
+<pre><code>   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+  2.929   5.276   6.075   9.906   7.834  55.280 </code></pre>
+</div>
+<div id="filtering" class="section level2">
+<h2>Filtering</h2>
+<p>As we try to understand the general relationships between sequencing results and cellular mRNA content, we remove outlier batches. The quantification of the concentration of the single cells in replicate 1 of NA19098 failed. The number of ERCC molecules in replicate 2 of NA19098 are abnormally high.</p>
+<pre class="r"><code>anno_single &lt;- anno_single %&gt;% filter(batch != &quot;NA19098.r1&quot;,
+                                      batch != &quot;NA19098.r2&quot;)</code></pre>
+</div>
+<div id="can-we-infer-cellular-mrna-content-from-single-cell-rna-sequencing-data" class="section level2">
+<h2>Can we infer cellular mRNA content from single cell RNA sequencing data?</h2>
+<p>Because we mix an equal volume from each well, we could potentially infer the relative amount of cellular mRNA content based on the number of sequences coming from a given well. Furthermore, since the same amount of ERCC spike-ins are added to each well, we do not expect to see a difference in the number of ERCC sequences across wells. The Fluidigm C1 chip provides the number of cells in each well. Thus we can use this information as an indepdent measurement of cellular mRNA content. We will compare it to the following metrics:</p>
+<table>
+<thead>
+<tr class="header">
+<th align="left"><strong>Abbr</strong></th>
+<th align="left"><strong>Explanation</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">depth</td>
+<td align="left">Number of reads sequenced (i.e. sequencing depth)</td>
+</tr>
+<tr class="even">
+<td align="left">total_mapped</td>
+<td align="left">Number of mapped reads</td>
+</tr>
+<tr class="odd">
+<td align="left">total_unmapped</td>
+<td align="left">Number of unmapped reads</td>
+</tr>
+<tr class="even">
+<td align="left">total_reads_gene</td>
+<td align="left">Number of reads mapped to protein-coding genes</td>
+</tr>
+<tr class="odd">
+<td align="left">total_reads_ercc</td>
+<td align="left">Number of reads mapped to ERCC spike-ins</td>
+</tr>
+<tr class="even">
+<td align="left">total_molecules_gene</td>
+<td align="left">Number of molecules mapped to protein-coding genes</td>
+</tr>
+<tr class="odd">
+<td align="left">total_molecules_ercc</td>
+<td align="left">Number of molecules mapped to ERCC spike-ins</td>
+</tr>
+<tr class="even">
+<td align="left">num_genes</td>
+<td align="left">Number of genes with at least one read observed</td>
+</tr>
+<tr class="odd">
+<td align="left">perc_ercc_reads</td>
+<td align="left">Percent of reads that map to ERCC spike-ins (out of reads assigned to a feature)</td>
+</tr>
+<tr class="even">
+<td align="left">perc_ercc_molecules</td>
+<td align="left">Percent of molecules that map to ERCC spike-ins (out of reads assigned to a feature)</td>
+</tr>
+<tr class="odd">
+<td align="left">efficiency</td>
+<td align="left">Percent of input ERCC molecules that were observed</td>
+</tr>
+<tr class="even">
+<td align="left">perc_unampped</td>
+<td align="left">Percent of unmapped reads</td>
+</tr>
+</tbody>
+</table>
+<p>Because there were so few wells that contained 4 or 5 cells, we remove these first.</p>
+<pre class="r"><code>table(anno_single$cell_number)</code></pre>
+<pre><code>
+  0   1   2   3   4   5 
+ 17 606  26  17   1   5 </code></pre>
+<pre class="r"><code>anno_single &lt;- anno_single %&gt;% filter(cell_number &lt;= 3)</code></pre>
+<p>Using data from sequencing reads, i.e. not utitlizing UMI information, we observe no correlation between the number of sequences and the number of cells in a well.</p>
+<pre class="r"><code>plot_cell_depth &lt;- ggplot(anno_single, aes(x = as.factor(cell_number), y = depth / 10^6)) +
+  geom_violin(width = 1) +
+  geom_boxplot(width = .1, position = position_dodge(width = .9)) +
+  labs(x = &quot;Observed cells in well&quot;, y = &quot;&quot;,
+       title = &quot;Sequencing depth (millions)&quot;)
+boxplot_base &lt;- plot_cell_depth
+plot_cell_mapped &lt;- boxplot_base %+% aes(y = total_mapped / 10^6) +
+  labs(y = &quot;&quot;, title = &quot;Mapped reads (millions)&quot;)
+plot_cell_total_reads &lt;- boxplot_base %+% aes(y = total_reads_gene / 10^6) +
+  labs(y = &quot;&quot;, title = &quot;Reads mapped to protein-coding genes (millions)&quot;)
+plot_grid(plot_cell_depth, plot_cell_mapped, plot_cell_total_reads,
+          labels = LETTERS[1:3], nrow = 3)</code></pre>
+<p><img src="figure/depth-final.Rmd/sequencing-depth-num-cells-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
+<p>On the other hand, utilizing the UMIs, we do see a correlation with the number of molecules per well with the number of cells per well (panel A below). Crucially, in accoradance with our expecations, this trend is not present in the ERCC molecules (panel B). In fact, we observe the opposite trend, which makes sense since the ERCC spike-in molecules are a smaller percentage of the total molecules in wells with more than one cell. Furthermore, the increasing trend is also observed with the number of observed genes (panel C).</p>
+<pre class="r"><code>plot_cell_mol_gene &lt;- boxplot_base %+% aes(y = total_molecules_gene / 10^3) +
+  labs(y = &quot;&quot;, title = &quot;Gene molecules (thousands)&quot;)
+plot_cell_mol_ercc &lt;- boxplot_base %+% aes(y = total_reads_ercc / 10^3) +
+  labs(y = &quot;&quot;, title = &quot;ERCC molecules (thousands)&quot;)
+plot_cell_num_genes &lt;- boxplot_base %+% aes(y = num_genes) +
+  labs(y = &quot;&quot;, title = &quot;Observed genes&quot;)
+plot_grid(plot_cell_mol_gene, plot_cell_mol_ercc, plot_cell_num_genes,
+          labels = LETTERS[1:3], nrow = 3)</code></pre>
+<p><img src="figure/depth-final.Rmd/molecules-num-cells-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
+<p>Because of the observed increase in the number of gene molecules and decrease in number of ERCC molecules with increasing cell number, it is reasonable to expect that the percentage of ERCC molecules is a proxy for cellular mRNA content. We do observe this expected trend with the ERCC molecules (panel B below), and to a lesser extent with the ERCC reads (panel A). Since the ERCC percentage is also used as a quality control measure, we wanted to confirm that the observed trend was not simply due to quality issues. The percentage of unmapped reads, another quality measure, does decrease from one cell to two cells, but does not change much from 2 cells to 3 cells (panel C). Since the wells with zero cells have much higher percent ERCC and percent unmapped (because they are bad quality), we removed them from the plots below to better observe the relationship with cell number.</p>
+<pre class="r"><code>plot_cell_perc_ercc_reads &lt;- boxplot_base %+% aes(y = perc_ercc_reads) %+%
+  anno_single[anno_single$cell_number != 0, ] +
+  labs(y = &quot;&quot;, title = &quot;Percentage of reads mapped to ERCC&quot;)
+plot_cell_perc_ercc_mol &lt;- boxplot_base %+% aes(y = perc_ercc_molecules) %+%
+  anno_single[anno_single$cell_number != 0, ] +
+  labs(y = &quot;&quot;, title = &quot;Percentage of molecules mapped to ERCC&quot;)
+plot_cell_perc_unmapped &lt;- boxplot_base %+% aes(y = perc_unmapped) %+%
+  anno_single[anno_single$cell_number != 0, ] +
+  labs(y = &quot;&quot;, title = &quot;Percentage of unmapped reads&quot;)
+plot_grid(plot_cell_perc_ercc_reads, plot_cell_perc_ercc_mol, plot_cell_perc_unmapped,
+          labels = LETTERS[1:3], nrow = 3)</code></pre>
+<p><img src="figure/depth-final.Rmd/perc-ercc-num-cells-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
+<p>Now for the confusing part. We also have the concentration of each well after it was amplified in the C1 chip, but before undergoing library prepration. If this is an accurate measurement, we expect concentration to increase with the number of cells and also correlate with the total number of gene molecules. We do observe the latter (panel A below), but not the former (panel B). More specifically, for wells that contain one cell, we observe an increase in the number of gene molecules with an increase in concentration (panel C). However, the concentration decreases with increasing number of cells per well (panel B). We also observe a correlation with the number of gene reads and the concentration (panel D). Thus the post-amplification concentration influences the amount of gene reads that are ultimately sequenced, but this concentration does not necessarily correspond to the original amount of mRNA in the cell.</p>
+<pre class="r"><code>plot_conc_molecules_gene &lt;- ggplot(anno_single, aes(x = concentration, y = total_molecules_gene / 10^3,
+                        color = as.factor(cell_number))) +
+  geom_text(aes(label = cell_number)) +
+  labs(x = &quot;Concentration&quot;, y = &quot;&quot;, title = &quot;Gene molecules (thousands)&quot;) +
+  scale_color_brewer(palette = &quot;Dark2&quot;) +
+  theme(legend.position = &quot;none&quot;)
+plot_cell_concentration &lt;- boxplot_base %+% aes(y = concentration) +
+  labs(y = &quot;&quot;, title = &quot;Concentration&quot;)
+plot_conc_molecules_gene_1cell &lt;- plot_conc_molecules_gene %+%
+  anno_single[anno_single$cell_number == 1, ] +
+  geom_smooth(method = &quot;lm&quot;)
+plot_conc_reads_gene_1cell &lt;- plot_conc_molecules_gene_1cell %+%
+  aes(y = total_reads_gene / 10^6) +
+  labs(y = &quot;&quot;, title = &quot;Gene reads (millions)&quot;)
+theme_set(theme_bw(base_size = 12))
+plot_grid(plot_conc_molecules_gene, plot_cell_concentration,
+          plot_conc_molecules_gene_1cell, plot_conc_reads_gene_1cell,
+          labels = LETTERS[1:4], nrow = 4)</code></pre>
+<p><img src="figure/depth-final.Rmd/concentration-num-cells-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
+<p>Further complicating the interpretation is the variability both within and between batches. While there are clear differences in the mean of the distributions of many of these metrics across wells with differing cell numbers, the variability is really high. Do we expect that some single cells will have the same celluar mRNA content as a well with 2-3 cells? Do we expect the cellular mRNA content from a single cell to vary this much? For wells with a single cell observed, the first quartile for the total number of gene molecules is 50731.25, and the third quartile is 82736. (Note: I purposely avoided using the minimum and maximum here since the minimum value is likely from one <em>dead</em> cell, and the maximum is potentially from a well with multiple cells).</p>
+<p>The variability between batches are even more difficult to interpret. Strangley, the three individuals are consistently different across their three replicates, suggesting these differences come from the actual cells and not the single cell processing.</p>
+<pre class="r"><code>plot_conc_molecules_gene_batch &lt;- ggplot(anno_single[anno_single$cell_number == 1, ],
+                                         aes(x = concentration, y = total_molecules_gene / 10^3,
+                        color = individual)) +
+  geom_point() +
+  geom_smooth(method = &quot;lm&quot;, se = FALSE) +
+  labs(x = &quot;Concentration&quot;, y = &quot;&quot;, title = &quot;Gene molecules (only wells with 1 cell)&quot;) +
+  scale_color_brewer(palette = &quot;Dark2&quot;) 
+plot_conc_molecules_ercc_batch &lt;-  plot_conc_molecules_gene_batch %+%
+  aes(y = total_molecules_ercc / 10^3) +
+  labs(y = &quot;&quot;, title = &quot;ERCC molecules (only wells with 1 cell)&quot;)
+
+plot_grid(plot_cell_mol_gene %+% aes(fill = batch) + theme(legend.position = &quot;none&quot;) + geom_boxplot(width = 1),
+          plot_cell_mol_ercc %+% aes(fill = batch) + theme(legend.position = &quot;none&quot;) + geom_boxplot(width = 1),
+          plot_cell_num_genes %+% aes(fill = batch) + theme(legend.position = &quot;bottom&quot;) + geom_boxplot(width = 1),
+          plot_conc_molecules_gene_batch,
+          plot_conc_molecules_ercc_batch,
+          labels = LETTERS[1:5], nrow = 5)</code></pre>
+<p><img src="figure/depth-final.Rmd/molecules-num-cells-batch-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
+</div>
+<div id="relationship-between-ercc-metrics-and-total-gene-molecules" class="section level2">
+<h2>Relationship between ERCC metrics and total gene molecules</h2>
+<p>The ERCC spike-ins have multiple purposes:</p>
+<ul>
+<li>Identify low-quality single cells, which should have a comparatively high ERCC molecule percentage</li>
+<li>Measure cell-cell technical variability introduced as the stages of PCR amplicification, library preparation, and sequencing</li>
+<li>Indicate relative cellular mRNA content. Cells with lower ERCC molecule percentage should have more RNA</li>
+</ul>
+<p>But how well can they be used for these three purposes? The plots below display the mutliple ERCC metrics for wells that contained only one cell.</p>
+<pre class="r"><code># Compare ERCC metrics to total gene molecules
+plot_gene_mol_ercc_mol &lt;- ggplot(anno_single[anno_single$cell_number == 1, ],
+                                 aes(x = total_molecules_gene,
+                                     y = total_molecules_ercc)) +
+  geom_point(aes(color = individual), alpha = 0.5) +
+  labs(x = &quot;Gene molecules&quot;, y = &quot;ERCC molecules&quot;) +
+  theme(legend.position = &quot;none&quot;)
+plot_gene_mol_perc_ercc &lt;- plot_gene_mol_ercc_mol %+%
+  aes(y = perc_ercc_molecules)+
+  labs(y = &quot;Percent ERCC molecules&quot;)
+plot_gene_mol_efficiency &lt;- plot_gene_mol_ercc_mol %+%
+  aes(y = efficiency) +
+  labs(y = &quot;Capture efficiency&quot;)
+# Compare between ERCC metrics
+plot_ercc_mol_perc_ercc &lt;- plot_gene_mol_perc_ercc %+%
+  aes(x = total_molecules_ercc) +
+  labs(x = &quot;ERCC molecules&quot;)
+plot_ercc_mol_efficiency &lt;- plot_gene_mol_efficiency %+%
+  aes(x = total_molecules_ercc) +
+  labs(x = &quot;ERCC molecules&quot;) +
+  theme(legend.position = &quot;none&quot;)
+plot_perc_ercc_efficiency &lt;- plot_ercc_mol_efficiency %+%
+  aes(x = perc_ercc_molecules) +
+  labs(x = &quot;Percent ERCC molecules&quot;) +
+  theme(legend.position = &quot;none&quot;)
+
+plot_grid(plot_gene_mol_ercc_mol, 
+          plot_gene_mol_perc_ercc + theme(legend.position = c(.8,.8)), 
+          plot_gene_mol_efficiency,
+          plot_ercc_mol_perc_ercc, 
+          plot_ercc_mol_efficiency, 
+          plot_perc_ercc_efficiency,
+          labels = LETTERS[1:6])</code></pre>
+<p><img src="figure/depth-final.Rmd/ercc-metrics-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
+<p>For the purpose of quality control, it is difficult to oberve a clear distinction between high and low quality cells using the percent ERCC molecules, as the percentage ERCC molecules continuously decreases with increasing gene molecules (panel B above).</p>
+<p>For the purpose of measuing cell-cell technical variability, we observe clear differences between the three different individuals (all panels above). However, the replicates of the individuals are consistent. Thus this cannot be arising simply from the PCR amplification, library prepration, and sequencing. Something inherent to the distribution of gene expression in the single cells from these three individuals is consistently affecting the molecule counts.</p>
+<p>For the purpose of measuring cellular mRNA content, there is clearly a relationship between the percent ERCC molecules and the total gene molecules (panel B above; also see plots above showing decrease in percent ERCC molecules with increasing cell number). But the confidence in the accuracy of this estimate is decreased based on the above two points. If we choose a cutoff of percent ERCC molecules less than 2% (arbitrary but reasonable based on the density of the points), a large amout of the variation in the percent ERCC molecules is removed (panel B below). But maybe this is a good thing since we do not expect that much variation in cellular mRNA content in a group of homegenous cells? And it further highlights the differences between individuals.</p>
+<p>Here is the same plot as above, but only inclduding cells with percent ERCC molecules less than 2%.</p>
+<pre class="r"><code>plot_grid(plot_gene_mol_ercc_mol %+% anno_single[anno_single$cell_number == 1 &amp;
+                                                 anno_single$perc_ercc_molecules &lt; 2, ],
+          plot_gene_mol_perc_ercc %+% anno_single[anno_single$cell_number == 1 &amp;
+                                                 anno_single$perc_ercc_molecules &lt; 2   , ],
+          plot_gene_mol_efficiency,
+          plot_ercc_mol_perc_ercc, plot_ercc_mol_efficiency, plot_perc_ercc_efficiency,
+          labels = LETTERS[1:6])</code></pre>
+<p><img src="figure/depth-final.Rmd/ercc-metrics-high-quality-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] cowplot_0.3.1 ggplot2_1.0.1 edgeR_3.10.2  limma_3.24.9  tidyr_0.2.0  
+[6] dplyr_0.4.2   knitr_1.10.5 
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.12.0        magrittr_1.5       MASS_7.3-40       
+ [4] munsell_0.4.2      colorspace_1.2-6   R6_2.1.1          
+ [7] stringr_1.0.0      httr_0.6.1         plyr_1.8.3        
+[10] tools_3.2.0        parallel_3.2.0     grid_3.2.0        
+[13] gtable_0.1.2       DBI_0.3.1          htmltools_0.2.6   
+[16] lazyeval_0.1.10    yaml_2.1.13        assertthat_0.1    
+[19] digest_0.6.8       RColorBrewer_1.1-2 reshape2_1.4.1    
+[22] formatR_1.2        bitops_1.0-6       RCurl_1.95-4.6    
+[25] evaluate_0.7       rmarkdown_0.6.1    labeling_0.3      
+[28] stringi_0.4-1      scales_0.2.4       proto_0.3-10      </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>
