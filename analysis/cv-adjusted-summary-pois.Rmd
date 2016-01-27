@@ -1,7 +1,7 @@
 ---
 title: "Cell-to-cell variation analysis summary"
 author: "Joyce Hsiao"
-date: 2016-01-25  
+date: 2016-01-26  
 ---
 
 **Last updated:** `r Sys.Date()`
@@ -66,16 +66,6 @@ molecules_final <- read.table("../data/molecules-final.txt",
                              header = TRUE, stringsAsFactors = FALSE)
 dim(molecules_final)
 stopifnot(NROW(anno_filter) == NCOL(molecules_final))
-```
-
-
-Import final processed molecule counts of ERCC genes.
-
-```{r import-ercc-log2cpmcounts}
-molecules_cpm_ercc <- read.table("../data/molecules-cpm-ercc.txt", 
-                             header = TRUE, stringsAsFactors = FALSE)
-dim(molecules_cpm_ercc)
-stopifnot(NROW(anno_filter) == NCOL(molecules_cpm_ercc))
 ```
 
 
@@ -701,8 +691,16 @@ write.table(genes_sig_mad,
             file = "../data/sig-permute-gene.txt",
             col.names = TRUE, row.names = FALSE, sep = "\t",
             quote = FALSE)
-write.table(genes_sig_mad[,3],
+write.table(genes_sig_mad[ ,3],
           file = "../data/sig-permute-gene-symbol-only.txt",
+          col.names = FALSE, row.names = FALSE, sep = "\t",
+          quote = FALSE)
+write.table(genes_sig_mad[ ,1],
+          file = "../data/sig-permute-gene-ensg-only.txt",
+          col.names = FALSE, row.names = FALSE, sep = "\t",
+          quote = FALSE)
+write.table(genes_sig_mad[,c(1,2)],
+          file = "../data/sig-permute-gene-ensg-and-pvalue.txt",
           col.names = FALSE, row.names = FALSE, sep = "\t",
           quote = FALSE)
 }
@@ -734,7 +732,7 @@ if(!file.exists("figure/cv-adjusted-summary-pois.Rmd/density-sig-mad.pdf")) {
 ### Heatmap of differential genes
 
 
-```{r}
+```{r, eval = FALSE}
 library(gplots)
 library(broman)
 crayon <- brocolors("crayon")
@@ -797,6 +795,38 @@ if(!file.exists(file_name)) {
 ### Pathway analysis
 
 ![pathway.](../analysis/figure/cv-adjusted-summary-pois.Rmd/sig-genes-pathway-analysis.png) 
+
+
+### GO analysis
+
+### Gene Ontology Consortium
+
+Search PANTHER database.
+
+![GO.](../analysis/figure/cv-adjusted-summary-pois.Rmd/sig-genes-GO-analysis.png) 
+
+
+#### GOStats
+
+Below is not run. The code here is based on annotation results from GOstats. We decided for now to use resutls from GO Ontology Consortium.
+
+
+```{r, eval = FALSE}
+require(Humanzee)
+# Find GO terms
+sig_gene_go <- GOtest(rownames(molecules_final),
+                      genes_sig_mad[,1],
+                      ontology = "BP",
+                      conditional.method = F)
+
+# Prepare GO terms for heatmap plotting
+go_data <- goHeatmapData(list(summary(sig_gene_go$GO$BP, pvalue = .01)))
+
+# Plot heatmap
+go_heatmap <- plotHeatmap(go_data, 
+                          labCol = "")
+```
+
 
 
 
