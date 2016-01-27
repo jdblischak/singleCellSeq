@@ -1,7 +1,7 @@
 ---
 title: "Cell-to-cell variation analysis summary"
 author: "Joyce Hsiao"
-date: 2016-01-26  
+date: 2016-01-27  
 ---
 
 **Last updated:** `r Sys.Date()`
@@ -126,7 +126,6 @@ Here we examine visually the gene molecule counts for each individual cell lines
 *Yellow line* plots a poisson distribution which standard deviation is 3 times the size of its mean - an overdispersed poisson distribution. 
 
 Note: We decided to not make this plot for the entire data set, i.e., across the three cell lines. The goal of these plots are to assess the variation across the three C1 plates collected for each individual cell line. 
-
 
 
 *Helper function
@@ -621,9 +620,11 @@ ggplot(data.frame(do.call(rbind, ENSG_cv_adj),
 ```
 
 
-Export data (to prepare for permutation-based differential tests).
+Export data to rda format and then transport them to midway for permutation-based
+test. 
 
-```{r output-rdas-for-computing-permuted-pvals}
+*[Chunk not evaluted]*
+```{r output-rdas-for-computing-permuted-pvals, eval = FALSE}
 if (!file.exists("rda/cv-adjusted-statistical-test-permute/adj-cv.rda")) {
   save(mad, file = "rda/cv-adjusted-statistical-test-permute/adj-cv.rda")
 }
@@ -644,12 +645,14 @@ All computations are done in midway.
 
 Compute MAD based on permuted data.
 
+*[Chunk not evaluated]*
 ```
 sbatch permute-cv-test.sbatch
 ```
 
 Compute permutation-based p-values for each gene.
 
+*[Chunk not evaluated]*
 ```
 sbatch permuted-cv-compute-pval.sbatch
 ```
@@ -671,6 +674,14 @@ ggplot( data.frame(pvals = permuted_pval$mad_pval),
   labs(x = "Permutation-based p-values", y = "Count")
 ```
 
+Permuted p-values versus mean gene expression. Supplemental figure?
+
+```{r}
+ggplot( data.frame(pvals = permuted_pval$mad_pval,
+                   gene_mean = rowMeans(as.matrix(molecules_final))),
+       aes(x = gene_mean, y = -log10(pvals) ) ) +
+  geom_point() 
+```
 
 Export genes with significant MAD values.
 
@@ -691,6 +702,13 @@ write.table(genes_sig_mad,
             file = "../data/sig-permute-gene.txt",
             col.names = TRUE, row.names = FALSE, sep = "\t",
             quote = FALSE)
+}
+```
+
+Select columns from "sig-permute-gene.txt" for GO anlaysis on different platforms. 
+
+*[Chunk not evaluated]*
+```{r, eval = FALSE}
 write.table(genes_sig_mad[ ,3],
           file = "../data/sig-permute-gene-symbol-only.txt",
           col.names = FALSE, row.names = FALSE, sep = "\t",
@@ -709,9 +727,11 @@ write.table(genes_sig_mad[,c(1,2)],
 
 
 
-Genes with p = 0 sorted by MAD
+Genes with p = 0 sorted by MAD. Print out the density distributions to a pdf file 
+for exploratory data analysis. 
 
-```{r}
+*[Chunk not evaluated]*
+```{r, eval = FALSE}
 if(!file.exists("figure/cv-adjusted-summary-pois.Rmd/density-sig-mad.pdf")) {
     pdf(file = "figure/cv-adjusted-summary-pois.Rmd/density-sig-mad.pdf",
         height = 12, width = 8)
@@ -731,7 +751,10 @@ if(!file.exists("figure/cv-adjusted-summary-pois.Rmd/density-sig-mad.pdf")) {
 
 ### Heatmap of differential genes
 
+Print heatmaps of differential genes to a pdf file. These do not reveal any
+interesting patterns. 
 
+*[Chunk not evaluated]*
 ```{r, eval = FALSE}
 library(gplots)
 library(broman)
@@ -810,7 +833,7 @@ Search PANTHER database.
 
 Below is not run. The code here is based on annotation results from GOstats. We decided for now to use resutls from GO Ontology Consortium.
 
-
+*[Chunk not evaluated]*
 ```{r, eval = FALSE}
 require(Humanzee)
 # Find GO terms
@@ -967,11 +990,28 @@ Supplemental XX3
 
 Legend: Histogram of empirical p-values based on 12,192 permutations. 
 
-```{r}
-ggplot( data.frame(pvals = permuted_pval$mad_pval),
-       aes(x = pvals) ) +
-  geom_histogram() + xlim(0, 1) +
-  labs(x = "Permutation-based p-values", y = "Count")
+```{r, fig.width=8, fig.height=4}
+theme_set(theme_bw(base_size = 8))
+plot_grid(
+  ggplot( data.frame(pvals = permuted_pval$mad_pval),
+         aes(x = pvals) ) +
+    geom_histogram() + xlim(0, 1) +
+    labs(x = "Permutation-based p-values", y = "Count"),
+  ggplot( data.frame(pvals = permuted_pval$mad_pval,
+                     gene_mean = rowMeans(as.matrix(molecules_final))),
+         aes(x = gene_mean, y = -log10(pvals) ) ) +
+    geom_point() +
+    ylab("-log10(p-value)") +
+    xlab("Average gene expression level"),
+  ggplot( data.frame(mad = mad,
+                   gene_mean = rowMeans(as.matrix(molecules_final))),
+         aes(x = gene_mean, y = mad) ) +
+      geom_point( cex = .5) +
+      ylab("Median of absolute deviation (MAD)") +
+      xlab("Average gene expression level"),
+  ncol = 2,
+  labels = LETTERS[1:3]
+  )
 ```
 
 
