@@ -11,7 +11,7 @@ date: 2015-07-02
 source("chunk-options.R")
 ```
 
-The mean counts per million in a subsampled set of single cells (both sequencing depth and number of cells is varied) is compared to the mean counts per million of the bulk cells (mean across the three batches).
+The mean counts per million in a subsampled set of single cells (both sequencing depth and number of cells is varied) is compared to the mean counts per million of the bulk cells (mean across the three replicates).
 The mean counts are log~2~ transformed with an added pseudocount of 1.
 
 ```{r message=FALSE}
@@ -26,24 +26,24 @@ Run 10 iterations for each individual for each sequencing depth for each subsamp
 The analysis is performed by [correlate-single-to-bulk.R](https://github.com/jdblischak/singleCellSeq/blob/master/code/correlate-single-to-bulk.R).
 
 ```bash
-cd $ssd/subsampled
+cd /mnt/gluster/home/jdblischak/ssd/subsampled
 mkdir -p correlation correlation-quantiles
 mkdir -p ~/log/correlate-single-to-bulk.R
-for IND in 19098 19101 19239
+for IND in NA19098 NA19101 NA19239
 do
-  for NUM in 200000 400000 600000 800000 1000000 1200000 1400000 1600000 1800000 2000000 2400000 2800000 3200000 3600000 4000000
+  for NUM in 250000 500000 750000 1000000 1250000 1500000
   do
     for CELLS in 5 10 15 20 25 50 75 100 125 150
     do
       for SEED in {1..10}
       do
         # Correlation across all genes
-        CMD="correlate-single-to-bulk.R $CELLS $SEED molecule-counts-$NUM.txt $ssc/data/reads.txt --individual=$IND --good_cells=/mnt/lustre/home/jdblischak/singleCellSeq/data/quality-single-cells.txt"
+        CMD="correlate-single-to-bulk.R $CELLS $SEED counts-matrix/$NUM-molecules-raw-single-per-sample.txt $ssc/data/reads-raw-bulk-per-sample.txt --individual=$IND --good_cells=/mnt/lustre/home/jdblischak/singleCellSeq/data/quality-single-cells.txt"
         DEST="correlation/$IND-$CELLS-$SEED-$NUM.txt"
         echo "$CMD > $DEST" | qsub -l h_vmem=2g -cwd -V -N cor-$IND-$CELLS-$SEED-$NUM -j y -o ~/log/correlate-single-to-bulk.R -l 'hostname=!bigmem01'
         sleep .01s
         # Correlation for genes separated by the specified quantiles
-        CMD="correlate-single-to-bulk.R $CELLS $SEED molecule-counts-$NUM.txt $ssc/data/reads.txt --individual=$IND --good_cells=/mnt/lustre/home/jdblischak/singleCellSeq/data/quality-single-cells.txt -q .25 -q .5 -q .75"
+        CMD="correlate-single-to-bulk.R $CELLS $SEED counts-matrix/$NUM-molecules-raw-single-per-sample.txt $ssc/data/reads-raw-bulk-per-sample.txt --individual=$IND --good_cells=/mnt/lustre/home/jdblischak/singleCellSeq/data/quality-single-cells.txt -q .5"
         DEST="correlation-quantiles/$IND-$CELLS-$SEED-$NUM.txt"
         echo "$CMD > $DEST" | qsub -l h_vmem=2g -cwd -V -N cor-$IND-$CELLS-$SEED-$NUM-quantiles -j y -o ~/log/correlate-single-to-bulk.R -l 'hostname=!bigmem01'
         sleep .01s
@@ -54,11 +54,12 @@ done
 ```
 
 Convert to one file using Python.
-Run from `$ssd/subsampled`.
+Run from `subsampled` subdirectory of data directory.
 
-```python
+```{r engine='python'}
 import os
 import glob
+os.chdir("/mnt/gluster/home/jdblischak/ssd/subsampled")
 
 def gather(files, outfile):
     out = open(outfile, "w")
@@ -83,7 +84,7 @@ gather(files, "correlation-quantiles.txt")
 ## Results
 
 ```{r input}
-r_data <- read.table("/mnt/gluster/data/internal_supp/singleCellSeq/subsampled/correlation.txt",
+r_data <- read.table("/mnt/gluster/home/jdblischak/ssd/subsampled/correlation.txt",
                      header = TRUE, sep = "\t", stringsAsFactors = FALSE)
 ```
 
@@ -134,7 +135,7 @@ Starting from this list of "expressed" genes, I split them into their expression
 Thus we can see how the correlation is affected by the expression level.
 
 ```{r input-quantiles}
-r_q_data <- read.table("/mnt/gluster/data/internal_supp/singleCellSeq/subsampled/correlation-quantiles.txt",
+r_q_data <- read.table("/mnt/gluster/home/jdblischak/ssd/subsampled/correlation-quantiles.txt",
                      header = TRUE, sep = "\t", stringsAsFactors = FALSE)
 ```
 
@@ -169,8 +170,8 @@ p
 Focus on one cell line, two sequencing depths, and the lower end of the number cells.
 
 ```{r subsample-correlate-single-cell-to-bulk-xlim-quantiles, fig.width=10, fig.height=10, warning=FALSE}
-p %+% r_q_data_plot[r_q_data_plot$ind == 19098 &
-                    r_q_data_plot$depth %in% c(2e5, 4e6), ] +
+p %+% r_q_data_plot[r_q_data_plot$ind == "NA19098" &
+                    r_q_data_plot$depth %in% c(2.5e5, 1.5e6), ] +
   xlim(0, 75)
 ```
 

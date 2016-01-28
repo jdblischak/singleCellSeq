@@ -20,7 +20,7 @@ Arguments:
   num_cells     number of single cells to subsample
   seed          seed for random number generator
   single        sample-by-gene matrix of single cell data
-  bulk          gene-by-sample matrix of bulk cell data" -> doc
+  bulk          sample-by-gene matrix of bulk cell data" -> doc
 
 main <- function(num_cells, seed, single_fname, bulk_fname, individual = NULL,
                  good_cells = NULL, quantiles = NULL) {
@@ -35,10 +35,10 @@ main <- function(num_cells, seed, single_fname, bulk_fname, individual = NULL,
   if (!is.null(individual)) {
     single_cells <- single_cells[single_cells$individual == individual, ]
   }
-  # Remove bulk samples
-  single_cells <- single_cells[single_cells$well != "bulk", ]
+  assert("Single cell data does not contain bulk samples",
+         single_cells$well != "bulk")
   # Add rownames
-  rownames(single_cells) <- paste(single_cells$individual, single_cells$batch,
+  rownames(single_cells) <- paste(single_cells$individual, single_cells$replicate,
                                   single_cells$well, sep = ".")
   # Remove meta-info cols
   single_cells <- single_cells[, grepl("ENSG", colnames(single_cells)) |
@@ -53,7 +53,6 @@ main <- function(num_cells, seed, single_fname, bulk_fname, individual = NULL,
     assert("File with list of good quality cells exists.",
            file.exists(good_cells))
     good_cells_list <- scan(good_cells, what = "character", quiet = TRUE)
-    good_cells_list <- substr(good_cells_list, start = 3, stop = 13)
     single_cells <- single_cells[, colnames(single_cells) %in% good_cells_list]
     assert("There are quality cells to perform the analysis.",
            ncol(single_cells) > 0)
@@ -67,20 +66,30 @@ main <- function(num_cells, seed, single_fname, bulk_fname, individual = NULL,
   set.seed(seed)
   single_cells <- single_cells[, sample(1:ncol(single_cells), size = num_cells)]
   # Calculate cpm
-
   single_cells <- cpm(single_cells)
 #   single_cells[1:10, 1:10]
 #   dim(single_cells)
 
   # Load bulk cell data
-  bulk_cells <- read.table(bulk_fname, row.names = 1, header = TRUE, sep = "\t",
+  bulk_cells <- read.table(bulk_fname, header = TRUE, sep = "\t",
                            stringsAsFactors = FALSE)
   # Filter by individual
   if (!is.null(individual)) {
-    bulk_cells <- bulk_cells[, grepl(individual, colnames(bulk_cells))]
+    bulk_cells <- bulk_cells[bulk_cells$individual == individual, ]
   }
-  # Remove single cells
-  bulk_cells <- bulk_cells[, grepl("bulk", colnames(bulk_cells))]
+  assert("Bulk data does not contain single cell samples",
+         bulk_cells$well == "bulk")
+  # Add rownames
+  rownames(bulk_cells) <- paste(bulk_cells$individual, bulk_cells$replicate,
+                                  bulk_cells$well, sep = ".")
+  # Remove meta-info cols
+  bulk_cells <- bulk_cells[, grepl("ENSG", colnames(bulk_cells)) |
+                             grepl("ERCC", colnames(bulk_cells))]
+  # Transpose
+  bulk_cells <- t(bulk_cells)
+  # Fix ERCC names
+  rownames(bulk_cells) <- sub(pattern = "\\.", replacement = "-",
+                                rownames(bulk_cells))
   # Calculate cpm
   bulk_cells <- cpm(bulk_cells)
 
@@ -136,9 +145,9 @@ if (!interactive() & getOption('run.main', default = TRUE)) {
   # what to do if interactively testing
   main(num_cells = 20,
        seed = 1,
-       single_fname = "/mnt/gluster/data/internal_supp/singleCellSeq/subsampled/molecule-counts-200000.txt",
-       bulk_fname = "~/singleCellSeq/data/reads.txt",
-       individual = "19098",
+       single_fname = "/mnt/gluster/home/jdblischak/ssd/subsampled/counts-matrix/250000-molecules-raw-single-per-sample.txt",
+       bulk_fname = "../data/reads-raw-bulk-per-sample.txt",
+       individual = "NA19098",
        good_cells = "../data/quality-single-cells.txt",
        quantiles = c(.25, .5, .75))
 }
