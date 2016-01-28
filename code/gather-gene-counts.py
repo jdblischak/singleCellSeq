@@ -113,10 +113,13 @@ for f in files:
     replicate = "r" + replicate
 
     # 6. molecules-raw-single-per-sample.txt
-    if "combined" in fname:
+    if "combined" in fname and "rmdup" in fname:
         molecules_raw_single_per_sample.write(
           individual + "\t" + replicate + "\t" + well + "\t" + \
           "\t".join(counts) + "\n")
+    elif "combined" in fname and "rmdup" not in fname:
+        sys.stderr.write("The per sample read counts are summed from the per lane counts.\nIgnoring the following file: %s\n"%(f))
+        continue
     else:
         index, lane = fname_parts[3:5]
         flow_cell = fname_parts[6]
