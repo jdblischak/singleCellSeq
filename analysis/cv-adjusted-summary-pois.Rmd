@@ -1,7 +1,7 @@
 ---
 title: "Cell-to-cell variation analysis summary"
 author: "Joyce Hsiao"
-date: 2016-01-27  
+date: 2016-01-28  
 ---
 
 **Last updated:** `r Sys.Date()`
@@ -990,9 +990,13 @@ plot_grid(
 
 Supplemental XX3
 
-Legend: Histogram of empirical p-values based on 12,192 permutations. 
+Legend: (A) Histogram of empirical p-values based on 12,192 permutations. (B) -log10 empirical p-values are plotted against average gene expression levels. Gene are sorted based on average gene expression of all cells across individuals, and then classifed into 10 equally spaced bins based on average gene expression. For each bin, we computed and displayed quantiles of -log10 p-values across genes. (C) We used the method in (C) and plotted quantiles of Median of Absolute Deviation (MAD) of genes in each of the 10 categories. 
 
 ```{r}
+# Bins average gene expression and make a boxplot of -log10 p-values
+# for each bin
+gene_means <- rowMeans(as.matrix(molecules_final))
+
 theme_set(theme_bw(base_size = 8))
 plot_grid(
   ggplot( data.frame(pvals = permuted_pval$mad_pval),
@@ -1000,15 +1004,21 @@ plot_grid(
     geom_histogram() + xlim(0, 1) +
     labs(x = "Permutation-based p-values", y = "Count"),
   ggplot( data.frame(pvals = permuted_pval$mad_pval,
-                     gene_mean = rowMeans(as.matrix(molecules_final))),
-         aes(x = gene_mean, y = -log10(pvals) ) ) +
-    geom_point(alpha = .3, cex = .5) +
+                     gene_mean = rowMeans(as.matrix(molecules_final)),
+                     bins = cut_number(gene_means, n = 10)),
+         aes(x = factor(bins), y = -log10(pvals),
+             fill = factor(bins)) ) +
+    geom_boxplot(alpha = .5) +
+    theme(legend.position = "none") +
     ylab("-log10(p-value)") +
     xlab("Average gene expression level"),
   ggplot( data.frame(mad = mad,
-                   gene_mean = rowMeans(as.matrix(molecules_final))),
-         aes(x = gene_mean, y = mad) ) +
-      geom_point( alpha = .3, cex = .5) +
+                   gene_mean = rowMeans(as.matrix(molecules_final)),
+                   bins = cut_number(gene_means, n = 10)),
+         aes(x = factor(bins), y = mad,
+             fill = factor(bins)) ) +
+      geom_boxplot( alpha = .5) +
+      theme(legend.position = "none") +
       ylab("Median of absolute deviation (MAD)") +
       xlab("Average gene expression level"),
   ncol = 2,
