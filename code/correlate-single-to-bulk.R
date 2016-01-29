@@ -71,8 +71,7 @@ main <- function(num_cells, seed, single_fname, bulk_fname, individual = NULL,
   }
   set.seed(seed)
   single_cells <- single_cells[, sample(1:ncol(single_cells), size = num_cells)]
-  # Calculate cpm
-  single_cells <- cpm(single_cells)
+
 #   single_cells[1:10, 1:10]
 #   dim(single_cells)
 
@@ -100,8 +99,6 @@ main <- function(num_cells, seed, single_fname, bulk_fname, individual = NULL,
   if (!is.null(keep_genes)) {
     bulk_cells <- bulk_cells[rownames(bulk_cells) %in% keep_genes_list, ]
   }
-  # Calculate cpm
-  bulk_cells <- cpm(bulk_cells)
 
 #   bulk_cells[1:10, 1:10]
 #   dim(bulk_cells)
@@ -112,25 +109,32 @@ main <- function(num_cells, seed, single_fname, bulk_fname, individual = NULL,
   assert("Same order of genes in bulk and single cells.",
          rownames(bulk_cells) == rownames(single_cells))
 
-  mean_single_expression <- log2(rowMeans(single_cells) + 1)
-  mean_bulk_expression <- log2(rowMeans(bulk_cells) + 1)
+  # For single cells, sum the counts across the single cells and then calculate
+  # log2 cpm
+  single_cells_sum <- as.data.frame(rowSums(single_cells))
+  single_cells_sum_cpm <- cpm(single_cells_sum, log = TRUE, prior.count = 1)
+  single_cells_sum_cpm <- as.numeric(single_cells_sum_cpm)
+  # For bulk samples, calculate cpm for each replicate and then calculate the
+  # mean across the replicates
+  bulk_cells_cpm <- cpm(bulk_cells, log = TRUE, prior.count = 1)
+  bulk_cells_cpm_mean <- rowMeans(bulk_cells_cpm)
 
   quantiles <- c(quantiles, 1)
   quantiles <- sort(quantiles)
-  q_cutoffs <- quantile(mean_bulk_expression, probs = quantiles)
+  q_cutoffs <- quantile(bulk_cells_cpm_mean, probs = quantiles)
   q_r <- numeric(length = length(quantiles))
   q_n <- numeric(length = length(quantiles))
   for (i in 1:length(quantiles)) {
     # Correlate
-    gene_in_quantile <- mean_bulk_expression <= q_cutoffs[i]
+    gene_in_quantile <- bulk_cells_cpm_mean <= q_cutoffs[i]
     q_n[i] <- sum(gene_in_quantile)
-    q_r[i] <- cor(mean_single_expression[gene_in_quantile],
-                  mean_bulk_expression[gene_in_quantile])
+    q_r[i] <- cor(single_cells_sum_cpm[gene_in_quantile],
+                  bulk_cells_cpm_mean[gene_in_quantile])
     # Output
     cat(sprintf("%d\t%d\t%f\t%f\t%d\n", num_cells, seed, quantiles[i], q_r[i], q_n[i]))
     # Remove genes already analyzed
-    mean_single_expression <- mean_single_expression[!gene_in_quantile]
-    mean_bulk_expression <- mean_bulk_expression[!gene_in_quantile]
+    single_cells_sum_cpm <- single_cells_sum_cpm[!gene_in_quantile]
+    bulk_cells_cpm_mean <- bulk_cells_cpm_mean[!gene_in_quantile]
   }
 }
 
