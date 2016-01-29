@@ -13,6 +13,7 @@ Options:
   -h --help              Show this screen.
   --individual=<ind>     Only use data from ind, e.g. 19098
   --good_cells=<file>    A 1-column file with the names of good quality cells to maintain
+  --keep_genes=<file>    A 1-column file with the names of genes to maintain
   -q --quantiles=<q>     Calculate the correlation for the genes separated by the provided
                          quantiles, e.g. -q .25 -q .75
 
@@ -23,7 +24,7 @@ Arguments:
   bulk          sample-by-gene matrix of bulk cell data" -> doc
 
 main <- function(num_cells, seed, single_fname, bulk_fname, individual = NULL,
-                 good_cells = NULL, quantiles = NULL) {
+                 good_cells = NULL, keep_genes = NULL, quantiles = NULL) {
   suppressPackageStartupMessages(library("edgeR"))
   library("testit")
   id <- "single-to-bulk-correlation"
@@ -48,6 +49,11 @@ main <- function(num_cells, seed, single_fname, bulk_fname, individual = NULL,
   # Fix ERCC names
   rownames(single_cells) <- sub(pattern = "\\.", replacement = "-",
                                 rownames(single_cells))
+  # Filter genes
+  if (!is.null(keep_genes)) {
+    keep_genes_list <- scan(keep_genes, what = "character", quiet = TRUE)
+    single_cells <- single_cells[rownames(single_cells) %in% keep_genes_list, ]
+  }
   # Keep only good quality cells
   if (!is.null(good_cells)) {
     assert("File with list of good quality cells exists.",
@@ -90,20 +96,16 @@ main <- function(num_cells, seed, single_fname, bulk_fname, individual = NULL,
   # Fix ERCC names
   rownames(bulk_cells) <- sub(pattern = "\\.", replacement = "-",
                                 rownames(bulk_cells))
+  # Filter genes
+  if (!is.null(keep_genes)) {
+    bulk_cells <- bulk_cells[rownames(bulk_cells) %in% keep_genes_list, ]
+  }
   # Calculate cpm
   bulk_cells <- cpm(bulk_cells)
 
 #   bulk_cells[1:10, 1:10]
 #   dim(bulk_cells)
 #   head(bulk_cells)
-
-  # Filter genes
-  # Remove unexpressed
-  bulk_cells <- bulk_cells[rowSums(bulk_cells) > 0, ]
-  # Remove the bottom 25%
-  bulk_cells <- bulk_cells[rowMeans(bulk_cells) > quantile(rowMeans(bulk_cells), .25), ]
-  # Filter genes in single cells
-  single_cells <- single_cells[rownames(single_cells) %in% rownames(bulk_cells), ]
 
   assert("Same number of genes in bulk and single cells.",
          nrow(bulk_cells) == nrow(single_cells))
@@ -140,6 +142,7 @@ if (!interactive() & getOption('run.main', default = TRUE)) {
        bulk_fname = opts$bulk,
        individual = opts$individual,
        good_cells = opts$good_cells,
+       keep_genes = opts$keep_genes,
        quantiles = as.numeric(opts$quantiles))
 } else if (interactive() & getOption('run.main', default = TRUE)) {
   # what to do if interactively testing
@@ -149,5 +152,6 @@ if (!interactive() & getOption('run.main', default = TRUE)) {
        bulk_fname = "../data/reads-raw-bulk-per-sample.txt",
        individual = "NA19098",
        good_cells = "../data/quality-single-cells.txt",
+       keep_genes = "../data/genes-pass-filter.txt",
        quantiles = c(.25, .5, .75))
 }
