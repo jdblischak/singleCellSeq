@@ -137,7 +137,7 @@ img {
 </div>
 
 <p><strong>Last updated:</strong> 2016-02-02</p>
-<p><strong>Code version:</strong> 9501eaeb09744a248aad0a918db0e7671688586a</p>
+<p><strong>Code version:</strong> f0601c014429f2aacc98e28355aff9d597b65963</p>
 <p>The purpose is to see if removing the lowly expressed genes or using the final data (after correction of batch effect) would have any effect on the correltaion of PC1 and proportion of gene detected.</p>
 <div id="setup" class="section level2">
 <h2>Setup</h2>
@@ -152,6 +152,9 @@ Attaching package: &#39;cowplot&#39;
 The following object is masked from &#39;package:ggplot2&#39;:
 
     ggsave</code></pre>
+<pre class="r"><code>require(matrixStats)</code></pre>
+<pre><code>Loading required package: matrixStats
+matrixStats v0.14.0 (2015-02-13) successfully loaded. See ?matrixStats for help.</code></pre>
 <pre class="r"><code>theme_set(theme_bw(base_size = 16))</code></pre>
 </div>
 <div id="prepare-single-cell-molecule-data" class="section level2">
@@ -187,14 +190,10 @@ stopifnot(anno_filter$sample_id == colnames(reads_qc))</code></pre>
 </div>
 <div id="molecule-count-data" class="section level2">
 <h2>Molecule count data</h2>
-<p>First look at the data set before removing lowly expressed genes (genes with low counts)</p>
-<p>Remove genes with zero count in the single cells</p>
+<p>First, look at the data set before removing lowly expressed genes (genes with low counts).</p>
 <pre class="r"><code>expressed_single &lt;- rowSums(molecules_qc) &gt; 0
 molecules_single &lt;- molecules_qc[which(expressed_single), ]
 reads_single &lt;- reads_qc[expressed_single, ]</code></pre>
-<pre class="r"><code>require(matrixStats)</code></pre>
-<pre><code>Loading required package: matrixStats
-matrixStats v0.14.0 (2015-02-13) successfully loaded. See ?matrixStats for help.</code></pre>
 <pre class="r"><code>number_nonzero_cells &lt;- colSums(molecules_single != 0)
 number_genes &lt;- dim(molecules_single)[1]
 molecules_prop_genes_detected &lt;- 
@@ -213,12 +212,9 @@ genes_detected_plot &lt;- ggplot(molecules_prop_genes_detected,
                        labs(x = &quot;Batch&quot;,
                        y = &quot;Proportion of detected genes&quot;,
                        title = &quot;Proportion of detected genes&quot;) +
-                       theme(axis.text.x = element_text(hjust=1, angle = 45))
-
-genes_detected_plot</code></pre>
-<p><img src="figure/pca-correlation-rafa-filter.Rmd/mol-non-filtered-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<p>Principal component analysis on log2 transformed values. We avoid log of 0’s by add 1’s. In addition, our PCA analysis requires that every gene needs to be present in at least one of the cells.</p>
-<pre class="r"><code>molecules_single_log2_pca &lt;- run_pca( log2( molecules_single + 1 ) )
+                       theme(axis.text.x = element_text(hjust=1, angle = 45))</code></pre>
+<p>Principal component analysis on cpm log2 transformed values. We avoid log of 0’s by add 1’s. In addition, our PCA analysis requires that every gene needs to be present in at least one of the cells.</p>
+<pre class="r"><code>molecules_single_log2_pca &lt;- run_pca( cpm( molecules_single + 1 ) )
 
 pc1_plot &lt;- qplot(y = molecules_single_log2_pca$PCs[,1],
       x = molecules_prop_genes_detected$prop,
@@ -242,7 +238,7 @@ pc1_plot</code></pre>
 molecule_genes_all &lt;- molecules_single[apply(molecules_single == 0, 1, sum) == 0 ,]
 dim(molecule_genes_all)</code></pre>
 <pre><code>[1] 1550  560</code></pre>
-<pre class="r"><code>molecules_gene_all_pca &lt;- run_pca( log2(molecule_genes_all) )
+<pre class="r"><code>molecules_gene_all_pca &lt;- run_pca( cpm(molecule_genes_all) )
 
 pc1_plot_all &lt;- qplot(y = molecules_gene_all_pca$PCs[,1],
       x = molecules_prop_genes_detected$prop,
@@ -254,8 +250,8 @@ pc1_plot_all &lt;- qplot(y = molecules_gene_all_pca$PCs[,1],
 </div>
 <div id="molecule-count-data-after-filtering" class="section level2">
 <h2>Molecule count data after filtering</h2>
-<pre class="r"><code>require(matrixStats)
-number_nonzero_cells_filter &lt;- colSums(molecules_filter != 0)
+<p>Next, look at the data set after removing lowly expressed genes (genes with low counts).</p>
+<pre class="r"><code>number_nonzero_cells_filter &lt;- colSums(molecules_filter != 0)
 number_genes_filter &lt;- dim(molecules_filter)[1]
 molecules_prop_genes_detected_filter &lt;- 
     data.frame(prop = number_nonzero_cells_filter/number_genes_filter,
@@ -270,11 +266,8 @@ genes_detected_filter_plot &lt;- ggplot(molecules_prop_genes_detected_filter,
                               labs(x = &quot;Batch&quot;,
                               y = &quot;Proportion of detected genes&quot;,
                               title = &quot;Proportion of detected genes (filtered)&quot;) +
-                              theme(axis.text.x = element_text(hjust=1, angle = 45))
-
-genes_detected_filter_plot</code></pre>
-<p><img src="figure/pca-correlation-rafa-filter.Rmd/mol-filtered-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>molecules_filter_log2_pca &lt;- run_pca( log2( molecules_filter + 1 ) )
+                              theme(axis.text.x = element_text(hjust=1, angle = 45))</code></pre>
+<pre class="r"><code>molecules_filter_log2_pca &lt;- run_pca( cpm( molecules_filter + 1 ) )
 
 pc1_filter_plot &lt;- qplot(y = molecules_filter_log2_pca$PCs[,1],
       x = molecules_prop_genes_detected_filter$prop,
@@ -297,7 +290,7 @@ pc1_filter_plot</code></pre>
 molecule_genes_all_filter &lt;- molecules_filter[apply(molecules_filter == 0, 1, sum) == 0 ,]
 dim(molecule_genes_all_filter)</code></pre>
 <pre><code>[1] 1545  560</code></pre>
-<pre class="r"><code>molecules_gene_all_filter_pca &lt;- run_pca( log2(molecule_genes_all_filter) )
+<pre class="r"><code>molecules_gene_all_filter_pca &lt;- run_pca( cpm(molecule_genes_all_filter) )
 
 pc1_plot_all_filter &lt;- qplot(y = molecules_gene_all_filter_pca$PCs[,1],
       x = molecules_prop_genes_detected$prop,
