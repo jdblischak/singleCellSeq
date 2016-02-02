@@ -12,6 +12,7 @@ correlate-single-cell-to-bulk.R [options] [--quantiles=<q>...] <num_cells> <seed
 Options:
   -h --help              Show this screen.
   --individual=<ind>     Only use data from ind, e.g. NA19098
+  --replicate=<rep>      Only use data from rep, e.g. r1
   --good_cells=<file>    A 1-column file with the names of good quality cells to maintain
   --keep_genes=<file>    A 1-column file with the names of genes to maintain
   -q --quantiles=<q>     Calculate the correlation for the genes separated by the provided
@@ -23,7 +24,8 @@ Arguments:
   single        sample-by-gene matrix of single cell data
   bulk          sample-by-gene matrix of bulk cell data" -> doc
 
-main <- function(num_cells, seed, single_fname, bulk_fname, individual = NULL,
+main <- function(num_cells, seed, single_fname, bulk_fname,
+                 individual = NULL, replicate = NULL,
                  good_cells = NULL, keep_genes = NULL, quantiles = NULL) {
   suppressPackageStartupMessages(library("edgeR"))
   library("testit")
@@ -53,6 +55,7 @@ main <- function(num_cells, seed, single_fname, bulk_fname, individual = NULL,
 
   # Filter individuals, cells, and genes. Also transpose to gene-by-sample.
   single_cells <- prepare_counts(single_cells, individual = individual,
+                                 replicate = replicate,
                                  good_cells_list = good_cells_list,
                                  keep_genes_list = keep_genes_list)
   # Subsample number of single cells
@@ -73,6 +76,7 @@ main <- function(num_cells, seed, single_fname, bulk_fname, individual = NULL,
          bulk_cells$well == "bulk")
   # Filter individuals and genes. Also transpose to gene-by-sample.
   bulk_cells <- prepare_counts(bulk_cells, individual = individual,
+                               replicate = replicate,
                                keep_genes_list = keep_genes_list)
 
 #   bulk_cells[1:10, 1:10]
@@ -118,15 +122,15 @@ main <- function(num_cells, seed, single_fname, bulk_fname, individual = NULL,
   }
 }
 
-# Converts a sample-by-gene data frame to a filtered gene-by-sample data frame.
+# Converts a sample-by-gene data frame to a filtered gene-by-sample matrix.
 #
 # x - sample-by-gene data frame
 # individual - character vector of individuals to keep, e.g. NA19098
 # good_cells_list - A character vector with the names of good quality cells to maintain
 # keep_genes_list - A character vector with the names of genes to maintain
 #
-prepare_counts <- function(x, individual = NULL, good_cells_list = NULL,
-                           keep_genes_list = NULL) {
+prepare_counts <- function(x, individual = NULL, replicate = NULL,
+                           good_cells_list = NULL, keep_genes_list = NULL) {
   library("testit")
   assert("Input is a data frame", class(x) == "data.frame")
   assert("Input is not empty", dim(x) > 0)
@@ -136,17 +140,21 @@ prepare_counts <- function(x, individual = NULL, good_cells_list = NULL,
   if (!is.null(individual)) {
     x <- x[x$individual == individual, ]
   }
+  # Filter by replicate
+  if (!is.null(replicate)) {
+    x <- x[x$replicate == replicate, ]
+  }
   # Add rownames
   rownames(x) <- paste(x$individual, x$replicate, x$well, sep = ".")
   # Remove meta-info cols
-  x <- x[, grepl("ENSG", colnames(x)) | grepl("ERCC", colnames(x))]
+  x <- x[, grepl("ENSG", colnames(x)) | grepl("ERCC", colnames(x)), drop = FALSE]
   # Transpose
   x <- t(x)
   # Fix ERCC names
   rownames(x) <- sub(pattern = "\\.", replacement = "-", rownames(x))
   # Filter genes
   if (!is.null(keep_genes_list)) {
-    x <- x[rownames(x) %in% keep_genes_list, ]
+    x <- x[rownames(x) %in% keep_genes_list, , drop = FALSE]
   }
   # Keep only good quality cells
   if (!is.null(good_cells_list)) {
@@ -154,6 +162,7 @@ prepare_counts <- function(x, individual = NULL, good_cells_list = NULL,
     assert("There are quality cells to perform the analysis.",
            ncol(x) > 0)
   }
+  assert("Output is a data frame", class(x) == "matrix")
   return(x)
 }
 
@@ -164,6 +173,7 @@ if (!interactive() & getOption('run.main', default = TRUE)) {
        single_fname = opts$single,
        bulk_fname = opts$bulk,
        individual = opts$individual,
+       replicate = opts$replicate,
        good_cells = opts$good_cells,
        keep_genes = opts$keep_genes,
        quantiles = as.numeric(opts$quantiles))
@@ -174,6 +184,7 @@ if (!interactive() & getOption('run.main', default = TRUE)) {
        single_fname = "/mnt/gluster/home/jdblischak/ssd/subsampled/counts-matrix/250000-molecules-raw-single-per-sample.txt",
        bulk_fname = "../data/reads-raw-bulk-per-sample.txt",
        individual = "NA19098",
+       replicate = "r1",
        good_cells = "../data/quality-single-cells.txt",
        keep_genes = "../data/genes-pass-filter.txt",
        quantiles = c(.25, .5, .75))
