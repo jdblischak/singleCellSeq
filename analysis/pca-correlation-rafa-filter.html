@@ -136,8 +136,8 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2016-01-23</p>
-<p><strong>Code version:</strong> 71bca2eedc500d1e5da32d526ba2127cb9aa7a63</p>
+<p><strong>Last updated:</strong> 2016-02-02</p>
+<p><strong>Code version:</strong> 9501eaeb09744a248aad0a918db0e7671688586a</p>
 <p>The purpose is to see if removing the lowly expressed genes or using the final data (after correction of batch effect) would have any effect on the correltaion of PC1 and proportion of gene detected.</p>
 <div id="setup" class="section level2">
 <h2>Setup</h2>
@@ -203,7 +203,7 @@ molecules_prop_genes_detected &lt;-
                individual.batch = anno_filter$batch)
 
 ## create a color palette with one color per individual and different shades for repplicates
-great_color &lt;- c(&quot;#CC3300&quot;, &quot;#FF9966&quot;, &quot;#FFCC99&quot;, &quot;#006633&quot;, &quot;#009900&quot;, &quot;#99FF99&quot;, &quot;#3366FF&quot;, &quot;#6699FF&quot;, &quot;#66CCFF&quot;)
+great_color &lt;- c(&quot;#CC3300&quot;, &quot;#FF9966&quot;, &quot;#006633&quot;, &quot;#009900&quot;, &quot;#99FF99&quot;, &quot;#3366FF&quot;, &quot;#6699FF&quot;, &quot;#66CCFF&quot;)
 
 genes_detected_plot &lt;- ggplot(molecules_prop_genes_detected,
                        aes(y = prop, x = as.factor(individual.batch), fill = as.factor(individual.batch))) + 
@@ -237,6 +237,20 @@ pc1_plot</code></pre>
       xlab = &quot;Proportion of genes detected&quot;,
       ylab = &quot;PC2&quot;) </code></pre>
 <p><img src="figure/pca-correlation-rafa-filter.Rmd/pca-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>Also look at the genes that were commonly detected in all cells to see if the the gene expression levels were involed as well.</p>
+<pre class="r"><code># keep only genes detected in all cells
+molecule_genes_all &lt;- molecules_single[apply(molecules_single == 0, 1, sum) == 0 ,]
+dim(molecule_genes_all)</code></pre>
+<pre><code>[1] 1550  560</code></pre>
+<pre class="r"><code>molecules_gene_all_pca &lt;- run_pca( log2(molecule_genes_all) )
+
+pc1_plot_all &lt;- qplot(y = molecules_gene_all_pca$PCs[,1],
+      x = molecules_prop_genes_detected$prop,
+      shape = as.factor(anno_filter$replicate),
+      colour = as.factor(anno_filter$individual),
+      xlab = &quot;Proportion of genes detected&quot;,
+      ylab = &quot;PC1&quot;,
+      title = &quot;Proportion of genes detected&quot;) </code></pre>
 </div>
 <div id="molecule-count-data-after-filtering" class="section level2">
 <h2>Molecule count data after filtering</h2>
@@ -279,10 +293,23 @@ pc1_filter_plot</code></pre>
       xlab = &quot;Proportion of genes detected (filter)&quot;,
       ylab = &quot;PC2&quot;) </code></pre>
 <p><img src="figure/pca-correlation-rafa-filter.Rmd/pca-filter-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code># keep only genes detected in all cells
+molecule_genes_all_filter &lt;- molecules_filter[apply(molecules_filter == 0, 1, sum) == 0 ,]
+dim(molecule_genes_all_filter)</code></pre>
+<pre><code>[1] 1545  560</code></pre>
+<pre class="r"><code>molecules_gene_all_filter_pca &lt;- run_pca( log2(molecule_genes_all_filter) )
+
+pc1_plot_all_filter &lt;- qplot(y = molecules_gene_all_filter_pca$PCs[,1],
+      x = molecules_prop_genes_detected$prop,
+      shape = as.factor(anno_filter$replicate),
+      colour = as.factor(anno_filter$individual),
+      xlab = &quot;Proportion of genes detected&quot;,
+      ylab = &quot;PC1&quot;,
+      title = &quot;Proportion of genes detected (filter)&quot;) </code></pre>
 </div>
 <div id="molecule-count-data-final" class="section level2">
 <h2>Molecule count data final</h2>
-<pre class="r"><code>molecules_final_pca &lt;- run_pca(molecules_final)
+<pre class="r"><code>molecules_final_pca &lt;- run_pca( log2(molecules_final + 1))
 
 pc1_final_plot &lt;- qplot(y = molecules_final_pca$PCs[,1],
       x = molecules_prop_genes_detected_filter$prop,
@@ -306,6 +333,10 @@ plot_grid(genes_detected_plot + theme(legend.position = &quot;none&quot;),
           labels = LETTERS[1:5],
           ncol = 2)</code></pre>
 <p><img src="figure/pca-correlation-rafa-filter.Rmd/sum-plots-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>plot_grid(pc1_plot_all + theme(legend.position = &quot;none&quot;),
+          pc1_plot_all_filter + theme(legend.position = &quot;none&quot;),
+          labels = LETTERS[1:2])</code></pre>
+<p><img src="figure/pca-correlation-rafa-filter.Rmd/sum-plots-all-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
 </div>
 <div id="session-information" class="section level2">
 <h2>Session information</h2>

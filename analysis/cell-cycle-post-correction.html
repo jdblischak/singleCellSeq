@@ -134,8 +134,8 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2016-01-23</p>
-<p><strong>Code version:</strong> 71bca2eedc500d1e5da32d526ba2127cb9aa7a63</p>
+<p><strong>Last updated:</strong> 2016-02-02</p>
+<p><strong>Code version:</strong> 9501eaeb09744a248aad0a918db0e7671688586a</p>
 <div id="objective" class="section level2">
 <h2>Objective</h2>
 <p>Compute cell-cycle phase assignment of filtered molecule counts and final molecule data. Also to plot total molecule count by cell-cycle phase.</p>
@@ -187,6 +187,11 @@ anno_filter &lt;- read.table(&quot;../data/annotation-filter.txt&quot;,
 
 ## Molecule counts of the filtered data
 molecules_filter &lt;- read.table(&quot;../data/molecules-filter.txt&quot;,
+                               header = TRUE,
+                               stringsAsFactors = FALSE)
+
+## Read counts of filtered data
+reads_filter &lt;- read.table(&quot;../data/reads-filter.txt&quot;,
                                header = TRUE,
                                stringsAsFactors = FALSE)
 
@@ -264,16 +269,26 @@ cell_phase_after &lt;- factor(cell_phase_after,
 data_to_plot &lt;- anno_filter
 data_to_plot$cell_phase_before &lt;- cell_phase_before
 data_to_plot$cell_phase_after &lt;- cell_phase_after
+
+## Calculate the total molecule counts using molecule filter data
 data_to_plot$total_molecules_before &lt;- apply(molecules_filter, 2, sum)
-data_to_plot$total_molecules_after &lt;- apply(molecules_final, 2, sum)
+data_to_plot$total_molecules_after &lt;- apply(molecules_filter, 2, sum)
+
+## Calculate the total read counts using read filter data
+data_to_plot$total_reads_before &lt;- apply(reads_filter, 2, sum)
+data_to_plot$total_reads_after &lt;- apply(reads_filter, 2, sum)
 
 data_to_plot$individual &lt;- factor(data_to_plot$individual)
 data_to_plot$replicate &lt;- factor(data_to_plot$replicate)
 
 data_before &lt;- summarise(group_by(data_to_plot, cell_phase_before, individual, replicate),
-          mean_total_molecules = mean(total_molecules_before), cell_number = length(cell_phase_before))
+                         mean_total_molecules = mean(total_molecules_before), 
+                         mean_total_reads = mean(total_reads_before),
+                         cell_number = length(cell_phase_before))
 data_after &lt;- summarise(group_by(data_to_plot, cell_phase_after, individual, replicate),
-          mean_total_molecules = mean(total_molecules_after), cell_number = length(cell_phase_after))
+                        mean_total_molecules = mean(total_molecules_after), 
+                        mean_total_reads = mean(total_reads_after),
+                        cell_number = length(cell_phase_after))
 stopifnot(sum(data_before$cell_number) == sum(data_after$cell_number))</code></pre>
 <p>Before correction</p>
 <pre class="r"><code>cycle_plot_before &lt;- ggplot(data_before, aes(x = as.factor(cell_phase_before), 
@@ -283,11 +298,20 @@ stopifnot(sum(data_before$cell_number) == sum(data_after$cell_number))</code></p
                         geom_point() + geom_line() +
                         scale_x_discrete(limits=phase_order, labels=c(&quot;G1/S&quot;,&quot;S&quot;,&quot;G2&quot;,&quot;G2/M&quot;,&quot;M/G1&quot;)) + 
                         theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + 
-                        xlab(&quot;Cell cycle phase&quot;) + ylab(&quot;Total molecules&quot;) +
+                        xlab(&quot;Cell cycle phase&quot;) + ylab(&quot;Total molecule counts&quot;) +
                         ggtitle(&quot;Before correction&quot;)
-cycle_plot_before + facet_grid(~ individual)</code></pre>
-<p><img src="figure/cell-cycle-post-correction.Rmd/before-cor-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>cell_number_before &lt;- ggplot(data_before, aes(x = as.factor(cell_phase_before), 
+
+cycle_plot_before_reads &lt;- ggplot(data_before, aes(x = as.factor(cell_phase_before), 
+                                             y = mean_total_reads,
+                                             color = replicate,
+                                             group = replicate) ) + 
+                        geom_point() + geom_line() +
+                        scale_x_discrete(limits=phase_order, labels=c(&quot;G1/S&quot;,&quot;S&quot;,&quot;G2&quot;,&quot;G2/M&quot;,&quot;M/G1&quot;)) + 
+                        theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + 
+                        xlab(&quot;Cell cycle phase&quot;) + ylab(&quot;Total read counts&quot;) +
+                        ggtitle(&quot;Before correction&quot;)
+
+cell_number_before &lt;- ggplot(data_before, aes(x = as.factor(cell_phase_before), 
                                              y = cell_number,
                                              color = replicate,
                                              group = replicate) ) + 
@@ -295,9 +319,7 @@ cycle_plot_before + facet_grid(~ individual)</code></pre>
                         scale_x_discrete(limits=phase_order, labels=c(&quot;G1/S&quot;,&quot;S&quot;,&quot;G2&quot;,&quot;G2/M&quot;,&quot;M/G1&quot;)) + 
                         theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + 
                         xlab(&quot;Cell cycle phase&quot;) + ylab(&quot;Cell number&quot;) +
-                        ggtitle(&quot;Before correction&quot;)
-cell_number_before + facet_grid(~ individual)</code></pre>
-<p><img src="figure/cell-cycle-post-correction.Rmd/before-cor-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+                        ggtitle(&quot;Before correction&quot;)</code></pre>
 <p>After correction</p>
 <pre class="r"><code>cycle_plot_after &lt;- ggplot(data_after, aes(x = as.factor(cell_phase_after), 
                                              y = mean_total_molecules,
@@ -306,11 +328,20 @@ cell_number_before + facet_grid(~ individual)</code></pre>
                         geom_point() + geom_line() +
                         scale_x_discrete(limits=phase_order, labels=c(&quot;G1/S&quot;,&quot;S&quot;,&quot;G2&quot;,&quot;G2/M&quot;,&quot;M/G1&quot;)) + 
                         theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + 
-                        xlab(&quot;Cell cycle phase&quot;) + ylab(&quot;Total molecules&quot;) +
+                        xlab(&quot;Cell cycle phase&quot;) + ylab(&quot;Total molecule counts&quot;) +
                         ggtitle(&quot;Post correction&quot;)
-cycle_plot_after + facet_grid(~ individual)</code></pre>
-<p><img src="figure/cell-cycle-post-correction.Rmd/after-cor-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>cell_number_after &lt;- ggplot(data_after, aes(x = as.factor(cell_phase_after), 
+
+cycle_plot_after_reads &lt;- ggplot(data_after, aes(x = as.factor(cell_phase_after), 
+                                             y = mean_total_reads,
+                                             color = replicate,
+                                             group = replicate) ) + 
+                        geom_point() + geom_line() +
+                        scale_x_discrete(limits=phase_order, labels=c(&quot;G1/S&quot;,&quot;S&quot;,&quot;G2&quot;,&quot;G2/M&quot;,&quot;M/G1&quot;)) + 
+                        theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + 
+                        xlab(&quot;Cell cycle phase&quot;) + ylab(&quot;Total read counts&quot;) +
+                        ggtitle(&quot;Post correction&quot;)
+
+cell_number_after &lt;- ggplot(data_after, aes(x = as.factor(cell_phase_after), 
                                              y = cell_number,
                                              color = replicate,
                                              group = replicate) ) + 
@@ -318,15 +349,16 @@ cycle_plot_after + facet_grid(~ individual)</code></pre>
                         scale_x_discrete(limits=phase_order, labels=c(&quot;G1/S&quot;,&quot;S&quot;,&quot;G2&quot;,&quot;G2/M&quot;,&quot;M/G1&quot;)) + 
                         theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + 
                         xlab(&quot;Cell cycle phase&quot;) + ylab(&quot;Cell number&quot;) +
-                        ggtitle(&quot;Post correction&quot;)
-cell_number_after + facet_grid(~ individual)</code></pre>
-<p><img src="figure/cell-cycle-post-correction.Rmd/after-cor-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+                        ggtitle(&quot;Post correction&quot;)</code></pre>
 <pre class="r"><code>theme_set(theme_bw(base_size = 12))
 plot_grid(cycle_plot_before + facet_grid(~ individual) + theme(legend.position = c(.25,.3)) + labs (col = &quot;&quot;),
           cycle_plot_after + facet_grid(~ individual) + theme(legend.position = &quot;none&quot;),
+          cycle_plot_before_reads + facet_grid(~ individual) + theme(legend.position = &quot;none&quot;),
+          cycle_plot_after_reads + facet_grid(~ individual) + theme(legend.position = &quot;none&quot;),
           cell_number_before + facet_grid(~ individual) + theme(legend.position = &quot;none&quot;),
           cell_number_after + facet_grid(~ individual) + theme(legend.position = &quot;none&quot;),
-          labels = LETTERS[1:4])</code></pre>
+          nrow = 3,
+          labels = LETTERS[1:6])</code></pre>
 <p><img src="figure/cell-cycle-post-correction.Rmd/plots-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
 </div>
 <div id="session-information" class="section level2">
