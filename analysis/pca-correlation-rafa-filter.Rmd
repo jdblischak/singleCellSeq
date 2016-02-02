@@ -20,6 +20,7 @@ source("functions.R")
 library("edgeR")
 library(ggplot2)
 library("cowplot")
+require(matrixStats)
 theme_set(theme_bw(base_size = 16))
 ```
 
@@ -67,9 +68,8 @@ stopifnot(anno_filter$sample_id == colnames(reads_qc))
 
 ## Molecule count data
 
-First look at the data set before removing lowly expressed genes (genes with low counts)
+First, look at the data set before removing lowly expressed genes (genes with low counts).
 
-Remove genes with zero count in the single cells
 ```{r}
 expressed_single <- rowSums(molecules_qc) > 0
 molecules_single <- molecules_qc[which(expressed_single), ]
@@ -77,7 +77,6 @@ reads_single <- reads_qc[expressed_single, ]
 ```
 
 ```{r mol-non-filtered}
-require(matrixStats)
 number_nonzero_cells <- colSums(molecules_single != 0)
 number_genes <- dim(molecules_single)[1]
 molecules_prop_genes_detected <- 
@@ -97,16 +96,14 @@ genes_detected_plot <- ggplot(molecules_prop_genes_detected,
                        y = "Proportion of detected genes",
                        title = "Proportion of detected genes") +
                        theme(axis.text.x = element_text(hjust=1, angle = 45))
-
-genes_detected_plot
 ```
 
-Principal component analysis on log2 transformed values. We avoid log of 0's
+Principal component analysis on cpm log2 transformed values. We avoid log of 0's
 by add 1's. In addition, our PCA analysis requires that every gene needs
 to be present in at least one of the cells.
 
 ```{r pca}
-molecules_single_log2_pca <- run_pca( log2( molecules_single + 1 ) )
+molecules_single_log2_pca <- run_pca( cpm( molecules_single + 1 ) )
 
 pc1_plot <- qplot(y = molecules_single_log2_pca$PCs[,1],
       x = molecules_prop_genes_detected$prop,
@@ -132,7 +129,7 @@ Also look at the genes that were commonly detected in all cells to see if the th
 molecule_genes_all <- molecules_single[apply(molecules_single == 0, 1, sum) == 0 ,]
 dim(molecule_genes_all)
 
-molecules_gene_all_pca <- run_pca( log2(molecule_genes_all) )
+molecules_gene_all_pca <- run_pca( cpm(molecule_genes_all) )
 
 pc1_plot_all <- qplot(y = molecules_gene_all_pca$PCs[,1],
       x = molecules_prop_genes_detected$prop,
@@ -146,8 +143,9 @@ pc1_plot_all <- qplot(y = molecules_gene_all_pca$PCs[,1],
 
 ## Molecule count data after filtering
 
+Next, look at the data set after removing lowly expressed genes (genes with low counts).
+
 ```{r mol-filtered}
-require(matrixStats)
 number_nonzero_cells_filter <- colSums(molecules_filter != 0)
 number_genes_filter <- dim(molecules_filter)[1]
 molecules_prop_genes_detected_filter <- 
@@ -164,12 +162,10 @@ genes_detected_filter_plot <- ggplot(molecules_prop_genes_detected_filter,
                               y = "Proportion of detected genes",
                               title = "Proportion of detected genes (filtered)") +
                               theme(axis.text.x = element_text(hjust=1, angle = 45))
-
-genes_detected_filter_plot
 ```
 
 ```{r pca-filter}
-molecules_filter_log2_pca <- run_pca( log2( molecules_filter + 1 ) )
+molecules_filter_log2_pca <- run_pca( cpm( molecules_filter + 1 ) )
 
 pc1_filter_plot <- qplot(y = molecules_filter_log2_pca$PCs[,1],
       x = molecules_prop_genes_detected_filter$prop,
@@ -194,7 +190,7 @@ qplot(y = molecules_filter_log2_pca$PCs[,2],
 molecule_genes_all_filter <- molecules_filter[apply(molecules_filter == 0, 1, sum) == 0 ,]
 dim(molecule_genes_all_filter)
 
-molecules_gene_all_filter_pca <- run_pca( log2(molecule_genes_all_filter) )
+molecules_gene_all_filter_pca <- run_pca( cpm(molecule_genes_all_filter) )
 
 pc1_plot_all_filter <- qplot(y = molecules_gene_all_filter_pca$PCs[,1],
       x = molecules_prop_genes_detected$prop,
