@@ -152,13 +152,17 @@ data_to_plot$individual <- factor(data_to_plot$individual)
 data_to_plot$replicate <- factor(data_to_plot$replicate)
 
 data_before <- summarise(group_by(data_to_plot, cell_phase_before, individual, replicate),
-                         mean_total_molecules = mean(total_molecules_before), 
+                         mean_total_molecules = mean(total_molecules_before),
                          mean_total_reads = mean(total_reads_before),
-                         cell_number = length(cell_phase_before))
+                         cell_number = length(cell_phase_before),
+                         sem_total_molecules = sd(total_molecules_before)/sqrt(cell_number),
+                         sem_total_reads = sd(total_reads_before)/sqrt(cell_number))
 data_after <- summarise(group_by(data_to_plot, cell_phase_after, individual, replicate),
                         mean_total_molecules = mean(total_molecules_after), 
                         mean_total_reads = mean(total_reads_after),
-                        cell_number = length(cell_phase_after))
+                        cell_number = length(cell_phase_after),
+                        sem_total_molecules = sd(total_molecules_after)/sqrt(cell_number),
+                        sem_total_reads = sd(total_reads_after)/sqrt(cell_number))
 stopifnot(sum(data_before$cell_number) == sum(data_after$cell_number))
 ```
 
@@ -170,9 +174,12 @@ cycle_plot_before <- ggplot(data_before, aes(x = as.factor(cell_phase_before),
                                              color = replicate,
                                              group = replicate) ) + 
                         geom_point() + geom_line() +
+                        geom_errorbar(aes(ymin = mean_total_molecules - sem_total_molecules,
+                                          ymax = mean_total_molecules + sem_total_molecules), 
+                                          width = 0, col = "grey") +
                         scale_x_discrete(limits=phase_order, labels=c("G1/S","S","G2","G2/M","M/G1")) + 
                         theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + 
-                        xlab("Cell cycle phase") + ylab("Total molecule counts") +
+                        xlab("Cell cycle phase") + ylab("Total molecule counts (mean +/- sem)") +
                         ggtitle("Before correction")
 
 cycle_plot_before_reads <- ggplot(data_before, aes(x = as.factor(cell_phase_before), 
@@ -180,9 +187,12 @@ cycle_plot_before_reads <- ggplot(data_before, aes(x = as.factor(cell_phase_befo
                                              color = replicate,
                                              group = replicate) ) + 
                         geom_point() + geom_line() +
+                        geom_errorbar(aes(ymin = mean_total_reads - sem_total_reads,
+                                          ymax = mean_total_reads + sem_total_reads), 
+                                          width = 0, col = "grey") +
                         scale_x_discrete(limits=phase_order, labels=c("G1/S","S","G2","G2/M","M/G1")) + 
                         theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + 
-                        xlab("Cell cycle phase") + ylab("Total read counts") +
+                        xlab("Cell cycle phase") + ylab("Total read counts (mean +/- sem)") +
                         ggtitle("Before correction")
 
 cell_number_before <- ggplot(data_before, aes(x = as.factor(cell_phase_before), 
@@ -205,9 +215,12 @@ cycle_plot_after <- ggplot(data_after, aes(x = as.factor(cell_phase_after),
                                              color = replicate,
                                              group = replicate) ) + 
                         geom_point() + geom_line() +
+                        geom_errorbar(aes(ymin = mean_total_molecules - sem_total_molecules,
+                                          ymax = mean_total_molecules + sem_total_molecules), 
+                                          width = 0, col = "grey") +
                         scale_x_discrete(limits=phase_order, labels=c("G1/S","S","G2","G2/M","M/G1")) + 
                         theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + 
-                        xlab("Cell cycle phase") + ylab("Total molecule counts") +
+                        xlab("Cell cycle phase") + ylab("Total molecule counts (mean +/- sem)") +
                         ggtitle("Post correction")
 
 cycle_plot_after_reads <- ggplot(data_after, aes(x = as.factor(cell_phase_after), 
@@ -215,9 +228,12 @@ cycle_plot_after_reads <- ggplot(data_after, aes(x = as.factor(cell_phase_after)
                                              color = replicate,
                                              group = replicate) ) + 
                         geom_point() + geom_line() +
+                        geom_errorbar(aes(ymin = mean_total_reads - sem_total_reads,
+                                          ymax = mean_total_reads + sem_total_reads), 
+                                          width = 0, col = "grey") +
                         scale_x_discrete(limits=phase_order, labels=c("G1/S","S","G2","G2/M","M/G1")) + 
                         theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + 
-                        xlab("Cell cycle phase") + ylab("Total read counts") +
+                        xlab("Cell cycle phase") + ylab("Total read counts (mean +/- sem)") +
                         ggtitle("Post correction")
 
 cell_number_after <- ggplot(data_after, aes(x = as.factor(cell_phase_after), 
