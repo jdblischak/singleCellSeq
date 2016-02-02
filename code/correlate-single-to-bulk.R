@@ -109,6 +109,11 @@ main <- function(num_cells, seed, single_fname, bulk_fname, individual = NULL,
   assert("Same order of genes in bulk and single cells.",
          rownames(bulk_cells) == rownames(single_cells))
 
+  # Do not include ERCC control genes
+  endogenous <- grep("ENSG", rownames(single_cells))
+  single_cells <- single_cells[endogenous, ]
+  bulk_cells <- bulk_cells[endogenous, ]
+
   # For single cells, sum the counts across the single cells and then calculate
   # log2 cpm
   single_cells_sum <- as.data.frame(rowSums(single_cells))
