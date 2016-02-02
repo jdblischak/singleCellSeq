@@ -11,7 +11,7 @@ correlate-single-cell-to-bulk.R [options] [--quantiles=<q>...] <num_cells> <seed
 
 Options:
   -h --help              Show this screen.
-  --individual=<ind>     Only use data from ind, e.g. 19098
+  --individual=<ind>     Only use data from ind, e.g. NA19098
   --good_cells=<file>    A 1-column file with the names of good quality cells to maintain
   --keep_genes=<file>    A 1-column file with the names of genes to maintain
   -q --quantiles=<q>     Calculate the correlation for the genes separated by the provided
@@ -29,41 +29,32 @@ main <- function(num_cells, seed, single_fname, bulk_fname, individual = NULL,
   library("testit")
   id <- "single-to-bulk-correlation"
 
-  # Load single cell data
-  single_cells <- read.table(single_fname, header = TRUE, sep = "\t",
-                             stringsAsFactors = FALSE)
-  # Filter by individual
-  if (!is.null(individual)) {
-    single_cells <- single_cells[single_cells$individual == individual, ]
-  }
-  assert("Single cell data does not contain bulk samples",
-         single_cells$well != "bulk")
-  # Add rownames
-  rownames(single_cells) <- paste(single_cells$individual, single_cells$replicate,
-                                  single_cells$well, sep = ".")
-  # Remove meta-info cols
-  single_cells <- single_cells[, grepl("ENSG", colnames(single_cells)) |
-                                 grepl("ERCC", colnames(single_cells))]
-  # Transpose
-  single_cells <- t(single_cells)
-  # Fix ERCC names
-  rownames(single_cells) <- sub(pattern = "\\.", replacement = "-",
-                                rownames(single_cells))
-  # Filter genes
+  # Load filtering data: good_cells and keep_genes
   if (!is.null(keep_genes)) {
+    assert("File with list of genes to keep exists.",
+           file.exists(keep_genes))
     keep_genes_list <- scan(keep_genes, what = "character", quiet = TRUE)
-    single_cells <- single_cells[rownames(single_cells) %in% keep_genes_list, ]
+  } else {
+    keep_genes_list <- NULL
   }
-  # Keep only good quality cells
   if (!is.null(good_cells)) {
     assert("File with list of good quality cells exists.",
            file.exists(good_cells))
     good_cells_list <- scan(good_cells, what = "character", quiet = TRUE)
-    single_cells <- single_cells[, colnames(single_cells) %in% good_cells_list]
-    assert("There are quality cells to perform the analysis.",
-           ncol(single_cells) > 0)
+  } else {
+    good_cells_list <- NULL
   }
 
+  # Load single cell data
+  single_cells <- read.table(single_fname, header = TRUE, sep = "\t",
+                             stringsAsFactors = FALSE)
+  assert("Single cell data does not contain bulk samples",
+         single_cells$well != "bulk")
+
+  # Filter individuals, cells, and genes. Also transpose to gene-by-sample.
+  single_cells <- prepare_counts(single_cells, individual = individual,
+                                 good_cells_list = good_cells_list,
+                                 keep_genes_list = keep_genes_list)
   # Subsample number of single cells
   if (ncol(single_cells) < num_cells) {
     cat(sprintf("%d\t%d\tNA\tNA\tNA\n", num_cells, seed))
@@ -78,27 +69,11 @@ main <- function(num_cells, seed, single_fname, bulk_fname, individual = NULL,
   # Load bulk cell data
   bulk_cells <- read.table(bulk_fname, header = TRUE, sep = "\t",
                            stringsAsFactors = FALSE)
-  # Filter by individual
-  if (!is.null(individual)) {
-    bulk_cells <- bulk_cells[bulk_cells$individual == individual, ]
-  }
   assert("Bulk data does not contain single cell samples",
          bulk_cells$well == "bulk")
-  # Add rownames
-  rownames(bulk_cells) <- paste(bulk_cells$individual, bulk_cells$replicate,
-                                  bulk_cells$well, sep = ".")
-  # Remove meta-info cols
-  bulk_cells <- bulk_cells[, grepl("ENSG", colnames(bulk_cells)) |
-                             grepl("ERCC", colnames(bulk_cells))]
-  # Transpose
-  bulk_cells <- t(bulk_cells)
-  # Fix ERCC names
-  rownames(bulk_cells) <- sub(pattern = "\\.", replacement = "-",
-                                rownames(bulk_cells))
-  # Filter genes
-  if (!is.null(keep_genes)) {
-    bulk_cells <- bulk_cells[rownames(bulk_cells) %in% keep_genes_list, ]
-  }
+  # Filter individuals and genes. Also transpose to gene-by-sample.
+  bulk_cells <- prepare_counts(bulk_cells, individual = individual,
+                               keep_genes_list = keep_genes_list)
 
 #   bulk_cells[1:10, 1:10]
 #   dim(bulk_cells)
@@ -141,6 +116,45 @@ main <- function(num_cells, seed, single_fname, bulk_fname, individual = NULL,
     single_cells_sum_cpm <- single_cells_sum_cpm[!gene_in_quantile]
     bulk_cells_cpm_mean <- bulk_cells_cpm_mean[!gene_in_quantile]
   }
+}
+
+# Converts a sample-by-gene data frame to a filtered gene-by-sample data frame.
+#
+# x - sample-by-gene data frame
+# individual - character vector of individuals to keep, e.g. NA19098
+# good_cells_list - A character vector with the names of good quality cells to maintain
+# keep_genes_list - A character vector with the names of genes to maintain
+#
+prepare_counts <- function(x, individual = NULL, good_cells_list = NULL,
+                           keep_genes_list = NULL) {
+  library("testit")
+  assert("Input is a data frame", class(x) == "data.frame")
+  assert("Input is not empty", dim(x) > 0)
+  assert("Input has necessary columns",
+         c("individual", "replicate", "well") %in% colnames(x))
+  # Filter by individual
+  if (!is.null(individual)) {
+    x <- x[x$individual == individual, ]
+  }
+  # Add rownames
+  rownames(x) <- paste(x$individual, x$replicate, x$well, sep = ".")
+  # Remove meta-info cols
+  x <- x[, grepl("ENSG", colnames(x)) | grepl("ERCC", colnames(x))]
+  # Transpose
+  x <- t(x)
+  # Fix ERCC names
+  rownames(x) <- sub(pattern = "\\.", replacement = "-", rownames(x))
+  # Filter genes
+  if (!is.null(keep_genes_list)) {
+    x <- x[rownames(x) %in% keep_genes_list, ]
+  }
+  # Keep only good quality cells
+  if (!is.null(good_cells_list)) {
+    x <- x[, colnames(x) %in% good_cells_list]
+    assert("There are quality cells to perform the analysis.",
+           ncol(x) > 0)
+  }
+  return(x)
 }
 
 if (!interactive() & getOption('run.main', default = TRUE)) {
