@@ -10,7 +10,7 @@
 
 <meta name="author" content="Joyce Hsiao" />
 
-<meta name="date" content="2016-01-28" />
+<meta name="date" content="2016-02-02" />
 
 <title>Cell-to-cell variation analysis summary</title>
 
@@ -121,7 +121,7 @@ img {
 <div id="header">
 <h1 class="title">Cell-to-cell variation analysis summary</h1>
 <h4 class="author"><em>Joyce Hsiao</em></h4>
-<h4 class="date"><em>2016-01-28</em></h4>
+<h4 class="date"><em>2016-02-02</em></h4>
 </div>
 
 <div id="TOC">
@@ -153,8 +153,8 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2016-02-02</p>
-<p><strong>Code version:</strong> f0601c014429f2aacc98e28355aff9d597b65963</p>
+<p><strong>Last updated:</strong> 2016-02-04</p>
+<p><strong>Code version:</strong> 6f8d2ea409e938758e55653ca6ec1a6ffb7f3102</p>
 <div id="objective" class="section level2">
 <h2>Objective</h2>
 <p>Analyze cell-to-cell heterogeneity in individual iPSC cell lines and identifies genes with differential cell-cell heterogeneity between individual iPSC cell lines. This document uses the final filtered data (poisson transformation).</p>
@@ -204,28 +204,120 @@ dim(molecules_final)</code></pre>
 <h2>Helper functions</h2>
 <p>*plot_density</p>
 <p>Per gene plot of overlaied density curves computed from individual cell lines.</p>
-<pre class="r"><code>plot_density &lt;- function(molecules_ENSG,
-                         which_gene, labels, gene_symbols) {
+<pre class="r"><code>plot_density_overlay &lt;- function(molecules_ENSG, annotation,
+                         individuals, batches = NULL,
+                         which_gene, labels, 
+                         xlims = NULL, ylims = NULL, gene_symbols) {
+  if_present &lt;- which(rownames(molecules_ENSG) == which_gene)
+  if(length(if_present) == 0) {
+    stop(&quot;Gene not present in the data&quot;)
+  }
+  
   library(scales)
   library(broman)
   crayon &lt;- brocolors(&quot;crayon&quot;)
-  dens &lt;- 
-    lapply(1:3, function(per_individual) {
-       which_individual &lt;- anno_filter$individual == unique(anno_filter$individual)[per_individual]
-       density(unlist( molecules_ENSG[ rownames(molecules_ENSG) == which_gene, which_individual] ) )
-     })
-  xlims &lt;- range(sapply(dens, function(obj) obj$x))
-  ylims &lt;- range(sapply(dens, function(obj) obj$y))
-  plot(dens[[1]], 
-       xlab = &quot;log2 gene expression&quot;, main = &quot;&quot;,
-       ylab = &quot;Density&quot;, axes = F, lwd = 0, xlim = xlims, ylim = ylims)
-  polygon(dens[[1]], col = alpha(crayon[&quot;Sunset Orange&quot;], .4), border = &quot;grey40&quot;)
-  polygon(dens[[2]], col = alpha(crayon[&quot;Tropical Rain Forest&quot;], .6), border = &quot;grey40&quot;)
-  polygon(dens[[3]], col = alpha(crayon[&quot;Denim&quot;], .3), border = &quot;grey40&quot;)
-  axis(1); axis(2)
-  mtext(text = labels, side = 3)
-  title(main = with(gene_symbols, 
-                external_gene_name[which(ensembl_gene_id == which_gene)]) )
+  
+  if (is.null(batches)) {
+    individuals &lt;- unique(annotation$individual)
+    colors &lt;- c(&quot;Sunset Orange&quot;, &quot;Tropical Rain Forest&quot;, &quot;Denim&quot;)
+    dens &lt;- lapply(1:3, function(per_individual) {
+      which_individual &lt;- annotation$individual == individuals[per_individual]
+      density(unlist( molecules_ENSG[ rownames(molecules_ENSG) == which_gene, 
+                                      which_individual] ) )
+    })
+
+    if (is.null(xlims)) xlims &lt;- range(sapply(dens, function(obj) obj$x))
+    if (is.null(ylims)) ylims &lt;- range(sapply(dens, function(obj) obj$y))
+    
+    plot(dens[[1]], 
+         xlab = &quot;log2 gene expression&quot;, main = &quot;&quot;,
+         ylab = &quot;Density&quot;, axes = F, lwd = 0, xlim = xlims, ylim = ylims)
+    for (i in 1:length(individuals)) {
+      polygon(dens[[i]], 
+              col = alpha(crayon[colors[i]], .4), 
+              border = &quot;grey40&quot;)
+    }
+    axis(1); axis(2)
+    mtext(text = labels, side = 3)
+    title(main = with(gene_symbols, 
+                      external_gene_name[which(ensembl_gene_id == which_gene)]) )
+  }
+  
+  if (!is.null(batches)) {
+    
+    individuals &lt;- unique(annotation$individual)
+    dens &lt;- lapply(1:length(individuals), function(per_individual) {
+      which_individual &lt;- annotation$individual == individuals[per_individual]
+      annotation_sub &lt;- annotation[which_individual, ]
+      molecules_sub &lt;- molecules_ENSG[ , which_individual]
+      replicates &lt;- unique(annotation_sub$replicate)
+      dens_batch &lt;- lapply(1:length(replicates), function(per_replicate) {
+        which_replicate &lt;- annotation_sub$replicate == replicates[per_replicate]
+        density(unlist( molecules_sub[ rownames(molecules_ENSG) == which_gene, 
+                                       which_replicate] ) )
+      })
+    })
+    
+    if (is.null(xlims)) {
+      xlims &lt;- range( c( sapply(dens, function(obj_individual) {
+        c( sapply(obj_individual, function(obj) {
+          range(obj$x)
+        }) )
+      }) ) )
+    }
+    if (is.null(ylims)) {
+      ylims &lt;- range( c( sapply(dens, function(obj_individual) {
+        c( sapply(obj_individual, function(obj) {
+          range(obj$y)
+        }) )
+      }) ) )
+    }
+    
+    colors &lt;- c(&quot;Sunset Orange&quot;, &quot;Tropical Rain Forest&quot;, &quot;Denim&quot;)
+    for (i in 1:length(dens)) {
+      
+      if (i == 1) col &lt;- crayon[&quot;Sunset Orange&quot;]
+      if (i == 2) col &lt;- crayon[&quot;Tropical Rain Forest&quot;]
+      if (i == 3) col &lt;- crayon[&quot;Denim&quot;]
+ 
+      plot(dens[[i]][[1]], 
+           xlab = &quot;log2 gene expression&quot;, main = &quot;&quot;,
+           ylab = &quot;Density&quot;, axes = F, lwd = 0, xlim = xlims, ylim = ylims)
+      for (j in 1:length(dens[[i]])) {
+        polygon(dens[[i]][[j]], 
+                col = alpha(col, .4), 
+                border = &quot;grey40&quot;)
+      }
+    }
+      # first individual
+#       plot(dens[[1]][[1]], 
+#            xlab = &quot;log2 gene expression&quot;, main = &quot;&quot;,
+#            ylab = &quot;Density&quot;, axes = F, lwd = 0, xlim = xlims, ylim = ylims)
+#       for (j in 1:length(dens[[1]]) ) {
+#         polygon(dens[[1]][[j]], col = alpha(crayon[colors[1]], .4), 
+#                 border = &quot;grey40&quot;) }
+#       # second individuadl
+#       plot(dens[[2]][[1]], 
+#            xlab = &quot;log2 gene expression&quot;, main = &quot;&quot;,
+#            ylab = &quot;Density&quot;, axes = F, lwd = 0, xlim = xlims, ylim = ylims)
+#       for (j in 1:length(dens[[2]]) ) {
+#         polygon(dens[[2]][[j]], col = alpha(crayon[colors[2]], .4), 
+#                 border = &quot;grey40&quot;) }
+#       # third individual
+#       plot(dens[[3]][[1]], 
+#            xlab = &quot;log2 gene expression&quot;, main = &quot;&quot;,
+#            ylab = &quot;Density&quot;, axes = F, lwd = 0, xlim = xlims, ylim = ylims)
+#       for (j in 1:length(dens[[3]]) ) {
+#         polygon(dens[[3]][[j]], col = alpha(crayon[colors[3]], .4), 
+#                 border = &quot;grey40&quot;) }
+#       
+      
+        
+    axis(1); axis(2)
+    mtext(text = labels, side = 3)
+    title(main = with(gene_symbols, 
+                      external_gene_name[which(ensembl_gene_id == which_gene)]) )
+  }
 }</code></pre>
 </div>
 <div id="cv-mean-plots" class="section level2">
@@ -673,14 +765,14 @@ mad &lt;- rowMedians( abs( dm_matrix - rowMedians(dm_matrix) ) )</code></pre>
 <p><img src="figure/cv-adjusted-summary-pois.Rmd/unnamed-chunk-10-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <p>Export data to rda format and then transport them to midway for permutation-based test.</p>
 <p><em>[Chunk not evaluted]</em></p>
-<pre class="r"><code>if (!file.exists(&quot;rda/cv-adjusted-statistical-test-permute/adj-cv.rda&quot;)) {
-  save(mad, file = &quot;rda/cv-adjusted-statistical-test-permute/adj-cv.rda&quot;)
+<pre class="r"><code>if (!file.exists(&quot;rda/cv-adjusted-summary-pois/adj-cv.rda&quot;)) {
+  save(mad, file = &quot;rda/cv-adjusted-summary-pois/adj-cv.rda&quot;)
 }
 
 
-if (!file.exists(&quot;rda/cv-adjusted-statistical-test-permute/permute-cv-test.rda&quot;)) {
+if (!file.exists(&quot;rda/cv-adjusted-summary-pois/permute-cv-test.rda&quot;)) {
   save(molecules_final, anno_filter,
-       file = &quot;rda/cv-adjusted-statistical-test-permute/permute-cv-test.rda&quot;)
+       file = &quot;rda/cv-adjusted-summary-pois/permute-cv-test.rda&quot;)
 }</code></pre>
 </div>
 <div id="permutation-based-test" class="section level3">
@@ -714,18 +806,20 @@ sum(permuted_pval$mad_pval == 0)</code></pre>
   mad_value = mad[ which(permuted_pval$mad_pval ==0) ])
 genes_sig_mad$gene_names &lt;-
   gene_symbols$external_gene_name[match(genes_sig_mad$ensg, gene_symbols$ensembl_gene_id)]
+genes_sig_mad$is_cell_cycle &lt;- genes_sig_mad$ensg %in% unlist(cell_cycle_genes)
+genes_sig_mad$is_pluripotent &lt;- genes_sig_mad$ensg %in% unlist(pluripotency_genes)
 
 
 genes_sig_mad &lt;- genes_sig_mad[order(genes_sig_mad$mad_value, 
                                      decreasing = TRUE), ]
 head(genes_sig_mad)</code></pre>
-<pre><code>               ensg mad_value gene_names
-182 ENSG00000053438 0.9604387       NNAT
-127 ENSG00000141449 0.9591805     GREB1L
-234 ENSG00000106153 0.5734047     CHCHD2
-157 ENSG00000198046 0.5457927     ZNF667
-187 ENSG00000184674 0.4592946      GSTT1
-210 ENSG00000164241 0.4389843    C5orf63</code></pre>
+<pre><code>               ensg mad_value gene_names is_cell_cycle is_pluripotent
+182 ENSG00000053438 0.9604387       NNAT         FALSE          FALSE
+127 ENSG00000141449 0.9591805     GREB1L         FALSE          FALSE
+234 ENSG00000106153 0.5734047     CHCHD2         FALSE          FALSE
+157 ENSG00000198046 0.5457927     ZNF667         FALSE          FALSE
+187 ENSG00000184674 0.4592946      GSTT1         FALSE          FALSE
+210 ENSG00000164241 0.4389843    C5orf63         FALSE          FALSE</code></pre>
 <pre class="r"><code>if (!file.exists(&quot;../data/sig-permute-gene.txt&quot;)) {
 write.table(genes_sig_mad,
             file = &quot;../data/sig-permute-gene.txt&quot;,
@@ -754,7 +848,7 @@ write.table(genes_sig_mad[,c(1,2)],
         height = 12, width = 8)
     par(mfrow = c(5,4), cex = .7)
     for(i in 1:dim(genes_sig_mad)[1]) {
-      plot_density(molecules_ENSG = molecules_final,
+      plot_density_overlay(molecules_ENSG = molecules_final,
                    genes_sig_mad$ensg[i], 
                    labels = round(genes_sig_mad$mad[i], 6),
                    gene_symbols = gene_symbols)
@@ -858,6 +952,7 @@ go_heatmap &lt;- plotHeatmap(go_data,
 <p><img src="../analysis/figure/cv-adjusted-summary-pois.Rmd/figure6.png" alt="Figure6." /></p>
 <p>Legend:</p>
 <p>Code for reproducing Figure 6 a-b</p>
+<p><em>[Chunk not evaluted]</em></p>
 <pre class="r"><code>## Venn diagrams
 genes &lt;- rownames(ENSG_cv[[1]])
 library(gplots)
@@ -874,31 +969,72 @@ venn_cv_rank &lt;- gplots::venn(
        NA19239 = genes[ which( rank(ENSG_cv_adj$NA19239$log10cv2_adj) 
                                &gt; length(genes) - 1000 ) ] ))</code></pre>
 <p>Code for reproducing Figure 6c-f</p>
-<pre class="r"><code>par(mfrow = c(1,4))
-## Density plots
-gene_example_list &lt;- c(&quot;NNAT&quot;, &quot;NLRP2&quot;, &quot;FAT3&quot;, &quot;SPG20&quot;)
-gene_example_density_plots &lt;- 
-  gene_symbols[which(gene_symbols$external_gene_name %in% gene_example_list), c(1,3)]
-plot_density(molecules_ENSG = molecules_final,
-             gene_example_density_plots[ 2, 1], 
-  #                   labels = round(genes_plot$dist[i], 6),
-             labels = &quot;&quot;,
+<pre class="r"><code>NANOG and ZFP42: pluripotent genes, we found no significant individual difference in the Deviation-from-the-Median (DM) for these two genes. We also examined the density plots of 
+the other genes. See [here][link1].
+
+[link1]: http://jdblischak.github.io/singleCellSeq/analysis/compare-distribution-pluripotency.html
+
+I also picked two genes with significant individual differences.
+
+*[Chunk not evaluted]*</code></pre>
+<pre class="r"><code>query_genes &lt;- c(&quot;NANOG&quot;, &quot;ZFP42&quot;, &quot;NLRP2&quot;, &quot;FAT3&quot;)
+query_genes_ensg &lt;- gene_symbols[which(gene_symbols$external_gene_name %in% query_genes), ]
+query_genes_ensg &lt;- query_genes_ensg[c(2,4,1,3), ]
+
+par(mfrow = c(1,4))
+for (i in 1:nrow(query_genes_ensg)) {
+  plot_density_overlay(molecules_ENSG = molecules_final,
+               annotation = anno_filter,
+               which_gene = query_genes_ensg$ensembl_gene_id[i], 
+    #                   labels = round(genes_plot$dist[i], 6),
+               labels = &quot;&quot;,
+               xlims = c(1,14), ylims = NULL,
+               gene_symbols = gene_symbols)
+}</code></pre>
+<p>Supplemental figure XX0.</p>
+<p>Legend:</p>
+<pre class="r"><code>pluri_pvals &lt;- data.frame(pvals = permuted_pval,
+                          ENSG = rownames(molecules_final))
+pluri_pvals &lt;- pluri_pvals[which(rownames(molecules_final) %in% 
+                                   pluripotency_genes), ]
+pluri_symbols &lt;- gene_symbols[which(gene_symbols$ensembl_gene_id %in% pluri_pvals$ENSG) , 
+                              c(1,3)]
+pluri_results &lt;- merge(pluri_pvals, pluri_symbols,
+                       by.x = c(&quot;ENSG&quot;), by.y = &quot;ensembl_gene_id&quot;) 
+pluri_results &lt;- pluri_results[order(pluri_results$mad_pval), ]
+pluri_results</code></pre>
+<pre><code>              ENSG    mad_pval external_gene_name
+1  ENSG00000088305 0.000000000             DNMT3B
+9  ENSG00000163530 0.001640420              DPPA2
+11 ENSG00000179059 0.001722441              ZFP42
+14 ENSG00000187140 0.004019029              FOXD3
+16 ENSG00000204531 0.014107612             POU5F1
+7  ENSG00000136997 0.020505249                MYC
+8  ENSG00000148200 0.026738845              NR6A1
+2  ENSG00000101115 0.035843176              SALL4
+12 ENSG00000181449 0.053887795               SOX2
+4  ENSG00000121570 0.054790026              DPPA4
+15 ENSG00000203909 0.166830709              DPPA5
+10 ENSG00000164362 0.229002625               TERT
+6  ENSG00000128567 0.250656168              PODXL
+5  ENSG00000124762 0.621555118             CDKN1A
+3  ENSG00000111704 0.664452100              NANOG
+13 ENSG00000184344 0.988763123               GDF3</code></pre>
+<pre class="r"><code>for (i in 1:nrow(pluri_results)) {
+    par(mfrow = c(1,3))
+    for (which_individual in unique(anno_filter$individual)) {
+        plot_density_overlay(
+             molecules_ENSG = molecules_final[ , anno_filter$individual == which_individual],
+             annotation = anno_filter[anno_filter$individual == which_individual, ],
+             individuals = anno_filter$individual,
+             batches = anno_filter$sample_id,
+             which_gene = pluri_results$ENSG[i],
+             labels = which_individual,
+             xlims = c(2,14),
              gene_symbols = gene_symbols)
-plot_density(molecules_ENSG = molecules_final,
-             gene_example_density_plots[ 3, 1], 
-#                   labels = round(genes_plot$dist[i], 6),
-             labels = &quot;&quot;,
-             gene_symbols = gene_symbols)
-plot_density(molecules_ENSG = molecules_final,
-             gene_example_density_plots[ 4, 1], 
-#                   labels = round(genes_plot$dist[i], 6),
-             labels = &quot;&quot;,
-             gene_symbols = gene_symbols)
-plot_density(molecules_ENSG = molecules_final,
-             gene_example_density_plots[ 1, 1], 
-#                   labels = round(genes_plot$dist[i], 6),
-             labels = &quot;&quot;,
-             gene_symbols = gene_symbols)</code></pre>
+    }
+}</code></pre>
+<p><img src="figure/cv-adjusted-summary-pois.Rmd/pluripotent-density-replicates-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/cv-adjusted-summary-pois.Rmd/pluripotent-density-replicates-2.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/cv-adjusted-summary-pois.Rmd/pluripotent-density-replicates-3.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/cv-adjusted-summary-pois.Rmd/pluripotent-density-replicates-4.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/cv-adjusted-summary-pois.Rmd/pluripotent-density-replicates-5.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/cv-adjusted-summary-pois.Rmd/pluripotent-density-replicates-6.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/cv-adjusted-summary-pois.Rmd/pluripotent-density-replicates-7.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/cv-adjusted-summary-pois.Rmd/pluripotent-density-replicates-8.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/cv-adjusted-summary-pois.Rmd/pluripotent-density-replicates-9.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/cv-adjusted-summary-pois.Rmd/pluripotent-density-replicates-10.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/cv-adjusted-summary-pois.Rmd/pluripotent-density-replicates-11.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/cv-adjusted-summary-pois.Rmd/pluripotent-density-replicates-12.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/cv-adjusted-summary-pois.Rmd/pluripotent-density-replicates-13.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/cv-adjusted-summary-pois.Rmd/pluripotent-density-replicates-14.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/cv-adjusted-summary-pois.Rmd/pluripotent-density-replicates-15.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/cv-adjusted-summary-pois.Rmd/pluripotent-density-replicates-16.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <p>Supplemental figure XX1.</p>
 <p>Legend: Coefficients of variation plotted against average molecule counts across cells of each individual cell line. Grey dots represent endogeneous genes, and blue dots indicate ERCC spike-in control genes. Red curve depicts the expected coefficients of variation assuming the endogeneous genes follow a poisson distribution. Likewise, blue curve depicts the expected CVs of the ERCC spike-in control genes. Yellow curve predicts the expected CVs assuming standard deviation is 3 times the ERCC spike-in genes.</p>
 <pre class="r"><code>theme_set(theme_bw(base_size = 12))
@@ -1015,11 +1151,12 @@ attached base packages:
 [8] base     
 
 other attached packages:
- [1] mgcv_1.8-6         nlme_3.1-120       gplots_2.17.0     
- [4] zoo_1.7-12         matrixStats_0.14.0 MASS_7.3-40       
- [7] cowplot_0.3.1      Humanzee_0.1.0     ggplot2_1.0.1     
-[10] edgeR_3.10.2       limma_3.24.9       dplyr_0.4.2       
-[13] data.table_1.9.4   knitr_1.10.5      
+ [1] mgcv_1.8-6         nlme_3.1-120       broman_0.59-5     
+ [4] scales_0.2.4       gplots_2.17.0      zoo_1.7-12        
+ [7] matrixStats_0.14.0 MASS_7.3-40        cowplot_0.3.1     
+[10] Humanzee_0.1.0     ggplot2_1.0.1      edgeR_3.10.2      
+[13] limma_3.24.9       dplyr_0.4.2        data.table_1.9.4  
+[16] knitr_1.10.5      
 
 loaded via a namespace (and not attached):
  [1] Rcpp_0.12.0        formatR_1.2        plyr_1.8.3        
@@ -1029,10 +1166,10 @@ loaded via a namespace (and not attached):
 [13] parallel_3.2.0     proto_0.3-10       httr_0.6.1        
 [16] stringr_1.0.0      caTools_1.17.1     gtools_3.5.0      
 [19] R6_2.1.1           rmarkdown_0.6.1    gdata_2.16.1      
-[22] reshape2_1.4.1     magrittr_1.5       scales_0.2.4      
-[25] htmltools_0.2.6    assertthat_0.1     colorspace_1.2-6  
-[28] labeling_0.3       KernSmooth_2.23-14 stringi_0.4-1     
-[31] RCurl_1.95-4.6     munsell_0.4.2      chron_2.3-45      </code></pre>
+[22] reshape2_1.4.1     magrittr_1.5       htmltools_0.2.6   
+[25] assertthat_0.1     colorspace_1.2-6   labeling_0.3      
+[28] KernSmooth_2.23-14 stringi_0.4-1      RCurl_1.95-4.6    
+[31] munsell_0.4.2      chron_2.3-45      </code></pre>
 </div>
 
 

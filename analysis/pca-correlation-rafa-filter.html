@@ -130,14 +130,14 @@ img {
 <li><a href="#prepare-single-cell-molecule-data">Prepare single cell molecule data</a></li>
 <li><a href="#molecule-count-data">Molecule count data</a></li>
 <li><a href="#molecule-count-data-after-filtering">Molecule count data after filtering</a></li>
-<li><a href="#molecule-count-data-final">Molecule count data final</a></li>
+<li><a href="#the-effect-of-pseudocount">The effect of pseudocount</a></li>
 <li><a href="#summary-plots">Summary plots</a></li>
 <li><a href="#session-information">Session information</a></li>
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2016-02-02</p>
-<p><strong>Code version:</strong> f0601c014429f2aacc98e28355aff9d597b65963</p>
+<p><strong>Last updated:</strong> 2016-02-04</p>
+<p><strong>Code version:</strong> 6f8d2ea409e938758e55653ca6ec1a6ffb7f3102</p>
 <p>The purpose is to see if removing the lowly expressed genes or using the final data (after correction of batch effect) would have any effect on the correltaion of PC1 and proportion of gene detected.</p>
 <div id="setup" class="section level2">
 <h2>Setup</h2>
@@ -214,7 +214,7 @@ genes_detected_plot &lt;- ggplot(molecules_prop_genes_detected,
                        title = &quot;Proportion of detected genes&quot;) +
                        theme(axis.text.x = element_text(hjust=1, angle = 45))</code></pre>
 <p>Principal component analysis on cpm log2 transformed values. We avoid log of 0’s by add 1’s. In addition, our PCA analysis requires that every gene needs to be present in at least one of the cells.</p>
-<pre class="r"><code>molecules_single_log2_pca &lt;- run_pca( cpm( molecules_single + 1 ) )
+<pre class="r"><code>molecules_single_log2_pca &lt;- run_pca( cpm( molecules_single + 1) )
 
 pc1_plot &lt;- qplot(y = molecules_single_log2_pca$PCs[,1],
       x = molecules_prop_genes_detected$prop,
@@ -267,7 +267,7 @@ genes_detected_filter_plot &lt;- ggplot(molecules_prop_genes_detected_filter,
                               y = &quot;Proportion of detected genes&quot;,
                               title = &quot;Proportion of detected genes (filtered)&quot;) +
                               theme(axis.text.x = element_text(hjust=1, angle = 45))</code></pre>
-<pre class="r"><code>molecules_filter_log2_pca &lt;- run_pca( cpm( molecules_filter + 1 ) )
+<pre class="r"><code>molecules_filter_log2_pca &lt;- run_pca( cpm( molecules_filter + 1) )
 
 pc1_filter_plot &lt;- qplot(y = molecules_filter_log2_pca$PCs[,1],
       x = molecules_prop_genes_detected_filter$prop,
@@ -280,7 +280,7 @@ pc1_filter_plot &lt;- qplot(y = molecules_filter_log2_pca$PCs[,1],
 pc1_filter_plot</code></pre>
 <p><img src="figure/pca-correlation-rafa-filter.Rmd/pca-filter-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>qplot(y = molecules_filter_log2_pca$PCs[,2],
-      x = molecules_prop_genes_detected$prop,
+      x = molecules_prop_genes_detected_filter$prop,
       shape = as.factor(anno_filter$replicate),
       colour = as.factor(anno_filter$individual),
       xlab = &quot;Proportion of genes detected (filter)&quot;,
@@ -293,27 +293,55 @@ dim(molecule_genes_all_filter)</code></pre>
 <pre class="r"><code>molecules_gene_all_filter_pca &lt;- run_pca( cpm(molecule_genes_all_filter) )
 
 pc1_plot_all_filter &lt;- qplot(y = molecules_gene_all_filter_pca$PCs[,1],
-      x = molecules_prop_genes_detected$prop,
+      x = molecules_prop_genes_detected_filter$prop,
       shape = as.factor(anno_filter$replicate),
       colour = as.factor(anno_filter$individual),
       xlab = &quot;Proportion of genes detected&quot;,
       ylab = &quot;PC1&quot;,
       title = &quot;Proportion of genes detected (filter)&quot;) </code></pre>
 </div>
-<div id="molecule-count-data-final" class="section level2">
-<h2>Molecule count data final</h2>
-<pre class="r"><code>molecules_final_pca &lt;- run_pca( log2(molecules_final + 1))
+<div id="the-effect-of-pseudocount" class="section level2">
+<h2>The effect of pseudocount</h2>
+<pre class="r"><code>molecules_single_pca_0.25 &lt;- run_pca( cpm( molecules_single) )
+molecules_single_pca_0.26 &lt;- run_pca( cpm( molecules_single + 0.01) )
+molecules_single_pca_0.75 &lt;- run_pca( cpm( molecules_single + 0.5) )
+molecules_single_pca_1.25 &lt;- run_pca( cpm( molecules_single + 1) )
 
-pc1_final_plot &lt;- qplot(y = molecules_final_pca$PCs[,1],
-      x = molecules_prop_genes_detected_filter$prop,
+pc1_0.25 &lt;- qplot(y = molecules_single_pca_0.25$PCs[,1],
+      x = molecules_prop_genes_detected$prop,
       shape = as.factor(anno_filter$replicate),
       colour = as.factor(anno_filter$individual),
-      xlab = &quot;Proportion of genes detected (final)&quot;,
-      ylab = &quot;PC1&quot;,
-      title = &quot;Proportion of genes detected (final)&quot;) 
+      xlab = &quot;Proportion of genes detected&quot;,
+      ylab = &quot;PC1 Pseudocount (0.25)&quot;)
 
-pc1_final_plot</code></pre>
-<p><img src="figure/pca-correlation-rafa-filter.Rmd/pca-final-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+pc1_0.26 &lt;- qplot(y = molecules_single_pca_0.26$PCs[,1],
+      x = molecules_prop_genes_detected$prop,
+      shape = as.factor(anno_filter$replicate),
+      colour = as.factor(anno_filter$individual),
+      xlab = &quot;Proportion of genes detected&quot;,
+      ylab = &quot;PC1 Pseudocount (0.26)&quot;)
+
+pc1_0.75 &lt;- qplot(y = molecules_single_pca_0.75$PCs[,1],
+      x = molecules_prop_genes_detected$prop,
+      shape = as.factor(anno_filter$replicate),
+      colour = as.factor(anno_filter$individual),
+      xlab = &quot;Proportion of genes detected&quot;,
+      ylab = &quot;PC1 Pseudocount (0.75)&quot;)
+
+pc1_1.25 &lt;- qplot(y = molecules_single_pca_1.25$PCs[,1],
+      x = molecules_prop_genes_detected$prop,
+      shape = as.factor(anno_filter$replicate),
+      colour = as.factor(anno_filter$individual),
+      xlab = &quot;Proportion of genes detected&quot;,
+      ylab = &quot;PC1 Pseudocount (1.25)&quot;)
+
+plot_grid(pc1_0.25 + theme(legend.position = &quot;none&quot;),
+          pc1_0.26 + theme(legend.position = &quot;none&quot;),
+          pc1_0.75 + theme(legend.position = &quot;none&quot;),
+          pc1_1.25 + theme(legend.position = &quot;none&quot;),
+          nrow = 2,
+          labels = LETTERS[1:4])</code></pre>
+<p><img src="figure/pca-correlation-rafa-filter.Rmd/pseudocount-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
 </div>
 <div id="summary-plots" class="section level2">
 <h2>Summary plots</h2>
@@ -322,8 +350,7 @@ plot_grid(genes_detected_plot + theme(legend.position = &quot;none&quot;),
           genes_detected_filter_plot + theme(legend.position = &quot;none&quot;),
           pc1_plot + theme(legend.position = c(.87,.35)) + labs(col = &quot;Individual&quot;, shape = &quot;Replicate&quot;),
           pc1_filter_plot + theme(legend.position = &quot;none&quot;),
-          pc1_final_plot + theme(legend.position = &quot;none&quot;),
-          labels = LETTERS[1:5],
+          labels = LETTERS[1:4],
           ncol = 2)</code></pre>
 <p><img src="figure/pca-correlation-rafa-filter.Rmd/sum-plots-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>plot_grid(pc1_plot_all + theme(legend.position = &quot;none&quot;),
