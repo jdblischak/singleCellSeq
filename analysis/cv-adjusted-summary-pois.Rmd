@@ -1,7 +1,7 @@
 ---
 title: "Cell-to-cell variation analysis summary"
 author: "Joyce Hsiao"
-date: 2016-01-28  
+date: 2016-02-02  
 ---
 
 **Last updated:** `r Sys.Date()`
@@ -87,28 +87,120 @@ gene_symbols <- read.table(file = "../data/gene-info.txt", sep = "\t",
 Per gene plot of overlaied density curves computed from individual cell lines.
 
 ```{r overlapping-density-function}
-plot_density <- function(molecules_ENSG,
-                         which_gene, labels, gene_symbols) {
+plot_density_overlay <- function(molecules_ENSG, annotation,
+                         individuals, batches = NULL,
+                         which_gene, labels, 
+                         xlims = NULL, ylims = NULL, gene_symbols) {
+  if_present <- which(rownames(molecules_ENSG) == which_gene)
+  if(length(if_present) == 0) {
+    stop("Gene not present in the data")
+  }
+  
   library(scales)
   library(broman)
   crayon <- brocolors("crayon")
-  dens <- 
-    lapply(1:3, function(per_individual) {
-       which_individual <- anno_filter$individual == unique(anno_filter$individual)[per_individual]
-       density(unlist( molecules_ENSG[ rownames(molecules_ENSG) == which_gene, which_individual] ) )
-     })
-  xlims <- range(sapply(dens, function(obj) obj$x))
-  ylims <- range(sapply(dens, function(obj) obj$y))
-  plot(dens[[1]], 
-       xlab = "log2 gene expression", main = "",
-       ylab = "Density", axes = F, lwd = 0, xlim = xlims, ylim = ylims)
-  polygon(dens[[1]], col = alpha(crayon["Sunset Orange"], .4), border = "grey40")
-  polygon(dens[[2]], col = alpha(crayon["Tropical Rain Forest"], .6), border = "grey40")
-  polygon(dens[[3]], col = alpha(crayon["Denim"], .3), border = "grey40")
-  axis(1); axis(2)
-  mtext(text = labels, side = 3)
-  title(main = with(gene_symbols, 
-                external_gene_name[which(ensembl_gene_id == which_gene)]) )
+  
+  if (is.null(batches)) {
+    individuals <- unique(annotation$individual)
+    colors <- c("Sunset Orange", "Tropical Rain Forest", "Denim")
+    dens <- lapply(1:3, function(per_individual) {
+      which_individual <- annotation$individual == individuals[per_individual]
+      density(unlist( molecules_ENSG[ rownames(molecules_ENSG) == which_gene, 
+                                      which_individual] ) )
+    })
+
+    if (is.null(xlims)) xlims <- range(sapply(dens, function(obj) obj$x))
+    if (is.null(ylims)) ylims <- range(sapply(dens, function(obj) obj$y))
+    
+    plot(dens[[1]], 
+         xlab = "log2 gene expression", main = "",
+         ylab = "Density", axes = F, lwd = 0, xlim = xlims, ylim = ylims)
+    for (i in 1:length(individuals)) {
+      polygon(dens[[i]], 
+              col = alpha(crayon[colors[i]], .4), 
+              border = "grey40")
+    }
+    axis(1); axis(2)
+    mtext(text = labels, side = 3)
+    title(main = with(gene_symbols, 
+                      external_gene_name[which(ensembl_gene_id == which_gene)]) )
+  }
+  
+  if (!is.null(batches)) {
+    
+    individuals <- unique(annotation$individual)
+    dens <- lapply(1:length(individuals), function(per_individual) {
+      which_individual <- annotation$individual == individuals[per_individual]
+      annotation_sub <- annotation[which_individual, ]
+      molecules_sub <- molecules_ENSG[ , which_individual]
+      replicates <- unique(annotation_sub$replicate)
+      dens_batch <- lapply(1:length(replicates), function(per_replicate) {
+        which_replicate <- annotation_sub$replicate == replicates[per_replicate]
+        density(unlist( molecules_sub[ rownames(molecules_ENSG) == which_gene, 
+                                       which_replicate] ) )
+      })
+    })
+    
+    if (is.null(xlims)) {
+      xlims <- range( c( sapply(dens, function(obj_individual) {
+        c( sapply(obj_individual, function(obj) {
+          range(obj$x)
+        }) )
+      }) ) )
+    }
+    if (is.null(ylims)) {
+      ylims <- range( c( sapply(dens, function(obj_individual) {
+        c( sapply(obj_individual, function(obj) {
+          range(obj$y)
+        }) )
+      }) ) )
+    }
+    
+    colors <- c("Sunset Orange", "Tropical Rain Forest", "Denim")
+    for (i in 1:length(dens)) {
+      
+      if (i == 1) col <- crayon["Sunset Orange"]
+      if (i == 2) col <- crayon["Tropical Rain Forest"]
+      if (i == 3) col <- crayon["Denim"]
+ 
+      plot(dens[[i]][[1]], 
+           xlab = "log2 gene expression", main = "",
+           ylab = "Density", axes = F, lwd = 0, xlim = xlims, ylim = ylims)
+      for (j in 1:length(dens[[i]])) {
+        polygon(dens[[i]][[j]], 
+                col = alpha(col, .4), 
+                border = "grey40")
+      }
+    }
+      # first individual
+#       plot(dens[[1]][[1]], 
+#            xlab = "log2 gene expression", main = "",
+#            ylab = "Density", axes = F, lwd = 0, xlim = xlims, ylim = ylims)
+#       for (j in 1:length(dens[[1]]) ) {
+#         polygon(dens[[1]][[j]], col = alpha(crayon[colors[1]], .4), 
+#                 border = "grey40") }
+#       # second individuadl
+#       plot(dens[[2]][[1]], 
+#            xlab = "log2 gene expression", main = "",
+#            ylab = "Density", axes = F, lwd = 0, xlim = xlims, ylim = ylims)
+#       for (j in 1:length(dens[[2]]) ) {
+#         polygon(dens[[2]][[j]], col = alpha(crayon[colors[2]], .4), 
+#                 border = "grey40") }
+#       # third individual
+#       plot(dens[[3]][[1]], 
+#            xlab = "log2 gene expression", main = "",
+#            ylab = "Density", axes = F, lwd = 0, xlim = xlims, ylim = ylims)
+#       for (j in 1:length(dens[[3]]) ) {
+#         polygon(dens[[3]][[j]], col = alpha(crayon[colors[3]], .4), 
+#                 border = "grey40") }
+#       
+      
+        
+    axis(1); axis(2)
+    mtext(text = labels, side = 3)
+    title(main = with(gene_symbols, 
+                      external_gene_name[which(ensembl_gene_id == which_gene)]) )
+  }
 }
 ```
 
@@ -627,14 +719,14 @@ test.
 
 *[Chunk not evaluted]*
 ```{r output-rdas-for-computing-permuted-pvals, eval = FALSE}
-if (!file.exists("rda/cv-adjusted-statistical-test-permute/adj-cv.rda")) {
-  save(mad, file = "rda/cv-adjusted-statistical-test-permute/adj-cv.rda")
+if (!file.exists("rda/cv-adjusted-summary-pois/adj-cv.rda")) {
+  save(mad, file = "rda/cv-adjusted-summary-pois/adj-cv.rda")
 }
 
 
-if (!file.exists("rda/cv-adjusted-statistical-test-permute/permute-cv-test.rda")) {
+if (!file.exists("rda/cv-adjusted-summary-pois/permute-cv-test.rda")) {
   save(molecules_final, anno_filter,
-       file = "rda/cv-adjusted-statistical-test-permute/permute-cv-test.rda")
+       file = "rda/cv-adjusted-summary-pois/permute-cv-test.rda")
 }
 ```
 
@@ -693,6 +785,8 @@ genes_sig_mad <- data.frame(
   mad_value = mad[ which(permuted_pval$mad_pval ==0) ])
 genes_sig_mad$gene_names <-
   gene_symbols$external_gene_name[match(genes_sig_mad$ensg, gene_symbols$ensembl_gene_id)]
+genes_sig_mad$is_cell_cycle <- genes_sig_mad$ensg %in% unlist(cell_cycle_genes)
+genes_sig_mad$is_pluripotent <- genes_sig_mad$ensg %in% unlist(pluripotency_genes)
 
 
 genes_sig_mad <- genes_sig_mad[order(genes_sig_mad$mad_value, 
@@ -706,6 +800,7 @@ write.table(genes_sig_mad,
             quote = FALSE)
 }
 ```
+
 
 Select columns from "sig-permute-gene.txt" for GO anlaysis on different platforms. 
 
@@ -739,7 +834,7 @@ if(!file.exists("figure/cv-adjusted-summary-pois.Rmd/density-sig-mad.pdf")) {
         height = 12, width = 8)
     par(mfrow = c(5,4), cex = .7)
     for(i in 1:dim(genes_sig_mad)[1]) {
-      plot_density(molecules_ENSG = molecules_final,
+      plot_density_overlay(molecules_ENSG = molecules_final,
                    genes_sig_mad$ensg[i], 
                    labels = round(genes_sig_mad$mad[i], 6),
                    gene_symbols = gene_symbols)
@@ -866,6 +961,8 @@ Legend:
 
 Code for reproducing Figure 6 a-b
 
+*[Chunk not evaluted]*
+
 ```{r figure6-venn, eval = F}
 ## Venn diagrams
 genes <- rownames(ENSG_cv[[1]])
@@ -886,33 +983,66 @@ venn_cv_rank <- gplots::venn(
 
 Code for reproducing Figure 6c-f
 
-```{r figure6-density, fig.width=12, fig.height=4, eval=F}
+```{r figure6c-density, fig.width=12, fig.height=4, eval=F}
+NANOG and ZFP42: pluripotent genes, we found no significant individual difference in the Deviation-from-the-Median (DM) for these two genes. We also examined the density plots of 
+the other genes. See [here][link1].
+
+[link1]: http://jdblischak.github.io/singleCellSeq/analysis/compare-distribution-pluripotency.html
+
+I also picked two genes with significant individual differences.
+
+*[Chunk not evaluted]*
+```{r figure6-density, fig.width=8, fig.height=4, eval=F}
+query_genes <- c("NANOG", "ZFP42", "NLRP2", "FAT3")
+query_genes_ensg <- gene_symbols[which(gene_symbols$external_gene_name %in% query_genes), ]
+query_genes_ensg <- query_genes_ensg[c(2,4,1,3), ]
+
 par(mfrow = c(1,4))
-## Density plots
-gene_example_list <- c("NNAT", "NLRP2", "FAT3", "SPG20")
-gene_example_density_plots <- 
-  gene_symbols[which(gene_symbols$external_gene_name %in% gene_example_list), c(1,3)]
-plot_density(molecules_ENSG = molecules_final,
-             gene_example_density_plots[ 2, 1], 
-  #                   labels = round(genes_plot$dist[i], 6),
-             labels = "",
-             gene_symbols = gene_symbols)
-plot_density(molecules_ENSG = molecules_final,
-             gene_example_density_plots[ 3, 1], 
-#                   labels = round(genes_plot$dist[i], 6),
-             labels = "",
-             gene_symbols = gene_symbols)
-plot_density(molecules_ENSG = molecules_final,
-             gene_example_density_plots[ 4, 1], 
-#                   labels = round(genes_plot$dist[i], 6),
-             labels = "",
-             gene_symbols = gene_symbols)
-plot_density(molecules_ENSG = molecules_final,
-             gene_example_density_plots[ 1, 1], 
-#                   labels = round(genes_plot$dist[i], 6),
-             labels = "",
-             gene_symbols = gene_symbols)
+for (i in 1:nrow(query_genes_ensg)) {
+  plot_density_overlay(molecules_ENSG = molecules_final,
+               annotation = anno_filter,
+               which_gene = query_genes_ensg$ensembl_gene_id[i], 
+    #                   labels = round(genes_plot$dist[i], 6),
+               labels = "",
+               xlims = c(1,14), ylims = NULL,
+               gene_symbols = gene_symbols)
+}
 ```
+
+Supplemental figure XX0.
+
+
+Legend: 
+
+
+```{r pluripotent-density-replicates, fig.width=8, fig.height=3, eval=T}
+pluri_pvals <- data.frame(pvals = permuted_pval,
+                          ENSG = rownames(molecules_final))
+pluri_pvals <- pluri_pvals[which(rownames(molecules_final) %in% 
+                                   pluripotency_genes), ]
+pluri_symbols <- gene_symbols[which(gene_symbols$ensembl_gene_id %in% pluri_pvals$ENSG) , 
+                              c(1,3)]
+pluri_results <- merge(pluri_pvals, pluri_symbols,
+                       by.x = c("ENSG"), by.y = "ensembl_gene_id") 
+pluri_results <- pluri_results[order(pluri_results$mad_pval), ]
+pluri_results
+
+for (i in 1:nrow(pluri_results)) {
+    par(mfrow = c(1,3))
+    for (which_individual in unique(anno_filter$individual)) {
+        plot_density_overlay(
+             molecules_ENSG = molecules_final[ , anno_filter$individual == which_individual],
+             annotation = anno_filter[anno_filter$individual == which_individual, ],
+             individuals = anno_filter$individual,
+             batches = anno_filter$sample_id,
+             which_gene = pluri_results$ENSG[i],
+             labels = which_individual,
+             xlims = c(2,14),
+             gene_symbols = gene_symbols)
+    }
+}
+```
+
 
 
 Supplemental figure XX1.
