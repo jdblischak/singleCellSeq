@@ -1,15 +1,35 @@
 #!/usr/bin/env python
 
+# This script prepares the information about the raw and processed
+# data files for submission to the Gene Expression Omnibus (GEO). It
+# uses template version 2.1.
 
+# Because this is a one time operation, the variables are hard-coded
+# in the script. It should be run from the data directory, and outputs
+# the results to the subdirectory specified by `outdir`, currently
+# geo/.
+
+import os
 import glob
 import string
 import re
 import hashlib
 
+################################################################################
+# Setup
+################################################################################
+
+# Create output directory
+outdir = "geo/"
+if not os.path.exists(outdir):
+    os.mkdir(outdir)
+
+# Read in names of fastq files
 fastq_all_full = glob.glob("fastq/*fastq.gz")
 fastq_all = [f.split("/")[-1] for f in fastq_all_full]
 fastq_all.sort()
-  
+
+# Prepare meta data about samples
 individual = ["19098", "19101", "19239"]
 replicate = ["1", "2", "3"]
 well = []
@@ -22,7 +42,11 @@ well = well + ["bulk"]
 # Samples
 ################################################################################
 
-samples = open("geo-samples.txt", "w")
+# For this section, each row is a sample. The columns include meta
+# data about the sample and also all the raw and processed data files
+# that correspond to that sample.
+
+samples = open(outdir + "geo-samples.txt", "w")
 
 # Static columns
 source_name = "LCL-derived iPSC"
@@ -60,7 +84,7 @@ for ind in individual:
                 "reads-raw-single-per-lane.txt",
                 "reads-raw-single-per-sample.txt",
                 "molecules-raw-single-per-lane.txt",
-                "molecules-raw-single-per-sample.txt"]))                
+                "molecules-raw-single-per-sample.txt"]))
             # Raw data files
             search_term = ".".join([ind, rep, w])
             fastq = [fname for fname in fastq_all \
@@ -77,12 +101,11 @@ for ind in individual:
                     "Need 3 raw single files, only %d found"%(num_raw_single)
                 samples.write("\t" + "\t".join(fastq + [""] * 5))
 
- 
-            # Update sample counter            
+
+            # Update sample counter
             i +=1
 
             samples.write("\n")
-        
 
 samples.close()
 
@@ -90,7 +113,10 @@ samples.close()
 # Processed data files
 ################################################################################
 
-processed = open("geo-processed-data-files.txt", "w")
+# For this section, each row is a processed data file. The columns are
+# the filename, the file type, and the md5sum.
+
+processed = open(outdir + "geo-processed-data-files.txt", "w")
 
 # static column
 file_type = "tab-delimited text"
@@ -109,7 +135,16 @@ processed.close()
 # Raw files
 ################################################################################
 
-raw = open("geo-raw-files.txt", "w")
+# For this section, each row is a raw data file. The columns are the
+# filename, information about the sequencing, and the
+# md5sum. Calculating the md5sum of so many large fastq files takes a
+# very long time. This was parallized on the cluster and saved in the
+# subdirectory md5sum/.
+
+# https://jdblischak.github.io/singleCellSeq/analysis/verify-md5sum.html#calculate-md5-checksums
+# https://github.com/jdblischak/singleCellSeq/blob/master/code/run-md5sum.sh
+
+raw = open(outdir + "geo-raw-files.txt", "w")
 
 # static columns
 file_type = "fastq"

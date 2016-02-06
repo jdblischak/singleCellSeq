@@ -44,6 +44,11 @@ molecules_filter <- read.table("../data/molecules-filter.txt",
                                header = TRUE,
                                stringsAsFactors = FALSE)
 
+## Read counts of filtered data
+reads_filter <- read.table("../data/reads-filter.txt",
+                               header = TRUE,
+                               stringsAsFactors = FALSE)
+
 ## Molecule counts after all corrections
 molecules_final <- read.table("../data/molecules-final.txt",
                               header = TRUE,
@@ -134,16 +139,30 @@ cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2",
 data_to_plot <- anno_filter
 data_to_plot$cell_phase_before <- cell_phase_before
 data_to_plot$cell_phase_after <- cell_phase_after
+
+## Calculate the total molecule counts using molecule filter data
 data_to_plot$total_molecules_before <- apply(molecules_filter, 2, sum)
-data_to_plot$total_molecules_after <- apply(molecules_final, 2, sum)
+data_to_plot$total_molecules_after <- apply(molecules_filter, 2, sum)
+
+## Calculate the total read counts using read filter data
+data_to_plot$total_reads_before <- apply(reads_filter, 2, sum)
+data_to_plot$total_reads_after <- apply(reads_filter, 2, sum)
 
 data_to_plot$individual <- factor(data_to_plot$individual)
 data_to_plot$replicate <- factor(data_to_plot$replicate)
 
 data_before <- summarise(group_by(data_to_plot, cell_phase_before, individual, replicate),
-          mean_total_molecules = mean(total_molecules_before), cell_number = length(cell_phase_before))
+                         mean_total_molecules = mean(total_molecules_before),
+                         mean_total_reads = mean(total_reads_before),
+                         cell_number = length(cell_phase_before),
+                         sem_total_molecules = sd(total_molecules_before)/sqrt(cell_number),
+                         sem_total_reads = sd(total_reads_before)/sqrt(cell_number))
 data_after <- summarise(group_by(data_to_plot, cell_phase_after, individual, replicate),
-          mean_total_molecules = mean(total_molecules_after), cell_number = length(cell_phase_after))
+                        mean_total_molecules = mean(total_molecules_after), 
+                        mean_total_reads = mean(total_reads_after),
+                        cell_number = length(cell_phase_after),
+                        sem_total_molecules = sd(total_molecules_after)/sqrt(cell_number),
+                        sem_total_reads = sd(total_reads_after)/sqrt(cell_number))
 stopifnot(sum(data_before$cell_number) == sum(data_after$cell_number))
 ```
 
@@ -155,11 +174,26 @@ cycle_plot_before <- ggplot(data_before, aes(x = as.factor(cell_phase_before),
                                              color = replicate,
                                              group = replicate) ) + 
                         geom_point() + geom_line() +
+                        geom_errorbar(aes(ymin = mean_total_molecules - sem_total_molecules,
+                                          ymax = mean_total_molecules + sem_total_molecules), 
+                                          width = 0, col = "grey") +
                         scale_x_discrete(limits=phase_order, labels=c("G1/S","S","G2","G2/M","M/G1")) + 
                         theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + 
-                        xlab("Cell cycle phase") + ylab("Total molecules") +
+                        xlab("Cell cycle phase") + ylab("Total molecule counts (mean +/- sem)") +
                         ggtitle("Before correction")
-cycle_plot_before + facet_grid(~ individual)
+
+cycle_plot_before_reads <- ggplot(data_before, aes(x = as.factor(cell_phase_before), 
+                                             y = mean_total_reads,
+                                             color = replicate,
+                                             group = replicate) ) + 
+                        geom_point() + geom_line() +
+                        geom_errorbar(aes(ymin = mean_total_reads - sem_total_reads,
+                                          ymax = mean_total_reads + sem_total_reads), 
+                                          width = 0, col = "grey") +
+                        scale_x_discrete(limits=phase_order, labels=c("G1/S","S","G2","G2/M","M/G1")) + 
+                        theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + 
+                        xlab("Cell cycle phase") + ylab("Total read counts (mean +/- sem)") +
+                        ggtitle("Before correction")
 
 cell_number_before <- ggplot(data_before, aes(x = as.factor(cell_phase_before), 
                                              y = cell_number,
@@ -170,7 +204,6 @@ cell_number_before <- ggplot(data_before, aes(x = as.factor(cell_phase_before),
                         theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + 
                         xlab("Cell cycle phase") + ylab("Cell number") +
                         ggtitle("Before correction")
-cell_number_before + facet_grid(~ individual)
 ```
 
 
@@ -182,11 +215,26 @@ cycle_plot_after <- ggplot(data_after, aes(x = as.factor(cell_phase_after),
                                              color = replicate,
                                              group = replicate) ) + 
                         geom_point() + geom_line() +
+                        geom_errorbar(aes(ymin = mean_total_molecules - sem_total_molecules,
+                                          ymax = mean_total_molecules + sem_total_molecules), 
+                                          width = 0, col = "grey") +
                         scale_x_discrete(limits=phase_order, labels=c("G1/S","S","G2","G2/M","M/G1")) + 
                         theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + 
-                        xlab("Cell cycle phase") + ylab("Total molecules") +
+                        xlab("Cell cycle phase") + ylab("Total molecule counts (mean +/- sem)") +
                         ggtitle("Post correction")
-cycle_plot_after + facet_grid(~ individual)
+
+cycle_plot_after_reads <- ggplot(data_after, aes(x = as.factor(cell_phase_after), 
+                                             y = mean_total_reads,
+                                             color = replicate,
+                                             group = replicate) ) + 
+                        geom_point() + geom_line() +
+                        geom_errorbar(aes(ymin = mean_total_reads - sem_total_reads,
+                                          ymax = mean_total_reads + sem_total_reads), 
+                                          width = 0, col = "grey") +
+                        scale_x_discrete(limits=phase_order, labels=c("G1/S","S","G2","G2/M","M/G1")) + 
+                        theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + 
+                        xlab("Cell cycle phase") + ylab("Total read counts (mean +/- sem)") +
+                        ggtitle("Post correction")
 
 cell_number_after <- ggplot(data_after, aes(x = as.factor(cell_phase_after), 
                                              y = cell_number,
@@ -197,17 +245,18 @@ cell_number_after <- ggplot(data_after, aes(x = as.factor(cell_phase_after),
                         theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5)) + 
                         xlab("Cell cycle phase") + ylab("Cell number") +
                         ggtitle("Post correction")
-cell_number_after + facet_grid(~ individual)
 ```
 
-```{r plots, fig.width=12, fig.height=8}
+```{r plots, fig.width=12, fig.height=12}
 theme_set(theme_bw(base_size = 12))
 plot_grid(cycle_plot_before + facet_grid(~ individual) + theme(legend.position = c(.25,.3)) + labs (col = ""),
           cycle_plot_after + facet_grid(~ individual) + theme(legend.position = "none"),
+          cycle_plot_before_reads + facet_grid(~ individual) + theme(legend.position = "none"),
+          cycle_plot_after_reads + facet_grid(~ individual) + theme(legend.position = "none"),
           cell_number_before + facet_grid(~ individual) + theme(legend.position = "none"),
           cell_number_after + facet_grid(~ individual) + theme(legend.position = "none"),
-          labels = LETTERS[1:4])
-
+          nrow = 3,
+          labels = LETTERS[1:6])
 ```
 
 
