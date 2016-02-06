@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+<meta name="author" content="Joyce Hsiao" />
+
+<meta name="date" content="2016-02-01" />
+
+<title>Explore distribituions</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Explore distribituions</h1>
+<h4 class="author"><em>Joyce Hsiao</em></h4>
+<h4 class="date"><em>2016-02-01</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#objective">Objective</a></li>
+<li><a href="#set-up">Set up</a></li>
+<li><a href="#prepare-data">Prepare data</a></li>
+<li><a href="#helper-functions">Helper functions</a></li>
+<li><a href="#pluripotency-gene-distributions">Pluripotency gene distributions</a><ul>
+<li><a href="#batch-corrected-log2-molecule-count">Batch-corrected log2 molecule count</a></li>
+</ul></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2016-02-06</p>
+<p><strong>Code version:</strong> 74e1181a9a832b7e95b1d7b4a4b5964cbbba1e00</p>
+<div id="objective" class="section level2">
+<h2>Objective</h2>
+<p>Consider three scenarios for comparing distributions between different individuals</p>
+<ol style="list-style-type: decimal">
+<li><p>Significant individual difference in noise meausre, with one or more individual distributions tightly regulated (one mode).</p></li>
+<li><p>No significant individual difference in noise measure, with all individual distributions tightly regulated.</p></li>
+<li><p>No significant individual differences in noise measure, with none of the individual distributions show a pattern consistent with tight regulation.</p></li>
+</ol>
+</div>
+<div id="set-up" class="section level2">
+<h2>Set up</h2>
+<pre class="r"><code>library(&quot;data.table&quot;)
+library(&quot;dplyr&quot;)
+library(&quot;limma&quot;)
+library(&quot;edgeR&quot;)
+library(&quot;ggplot2&quot;)
+library(&quot;grid&quot;)
+theme_set(theme_bw(base_size = 12))
+source(&quot;functions.R&quot;)
+library(&quot;Humanzee&quot;)
+library(&quot;cowplot&quot;)
+library(&quot;MASS&quot;)
+library(&quot;matrixStats&quot;)</code></pre>
+</div>
+<div id="prepare-data" class="section level2">
+<h2>Prepare data</h2>
+<p>Input annotation of only QC-filtered single cells, with NA19098.r2 removed.</p>
+<pre class="r"><code>anno_filter &lt;- read.table(&quot;../data/annotation-filter.txt&quot;, 
+                      header = TRUE,
+                      stringsAsFactors = FALSE)
+dim(anno_filter)</code></pre>
+<pre><code>[1] 560   5</code></pre>
+<pre class="r"><code>head(anno_filter, 2)</code></pre>
+<pre><code>  individual replicate well      batch      sample_id
+1    NA19098        r1  A01 NA19098.r1 NA19098.r1.A01
+2    NA19098        r1  A02 NA19098.r1 NA19098.r1.A02</code></pre>
+<p>Import molecule counts after filtering and before any correction.</p>
+<pre class="r"><code>molecules_filter &lt;- read.table(&quot;../data/molecules-filter.txt&quot;,
+                               header = TRUE, stringsAsFactors = FALSE)
+stopifnot(NROW(anno_filter) == NCOL(molecules_filter))</code></pre>
+<p>Import final processed molecule counts of endogeneous genes.</p>
+<pre class="r"><code>molecules_final &lt;- read.table(&quot;../data/molecules-final.txt&quot;, 
+                             header = TRUE, stringsAsFactors = FALSE)
+dim(molecules_final)</code></pre>
+<pre><code>[1] 12192   560</code></pre>
+<pre class="r"><code>stopifnot(NROW(anno_filter) == NCOL(molecules_final))</code></pre>
+<p>Import gene symbols.</p>
+<pre class="r"><code>gene_symbols &lt;- read.table(file = &quot;../data/gene-info.txt&quot;, sep = &quot;\t&quot;,
+                           header = TRUE, stringsAsFactors = FALSE, quote = &quot;&quot;)</code></pre>
+<p>Import pluripotent gene list</p>
+<pre class="r"><code>cell_cycle_genes &lt;- read.table(&quot;../data/cellcyclegenes.txt&quot;,
+                               header = TRUE, sep = &quot;\t&quot;,
+                               stringsAsFactors = FALSE)
+
+pluripotency_genes &lt;- read.table(&quot;../data/pluripotency-genes.txt&quot;,
+                               header = TRUE, sep = &quot;\t&quot;,
+                               stringsAsFactors = FALSE)$To</code></pre>
+<p>Import distance meausre</p>
+<pre class="r"><code>load(&quot;../data/adj-cv.rda&quot;)</code></pre>
+<p>Import permuted p-values</p>
+<pre class="r"><code>load(&quot;../data/permuted-pval.rda&quot;)</code></pre>
+</div>
+<div id="helper-functions" class="section level2">
+<h2>Helper functions</h2>
+<p>*plot_density</p>
+<p>Per gene plot of overlaied density curves computed from individual cell lines.</p>
+<pre class="r"><code>plot_density &lt;- function(molecules_ENSG, annotation,
+                         individuals, batches = NULL,
+                         which_gene, labels, 
+                         xlims = NULL, ylims = NULL, gene_symbols) {
+  if_present &lt;- which(rownames(molecules_ENSG) == which_gene)
+  if(length(if_present) == 0) {
+    stop(&quot;Gene not present in the data&quot;)
+  }
+  
+  library(scales)
+  library(broman)
+  crayon &lt;- brocolors(&quot;crayon&quot;)
+  
+  if (is.null(batches)) {
+    individuals &lt;- unique(annotation$individual)
+    colors &lt;- c(&quot;Sunset Orange&quot;, &quot;Tropical Rain Forest&quot;, &quot;Denim&quot;)
+    dens &lt;- lapply(1:3, function(per_individual) {
+      which_individual &lt;- annotation$individual == individuals[per_individual]
+      density(unlist( molecules_ENSG[ rownames(molecules_ENSG) == which_gene, 
+                                      which_individual] ) )
+    })
+
+    if (is.null(xlims)) xlims &lt;- range(sapply(dens, function(obj) obj$x))
+    if (is.null(ylims)) ylims &lt;- range(sapply(dens, function(obj) obj$y))
+    
+    plot(dens[[1]], 
+         xlab = &quot;log2 gene expression&quot;, main = &quot;&quot;,
+         ylab = &quot;Density&quot;, axes = F, lwd = 0, xlim = xlims, ylim = ylims)
+    for (i in 1:length(individuals)) {
+      polygon(dens[[i]], 
+              col = alpha(crayon[colors[i]], .4), 
+              border = &quot;grey40&quot;)
+    }
+    axis(1); axis(2)
+    mtext(text = labels, side = 3)
+    title(main = with(gene_symbols, 
+                      external_gene_name[which(ensembl_gene_id == which_gene)]) )
+  }
+  
+  if (!is.null(batches)) {
+    
+    colors &lt;- c(&quot;Sunset Orange&quot;, &quot;Tropical Rain Forest&quot;, &quot;Denim&quot;)
+    individuals &lt;- unique(annotation$individual)
+    #    colors &lt;- c(&quot;Sunset Orange&quot;, &quot;Tropical Rain Forest&quot;, &quot;Denim&quot;)
+    dens &lt;- lapply(1:length(individuals), function(per_individual) {
+      which_individual &lt;- annotation$individual == individuals[per_individual]
+      annotation_sub &lt;- annotation[which_individual, ]
+      molecules_sub &lt;- molecules_ENSG[ , which_individual]
+      replicates &lt;- unique(annotation_sub$replicate)
+      dens_batch &lt;- lapply(1:length(replicates), function(per_replicate) {
+        which_replicate &lt;- annotation_sub$replicate == replicates[per_replicate]
+        density(unlist( molecules_sub[ rownames(molecules_ENSG) == which_gene, 
+                                       which_replicate] ) )
+      })
+    })
+    
+    if (is.null(xlims)) {
+      xlims &lt;- range( c( sapply(dens, function(obj_individual) {
+        c( sapply(obj_individual, function(obj) {
+          range(obj$x)
+        }) )
+      }) ) )
+    }
+    if (is.null(ylims)) {
+      ylims &lt;- range( c( sapply(dens, function(obj_individual) {
+        c( sapply(obj_individual, function(obj) {
+          range(obj$y)
+        }) )
+      }) ) )
+    }
+    
+#    par(mfrow = c(1,3))
+    for (i in 1:length(dens)) {
+      plot(dens[[i]][[1]], 
+           xlab = &quot;log2 gene expression&quot;, main = &quot;&quot;,
+           ylab = &quot;Density&quot;, axes = F, lwd = 0, xlim = xlims, ylim = ylims)
+      for (j in 1:length(dens[[i]])) {
+        polygon(dens[[i]][[j]], 
+                col = alpha(crayon[colors[i]], .4), 
+                border = &quot;grey40&quot;)
+      }
+    }
+    axis(1); axis(2)
+    mtext(text = labels, side = 3)
+    title(main = with(gene_symbols, 
+                      external_gene_name[which(ensembl_gene_id == which_gene)]) )
+  }
+}</code></pre>
+</div>
+<div id="pluripotency-gene-distributions" class="section level2">
+<h2>Pluripotency gene distributions</h2>
+<p>16 pluripotency genes are included in the data set after filtering.</p>
+<pre class="r"><code>pluri_pvals &lt;- data.frame(pvals = permuted_pval,
+                          ENSG = rownames(molecules_final))
+pluri_pvals &lt;- pluri_pvals[which(rownames(molecules_final) %in% 
+                                   pluripotency_genes), ]
+pluri_symbols &lt;- gene_symbols[which(gene_symbols$ensembl_gene_id %in% pluri_pvals$ENSG) , 
+                              c(1,3)]
+pluri_results &lt;- merge(pluri_pvals, pluri_symbols,
+                       by.x = c(&quot;ENSG&quot;), by.y = &quot;ensembl_gene_id&quot;) 
+pluri_results &lt;- pluri_results[order(pluri_results$mad_pval), ]
+pluri_results</code></pre>
+<pre><code>              ENSG    mad_pval external_gene_name
+1  ENSG00000088305 0.000000000             DNMT3B
+9  ENSG00000163530 0.001640420              DPPA2
+11 ENSG00000179059 0.001722441              ZFP42
+14 ENSG00000187140 0.004019029              FOXD3
+16 ENSG00000204531 0.014107612             POU5F1
+7  ENSG00000136997 0.020505249                MYC
+8  ENSG00000148200 0.026738845              NR6A1
+2  ENSG00000101115 0.035843176              SALL4
+12 ENSG00000181449 0.053887795               SOX2
+4  ENSG00000121570 0.054790026              DPPA4
+15 ENSG00000203909 0.166830709              DPPA5
+10 ENSG00000164362 0.229002625               TERT
+6  ENSG00000128567 0.250656168              PODXL
+5  ENSG00000124762 0.621555118             CDKN1A
+3  ENSG00000111704 0.664452100              NANOG
+13 ENSG00000184344 0.988763123               GDF3</code></pre>
+<div id="batch-corrected-log2-molecule-count" class="section level3">
+<h3>Batch-corrected log2 molecule count</h3>
+<div id="collapsing-across-batches" class="section level4">
+<h4>Collapsing across batches</h4>
+<pre class="r"><code>par(mfrow = c(1,4))
+for (i in 1:nrow(pluri_results)) {
+  plot_density(molecules_ENSG = molecules_final,
+               annotation = anno_filter,
+               which_gene = pluri_results$ENSG[i], 
+    #                   labels = round(genes_plot$dist[i], 6),
+               labels = &quot;&quot;,
+               xlims = c(1,14), ylims = NULL,
+               gene_symbols = gene_symbols)
+}</code></pre>
+<p><img src="figure/compare-distribution-pluripotenty.Rmd/pluripotent-density-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/compare-distribution-pluripotenty.Rmd/pluripotent-density-2.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/compare-distribution-pluripotenty.Rmd/pluripotent-density-3.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/compare-distribution-pluripotenty.Rmd/pluripotent-density-4.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
+<div id="one-batch-at-a-time" class="section level4">
+<h4>One batch at a time</h4>
+<pre class="r"><code>for (i in 1:nrow(pluri_results)) {
+    par(mfrow = c(1,3))
+    for (which_individual in unique(anno_filter$individual)) {
+        plot_density(molecules_ENSG = molecules_final[ , anno_filter$individual == which_individual],
+                     annotation = anno_filter[anno_filter$individual == which_individual, ],
+                     individuals = anno_filter$individual,
+                     batches = anno_filter$sample_id,
+                     which_gene = pluri_results$ENSG[i],
+                     labels = which_individual,
+                     xlims = c(2,14),
+                     gene_symbols = gene_symbols)
+    }
+}</code></pre>
+<p><img src="figure/compare-distribution-pluripotenty.Rmd/pluripotent-density-replicates-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/compare-distribution-pluripotenty.Rmd/pluripotent-density-replicates-2.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/compare-distribution-pluripotenty.Rmd/pluripotent-density-replicates-3.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/compare-distribution-pluripotenty.Rmd/pluripotent-density-replicates-4.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/compare-distribution-pluripotenty.Rmd/pluripotent-density-replicates-5.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/compare-distribution-pluripotenty.Rmd/pluripotent-density-replicates-6.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/compare-distribution-pluripotenty.Rmd/pluripotent-density-replicates-7.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/compare-distribution-pluripotenty.Rmd/pluripotent-density-replicates-8.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/compare-distribution-pluripotenty.Rmd/pluripotent-density-replicates-9.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/compare-distribution-pluripotenty.Rmd/pluripotent-density-replicates-10.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/compare-distribution-pluripotenty.Rmd/pluripotent-density-replicates-11.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/compare-distribution-pluripotenty.Rmd/pluripotent-density-replicates-12.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/compare-distribution-pluripotenty.Rmd/pluripotent-density-replicates-13.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/compare-distribution-pluripotenty.Rmd/pluripotent-density-replicates-14.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/compare-distribution-pluripotenty.Rmd/pluripotent-density-replicates-15.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/compare-distribution-pluripotenty.Rmd/pluripotent-density-replicates-16.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
+</div>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] grid      stats     graphics  grDevices utils     datasets  methods  
+[8] base     
+
+other attached packages:
+ [1] broman_0.59-5      scales_0.2.4       matrixStats_0.14.0
+ [4] MASS_7.3-40        cowplot_0.3.1      Humanzee_0.1.0    
+ [7] ggplot2_1.0.1      edgeR_3.10.2       limma_3.24.9      
+[10] dplyr_0.4.2        data.table_1.9.4   knitr_1.10.5      
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.12.0      magrittr_1.5     munsell_0.4.2    colorspace_1.2-6
+ [5] R6_2.1.1         stringr_1.0.0    httr_0.6.1       plyr_1.8.3      
+ [9] tools_3.2.0      parallel_3.2.0   gtable_0.1.2     DBI_0.3.1       
+[13] htmltools_0.2.6  yaml_2.1.13      digest_0.6.8     assertthat_0.1  
+[17] reshape2_1.4.1   formatR_1.2      bitops_1.0-6     RCurl_1.95-4.6  
+[21] evaluate_0.7     rmarkdown_0.6.1  stringi_0.4-1    chron_2.3-45    
+[25] proto_0.3-10    </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>
