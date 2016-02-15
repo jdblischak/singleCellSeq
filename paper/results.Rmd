@@ -9,21 +9,22 @@ source("chunk-options-paper.R")
 ## Results
 ### Study design and quality control
 Single-cell transcriptomics has recently emerged as a powerful technology to explore stochastic gene expression by assaying steady state transcriptomes from numerous individual cells with minimum losses in cDNA synthesis and high reproducibility.
-Specifically, randomly labeling individual transcripts with UMIs at the reverse transcription step prior to mRNA amplification provides the power to measure absolute molecule counts per gene by eliminating the amplification bias [@Islam2014; @Grun2014; @Jaitin2014], whereas the inclusion of the spike-in quantification standards of known abundance in the samples allows for estimation of technical variation [@Brennecke2013; @Grun2014; @Ding2015; @Vallejos2015].
-To quantify mRNA molecule numbers in single cells with exceptional accuracy from different genetic backgrounds, we collected single cell RNA-seq (scRNA-seq) data from three Yoruba iPSC lines (19098, 19101, and 19239) with the additions of ERCC spike-in controls and 5-bp random sequence UMIs using the Fluidigm C1 microfluidic system followed by sequencing on the Illumina HiSeq system.
-Importantly, for each of the Yoruba lines, we performed three independent C1 collections to more accurately capture the characteristics of technical variability across C1 replicates and then to further remove them from downstream analysis (Figure. 1A).
+Specifically, randomly labeling individual transcripts with UMIs at the reverse transcription step prior to mRNA amplification provides the power to measure molecule counts per gene by eliminating amplification bias [@Islam2014; @Grun2014; @Jaitin2014], whereas the inclusion of the spike-in quantification standards of known abundance in the samples allows for estimation of technical variation [@Brennecke2013; @Grun2014; @Ding2015; @Vallejos2015].
+To quantify mRNA molecule numbers in single cells with exceptional accuracy from different genetic backgrounds, we collected single cell RNA-seq (scRNA-seq) data from three YRI iPSC lines (19098, 19101, and 19239) with the additions of ERCC spike-in controls and 5-bp random sequence UMIs using the Fluidigm C1 microfluidic system followed by sequencing on the Illumina HiSeq system.
+Importantly, for each of the YRI lines, we performed three independent C1 collections to more accurately capture the characteristics of technical variability across C1 replicates and then to further remove them from downstream analysis (Figure. 1A).
 The three C1 replicates of each individual were collected on different dates using cells of different passage numbers (Sup Table. 1A), and hence they were also biological replicates. 
-Moreover, to estimate how well the scRNA-seq can reassemble the RNA-seq results from population bulk samples, each individual C1 collection was accompanied by a collection of bulk sample using the same reagents.
+Moreover, to estimate how well the scRNA-seq can recapitulate the RNA-seq results from population bulk samples, each individual C1 collection was accompanied by a collection of bulk sample using the same reagents.
 To avoid batch effect of the sequencing, we followed the general guidelines for sequencing bulk samples by equally distributing the nine C1 replicates of the three individuals onto four flowcells to acquire sufficient sequencing depth (Sup Table. 1B). 
-We didn't observe any obvious confounder that need to be corrected while carrying out quality control at the level of sequencing lane (data not shown).
+Accordingly, we didn't observe any obvious technical effects due to sequencing lane or flow cell that confounded the interindividual and interreplicate comparisons (data not shown).
 
 #### Removal of low quality sample
 Given the low abundance of mRNA content and the high vulnerability of single cells, scRNA-seq can be intensively affected by various technical artifacts arising from cell isolation, mRNA capture efficiency, library preparation, and even sequencing procedures.
 As a result, our quality control of scRNA-seq libraries was performed in multiple steps for generating reliable analysis results.
-After removing the samples that were not one-cell libraries as reported by the visual inspection on the C1 microfluidic plates, we first filtered out the one-cell libraries that were similar to no-cell libraries judging from the number of total mapped reads, the percentage of unmapped reads, the percentage of ERCC spike-in reads, and the number of genes detected (Sup Figure. 2).
-Unfortunately, the second C1 collection of individual 19098 contained apparently higher ERCC contents compared to all the others (Sup Figure. 2A and B), suggesting that there might be a pippetting error during lysis mix preparation which led to excess ERCC molecule counts.
-To avoid potential unidnetified issues caused by the error, we decided to exclude this C1 collection from here on.
-We then defined the cutoffs of the total mapped reads, the percentage of unmapped reads, the percentage of ERCC spike-in reads, and the number of genes detected by the 95 percentile of the 18 no-cell libraries (Figure. 1B-E and Sup Figure. 2C-F).  
+Unfortunately, the second C1 collection of individual 19098 contained extremely high ERCC contents compared to all the others (Sup Figure. 2A and B), suggesting that there might be a pippetting error during lysis mix preparation which led to excess ERCC molecule counts.
+To avoid potential unidentified issues caused by the error, we decided to exclude this C1 collection from all our analyses.
+Next, we removed all the samples that did not contain exactly one cell based on visual inspection on the C1 microfluidic plates.
+Then we filtered these one-cell samples based on the following metrics: the number of total mapped reads, the percentage of unmapped reads, the percentage of ERCC spike-in reads, and the number of genes detected (Sup Figure. 2).
+To avoid having to choose arbitrary cutoffs, we defined the cutoff for each of these metrics based on the 95th percentile of the distribution for the 18 no-cell libraries (Figure. 1B-E and Sup Figure. 2C-F).
 Furthermore, we identified and removed several one-cell libraries that had high possibility of being multiple-cell libraries based on the number of total molecules, the concentration of cDNA amplicons, and the read-to-molecule conversion efficiency defined as the number of total molecules divided by the number of total reads (Sup Figure. 3).
 We maintained `r nrow(anno_filter)` high quality single cells 
 (NA19098: `r sum(anno_filter$individual == "NA19098")`,
@@ -38,7 +39,7 @@ endogenous genes and
 `r sum(grepl("ERCC", rownames(molecules_filter)))`
 ERCC spike-in genes for the following analysis.
 When looking at the proportion of genes detected in the high quality cells before and after the filtering, we found that the numbers of the proportion were increased while keeping the relative relationship across cells both within and between batches (Sup Figure. 3A and B), which provides the evidence that the removed genes were the possible dropouts.
-To more rigorously analyze the effect of removing lowly expressed genes, we performed PCA on gene expression using the raw molecule counts and found that the filtering had no effect on the fact that PC1 highly correlated with the proportion of genes detected, suggesting that this filtering step preserve the overall gene expression pattern in the cells (Sup Figure. 3C and D). 
+To more rigorously analyze the effect of removing lowly expressed genes, we performed PCA on gene expression of ubiquitously expressed genes (genes detected in all cells) using the standardized molecule counts and found that the filtering had no effect on the correlation of PC1 and the proportion of genes detected, suggesting that this filtering step preserve the overall gene expression pattern in the cells (Sup Figure. 3C and D). 
 
 #### ERCC spike-ins capture efficiency
 To estimate the mRNA capture efficiency, we first calculated the input molecule numbers of ERCC spike-in RNA transcripts and then compared the input quantities with the observed quantities in high quality cells without filtering of genes. 
@@ -53,19 +54,19 @@ Using the same subsampling strategy, the pattern of the correlation between the 
 Most importantly, the cell-cell variance from the same subsampling cutoffs also accurately represents all the collected single cells from one individual (r > 0.95, Figure. 2C), suggesting that a sample size of 75 high quality cells is sufficient for capturing cell-cell variability.
 
 We also collected scRNA-seq data from Lymphoblastoid Cell Lines (LCLs) in a trial run, in which libraries from one single cell was sequenced individually on one sequencing lane (Sup Figure. 4). 
-Since all the library materials were used in these samples, the data collected from this single cell libraries were possibly the highest sequensing depth that we could obtain using this protocol. 
+Since all the library materials were used in these samples, the data collected from this single cell libraries were possibly the highest sequencing depth that we could obtain using this protocol. 
 The subsampling results from these libraries showed that, with the sequencing depth of 50 million reads, the numbers of endogenous genes started to plateau (Sup Figure. 4A and B), whereas the total molecule counts were still increasing (Sup Figure. 4D and F), suggesting that we have not yet reach the saturation point of molecule counts. 
 
-### Technical or Biologial variabiltiy 
-One of the most challenging sources of unwanted techinical variability in scRNA-seq experiments using the C1 system is the batch effects that take place when cells from different biological conditions are cultured, captured, and sequenced independently.
+### Technical and biologial variabiltiy 
+One of the most challenging sources of unwanted technical variability in scRNA-seq experiments using the C1 system is the batch effects that take place when cells from different biological conditions are cultured, captured, and sequenced independently.
 Most, if not all, published studies using the UMI-based method have been collecting only one C1 plate per biological condition. 
-In other words, the potential sources of the batch effects are yet to be charaterized, which motivates us to look into it from the following aspects to better distinguish technical variability from biological variability.
+In other words, the potential sources of the batch effects are yet to be characterized, which motivates us to look into it from the following aspects to better distinguish technical variability from biological variability.
 
 #### Cellular mRNA contents and cell cycle phase
-When UMIs are used in scRNA-seq, cell-to-cell difference in total molecule counts could be indicative of variation in cellular mRNA contents and therefore be biolical meaningful to a certain extent if the technical variability is negligible.
+When UMIs are used in scRNA-seq, cell-to-cell difference in total molecule counts could be indicative of variation in cellular mRNA contents and therefore be biological meaningful to a certain extent if the technical variability is negligible.
 However, as expected, our results of plotting the sample concentration and the total number of molecules not only showed that samples with more cells have lower concentration (Sup Figure. 5A and B), but also indicated a non-negligible amount of variability across samples of one cell (Sup Figure. 5C and D).
 Similar results were also found when we classified cell cycle phase of each cell based on gene expression using molecule counts [@Macosko2015] and compared the total molecule counts and the total read counts of different cell cycle phases (Sup Figure. 6).
-Even though cells in G2 and G2/M phases have higher total molecule/read counts than cells in G1 and S phase in a few but not all C1 replicates, the differences are not significant due to the large variances, suggesting that the techincal variability is not trivial.
+Even though cells in G2 and G2/M phases have higher total molecule/read counts than cells in G1 and S phase in a few but not all C1 replicates, the differences are not significant due to the large variances, suggesting that the technical variability is not trivial.
 
 #### ERCC spike-ins 
 Currently, ERCC spike-ins are being used to identify low-quality single cells, to measure cell-cell technical variability, and also to indicate relative cellular mRNA content, all of which are under the assumption that each sample contains exact quantities of ERCC spike-ins.
@@ -91,40 +92,36 @@ This step also removed the genes with molecule counts larger than 1024, which in
 #### Standardization (counts-per-million)
 Next, we incorporated a standardization step by computing log transformed counts-per-million (cpm) of molecule counts.  
 As predicted from our previous observation of the sequencing depth (Figure. 2A and C), we found that the total read counts per sample were highly correlated with not only the total molecule counts but also with the first principal component of endogenous gene expression (Figure. 4A). 
-After removal of the variance caused by sequecning depth, the difference between C1 replicates, or the batch effect, became dominant (Figure. 4B).
+After removal of the variance caused by sequencing depth, the difference between C1 replicates, or the batch effect, became dominant (Figure. 4B).
 
 #### Poission regression of ERCC counts
 To account for the cell-to-cell technical variability coming from the differences of mRNA capture efficiency across samples within the C1 collection, we next performed Poisson GLM (generalized linear model) normalization using the observed and the expected molecule counts of ERCC spike-ins, without correction for collision probability and also without standardization, in each sample.
 The PCA of gene expression after normalization showed that PC1 and PC2 separated not only the three individuals but also the three C1 replicates of each individual, suggesting that the batch effect from the C1 replicates were yet to be removed (Figure. 4C).
 
 #### Mixed model for batch effect correction
-Not surprisingly, there was a observable batch effect of C1 collection according to the PCA results of gene expression even after both standization and normalization. 
-To directly remove unwanted techncial variation between C1 plates, we modeled between well correlation in gene expression within C1 plates. 
-We assumed that C1 plates share similar techncial variation due to gene expression similarity between cells on the same plate. 
+Not surprisingly, there was a observable batch effect of C1 collection according to the PCA results of gene expression even after both standardization and normalization. 
+To directly remove unwanted technical variation between C1 plates, we modeled between well correlation in gene expression within C1 plates. 
+We assumed that C1 plates share similar technical variation due to gene expression similarity between cells on the same plate. 
 The results of PCA on the corrected data showed that the samples from different C1 replicates of the same individual largely overlapped (Figure. 4D), indicating that we have successfully removed large proportion of the unwanted technical variation across C1 replicates. 
 
 ### Cell-to-cell variation of gene expression
-After removing the unwanted technical variability from the biological variablity that we are interested in, we next examined endogeneous transcriptional variability as a function of RNA abundance across C1 replicates of individual cell lines.
-Coefficient of variation of molecule counts was computed after collision correction and transformations. 
-We found similar variation pattern of endogeneous genes and ERCC spike-in genes, and both closely track the expected Poisson distribution as a function of RNA abundance (Sup Figure. 8A). 
+After removing the unwanted technical variability from our iPSC scRNA-seq data, we analyzed the cell-to-cell variation by measuring the gene expression noise across single cells and also by identifying genes with differential noise levels across individuals. 
 
-To investigate cell-to-cell variation independent of RNA abundance levels, we exploited coefficients of variation of molecule counts and computed a noise measure on a gene-by-gene basis of individual cell lines [@Kolodziejczyk2015, @Newman2006]. 
-We refer to this individual-specific noise measure as distance-to-the-median (DM, see the Methods section, Sup Figure. 8B ). 
-Specifically, large DM values correspond to large individual-specific CVs compared to global CVs that are at the similar RNA abundance levels. 
-When looking at the intersection of the top 1,000 individual-specific noisy genes, we found 120 common noisy genes between the individuals (Figure. 6A), which is smaller than the 891 common highly expressed genes between individuals (Figure. 6B).
+#### Gene expression noise
+We first examined endogenous transcriptional variability as a function of RNA abundance across C1 replicates of each individual iPSC lines.
+The coefficient of variation (CV) of molecule counts was computed after collision correction but without either standardization or normalization. 
+As being reported from the previous studies [@Islam2014; @Brennecke2013], we found similar variation pattern of endogenous genes and ERCC spike-in genes, both of which closely track the expected Poisson distribution as a function of RNA abundance (Sup Figure. 8A). 
 
-We identify differential noisy genes with a permutation-based test under which labels of cell lines were shuffled in each permutation and median of absolute deviation (MAD) was used to quantify the dissimilarity of noise measures. 
-263 genes were found to have statistically significant MAD values at an alpha-level of $10^{-5}$ (Sup Table. X of gene list, Sup. Figure. 9). 
-Figure 6c-f display individual cell-to-cell variation patterns of genes with significant MAD values. 
-We observed significant MAD values under the scenarios of differential number of subpopulations, differential proportion of subpopulations, and differential spread or variance. 
-For instance, NLRP2 in NA19101 differs from the other two cell lines in the number of cell populations and the spread of the expression patterns, while the other two cell lines differ in the proportion of subpopulations. 
-Enrichment analysis suggests that these 263 genes were enriched for housekeeping genes and encoding ribosomal proteins (Sup Table. X). 
+To further investigate cell-to-cell variation that was independent of RNA abundance levels, we exploited CV of normalized molecule counts and computed a gene expression noise measure on a gene-by-gene basis of each individual iPSC lines [@Kolodziejczyk2015; @Newman2006]. 
+We refer to this individual-specific noise measure as distance-to-the-median (DM, see the Methods section, Sup Figure. 8B). 
+Specifically, large DM values correspond to large individual-specific CVs compared to global CVs at the similar RNA abundance levels. 
+When looking at the intersection of the top 1,000 individual-specific noisy genes according to their DM values, we found 120 common noisy genes between the three individuals (Figure. 5A), which was smaller than the 891 common highly expressed genes between individuals (Figure. 5B), indicating the presence of differential cell-to-cell variation in gene expression across individuals.  
 
-
-
-
-1. study design and data collection (Fig. `r fig_main_qc`, sup fig.1 and 2)
-2. cpm (Fig. `r fig_main_cpm`, sup fig.3 and 4)
-3. subsample (Fig. `r fig_main_subsample`)
-4. remove batch effect (Fig. `r fig_main_normalization` and sup fig.5)
-5. gene expression noise (Fig. `r fig_main_noise` and sup fig.6)
+#### Differential CV genes
+We identified differential noisy genes with a permutation-based test under which the labels of iPSC lines were shuffled in each permutation and the median of absolute deviation (MAD) was used to quantify the dissimilarity of noise measures. 
+At an alpha-level of $10^{-5}$, 263 genes were found to have statistically significant MAD values (Sup Table. X of gene list, Sup. Figure. 9). 
+Enrichment analysis suggested that these 263 genes were enriched for genes involved in protein translation, protein disassembly, and various biosynthetic processes (Sup Table. X).
+We did not find any key pluripotency genes to have differential noise measurements across individuals (Sup. Figure. 10), including Nanog and ZFP4 (Figure. 5C and D, respectively), indicating that the pluripotent state was tightly regulated.
+More importantly, we observed a number of individual cell-to-cell variation patterns of genes with significant MAD values under the scenarios of differential number of subpopulations, differential proportion of subpopulations, and differential spread or variance (Figure. 5E-F). 
+For instance, NLRP2 in individual 19101 differs from the other two individuals in the number of cell populations and the spread of the expression patterns, while the other two cell lines differed in the proportion of subpopulations.
+Therefore, our method not only identified differential noisy genes across individuals, but also provided the information regarding the distribution of gene expression across single cells.  

@@ -1,3 +1,4 @@
+---
 bibliography: refs.bib
 ---
 
@@ -9,7 +10,7 @@ source("chunk-options-paper.R")
 
 ### Cell culture of iPSCs
 
-Undifferentiated feeder-free iPSCs generated from Yoruba LCLs were grown in E8 medium (Life Tech) [@Chen2011] on Matrigel-coated tissue culture plates with daily media feeding at 37 °C with 5% (vol/col) CO2. 
+Undifferentiated feeder-free iPSCs generated from LCLs from Yoruba individuals in Ibadan, Nigeria (abbreviation: YRI) were grown in E8 medium (Life Tech) [@Chen2011] on Matrigel-coated tissue culture plates with daily media feeding at 37 °C with 5% (vol/col) CO2.
 For standard maintenance, cells were split every 3-4 days using cell release solution (0.5 mM EDTA and NaCl in PBS) at the confluence of roughly 80%. 
 For the single cell suspension, iPSCs were individualized by Accutase Cell Detachment Solution (BD) for 5-7 minutes at 37 °C and washed twice with E8 media immediately before each experiment. 
 Cell viability and cell counts were then measured by the Automated Cell Counter (Bio-Rad) to generate resuspension densities of 2.5 X 105 cells/mL in E8 medium for C1 cell capture.   
@@ -86,18 +87,18 @@ Next, we maintained high quality single cells that passed the following criteria
 *  More than 6875.6 genes with at least one read
 
 We chose these criteria based on the distribution of these metrics in the empty wells (95 %).
-Lastly, we observed that some wells classified as containing only one cell clustered with multi-cell wells when plotting the number of gene molecules versus the concentration of the samples (Sup Figure. 2A and B) and also the read to molecule conversion efficiency, calculated by total molecule number devided by total read number, of endogenous genes versus that of ERCC (Sup. 2C and D).  
-We also removed these misidentified wells using linear discriminant analaysis.
+Lastly, we observed that some wells classified as containing only one cell clustered with multi-cell wells when plotting the number of gene molecules versus the concentration of the samples (Sup Figure. 2A and B) and also the read to molecule conversion efficiency, calculated by total molecule number divided by total read number, of endogenous genes versus that of ERCC (Sup. 2C and D).
+We also removed these misidentified wells using linear discriminant analysis.
 
 After filtering, we maintained `r nrow(anno_filter)` high quality single cells 
 (NA19098: `r sum(anno_filter$individual == "NA19098")`,
  NA19101: `r sum(anno_filter$individual == "NA19101")`,
  NA19239: `r sum(anno_filter$individual == "NA19239")`).
 
-The quality control analyses were performed using all Ensembl protein-coding genes with at least one observed read.
+The quality control analyses were performed using all protein-coding genes (Ensembl GRCh37 release 82) with at least one observed read.
 Using the high quality single cells, we further removed genes with low expression levels for downstream analyses.
 We removed all genes with a mean log~2~ cpm less than 2, which we further verified that the overall structure of detected genes remain the same (Sup. Figure. 3).
-We also removed genes with molecule counts larger than 1024 due to alternative transcriptional start sites for the correction of collision probability.
+We also removed genes with molecule counts larger than 1024 for the correction of collision probability.
 Thus we kept
 `r format(sum(grepl("ENSG", rownames(molecules_filter))), big.mark = ",")`
 endogenous genes and
@@ -107,14 +108,14 @@ ERCC spike-in genes.
 ### Normalization
 
 We transformed the single cell molecule counts in multiple steps (Fig. `r fig_main_normalization`).
-First, we corrected for the collision probability using a method similar to that developed by @Grun2014.
+First, we corrected for the collision probability using a method similar to that developed by Grun et al. [@Grun2014].
 Essentially we are correcting for the fact that we did not observe all the molecules originally in the cell.
-The main difference between our approach and that of @Grun2014 is that we apply the correction at the level of gene counts and not individual molecule counts.
+The main difference between our approach and that of Grun et al. [@Grun2014] is that we apply the correction at the level of gene counts and not individual molecule counts.
 Second, we standardized the molecule counts to log~2~ counts per million (cpm).
 This standardization was performed using only the endogenous gene molecules and not the ERCC molecules.
 Third, we corrected for cell-to-cell technical noise using the ERCC spike-in controls.
-For each single cell, we fit a Poisson generalized linear model (GLM) with the log~2~ expected ERCC molecule counts as the indepedent variable, and the observed ERCC molecule counts as the dependent variable, using the standard log link function. 
-Next we used the slope and intercept of the Poisson GLM regression line to transform the log~2~ cpm for the endogeneous genes in that cell.
+For each single cell, we fit a Poisson generalized linear model (GLM) with the log~2~ expected ERCC molecule counts as the independent variable, and the observed ERCC molecule counts as the dependent variable, using the standard log link function. 
+Next we used the slope and intercept of the Poisson GLM regression line to transform the log~2~ cpm for the endogenous genes in that cell.
 This is analogous to the standard curves used for qPCR measurements, but taking into account that lower concentration ERCCs will have higher variance from Poisson sampling.
 Fourth, we removed technical noise between the eight batches (three replicates each for 19101 and 19239 and two replicates for 19098).
 We fit a linear mixed model with a fixed effect for individual and a random effect for the eight batches and removed the variation captured by the random effect (see the next section for a detailed explanation).
@@ -131,7 +132,7 @@ We then fit a linear mixed model for each gene $g$ that includes a fixed effect 
 
 $$ y_{g,ijk} = \mu_{g} + \alpha_{g,i} + b_{g,j} + \epsilon_{g,ijk}, $$
 
-where $y_{g,ijk}$ denotes log~2~ counts-per-million (cpm) for gene $g$ in individual cell line $i$, batch $j$, and cell $k$, and $i = NA19098, NA19101, NA19239$, $j = 1, \dots, 8$, $k = 1, \dots, n_{g,j}$ with $n_{g,j}$ denotes the number of cells in batch $j$; $\mu_g$ describes gene-specific expression level across cells, $\alpha_{g,i}$ quantifies mean gene expression level for individaul cell line $i$, $b_{g,j}$ models cell-to-cell correlation in batch $j$, and $\epsilon_{g,ijk}$ describes residual variation in gene expression levels. We assumed $b_{g,j}$ are independent and identically distribued with mean 0 and variance $\sigma^2_{g,b})$ for $j = 1, \dots, 8$.
+where $y_{g,ijk}$ denotes log~2~ counts-per-million (cpm) for gene $g$ in individual cell line $i$, batch $j$, and cell $k$, and $i = NA19098, NA19101, NA19239$, $j = 1, \dots, 8$, $k = 1, \dots, n_{g,j}$ with $n_{g,j}$ denotes the number of cells in batch $j$; $\mu_g$ describes gene-specific expression level across cells, $\alpha_{g,i}$ quantifies mean gene expression level for individual cell line $i$, $b_{g,j}$ models cell-to-cell correlation in batch $j$, and $\epsilon_{g,ijk}$ describes residual variation in gene expression levels. We assumed $b_{g,j}$ are independent and identically distributed with mean 0 and variance $\sigma^2_{g,b})$ for $j = 1, \dots, 8$.
 
 Next, we applied Least-Squared (LS) method and computed the batch-corrected expression as:
 
@@ -148,7 +149,7 @@ We computed a measure of noise for transcriptional variability that is independe
 
 2. Order genes by the global average molecule counts.
 
-3. Starting from the genes with the lowest global average gene expression level, for every sliding window of 50 genes, substract log10 median squared CVs from log10 squared CVs of each cell line, and set 25 overlapping genes between windows. The computation was performed with the rollapply function of the R zoo package [@Zeileis2005]. 
+3. Starting from the genes with the lowest global average gene expression level, for every sliding window of 50 genes, subtract log10 median squared CVs from log10 squared CVs of each cell line, and set 25 overlapping genes between windows. The computation was performed with the rollapply function of the R zoo package [@Zeileis2005]. 
 
 
 ### Identification of differential CV genes
@@ -171,12 +172,12 @@ We used the Gene Ontology Consortium platform [@GO2015] to identify over-represe
 
 ### Data and code availability
 
-The data have been deposited in NCBI's Gene Expression Omnibus [@Edgar2002] and are accessible through GEO Series accession number GSEXXXXX ([http://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSEXXXXX][geo]).
+The data have been deposited in NCBI's Gene Expression Omnibus [@Edgar2002] and are accessible through GEO Series accession number GSE77288 ([http://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE77288][geo]).
 The code and processed data are available at [https://github.com/jdblischak/singleCellSeq][repo].
 From the beginning of the project, we performed this research in the open.
 The results of our analyses are viewable at [https://jdblischak.github.io/singleCellSeq/analysis][site].
 
-[geo]: http://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSEXXXXX
+[geo]: http://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE77288
 [repo]: https://github.com/jdblischak/singleCellSeq
 [site]: https://jdblischak.github.io/singleCellSeq/analysis
 
