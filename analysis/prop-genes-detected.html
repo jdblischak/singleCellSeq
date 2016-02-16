@@ -137,14 +137,18 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2016-02-05</p>
-<p><strong>Code version:</strong> d92221ec0e8cb03e9aa5514def45e17168977c56</p>
+<p><strong>Last updated:</strong> 2016-02-15</p>
+<p><strong>Code version:</strong> afb6992553e07bb4a9f9437d4f2aebb9b973eb37</p>
 <pre class="r"><code>source(&quot;functions.R&quot;)
 library(&quot;edgeR&quot;)
 library(&quot;tidyr&quot;)
 library(&quot;ggplot2&quot;)
 library(&quot;cowplot&quot;)
-theme_set(theme_bw(base_size = 16))</code></pre>
+theme_set(theme_bw(base_size = 16))
+theme_update(panel.grid.minor.x = element_blank(),
+             panel.grid.minor.y = element_blank(),
+             panel.grid.major.x = element_blank(),
+             panel.grid.major.y = element_blank())</code></pre>
 <p><a href="http://biorxiv.org/content/early/2015/12/27/025528">Hicks et al., 2015</a> observed a strong relationship between the proportion of genes detected (PGD) per sample and PC1 across multiple single cell studies. Here we investigate this effect in our study. Specifcally, we explore the following questions:</p>
 <ul>
 <li>How much is the PGD effect driven by lowly expressed genes?</li>
@@ -213,10 +217,11 @@ reads_ubiq &lt;- reads_qc[ubiquitous_genes, ]</code></pre>
             prop_genes_detected &gt;= 0)
   return(prop_genes_detected)
 }</code></pre>
+<p>Calculate the PGD using all genes with at least one read detected in at least one single cell.</p>
 <pre class="r"><code>pgd_all &lt;- calc_pgd(reads_qc)
-pgd_filter &lt;- calc_pgd(reads_filter)
-pgd_ubiq &lt;- calc_pgd(reads_ubiq)
-stopifnot(pgd_ubiq == 1)
+# pgd_filter &lt;- calc_pgd(reads_filter)
+# pgd_ubiq &lt;- calc_pgd(reads_ubiq)
+# stopifnot(pgd_ubiq == 1)
 # stopifnot(pgd_all == calc_pgd(molecules_qc))</code></pre>
 </div>
 <div id="pca---counts" class="section level2">
@@ -236,25 +241,25 @@ d_full &lt;- rbind(d_full, d)</code></pre>
 <p>Unstandardized read counts from set of filtered genes.</p>
 <pre class="r"><code>pca &lt;- run_pca(reads_filter)
 d &lt;- data.frame(id = rownames(pca$PCs), pca$PCs[, 1:2],
-                explained = pca$explained, pgd = pgd_filter,
+                explained = pca$explained, pgd = pgd_all,
                 type = &quot;reads&quot;, genes = &quot;filter&quot;, processing = &quot;counts&quot;)
 d_full &lt;- rbind(d_full, d)</code></pre>
 <p>Unstandardized molecule counts from set of filtered genes.</p>
 <pre class="r"><code>pca &lt;- run_pca(molecules_filter)
 d &lt;- data.frame(id = rownames(pca$PCs), pca$PCs[, 1:2],
-                explained = pca$explained, pgd = pgd_filter,
+                explained = pca$explained, pgd = pgd_all,
                 type = &quot;molecules&quot;, genes = &quot;filter&quot;, processing = &quot;counts&quot;)
 d_full &lt;- rbind(d_full, d)</code></pre>
 <p>Unstandardized read counts from set of ubiquitous genes.</p>
 <pre class="r"><code>pca &lt;- run_pca(reads_ubiq)
 d &lt;- data.frame(id = rownames(pca$PCs), pca$PCs[, 1:2],
-                explained = pca$explained, pgd = pgd_ubiq,
+                explained = pca$explained, pgd = pgd_all,
                 type = &quot;reads&quot;, genes = &quot;ubiq&quot;, processing = &quot;counts&quot;)
 d_full &lt;- rbind(d_full, d)</code></pre>
 <p>Unstandardized molecule counts from set of ubiquitous genes.</p>
 <pre class="r"><code>pca &lt;- run_pca(molecules_ubiq)
 d &lt;- data.frame(id = rownames(pca$PCs), pca$PCs[, 1:2],
-                explained = pca$explained, pgd = pgd_ubiq,
+                explained = pca$explained, pgd = pgd_all,
                 type = &quot;molecules&quot;, genes = &quot;ubiq&quot;, processing = &quot;counts&quot;)
 d_full &lt;- rbind(d_full, d)</code></pre>
 </div>
@@ -275,25 +280,25 @@ d_full &lt;- rbind(d_full, d)</code></pre>
 <p>Read counts per million from set of filtered genes.</p>
 <pre class="r"><code>pca &lt;- run_pca(cpm(reads_filter))
 d &lt;- data.frame(id = rownames(pca$PCs), pca$PCs[, 1:2],
-                explained = pca$explained, pgd = pgd_filter,
+                explained = pca$explained, pgd = pgd_all,
                 type = &quot;reads&quot;, genes = &quot;filter&quot;, processing = &quot;cpm&quot;)
 d_full &lt;- rbind(d_full, d)</code></pre>
 <p>Molecule counts per million from set of filtered genes.</p>
 <pre class="r"><code>pca &lt;- run_pca(cpm(molecules_filter))
 d &lt;- data.frame(id = rownames(pca$PCs), pca$PCs[, 1:2],
-                explained = pca$explained, pgd = pgd_filter,
+                explained = pca$explained, pgd = pgd_all,
                 type = &quot;molecules&quot;, genes = &quot;filter&quot;, processing = &quot;cpm&quot;)
 d_full &lt;- rbind(d_full, d)</code></pre>
 <p>Read counts per million from set of ubiquitous genes.</p>
 <pre class="r"><code>pca &lt;- run_pca(cpm(reads_ubiq))
 d &lt;- data.frame(id = rownames(pca$PCs), pca$PCs[, 1:2],
-                explained = pca$explained, pgd = pgd_ubiq,
+                explained = pca$explained, pgd = pgd_all,
                 type = &quot;reads&quot;, genes = &quot;ubiq&quot;, processing = &quot;cpm&quot;)
 d_full &lt;- rbind(d_full, d)</code></pre>
 <p>Molecule counts per million from set of ubiquitous genes.</p>
 <pre class="r"><code>pca &lt;- run_pca(cpm(molecules_ubiq))
 d &lt;- data.frame(id = rownames(pca$PCs), pca$PCs[, 1:2],
-                explained = pca$explained, pgd = pgd_ubiq,
+                explained = pca$explained, pgd = pgd_all,
                 type = &quot;molecules&quot;, genes = &quot;ubiq&quot;, processing = &quot;cpm&quot;)
 d_full &lt;- rbind(d_full, d)</code></pre>
 </div>
@@ -314,25 +319,25 @@ d_full &lt;- rbind(d_full, d)</code></pre>
 <p>Read log2 counts per million (edgeR) from set of filtered genes.</p>
 <pre class="r"><code>pca &lt;- run_pca(cpm(reads_filter, log = TRUE))
 d &lt;- data.frame(id = rownames(pca$PCs), pca$PCs[, 1:2],
-                explained = pca$explained, pgd = pgd_filter,
+                explained = pca$explained, pgd = pgd_all,
                 type = &quot;reads&quot;, genes = &quot;filter&quot;, processing = &quot;log2cpm-edgeR&quot;)
 d_full &lt;- rbind(d_full, d)</code></pre>
 <p>Molecule log2 counts per million (edgeR) from set of filtered genes.</p>
 <pre class="r"><code>pca &lt;- run_pca(cpm(molecules_filter, log = TRUE))
 d &lt;- data.frame(id = rownames(pca$PCs), pca$PCs[, 1:2],
-                explained = pca$explained, pgd = pgd_filter,
+                explained = pca$explained, pgd = pgd_all,
                 type = &quot;molecules&quot;, genes = &quot;filter&quot;, processing = &quot;log2cpm-edgeR&quot;)
 d_full &lt;- rbind(d_full, d)</code></pre>
 <p>Read log2 counts per million (edgeR) from set of ubiquitous genes.</p>
 <pre class="r"><code>pca &lt;- run_pca(cpm(reads_ubiq, log = TRUE))
 d &lt;- data.frame(id = rownames(pca$PCs), pca$PCs[, 1:2],
-                explained = pca$explained, pgd = pgd_ubiq,
+                explained = pca$explained, pgd = pgd_all,
                 type = &quot;reads&quot;, genes = &quot;ubiq&quot;, processing = &quot;log2cpm-edgeR&quot;)
 d_full &lt;- rbind(d_full, d)</code></pre>
 <p>Molecule log2 counts per million (edgeR) from set of ubiquitous genes.</p>
 <pre class="r"><code>pca &lt;- run_pca(cpm(molecules_ubiq, log = TRUE))
 d &lt;- data.frame(id = rownames(pca$PCs), pca$PCs[, 1:2],
-                explained = pca$explained, pgd = pgd_ubiq,
+                explained = pca$explained, pgd = pgd_all,
                 type = &quot;molecules&quot;, genes = &quot;ubiq&quot;, processing = &quot;log2cpm-edgeR&quot;)
 d_full &lt;- rbind(d_full, d)</code></pre>
 </div>
@@ -353,30 +358,31 @@ d_full &lt;- rbind(d_full, d)</code></pre>
 <p>Read counts per million from set of filtered genes.</p>
 <pre class="r"><code>pca &lt;- run_pca(log2(cpm(reads_filter) + 1))
 d &lt;- data.frame(id = rownames(pca$PCs), pca$PCs[, 1:2],
-                explained = pca$explained, pgd = pgd_filter,
+                explained = pca$explained, pgd = pgd_all,
                 type = &quot;reads&quot;, genes = &quot;filter&quot;, processing = &quot;log2cpm-Rafa&quot;)
 d_full &lt;- rbind(d_full, d)</code></pre>
 <p>Molecule counts per million from set of filtered genes.</p>
 <pre class="r"><code>pca &lt;- run_pca(log2(cpm(molecules_filter) + 1))
 d &lt;- data.frame(id = rownames(pca$PCs), pca$PCs[, 1:2],
-                explained = pca$explained, pgd = pgd_filter,
+                explained = pca$explained, pgd = pgd_all,
                 type = &quot;molecules&quot;, genes = &quot;filter&quot;, processing = &quot;log2cpm-Rafa&quot;)
 d_full &lt;- rbind(d_full, d)</code></pre>
 <p>Read counts per million from set of ubiquitous genes.</p>
 <pre class="r"><code>pca &lt;- run_pca(log2(cpm(reads_ubiq) + 1))
 d &lt;- data.frame(id = rownames(pca$PCs), pca$PCs[, 1:2],
-                explained = pca$explained, pgd = pgd_ubiq,
+                explained = pca$explained, pgd = pgd_all,
                 type = &quot;reads&quot;, genes = &quot;ubiq&quot;, processing = &quot;log2cpm-Rafa&quot;)
 d_full &lt;- rbind(d_full, d)</code></pre>
 <p>Molecule counts per million from set of ubiquitous genes.</p>
 <pre class="r"><code>pca &lt;- run_pca(log2(cpm(molecules_ubiq) + 1))
 d &lt;- data.frame(id = rownames(pca$PCs), pca$PCs[, 1:2],
-                explained = pca$explained, pgd = pgd_ubiq,
+                explained = pca$explained, pgd = pgd_all,
                 type = &quot;molecules&quot;, genes = &quot;ubiq&quot;, processing = &quot;log2cpm-Rafa&quot;)
 d_full &lt;- rbind(d_full, d)</code></pre>
 </div>
 <div id="results" class="section level2">
 <h2>Results</h2>
+<p>For the plots below, the x-axis is always the proportion of genes detected (PGD) that was calculated when considering all genes with at least one read in at least one single cell. PC1 on the y-axis is from the PCA performed on the indicated subset of genes.</p>
 <pre class="r"><code>d_full &lt;- separate(d_full, col = id, into = c(&quot;individual&quot;, &quot;replicate&quot;, &quot;well&quot;),
                    sep = &quot;\\.&quot;)</code></pre>
 <p>Effect of processing on reads using all genes:</p>
@@ -400,12 +406,20 @@ p_reads_filter</code></pre>
 <pre class="r"><code>p_molecules_filter &lt;- p_reads_all %+% d_full[d_full$type == &quot;molecules&quot; &amp; d_full$genes == &quot;filter&quot;, ]
 p_molecules_filter</code></pre>
 <p><img src="figure/prop-genes-detected.Rmd/pgd-pc1-molecules-filter-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p>Effect of processing on reads using ubiquitous genes:</p>
+<pre class="r"><code>p_reads_filter &lt;- p_reads_all %+% d_full[d_full$type == &quot;reads&quot; &amp; d_full$genes == &quot;ubiq&quot;, ]
+p_reads_filter</code></pre>
+<p><img src="figure/prop-genes-detected.Rmd/pgd-pc1-reads-ubiq-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p>Effect of processing on molecules using ubiquitous genes:</p>
+<pre class="r"><code>p_molecules_filter &lt;- p_reads_all %+% d_full[d_full$type == &quot;molecules&quot; &amp; d_full$genes == &quot;ubiq&quot;, ]
+p_molecules_filter</code></pre>
+<p><img src="figure/prop-genes-detected.Rmd/pgd-pc1-molecules-ubiq-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 </div>
 <div id="conclusions" class="section level2">
 <h2>Conclusions</h2>
 <ul>
 <li>Little difference whether using all observed genes or filtered set</li>
-<li>Only reads, and not molecules, affected by PGF effect</li>
+<li>Only reads, and not molecules, affected by PGD effect</li>
 <li>Adding the pseudocount before (edgeR) or after (Rafa) calculating the CPM makes little difference</li>
 </ul>
 </div>
@@ -427,7 +441,7 @@ attached base packages:
 [1] stats     graphics  grDevices utils     datasets  methods   base     
 
 other attached packages:
-[1] tidyr_0.2.0   testit_0.4    cowplot_0.3.1 ggplot2_1.0.1 edgeR_3.10.2 
+[1] testit_0.4    cowplot_0.3.1 ggplot2_1.0.1 tidyr_0.2.0   edgeR_3.10.2 
 [6] limma_3.24.9  knitr_1.10.5 
 
 loaded via a namespace (and not attached):

@@ -127,17 +127,18 @@ img {
 <div id="TOC">
 <ul>
 <li><a href="#setup">Setup</a></li>
-<li><a href="#prepare-single-cell-molecule-data">Prepare single cell molecule data</a></li>
+<li><a href="#prepare-single-cell-data">Prepare single cell data</a></li>
 <li><a href="#molecule-count-data">Molecule count data</a></li>
 <li><a href="#molecule-count-data-after-filtering">Molecule count data after filtering</a></li>
+<li><a href="#read-counts-data">Read counts data</a></li>
 <li><a href="#the-effect-of-pseudocount-in-cpm">The effect of pseudocount in cpm</a></li>
 <li><a href="#summary-plots">Summary plots</a></li>
 <li><a href="#session-information">Session information</a></li>
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2016-02-05</p>
-<p><strong>Code version:</strong> d92221ec0e8cb03e9aa5514def45e17168977c56</p>
+<p><strong>Last updated:</strong> 2016-02-15</p>
+<p><strong>Code version:</strong> afb6992553e07bb4a9f9437d4f2aebb9b973eb37</p>
 <p>The purpose is to see if removing the lowly expressed genes or using the final data (after correction of batch effect) would have any effect on the correltaion of PC1 and proportion of gene detected.</p>
 <div id="setup" class="section level2">
 <h2>Setup</h2>
@@ -152,13 +153,17 @@ Attaching package: &#39;cowplot&#39;
 The following object is masked from &#39;package:ggplot2&#39;:
 
     ggsave</code></pre>
-<pre class="r"><code>require(matrixStats)</code></pre>
+<pre class="r"><code>theme_set(theme_bw(base_size = 12))
+theme_update(panel.grid.minor.x = element_blank(),
+             panel.grid.minor.y = element_blank(),
+             panel.grid.major.x = element_blank(),
+             panel.grid.major.y = element_blank())
+require(matrixStats)</code></pre>
 <pre><code>Loading required package: matrixStats
 matrixStats v0.14.0 (2015-02-13) successfully loaded. See ?matrixStats for help.</code></pre>
-<pre class="r"><code>theme_set(theme_bw(base_size = 16))</code></pre>
 </div>
-<div id="prepare-single-cell-molecule-data" class="section level2">
-<h2>Prepare single cell molecule data</h2>
+<div id="prepare-single-cell-data" class="section level2">
+<h2>Prepare single cell data</h2>
 <p>Input annotation</p>
 <pre class="r"><code>anno &lt;- read.table(&quot;../data/annotation.txt&quot;, header = TRUE,
                    stringsAsFactors = FALSE)
@@ -170,9 +175,6 @@ anno_filter &lt;- read.table(&quot;../data/annotation-filter.txt&quot;, header =
            stringsAsFactors = FALSE)
 
 molecules_filter &lt;- read.table(&quot;../data/molecules-filter.txt&quot;, header = TRUE,
-           stringsAsFactors = FALSE)
-
-molecules_final &lt;- read.table(&quot;../data/molecules-final.txt&quot;, header = TRUE,
            stringsAsFactors = FALSE)
 
 ## qc cell
@@ -192,8 +194,12 @@ stopifnot(anno_filter$sample_id == colnames(reads_qc))</code></pre>
 <h2>Molecule count data</h2>
 <p>First, look at the data set before removing lowly expressed genes (genes with low counts).</p>
 <pre class="r"><code>expressed_single &lt;- rowSums(molecules_qc) &gt; 0
+expressed_single_reads &lt;- rowSums(reads_qc) &gt; 0
+
+## stopifnot(expressed_single_reads == expressed_single)
+
 molecules_single &lt;- molecules_qc[which(expressed_single), ]
-reads_single &lt;- reads_qc[expressed_single, ]</code></pre>
+reads_single &lt;- reads_qc[expressed_single_reads, ]</code></pre>
 <pre class="r"><code>number_nonzero_cells &lt;- colSums(molecules_single != 0)
 number_genes &lt;- dim(molecules_single)[1]
 molecules_prop_genes_detected &lt;- 
@@ -308,19 +314,28 @@ pc1_plot_all_filter &lt;- qplot(y = molecules_gene_all_filter_pca$PCs[,1],
       ylab = &quot;PC1&quot;,
       title = &quot;Proportion of genes detected (filter)&quot;) </code></pre>
 </div>
+<div id="read-counts-data" class="section level2">
+<h2>Read counts data</h2>
+<pre class="r"><code>number_nonzero_cells_reads &lt;- colSums(reads_single != 0)
+number_genes_reads &lt;- dim(reads_single)[1]
+reads_prop_genes_detected &lt;- 
+    data.frame(prop = number_nonzero_cells_reads/number_genes_reads,
+               individual = anno_filter$individual,
+               individual.batch = anno_filter$batch)
+
+genes_detected_plot_reads &lt;- ggplot(reads_prop_genes_detected,
+                       aes(y = prop, x = as.factor(individual.batch), fill = as.factor(individual.batch))) + 
+                       geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+                       geom_violin(alpha = .5) + 
+                       scale_fill_manual(values = great_color) +
+                       labs(x = &quot;Batch&quot;,
+                       y = &quot;Proportion of detected genes&quot;,
+                       title = &quot;Proportion of detected genes&quot;) +
+                       theme(axis.text.x = element_text(hjust=1, angle = 45))</code></pre>
+</div>
 <div id="the-effect-of-pseudocount-in-cpm" class="section level2">
 <h2>The effect of pseudocount in cpm</h2>
 <p>Code from Joyce :)</p>
-<pre class="r"><code>molecules_single_pca_tiny &lt;- run_pca(cpm(molecules_single, prior.count = .00001))
-
-pc1_tiny &lt;- qplot(y = molecules_single_pca_tiny$PCs[,1],
-      x = molecules_prop_genes_detected$prop,
-      shape = as.factor(anno_filter$replicate),
-      colour = as.factor(anno_filter$individual),
-      xlab = &quot;Proportion of genes detected&quot;,
-      ylab = &quot;PC1 Pseudocount&quot;)
-pc1_tiny</code></pre>
-<p><img src="figure/pca-correlation-rafa-filter.Rmd/pseudocounts-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <pre class="r"><code># this function computes PC1 of the inputted count matrix
 # and also the correlation between the computed PC1
 # and the proportion of genes detected.
@@ -332,9 +347,9 @@ pseudocount_pca &lt;- function(pseudo_count,
   # a pseudo count is added to the count matrix if output is log expression
   # a pseudo is not added to the count matrix if output 
   if (log_counts == TRUE) {
-      molecules_cpm &lt;- cpm(count_matrix, prior.count = pseudo_count, log = log_counts) }
+      molecules_cpm &lt;- log2(cpm(count_matrix, prior.count = pseudo_count) + 1) }
   if (log_counts == FALSE) {
-      molecules_cpm &lt;- cpm(count_matrix + pseudo_count) }
+      molecules_cpm &lt;- cpm(count_matrix, prior.count = pseudo_count) }
   pc1 &lt;- run_pca( (molecules_cpm))$PCs[,1]
   cor_coef &lt;- cor(x = pc1, y = gene_prop_detected_vector, method = cor_method)
   return(list(pc1 = pc1, 
@@ -371,12 +386,11 @@ plot(x = pseudo_count_vector,
      y = sapply(cor_pca_log, function(xx) xx[[2]]))
 plot(x = pseudo_count_vector,
      y = sapply(cor_pca_count, function(xx) xx[[2]]))</code></pre>
-<p><img src="figure/pca-correlation-rafa-filter.Rmd/pseudocounts-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="figure/pca-correlation-rafa-filter.Rmd/pseudocounts-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
 <div id="summary-plots" class="section level2">
 <h2>Summary plots</h2>
-<pre class="r"><code>theme_set(theme_bw(base_size = 12))
-plot_grid(genes_detected_plot + theme(legend.position = &quot;none&quot;),
+<pre class="r"><code>plot_grid(genes_detected_plot + theme(legend.position = &quot;none&quot;),
           genes_detected_filter_plot + theme(legend.position = &quot;none&quot;),
           pc1_plot + theme(legend.position = &quot;none&quot;),
           pc1_filter_plot + theme(legend.position = &quot;none&quot;),
@@ -385,7 +399,7 @@ plot_grid(genes_detected_plot + theme(legend.position = &quot;none&quot;),
 <p><img src="figure/pca-correlation-rafa-filter.Rmd/sum-plots-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>plot_grid(pc1_plot_all + theme(legend.position = &quot;none&quot;),
           pc1_plot_all_filter + theme(legend.position = &quot;none&quot;),
-          labels = LETTERS[1:2])</code></pre>
+          labels = LETTERS[3:4])</code></pre>
 <p><img src="figure/pca-correlation-rafa-filter.Rmd/sum-plots-all-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
 </div>
 <div id="session-information" class="section level2">
