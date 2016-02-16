@@ -10,12 +10,17 @@ Format a bibtex file.
 Usage:
   python format-bibtex.py file.bib
 
-Note that it overwrites the original bibtex file.
+Note that it overwrites the original bibtex file, but only if the
+script completes successfully. If the script fails due to an error,
+the original file is unmodified and a temporary file of the same name
+is available in /tmp. The last entry in this temporary file is the
+last bibtex entry that was successfully formated.
 """
 
 import os
 import sys
 import bibtexparser as bib
+import shutil
 
 bibtex_input = sys.argv[1]
 assert os.path.isfile(bibtex_input), "bibtex file does not exist"
@@ -28,8 +33,9 @@ keys = bib_dict.keys()
 keys = list(keys)
 keys.sort()
 
-# Overwrite original file
-bibtex_output = open(bibtex_input, "w")
+
+bibtex_input_base = os.path.basename(bibtex_input)
+bibtex_output = open("/tmp/" + bibtex_input_base, "w")
 
 for k in keys:
     entry = bib_dict[k]
@@ -57,3 +63,5 @@ for k in keys:
 
 bibtex_output.close()
 
+# Overwrite original file
+shutil.move("/tmp/" + bibtex_input_base, bibtex_input)
