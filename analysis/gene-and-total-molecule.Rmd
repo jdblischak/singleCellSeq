@@ -12,7 +12,7 @@ date: 2015-09-15
 source("chunk-options.R")
 ```
 
-```{r library}
+```{r library, message=FALSE}
 source("functions.R")
 library("limma")
 library("edgeR")
@@ -27,80 +27,27 @@ From previous analysis, we found that [19098 has fewer reads but more molecules]
 
 Input annotation
 ```{r input-anno}
-anno <- read.table("../data/annotation.txt", header = TRUE,
+anno_filter <- read.table("../data/annotation-filter.txt", header = TRUE,
                    stringsAsFactors = FALSE)
 ```
 
 Input molecule counts
 ```{r input-mol}
-molecules <- read.table("../data/molecules.txt", header = TRUE,
-           stringsAsFactors = FALSE)
-```
-
-Input read count
-```{r input-read}
-reads <- read.table("../data/reads.txt", header = TRUE,
-                    stringsAsFactors = FALSE)
-```
-
-Input list of quality single cells.
-
-```{r input-quality-single-cells}
-quality_single_cells <- scan("../data/quality-single-cells.txt",
-                             what = "character")
-```
-
-Keep only the single cells that passed the [QC filters](qc-cell-ipsc.html) and the bulk samples.
-
-```{r qc-filter}
-reads <- reads[, grepl("bulk", colnames(reads)) |
-                 colnames(reads) %in% quality_single_cells]
-molecules <- molecules[, grepl("bulk", colnames(molecules)) |
-                         colnames(molecules) %in% quality_single_cells]
-anno <- anno[anno$well == "bulk" | anno$sample_id %in% quality_single_cells, ]
-stopifnot(dim(reads) == dim(molecules),
-          nrow(anno) == ncol(molecules))
-```
-
-Remove batch 2 of individual 19098.
-```{r remove-19098-2}
-molecules_no <- molecules[, !(anno$individual == 19098 & anno$batch == 2)]
-anno_no <- anno[!(anno$individual == 19098 & anno$batch == 2), ]
-stopifnot(ncol(molecules_no) == nrow(anno_no))
-```
-
-Remove bulk samples.
-```{r remove-bulk}
-molecules_single <- molecules_no[, anno_no$well != "bulk"]
-anno_single <- anno_no[anno_no$well != "bulk", ]
-stopifnot(ncol(molecules_single) == nrow(anno_single))
-```
-
-Remove genes with zero count in the single cells
-```{r remove-zero-expressed}
-expressed_single <- rowSums(molecules_single) > 0
-molecules_single <- molecules_single[which(expressed_single), ]
-```
-
-Remove gene with molecule count larger than 1024 (15 of them) for correction of collision probability
-```{r remove-1024-collision}
-overexpressed_genes <- rownames(molecules_single)[apply(molecules_single, 1,
-                                                        function(x) any(x >= 1024))]
-molecules_single <- molecules_single[!(rownames(molecules_single) %in% overexpressed_genes), ]
-molecules_single_collision <- -1024 * log(1 - molecules_single / 1024)
+molecules_filter <- read.table("../data/molecules-filter.txt", header = TRUE,
+                               stringsAsFactors = FALSE)
 ```
 
 Remove ERCC, keep only the endogenous genes
 ```{r remove-ercc}
-molecules_single_ENSG <- molecules_single[grep("ENSG", rownames(molecules_single)),]
-molecules_single_ERCC <- molecules_single[grep("ERCC", rownames(molecules_single)),]
-stopifnot(dim(molecules_single_ERCC)[1] + dim(molecules_single_ENSG)[1] == dim(molecules_single)[1])
+molecules_filter_ENSG <- molecules_filter[grep("ENSG", rownames(molecules_filter)),]
+molecules_filter_ERCC <- molecules_filter[grep("ERCC", rownames(molecules_filter)),]
+stopifnot(nrow(molecules_filter_ERCC) + nrow(molecules_filter_ENSG) == nrow(molecules_filter))
 ```
 
 standardization by cpm molecule counts
-```{r colloision}
-molecules_single_ENSG_cpm <- cpm(molecules_single_ENSG, log = TRUE)
-molecules_single_ERCC_cpm <- cpm(molecules_single_ERCC, log = TRUE)
+```{r cpm}
+molecules_filter_ENSG_cpm <- cpm(molecules_filter_ENSG, log = TRUE)
+molecules_filter_ERCC_cpm <- cpm(molecules_filter_ERCC, log = TRUE)
 ```
 
 ## Number of genes detected and total molecule counts in single cells
@@ -109,35 +56,35 @@ The number of genes (both endogenous genes and ERCC genes) per cell corelated wi
 
 ```{r gene-detected}
 ## number of genes detected in each cell
-anno_single$number_gene <- colSums(molecules_single_ENSG > 0)
-anno_single$number_ERCC <- colSums(molecules_single_ERCC > 0)
+anno_filter$number_gene <- colSums(molecules_filter_ENSG > 0)
+anno_filter$number_ERCC <- colSums(molecules_filter_ERCC > 0)
 
 ## number of total molecule counts in each cell
-anno_single$total_gene_molecule <- colSums(molecules_single_ENSG) 
-anno_single$total_ERCC_molecule <- colSums(molecules_single_ERCC) 
+anno_filter$total_gene_molecule <- colSums(molecules_filter_ENSG) 
+anno_filter$total_ERCC_molecule <- colSums(molecules_filter_ERCC) 
 
 ## plot 
-ggplot(anno_single, aes(x = total_gene_molecule, y = number_gene, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) 
+ggplot(anno_filter, aes(x = total_gene_molecule, y = number_gene, col = as.factor(individual), shape = as.factor(batch))) + geom_point(size = 3, alpha = 0.5) 
 
-ggplot(anno_single, aes(x = as.factor(individual), y = total_gene_molecule, fill = as.factor(batch))) + geom_violin(alpha = 0.5) + geom_boxplot(alpha = 0.01, width = 0.1, position = position_dodge(width = 0.9)) + labs( title = "total number of gene molecule counts")
+ggplot(anno_filter, aes(x = as.factor(individual), y = total_gene_molecule, fill = as.factor(batch))) + geom_violin(alpha = 0.5) + geom_boxplot(alpha = 0.01, width = 0.1, position = position_dodge(width = 0.9)) + labs( title = "total number of gene molecule counts")
 
-ggplot(anno_single, aes(x = as.factor(individual), y = total_ERCC_molecule, fill = as.factor(batch))) + geom_violin(alpha = 0.5) + geom_boxplot(alpha = 0.01, width = 0.1, position = position_dodge(width = 0.9)) + labs( title = "total numer of ERCC molecule counts")
+ggplot(anno_filter, aes(x = as.factor(individual), y = total_ERCC_molecule, fill = as.factor(batch))) + geom_violin(alpha = 0.5) + geom_boxplot(alpha = 0.01, width = 0.1, position = position_dodge(width = 0.9)) + labs( title = "total numer of ERCC molecule counts")
 
-ggplot(anno_single, aes(x = as.factor(individual), y = number_gene, fill = as.factor(batch))) + geom_violin(alpha = 0.5) + geom_boxplot(alpha = 0.1, width = 0.1, position = position_dodge(width = 0.9)) + labs( title = "number of endogenous genes detected")
+ggplot(anno_filter, aes(x = as.factor(individual), y = number_gene, fill = as.factor(batch))) + geom_violin(alpha = 0.5) + geom_boxplot(alpha = 0.1, width = 0.1, position = position_dodge(width = 0.9)) + labs( title = "number of endogenous genes detected")
 
-ggplot(anno_single, aes(x = as.factor(individual), y = number_ERCC, fill = as.factor(batch))) + geom_violin(alpha = 0.5) + geom_boxplot(alpha = 0.1, width = 0.1, position = position_dodge(width = 0.9)) + labs( title = "number of ERCC genes detected")
+ggplot(anno_filter, aes(x = as.factor(individual), y = number_ERCC, fill = as.factor(batch))) + geom_violin(alpha = 0.5) + geom_boxplot(alpha = 0.1, width = 0.1, position = position_dodge(width = 0.9)) + labs( title = "number of ERCC genes detected")
 ```
 
 To standardized within each cell, cpm was done separately for endogenous genes and ERCCs. cpm does not seem to affect the endogenous genes, whereas cpm make the ERCC more similar across batch and also across individual, suggesting that the distribution of ERCC gene expression is similar across batch and across indiviual.
 
 ```{r gene-detected-cpm}
 ## number of total molecule counts in each cell AFTER cpm
-anno_single$total_gene_molecule_cpm <- colSums(molecules_single_ENSG_cpm) 
-anno_single$total_ERCC_molecule_cpm <- colSums(molecules_single_ERCC_cpm)
+anno_filter$total_gene_molecule_cpm <- colSums(molecules_filter_ENSG_cpm) 
+anno_filter$total_ERCC_molecule_cpm <- colSums(molecules_filter_ERCC_cpm)
 
-ggplot(anno_single, aes(x = as.factor(individual), y = total_gene_molecule_cpm, fill = as.factor(batch))) + geom_violin(alpha = 0.5) + geom_boxplot(alpha = 0.01, width = 0.1, position = position_dodge(width = 0.9)) + labs( title = "total gene molecule (cpm log)")
+ggplot(anno_filter, aes(x = as.factor(individual), y = total_gene_molecule_cpm, fill = as.factor(batch))) + geom_violin(alpha = 0.5) + geom_boxplot(alpha = 0.01, width = 0.1, position = position_dodge(width = 0.9)) + labs( title = "total gene molecule (cpm log)")
 
-ggplot(anno_single, aes(x = as.factor(individual), y = total_ERCC_molecule_cpm, fill = as.factor(batch))) + geom_violin(alpha = 0.5) + geom_boxplot(alpha = 0.01, width = 0.1, position = position_dodge(width = 0.9)) + labs( title = "total ERCC molecule (cpm log)")
+ggplot(anno_filter, aes(x = as.factor(individual), y = total_ERCC_molecule_cpm, fill = as.factor(batch))) + geom_violin(alpha = 0.5) + geom_boxplot(alpha = 0.01, width = 0.1, position = position_dodge(width = 0.9)) + labs( title = "total ERCC molecule (cpm log)")
 ```
 
 
@@ -148,13 +95,13 @@ Do a density plot of molecule counts per gene per cell to see if 19098 have more
 
 ```{r distribution-all-gene}
 ## 19098 (total 142 cells)
-molecules_single_ENSG_19098 <- as.matrix(log(molecules_single_ENSG[,grep("19098", colnames(molecules_single_ENSG))]))
+molecules_filter_ENSG_19098 <- as.matrix(log(molecules_filter_ENSG[,grep("19098", colnames(molecules_filter_ENSG))]))
 
 ## 19101 (total 197 cells)
-molecules_single_ENSG_19101 <- as.matrix(log(molecules_single_ENSG[,grep("19101", colnames(molecules_single_ENSG))]))
+molecules_filter_ENSG_19101 <- as.matrix(log(molecules_filter_ENSG[,grep("19101", colnames(molecules_filter_ENSG))]))
 
 ## 19239 (total 197 cells)
-molecules_single_ENSG_19239 <- as.matrix(log(molecules_single_ENSG[,grep("19239", colnames(molecules_single_ENSG))]))
+molecules_filter_ENSG_19239 <- as.matrix(log(molecules_filter_ENSG[,grep("19239", colnames(molecules_filter_ENSG))]))
 
 ## plot all together
 plot_multi_dens <- function(s)
@@ -173,19 +120,21 @@ plot_multi_dens <- function(s)
     }
 }
 
-plot_multi_dens(list(molecules_single_ENSG_19098, molecules_single_ENSG_19101, molecules_single_ENSG_19239))
+plot_multi_dens(list(molecules_filter_ENSG_19098, molecules_filter_ENSG_19101, molecules_filter_ENSG_19239))
 legend(5, 0.7, c("19098","19101", "19239"), lwd=c(2.5,2.5),col=c("black", "red", "green"))
 
-## ggplot
-function(x){v_19098 <- as.vector(molecules_single_cpm_19098)
-v_19239 <- as.vector(molecules_single_cpm_19239)
-v_19101 <- as.vector(molecules_single_cpm_19101)
-
-data_cpm <- as.data.frame(cbind(counts=c(v_19098,v_19239,v_19101),individual=rep(c("19098","19239","19101"),c(length(v_19098),length(v_19239),length(v_19101)))))
-
-data_cpm$counts <- as.numeric(as.character(data_cpm$counts))
-
-ggplot(data_cpm, aes(x = counts,  col = individual)) + geom_density() + labs(title="molecule per gene per cell")}
+# Not sure how to fix the following code. These vectors do not exist. -John 
+#
+# ## ggplot
+# v_19098 <- as.vector(molecules_filter_cpm_19098)
+# v_19239 <- as.vector(molecules_filter_cpm_19239)
+# v_19101 <- as.vector(molecules_filter_cpm_19101)
+# 
+# data_cpm <- as.data.frame(cbind(counts=c(v_19098,v_19239,v_19101),individual=rep(c("19098","19239","19101"),c(length(v_19098),length(v_19239),length(v_19101)))))
+# 
+# data_cpm$counts <- as.numeric(as.character(data_cpm$counts))
+# 
+# ggplot(data_cpm, aes(x = counts,  col = individual)) + geom_density() + labs(title="molecule per gene per cell")
 ```
 
 ### Top 5000 genes
@@ -194,44 +143,46 @@ There is some difference before cpm, but the distribution matched perfectly afte
 However, surprisingly, not all top 5000 genes are expressed in cells.
 ```{r top-5000}
 ## calculate total and select the top 5000
-molecules_single_ENSG$total <- apply(molecules_single_ENSG[1:563], 1, sum)
-molecules_single_ENSG_top <- molecules_single_ENSG %>% arrange(desc(total)) %>% slice(1:5000)
+molecules_filter_ENSG$total <- apply(molecules_filter_ENSG, 1, sum)
+molecules_filter_ENSG_top <- molecules_filter_ENSG %>% arrange(desc(total)) %>%
+  slice(1:5000) %>% select(-total)
 
 ## number of gene detected 
-anno_single$number_gene_top <- colSums(molecules_single_ENSG_top[,1:563] > 0)
+anno_filter$number_gene_top <- colSums(molecules_filter_ENSG_top > 0)
 
-ggplot(anno_single, aes(x = as.factor(individual), y = number_gene_top, fill = as.factor(batch))) + geom_violin(alpha = 0.5) + geom_boxplot(alpha = 0.01, width = 0.1, position = position_dodge(width = 0.9)) + labs( title = "number of gene detected (top 5000)")
+ggplot(anno_filter, aes(x = as.factor(individual), y = number_gene_top, fill = as.factor(batch))) + geom_violin(alpha = 0.5) + geom_boxplot(alpha = 0.01, width = 0.1, position = position_dodge(width = 0.9)) + labs( title = "number of gene detected (top 5000)")
 
 ## divided by individual
-molecules_single_ENSG_top_19098 <- as.matrix(log(molecules_single_ENSG_top[,grep("19098", colnames(molecules_single_ENSG_top))]))
-molecules_single_ENSG_top_19101 <- as.matrix(log(molecules_single_ENSG_top[,grep("19101", colnames(molecules_single_ENSG_top))]))
-molecules_single_ENSG_top_19239 <- as.matrix(log(molecules_single_ENSG_top[,grep("19239", colnames(molecules_single_ENSG_top))]))
+molecules_filter_ENSG_top_19098 <- as.matrix(log(molecules_filter_ENSG_top[,grep("19098", colnames(molecules_filter_ENSG_top))]))
+molecules_filter_ENSG_top_19101 <- as.matrix(log(molecules_filter_ENSG_top[,grep("19101", colnames(molecules_filter_ENSG_top))]))
+molecules_filter_ENSG_top_19239 <- as.matrix(log(molecules_filter_ENSG_top[,grep("19239", colnames(molecules_filter_ENSG_top))]))
 
-plot_multi_dens(list(molecules_single_ENSG_top_19098, molecules_single_ENSG_top_19101, molecules_single_ENSG_top_19239))
+plot_multi_dens(list(molecules_filter_ENSG_top_19098, molecules_filter_ENSG_top_19101, molecules_filter_ENSG_top_19239))
 legend(5.5 ,0.4, c("19098","19101", "19239"), lwd=c(2.5,2.5),col=c("black", "red", "green"))
 title("molecule per gene top 5000 genes (counts)")
 
 ## calculate total and select the top 5000 with cpm
-molecules_single_ENSG_cpm <- as.data.frame(molecules_single_ENSG_cpm)
-molecules_single_ENSG_cpm$total <- apply(molecules_single_ENSG_cpm[1:563], 1, sum)
-molecules_single_ENSG_cpm_top <- molecules_single_ENSG_cpm %>% arrange(desc(total)) %>% slice(1:5000)
-stopifnot(rownames(molecules_single_ENSG_top) == rownames(molecules_single_ENSG_cpm_top))
+molecules_filter_ENSG_cpm <- as.data.frame(molecules_filter_ENSG_cpm)
+molecules_filter_ENSG_cpm$total <- apply(molecules_filter_ENSG_cpm, 1, sum)
+molecules_filter_ENSG_cpm_top <- molecules_filter_ENSG_cpm %>% arrange(desc(total)) %>%
+  slice(1:5000) %>% select(-total)
+stopifnot(rownames(molecules_filter_ENSG_top) == rownames(molecules_filter_ENSG_cpm_top))
 
 ## divided by individual
-molecules_single_ENSG_cpm_top_19098 <- as.matrix(molecules_single_ENSG_cpm_top[,grep("19098", colnames(molecules_single_ENSG_cpm_top))])
-molecules_single_ENSG_cpm_top_19101 <- as.matrix(molecules_single_ENSG_cpm_top[,grep("19101", colnames(molecules_single_ENSG_cpm_top))])
-molecules_single_ENSG_cpm_top_19239 <- as.matrix(molecules_single_ENSG_cpm_top[,grep("19239", colnames(molecules_single_ENSG_cpm_top))])
+molecules_filter_ENSG_cpm_top_19098 <- as.matrix(molecules_filter_ENSG_cpm_top[,grep("19098", colnames(molecules_filter_ENSG_cpm_top))])
+molecules_filter_ENSG_cpm_top_19101 <- as.matrix(molecules_filter_ENSG_cpm_top[,grep("19101", colnames(molecules_filter_ENSG_cpm_top))])
+molecules_filter_ENSG_cpm_top_19239 <- as.matrix(molecules_filter_ENSG_cpm_top[,grep("19239", colnames(molecules_filter_ENSG_cpm_top))])
 
-plot_multi_dens(list(molecules_single_ENSG_cpm_top_19098, molecules_single_ENSG_cpm_top_19098, molecules_single_ENSG_cpm_top_19098))
+plot_multi_dens(list(molecules_filter_ENSG_cpm_top_19098, molecules_filter_ENSG_cpm_top_19098, molecules_filter_ENSG_cpm_top_19098))
 legend(9, 0.25, c("19098","19101", "19239"), lwd=c(2.5,2.5),col=c("black", "red", "green"))
 title("molecule per gene top 5000 genes (cpm log)")
 
 ## total molecule number
-anno_single$total_gene_molecule_top <- colSums(molecules_single_ENSG_top[1:563]) 
-ggplot(anno_single, aes(x = as.factor(individual), y = total_gene_molecule_top, fill = as.factor(batch))) + geom_violin(alpha = 0.5) + geom_boxplot(alpha = 0.01, width = 0.1, position = position_dodge(width = 0.9)) + labs( title = "total gene molecule top 5000")
+anno_filter$total_gene_molecule_top <- colSums(molecules_filter_ENSG_top) 
+ggplot(anno_filter, aes(x = as.factor(individual), y = total_gene_molecule_top, fill = as.factor(batch))) + geom_violin(alpha = 0.5) + geom_boxplot(alpha = 0.01, width = 0.1, position = position_dodge(width = 0.9)) + labs( title = "total gene molecule top 5000")
 
-anno_single$total_gene_molecule_cpm_top <- colSums(molecules_single_ENSG_cpm_top[1:563]) 
-ggplot(anno_single, aes(x = as.factor(individual), y = total_gene_molecule_cpm_top, fill = as.factor(batch))) + geom_violin(alpha = 0.5) + geom_boxplot(alpha = 0.01, width = 0.1, position = position_dodge(width = 0.9)) + labs( title = "total gene molecule top 5000 (cpm log)")
+anno_filter$total_gene_molecule_cpm_top <- colSums(molecules_filter_ENSG_cpm_top) 
+ggplot(anno_filter, aes(x = as.factor(individual), y = total_gene_molecule_cpm_top, fill = as.factor(batch))) + geom_violin(alpha = 0.5) + geom_boxplot(alpha = 0.01, width = 0.1, position = position_dodge(width = 0.9)) + labs( title = "total gene molecule top 5000 (cpm log)")
 ```
 
 ### Bottom 5000 genes
@@ -240,47 +191,49 @@ As exprected, more genes have only 1 molecule in 19098 than the other 2 individu
 
 ```{r bottom-5000}
 ## select the bottom 5000
-molecules_single_ENSG_bottom <- molecules_single_ENSG %>% arrange(total) %>% slice(1:5000)
+molecules_filter_ENSG_bottom <- molecules_filter_ENSG %>% arrange(total) %>%
+  slice(1:5000) %>% select(-total)
 
 ## number of gene detected 
-anno_single$number_gene_bottom <- colSums(molecules_single_ENSG_bottom[,1:563] > 0)
+anno_filter$number_gene_bottom <- colSums(molecules_filter_ENSG_bottom > 0)
 
-ggplot(anno_single, aes(x = as.factor(individual), y = number_gene_bottom, fill = as.factor(batch))) + geom_violin(alpha = 0.5) + geom_boxplot(alpha = 0.01, width = 0.1, position = position_dodge(width = 0.9)) + labs( title = "number of gene detected (bottom 5000)")
+ggplot(anno_filter, aes(x = as.factor(individual), y = number_gene_bottom, fill = as.factor(batch))) + geom_violin(alpha = 0.5) + geom_boxplot(alpha = 0.01, width = 0.1, position = position_dodge(width = 0.9)) + labs( title = "number of gene detected (bottom 5000)")
 
 ## divided by individual
-molecules_single_ENSG_bottom_19098 <- as.matrix(log(molecules_single_ENSG_bottom[,grep("19098", colnames(molecules_single_ENSG_bottom))]))
-molecules_single_ENSG_bottom_19101 <- as.matrix(log(molecules_single_ENSG_bottom[,grep("19101", colnames(molecules_single_ENSG_bottom))]))
-molecules_single_ENSG_bottom_19239 <- as.matrix(log(molecules_single_ENSG_bottom[,grep("19239", colnames(molecules_single_ENSG_bottom))]))
+molecules_filter_ENSG_bottom_19098 <- as.matrix(log(molecules_filter_ENSG_bottom[,grep("19098", colnames(molecules_filter_ENSG_bottom))]))
+molecules_filter_ENSG_bottom_19101 <- as.matrix(log(molecules_filter_ENSG_bottom[,grep("19101", colnames(molecules_filter_ENSG_bottom))]))
+molecules_filter_ENSG_bottom_19239 <- as.matrix(log(molecules_filter_ENSG_bottom[,grep("19239", colnames(molecules_filter_ENSG_bottom))]))
 
-plot_multi_dens(list(molecules_single_ENSG_bottom_19098, molecules_single_ENSG_bottom_19101, molecules_single_ENSG_bottom_19239))
+plot_multi_dens(list(molecules_filter_ENSG_bottom_19098, molecules_filter_ENSG_bottom_19101, molecules_filter_ENSG_bottom_19239))
 legend(2.5, 0.2, c("19098","19101", "19239"), lwd=c(2.5,2.5),col=c("black", "red", "green"))
 title("molecule counts per gene")
 
 ## the bottom 5000 with cpm
-molecules_single_ENSG_cpm_bottom <- molecules_single_ENSG_cpm %>% arrange(total) %>% slice(1:5000)
-stopifnot(rownames(molecules_single_ENSG_bottom) == rownames(molecules_single_ENSG_cpm_bottom))
+molecules_filter_ENSG_cpm_bottom <- molecules_filter_ENSG_cpm %>% arrange(total) %>%
+  slice(1:5000) %>% select(-total)
+stopifnot(rownames(molecules_filter_ENSG_bottom) == rownames(molecules_filter_ENSG_cpm_bottom))
 
 ## divided by individual
-molecules_single_ENSG_cpm_bottom_19098 <- as.matrix(molecules_single_ENSG_cpm_bottom[,grep("19098", colnames(molecules_single_ENSG_cpm_bottom))])
-molecules_single_ENSG_cpm_bottom_19101 <- as.matrix(molecules_single_ENSG_cpm_bottom[,grep("19101", colnames(molecules_single_ENSG_cpm_bottom))])
-molecules_single_ENSG_cpm_bottom_19239 <- as.matrix(molecules_single_ENSG_cpm_bottom[,grep("19239", colnames(molecules_single_ENSG_cpm_bottom))])
+molecules_filter_ENSG_cpm_bottom_19098 <- as.matrix(molecules_filter_ENSG_cpm_bottom[,grep("19098", colnames(molecules_filter_ENSG_cpm_bottom))])
+molecules_filter_ENSG_cpm_bottom_19101 <- as.matrix(molecules_filter_ENSG_cpm_bottom[,grep("19101", colnames(molecules_filter_ENSG_cpm_bottom))])
+molecules_filter_ENSG_cpm_bottom_19239 <- as.matrix(molecules_filter_ENSG_cpm_bottom[,grep("19239", colnames(molecules_filter_ENSG_cpm_bottom))])
 
-plot_multi_dens(list(molecules_single_ENSG_cpm_bottom_19098, molecules_single_ENSG_cpm_bottom_19098, molecules_single_ENSG_cpm_bottom_19098))
+plot_multi_dens(list(molecules_filter_ENSG_cpm_bottom_19098, molecules_filter_ENSG_cpm_bottom_19098, molecules_filter_ENSG_cpm_bottom_19098))
 
 ## total molecule number
-anno_single$total_gene_molecule_bottom <- colSums(molecules_single_ENSG_bottom[1:563]) 
-ggplot(anno_single, aes(x = as.factor(individual), y = total_gene_molecule_bottom, fill = as.factor(batch))) + geom_violin(alpha = 0.5) + geom_boxplot(alpha = 0.01, width = 0.1, position = position_dodge(width = 0.9)) + labs( title = "total gene molecule bottom 5000")
+anno_filter$total_gene_molecule_bottom <- colSums(molecules_filter_ENSG_bottom) 
+ggplot(anno_filter, aes(x = as.factor(individual), y = total_gene_molecule_bottom, fill = as.factor(batch))) + geom_violin(alpha = 0.5) + geom_boxplot(alpha = 0.01, width = 0.1, position = position_dodge(width = 0.9)) + labs( title = "total gene molecule bottom 5000")
 
-anno_single$total_gene_molecule_cpm_bottom <- colSums(molecules_single_ENSG_cpm_bottom[1:563]) 
-ggplot(anno_single, aes(x = as.factor(individual), y = total_gene_molecule_cpm_bottom, fill = as.factor(batch))) + geom_violin(alpha = 0.5) + geom_boxplot(alpha = 0.01, width = 0.1, position = position_dodge(width = 0.9)) + labs( title = "total gene molecule bottom 5000 (cpm log)")
+anno_filter$total_gene_molecule_cpm_bottom <- colSums(molecules_filter_ENSG_cpm_bottom) 
+ggplot(anno_filter, aes(x = as.factor(individual), y = total_gene_molecule_cpm_bottom, fill = as.factor(batch))) + geom_violin(alpha = 0.5) + geom_boxplot(alpha = 0.01, width = 0.1, position = position_dodge(width = 0.9)) + labs( title = "total gene molecule bottom 5000 (cpm log)")
 ```
 
 ## Median molecule counts per gene of the same individual
 ```{r total-per-individual}
 ## with cpm 
-molecules_counts_per_gene_19098_cpm <- apply(molecules_single_ENSG_19098, 1, median)
-molecules_counts_per_gene_19101_cpm <- apply(molecules_single_ENSG_19101, 1, median)
-molecules_counts_per_gene_19239_cpm <- apply(molecules_single_ENSG_19239, 1, median)
+molecules_counts_per_gene_19098_cpm <- apply(molecules_filter_ENSG_19098, 1, median)
+molecules_counts_per_gene_19101_cpm <- apply(molecules_filter_ENSG_19101, 1, median)
+molecules_counts_per_gene_19239_cpm <- apply(molecules_filter_ENSG_19239, 1, median)
 
 ## plot
 plot_multi_dens(list(molecules_counts_per_gene_19098_cpm, molecules_counts_per_gene_19101_cpm, molecules_counts_per_gene_19239_cpm))
