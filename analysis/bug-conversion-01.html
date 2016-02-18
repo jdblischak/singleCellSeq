@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+<meta name="author" content="John Blischak" />
+
+<meta name="date" content="2015-02-18" />
+
+<title>Tracking down bug in reads to molecules conversion - Attempt 01</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Tracking down bug in reads to molecules conversion - Attempt 01</h1>
+<h4 class="author"><em>John Blischak</em></h4>
+<h4 class="date"><em>2015-02-18</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#input">Input</a></li>
+<li><a href="#identifying-problem-genes">Identifying problem genes</a></li>
+<li><a href="#searching-for-where-the-reads-are-lost-during-the-processing-pipeline">Searching for where the reads are lost during the processing pipeline</a></li>
+<li><a href="#exploring-locus-on-ucsc-genome-browser">Exploring locus on UCSC genome browser</a></li>
+<li><a href="#checking-if-sequence-length-is-causing-the-problem">Checking if sequence length is causing the problem</a></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2016-02-18</p>
+<p><strong>Code version:</strong> 4552abe3b660e2153f2b995df56c8f48b825a67d</p>
+<p>We expect that any genes with at least one read will have at least one molecule. Conversely, any gene with zero reads should have zero molecules. There are a small number of instances where these relationships do not hold. This anaysis tracks down this bug in the <a href="http://jdblischak.github.io/singleCellSeq/analysis/process-samples.html">sequence processsing pipeline</a>.</p>
+<div id="input" class="section level2">
+<h2>Input</h2>
+<p>Input annotation.</p>
+<pre class="r"><code>anno &lt;- read.table(&quot;../data/annotation.txt&quot;, header = TRUE,
+                   stringsAsFactors = FALSE)</code></pre>
+<p>Input read counts.</p>
+<pre class="r"><code>reads &lt;- read.table(&quot;../data/reads.txt&quot;, header = TRUE,
+                    stringsAsFactors = FALSE)
+stopifnot(ncol(reads) == nrow(anno),
+          colnames(reads) == anno$sample_id)</code></pre>
+<p>Input molecule counts.</p>
+<pre class="r"><code>molecules &lt;- read.table(&quot;../data/molecules.txt&quot;, header = TRUE,
+                    stringsAsFactors = FALSE)
+stopifnot(ncol(molecules) == nrow(anno),
+          colnames(molecules) == anno$sample_id)</code></pre>
+</div>
+<div id="identifying-problem-genes" class="section level2">
+<h2>Identifying problem genes</h2>
+<p>How often is this a problem? How many genes does it affect? For affected genes, how many samples are affected?</p>
+<pre class="r"><code>discordant_zeros &lt;- (reads == 0) != (molecules == 0)
+all_genes &lt;- rowSums(discordant_zeros)
+names(all_genes) &lt;- rownames(reads)
+problem_genes &lt;- all_genes[all_genes &gt; 0]
+length(problem_genes)</code></pre>
+<pre><code>[1] 1347</code></pre>
+<pre class="r"><code>length(problem_genes) / length(all_genes)</code></pre>
+<pre><code>[1] 0.07951594</code></pre>
+<pre class="r"><code>summary(problem_genes)</code></pre>
+<pre><code>   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+  1.000   1.000   1.000   3.334   2.000 206.000 </code></pre>
+<p>This problem affects 1347 out of the 16940 total genes (7.95%). For these problem genes, the median number of affected samples is 1. However, there is a long tail, with the max number of sample affected being 206.</p>
+<p>Next I identify a problem gene-sample combination so that I can track down what happened.</p>
+<pre class="r"><code>x &lt;- names(problem_genes)[1]
+plot(as.numeric(reads[x, ]), as.numeric(molecules[x, ]))</code></pre>
+<p><img src="figure/bug-conversion-01.Rmd/problem-1-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>problem_sample &lt;- colnames(reads)[discordant_zeros[x, ] == TRUE]
+reads[x, problem_sample]</code></pre>
+<pre><code>[1] 22</code></pre>
+<pre class="r"><code>molecules[x, problem_sample]</code></pre>
+<pre><code>[1] 0</code></pre>
+<p>For gene ENSG00000187583, the sample NA19098.r1.G11 was assigned 22 reads but 0 molecules. What happened?</p>
+</div>
+<div id="searching-for-where-the-reads-are-lost-during-the-processing-pipeline" class="section level2">
+<h2>Searching for where the reads are lost during the processing pipeline</h2>
+<p>Now I am going to search for the bug by inspecting the intermediate data files from the <a href="http://jdblischak.github.io/singleCellSeq/analysis/process-samples.html">sequence processsing pipeline</a>.</p>
+<p>The following chunks are all Bash commands run from the data directory.</p>
+<pre class="r"><code>opts_chunk$set(engine = &quot;bash&quot;)
+opts_knit$set(root.dir = &quot;/mnt/gluster/home/jdblischak/ssd&quot;)</code></pre>
+<p>Strange things are happening at the <a href="http://jdblischak.github.io/singleCellSeq/analysis/process-samples.html#count-reads-per-gene">featureCounts step</a>:</p>
+<pre class="bash"><code># reads per lane
+grep ENSG00000187583 counts/19098.1.G11*trim.sickle.sorted.genecounts.txt | cut -f1,7</code></pre>
+<pre><code>counts/19098.1.G11.GGCAGACT.L002.R1.C6WYKACXX.trim.sickle.sorted.genecounts.txt:ENSG00000187583 6
+counts/19098.1.G11.GGCAGACT.L003.R1.C6WURACXX.trim.sickle.sorted.genecounts.txt:ENSG00000187583 4
+counts/19098.1.G11.GGCAGACT.L006.R1.C723YACXX.trim.sickle.sorted.genecounts.txt:ENSG00000187583 12</code></pre>
+<pre class="bash"><code># molecules per lane
+grep ENSG00000187583 counts/19098.1.G11*trim.sickle.sorted.rmdup.genecounts.txt | cut -f1,7</code></pre>
+<pre><code>counts/19098.1.G11.GGCAGACT.L002.R1.C6WYKACXX.trim.sickle.sorted.rmdup.genecounts.txt:ENSG00000187583   1
+counts/19098.1.G11.GGCAGACT.L003.R1.C6WURACXX.trim.sickle.sorted.rmdup.genecounts.txt:ENSG00000187583   0
+counts/19098.1.G11.GGCAGACT.L006.R1.C723YACXX.trim.sickle.sorted.rmdup.genecounts.txt:ENSG00000187583   1</code></pre>
+<pre class="bash"><code># molecules per sample
+grep ENSG00000187583 counts/19098.1.G11.trim.sickle.sorted.combined.rmdup.genecounts.txt | cut -f1,7</code></pre>
+<pre><code>ENSG00000187583 0</code></pre>
+<p>So for two of the per lane reads files, they get reduced to one molecule each. This seems reasonable. But one gets reduced to zero! And the combined file also contains zero. What is happening to these reads? Searching the featureCounts assignments (-R flag).</p>
+<p>First investigating the lane that was reduced from 6 reads to 1 molecule.</p>
+<pre class="bash"><code># reads per lane
+grep ENSG00000187583 counts/19098.1.G11.GGCAGACT.L002.R1.C6WYKACXX.trim.sickle.sorted.bam.featureCounts</code></pre>
+<pre><code>HWI-700819F:303:C6WYKACXX:2:1311:13724:70217:UMI_AGAAGGGG   Assigned    ENSG00000187583 *
+HWI-700819F:303:C6WYKACXX:2:2114:18388:14175:UMI_AGAAGGGG   Assigned    ENSG00000187583 *
+HWI-700819F:303:C6WYKACXX:2:2214:2454:36975:UMI_AGAAGGGG    Assigned    ENSG00000187583 *
+HWI-700819F:303:C6WYKACXX:2:2214:13077:41687:UMI_AGAAGGGG   Assigned    ENSG00000187583 *
+HWI-700819F:303:C6WYKACXX:2:2312:13148:100643:UMI_AGAAGGGG  Assigned    ENSG00000187583 *
+HWI-700819F:303:C6WYKACXX:2:2314:4367:3532:UMI_AGAAGGGG Assigned    ENSG00000187583 *</code></pre>
+<p>As expected, there are 6 reads. Also they all clearly have the same UMI sequence, so it makes sense they are reduced to one molecule.</p>
+<pre class="bash"><code># molecules per lane
+grep ENSG00000187583 counts/19098.1.G11.GGCAGACT.L002.R1.C6WYKACXX.trim.sickle.sorted.rmdup.bam.featureCounts</code></pre>
+<pre><code>HWI-700819F:303:C6WYKACXX:2:2114:18388:14175:UMI_AGAAGGGG   Assigned    ENSG00000187583 *</code></pre>
+<p>Wonderful. Only one of the reads from that lane is assigned as a molecule.</p>
+<p>Next the lane that was reduced from 12 reads to 1 molecule.</p>
+<pre class="bash"><code># reads per lane
+grep ENSG00000187583 counts/19098.1.G11.GGCAGACT.L006.R1.C723YACXX.trim.sickle.sorted.bam.featureCounts</code></pre>
+<pre><code>HWI-700819F:305:C723YACXX:6:1111:8035:48471:UMI_AGAAGGGG    Assigned    ENSG00000187583 *
+HWI-700819F:305:C723YACXX:6:1113:6618:42326:UMI_AGAAGGGG    Assigned    ENSG00000187583 *
+HWI-700819F:305:C723YACXX:6:1114:6879:12369:UMI_AGAAGGGG    Assigned    ENSG00000187583 *
+HWI-700819F:305:C723YACXX:6:1208:12206:62466:UMI_AGAAGGGG   Assigned    ENSG00000187583 *
+HWI-700819F:305:C723YACXX:6:1210:14240:43340:UMI_AGAAGGGG   Assigned    ENSG00000187583 *
+HWI-700819F:305:C723YACXX:6:1311:4828:8532:UMI_AGAAGGGG Assigned    ENSG00000187583 *
+HWI-700819F:305:C723YACXX:6:2110:20427:91561:UMI_AGAAGGGG   Assigned    ENSG00000187583 *
+HWI-700819F:305:C723YACXX:6:2111:18585:18781:UMI_AGAAGGGG   Assigned    ENSG00000187583 *
+HWI-700819F:305:C723YACXX:6:2112:12505:22635:UMI_AGAAGGGG   Assigned    ENSG00000187583 *
+HWI-700819F:305:C723YACXX:6:2215:1185:41439:UMI_AGAAGGGG    Assigned    ENSG00000187583 *
+HWI-700819F:305:C723YACXX:6:2303:9085:61288:UMI_AGAAGGGG    Assigned    ENSG00000187583 *
+HWI-700819F:305:C723YACXX:6:2311:11357:44914:UMI_AGAAGGGG   Assigned    ENSG00000187583 *</code></pre>
+<p>Similarly, all reads in this lane have the same UMI sequence. Furthermore, it is the same UMI as in the other lane, so these are likely are originating from the same original molecule.</p>
+<pre class="bash"><code># molecules per lane
+grep ENSG00000187583 counts/19098.1.G11.GGCAGACT.L006.R1.C723YACXX.trim.sickle.sorted.rmdup.bam.featureCounts</code></pre>
+<pre><code>HWI-700819F:305:C723YACXX:6:2215:1185:41439:UMI_AGAAGGGG    Assigned    ENSG00000187583 *</code></pre>
+<p>Now for the problem lane. There were 4 reads, but zero molecules.</p>
+<pre class="bash"><code># reads per lane
+grep ENSG00000187583 counts/19098.1.G11.GGCAGACT.L003.R1.C6WURACXX.trim.sickle.sorted.bam.featureCounts</code></pre>
+<pre><code>HWI-700819F:304:C6WURACXX:3:1110:14216:42424:UMI_AGAAGGGG   Assigned    ENSG00000187583 *
+HWI-700819F:304:C6WURACXX:3:1204:19248:93197:UMI_AGAAGGGG   Assigned    ENSG00000187583 *
+HWI-700819F:304:C6WURACXX:3:1210:7316:85169:UMI_AGAAGGGG    Assigned    ENSG00000187583 *
+HWI-700819F:304:C6WURACXX:3:1306:14259:83216:UMI_AGAAGGGG   Assigned    ENSG00000187583 *</code></pre>
+<p>Once again the same UMI sequence!</p>
+<pre class="bash"><code># molecules per lane
+grep ENSG00000187583 counts/19098.1.G11.GGCAGACT.L003.R1.C6WURACXX.trim.sickle.sorted.rmdup.bam.featureCounts
+# I have to add the following to change the exit status. When grep does not find
+# a match, its exit status is 1. Since this is an error exit status, knitr
+# assumes something has failed and stops execution.
+exit 0</code></pre>
+<p>But no molecules! What could have possibly gone wrong only for this lane!</p>
+<p>So where were these reads lost? Here are the problem reads.</p>
+<pre class="bash"><code>grep ENSG00000187583 counts/19098.1.G11.GGCAGACT.L003.R1.C6WURACXX.trim.sickle.sorted.bam.featureCounts | cut -f1</code></pre>
+<pre><code>HWI-700819F:304:C6WURACXX:3:1110:14216:42424:UMI_AGAAGGGG
+HWI-700819F:304:C6WURACXX:3:1204:19248:93197:UMI_AGAAGGGG
+HWI-700819F:304:C6WURACXX:3:1210:7316:85169:UMI_AGAAGGGG
+HWI-700819F:304:C6WURACXX:3:1306:14259:83216:UMI_AGAAGGGG</code></pre>
+<p>Was one of these 4 sequences passed to featureCounts, but not assigned for some reason?</p>
+<pre class="bash"><code>grep HWI-700819F:304:C6WURACXX:3:1110:14216:42424:UMI_AGAAGGGG counts/19098.1.G11.GGCAGACT.L003.R1.C6WURACXX.trim.sickle.sorted.rmdup.bam.featureCounts
+grep HWI-700819F:304:C6WURACXX:3:1204:19248:93197:UMI_AGAAGGGG counts/19098.1.G11.GGCAGACT.L003.R1.C6WURACXX.trim.sickle.sorted.rmdup.bam.featureCounts
+grep HWI-700819F:304:C6WURACXX:3:1210:7316:85169:UMI_AGAAGGGG counts/19098.1.G11.GGCAGACT.L003.R1.C6WURACXX.trim.sickle.sorted.rmdup.bam.featureCounts
+grep HWI-700819F:304:C6WURACXX:3:1306:14259:83216:UMI_AGAAGGGG counts/19098.1.G11.GGCAGACT.L003.R1.C6WURACXX.trim.sickle.sorted.rmdup.bam.featureCounts
+exit 0</code></pre>
+<p>No, that is not the reason. I expected to see 1 of the 4 reads, but featureCounts does not report having seen any of these reads.</p>
+<p>Are any of these 4 reads in the molecules bam file, i.e. “rmdup”? These are the output files from the <a href="http://jdblischak.github.io/singleCellSeq/analysis/process-samples.html#remove-duplicate-umis">step to remove duplicate reads</a> (i.e. convert reads to molecules).</p>
+<pre class="bash"><code>samtools view bam-rmdup-umi/19098.1.G11.GGCAGACT.L003.R1.C6WURACXX.trim.sickle.sorted.rmdup.bam | grep HWI-700819F:304:C6WURACXX:3:1110:14216:42424:UMI_AGAAGGGG
+samtools view bam-rmdup-umi/19098.1.G11.GGCAGACT.L003.R1.C6WURACXX.trim.sickle.sorted.rmdup.bam | grep HWI-700819F:304:C6WURACXX:3:1204:19248:93197:UMI_AGAAGGGG
+samtools view bam-rmdup-umi/19098.1.G11.GGCAGACT.L003.R1.C6WURACXX.trim.sickle.sorted.rmdup.bam | grep HWI-700819F:304:C6WURACXX:3:1210:7316:85169:UMI_AGAAGGGG
+samtools view bam-rmdup-umi/19098.1.G11.GGCAGACT.L003.R1.C6WURACXX.trim.sickle.sorted.rmdup.bam | grep HWI-700819F:304:C6WURACXX:3:1306:14259:83216:UMI_AGAAGGGG
+exit 0</code></pre>
+<p>So it is clear that featureCounts is not the problem. The input molecule bam file did not contain them.</p>
+<p>Next possibility is that it was lost in the reads to molecule conversion step using UMI-tools dedup_umi.py. The input files for this step are in bam-processed.</p>
+<pre class="bash"><code>samtools view bam-processed/19098.1.G11.GGCAGACT.L003.R1.C6WURACXX.trim.sickle.sorted.bam | grep HWI-700819F:304:C6WURACXX:3:1110:14216:42424:UMI_AGAAGGGG</code></pre>
+<pre><code>HWI-700819F:304:C6WURACXX:3:1110:14216:42424:UMI_AGAAGGGG   0   chr1    911014  59  92M *   0   0   CAGCCCAGCCCACCTGTGAGGAGGCTGCCCATCCCCTCTTTGAGGCCACCCTGTGTCCTCTCCCCTGCCTCTGCCCAGAGCTCCAGCCGGAG    FBBFFIFFFFF&lt;FFFBFFFIFIFIFIF&#39;BFFFBFFIBFFFFBFFFFFFFBFBBBFBBFBBBBBBBBBBBBBBBBBB&lt;BBBBBBBB&lt;BB&lt;&lt;7&lt;    HI:i:1  NH:i:1  NM:i:0</code></pre>
+<pre class="bash"><code>samtools view bam-processed/19098.1.G11.GGCAGACT.L003.R1.C6WURACXX.trim.sickle.sorted.bam | grep HWI-700819F:304:C6WURACXX:3:1204:19248:93197:UMI_AGAAGGGG</code></pre>
+<pre><code>HWI-700819F:304:C6WURACXX:3:1204:19248:93197:UMI_AGAAGGGG   0   chr1    911014  59  92M *   0   0   CAGCCCAGCCCACCTGTGAGGAGGCTGCCCATCCCCTCTTTGAGGCCACCCTGTGTCCTCTCCCCTGCCTCTGCCCAGAGCTCCAGCCGGAG    FFFFFIIIIIIIIIFIFFFIIFIIIIIIFFIIIIIIIIIIIBFFIFFFFFFFFBBBFBBFBFFFFB&lt;BBBFBBBBFBFBBBFFFF&lt;BBFFFF    HI:i:1  NH:i:1  NM:i:0</code></pre>
+<pre class="bash"><code>samtools view bam-processed/19098.1.G11.GGCAGACT.L003.R1.C6WURACXX.trim.sickle.sorted.bam | grep HWI-700819F:304:C6WURACXX:3:1210:7316:85169:UMI_AGAAGGGG</code></pre>
+<pre><code>HWI-700819F:304:C6WURACXX:3:1210:7316:85169:UMI_AGAAGGGG    0   chr1    911014  59  81M11S  *   0   0   CAGCCCAGCCCACCTGTGAGGAGGCTGCCCATCCCCTCTTTGAGGCCACCCTGTGTCCTCTCCCCTGCCTCTGCCCAGAGCCTGTCTCTTAT    FFFFFI&lt;BFFFFFFIIFIIFIIIIFIIIIIIIIIFIIIIIIIIFIFFFFBBFFFFBFFFFFFFFFFBBFBFFFFFFFFFFFFFFFFBFFFBB    HI:i:1  NH:i:1  NM:i:0</code></pre>
+<pre class="bash"><code>samtools view bam-processed/19098.1.G11.GGCAGACT.L003.R1.C6WURACXX.trim.sickle.sorted.bam | grep HWI-700819F:304:C6WURACXX:3:1306:14259:83216:UMI_AGAAGGGG</code></pre>
+<pre><code>HWI-700819F:304:C6WURACXX:3:1306:14259:83216:UMI_AGAAGGGG   0   chr1    911014  58  92M *   0   0   CAGCCCACCCCACCTGTGAGGAGGCTGCCCATCCCCTCTTTGAGGCCACCCTGTGTCCTCTCCCCTGCCTCTGCCCAGAGCTCCAGCCGGAG    FFFFFIF0BFFFFFIIIIIIIIIIFIBFIIIIIIIIIIIIIFFFFFFFFFFFFBB&lt;BBBFFFFFFF&lt;&lt;BBBBBFFFFBFBFFFFF&lt;BB777&lt;    HI:i:1  NH:i:1  NM:i:1</code></pre>
+<p>They are erased during the remove duplicate step!</p>
+<p>Now I want to confirm that all these reads from the 3 lanes are in the combined file. There should be 22 (6 + 4 + 12).</p>
+<pre class="bash"><code>samtools view bam-combined/19098.1.G11.trim.sickle.sorted.combined.bam chr1:911014-911014 -c</code></pre>
+<pre><code>40</code></pre>
+<p>That is more than I expected. How many have the exact same UMI sequence?</p>
+<pre class="bash"><code>samtools view bam-combined/19098.1.G11.trim.sickle.sorted.combined.bam chr1:911014-911014 | grep UMI_AGAAGGGG | wc -l</code></pre>
+<pre><code>40</code></pre>
+<p>Strange.</p>
+<pre class="bash"><code>samtools view bam-combined/19098.1.G11.trim.sickle.sorted.combined.bam chr1:911014-911014 | grep UMI_AGAAGGGG | cut -f1 | sort | uniq | cut -d&quot;:&quot; -f3 | uniq -c</code></pre>
+<pre><code>      9 C6WYKACXX
+     13 C6WURACXX
+     18 C723YACXX</code></pre>
+<p>So there are actually more than 22 reads that have the UMI AGAAGGGG and start at chr1:911014, however, only 22 of the 40 get assigned to gene ENSG00000187583.</p>
+</div>
+<div id="exploring-locus-on-ucsc-genome-browser" class="section level2">
+<h2>Exploring locus on UCSC genome browser</h2>
+<p>Could this be a length issue? Since some reads are longer than others due to the quality trimming, perhaps the longer reads intersect an exon from another gene. There is variation in read length.</p>
+<pre class="bash"><code>samtools view bam-combined/19098.1.G11.trim.sickle.sorted.combined.bam chr1:911014-911014 | cut -f6 | sort | uniq -c</code></pre>
+<pre><code>      1 36M56S
+      1 40M35S
+      1 40M52S
+      3 42M50S
+      1 43M
+      1 47M45S
+      2 51M41S
+      1 57M35S
+      1 58M16S
+      2 62M30S
+      1 64M28S
+      1 75M17S
+      1 75M4S
+      1 76M16S
+      2 81M11S
+      1 84M
+     19 92M</code></pre>
+<p>How many genes are in this <a href="http://www.genome.ucsc.edu/cgi-bin/hgTracks?db=hg19&amp;lastVirtModeType=default&amp;lastVirtModeExtraState=&amp;virtModeType=default&amp;virtMode=0&amp;nonVirtPosition=&amp;position=chr1%3A899755-912515&amp;hgsid=474114411_5p1uoEdzAHXD1CeJMaZwBnYxXea9">locus</a>?</p>
+<p>I searched one of the 92M sequences with BLAT, and it does overlap two different Ensembl genes (red). The bottom three Ensembl transcripts (<a href="http://www.genome.ucsc.edu/cgi-bin/hgc?hgsid=475751231_cQ9aFo6I5sooILtaBiE2LQMsgbHq&amp;c=chr1&amp;o=910578&amp;t=917497&amp;g=ensGene&amp;i=ENST00000433179">ex</a>) are for the protein_coding gene C1orf170, or ENSG00000187642, and is on the - strand. The <a href="http://www.genome.ucsc.edu/cgi-bin/hgc?hgsid=475751231_cQ9aFo6I5sooILtaBiE2LQMsgbHq&amp;c=chr1&amp;o=908891&amp;t=911245&amp;g=ensGene&amp;i=ENST00000491024">transcript on the top</a> is the protein_coding gene PLEKHN1, or ENSG00000187583, and it is on the + strand.</p>
+<pre class="bash"><code>samtools view bam-combined/19098.1.G11.trim.sickle.sorted.combined.bam chr1:911014-911014 | grep 92M | cut -f10 | head -n 1 </code></pre>
+<pre><code>CAGCCCAGCCCACCTGTGAGGAGGCTGCCCATCCCCTCTTTGAGGCCACCCTGTGTCCTCTCCCCTGCCTCTGCCCAGAGCTCCAGCCGGAG</code></pre>
+<p><img src="figure/bug-conversion-01.Rmd/chr1-911014-92M.png" alt="chr1:911014-92M" /></p>
+<p>Next I searched for the smallest fragment, which is 43 bp long. 43M means 43 Match (<a href="https://www.biostars.org/p/16987/">post</a>).</p>
+<pre class="bash"><code>samtools view bam-combined/19098.1.G11.trim.sickle.sorted.combined.bam chr1:911014-911014 | grep 43M | cut -f10 | head -n 1 </code></pre>
+<pre><code>CAGCCCAGCCCACCTGTGAGGAGGTTGCCCATCCCCTCTTTGA</code></pre>
+<p><img src="figure/bug-conversion-01.Rmd/chr1-911014-43M.png" alt="chr1:911014-43M" /></p>
+<p>It is in the intron of ENSG00000187642 (C1orf170), but it overlaps ENSG00000187583 (PLEKHN1). Maybe it is a strand issue.</p>
+<p>These reads are all on the + strand (<a href="http://blog.nextgenetics.net/?e=17">directions</a>).</p>
+<pre class="bash"><code># + strand = -F 1x10
+samtools view bam-combined/19098.1.G11.trim.sickle.sorted.combined.bam chr1:911014-911014 -F 0x10 | wc -l</code></pre>
+<pre><code>40</code></pre>
+<pre class="bash"><code># - strand = -f 0x10
+samtools view bam-combined/19098.1.G11.trim.sickle.sorted.combined.bam chr1:911014-911014 -f 0x10 | wc -l</code></pre>
+<pre><code>0</code></pre>
+<p>Because the reads map to the + strand, they can’t be assigned to ENSG00000187642 (C1orf170). Similarly RefSeq has an extra gene annotation <a href="http://www.genome.ucsc.edu/cgi-bin/hgc?hgsid=475751231_cQ9aFo6I5sooILtaBiE2LQMsgbHq&amp;c=chr1&amp;o=910578&amp;t=917497&amp;g=refGene&amp;i=NM_001291366">PERM1</a>, but it is also on the - strand.</p>
+<p>What is going on with these reads? Maybe a soft clipped read will be informative. Using the 36M56S sequence.</p>
+<pre class="bash"><code>samtools view bam-combined/19098.1.G11.trim.sickle.sorted.combined.bam chr1:911014-911014 | grep 36M56S | cut -f10 | head -n 1 </code></pre>
+<pre><code>CAGCCCAGCCCACCTGTGAGGAGGCTGCCCATCCCCCTGTCTCTTATACACATCTGACGCGGCAGACTTCGTATGCCGTCTTCTGCTTGAAA</code></pre>
+<p><img src="figure/bug-conversion-01.Rmd/chr1-911014-36M56S.png" alt="chr1:911014-36M56S" /></p>
+<p>Again, this overlaps nothing. It is also strange that the last 56 bp do not map to this locus at all!</p>
+<p>Looking at all the sequences that with this UMI and start position.</p>
+<pre class="bash"><code>samtools view bam-combined/19098.1.G11.trim.sickle.sorted.combined.bam chr1:911014-911014 | cut -f10 | sort | uniq -c</code></pre>
+<pre><code>      1 CAGCCCACCCCACCTGTGAGGAGGCTGCCCATCCCCTCTTTGAGGCCACCCTGTGTCCTCTCCCCTGCCTCTGCCCAGAGCTCCAGCCGGAG
+      1 CAGCCCAGCCCACCTGTGAGGAGGCTGCCCAGCCCCTCTTTGCTGTCTCTTATACACATCTGACGCGGCAGACTTCGTATGCCGTCTTCTGC
+      1 CAGCCCAGCCCACCTGTGAGGAGGCTGCCCATCCCCCTGTCTCTTATACACATCTGACGCGGCAGACTTCGTATGCCGTCTTCTGCTTGAAA
+      1 CAGCCCAGCCCACCTGTGAGGAGGCTGCCCATCCCCTCCTGTCTCTTATACACATCTGACGCGGCAGACTTCGTATGCCGTCTTCTGCTTGA
+      1 CAGCCCAGCCCACCTGTGAGGAGGCTGCCCATCCCCTCTTCTGTCTCTTATACACATCTGACGCGGCAGACTTCG
+      2 CAGCCCAGCCCACCTGTGAGGAGGCTGCCCATCCCCTCTTTGAGGCCACCCCTGTCTCTTATACACATCTGACGCGGCAGACTTCGTATGCC
+      1 CAGCCCAGCCCACCTGTGAGGAGGCTGCCCATCCCCTCTTTGAGGCCACCCTGTGTCCCTGTCTCTTATACACA
+      2 CAGCCCAGCCCACCTGTGAGGAGGCTGCCCATCCCCTCTTTGAGGCCACCCTGTGTCCTCTCCCCTGCCTCTGCCCAGAGCCTGTCTCTTAT
+      1 CAGCCCAGCCCACCTGTGAGGAGGCTGCCCATCCCCTCTTTGAGGCCACCCTGTGTCCTCTCCCCTGCCTCTGCCCAGAGCTCC
+     18 CAGCCCAGCCCACCTGTGAGGAGGCTGCCCATCCCCTCTTTGAGGCCACCCTGTGTCCTCTCCCCTGCCTCTGCCCAGAGCTCCAGCCGGAG
+      1 CAGCCCAGCCCACCTGTGAGGAGGCTGCCCATCCCCTCTTTGAGGCCACCCTGTGTCCTCTCCCCTGCCTCTGCCCCTGTCTCTTATACACA
+      1 CAGCCCAGCCCACCTGTGAGGAGGCTGCCCATCCCCTCTTTGAGGCCACCCTGTGTCCTCTCCCCTGCCTCTGTCTCTT
+      1 CAGCCCAGCCCACCTGTGAGGAGGCTGCCCATCCCCTCTTTGAGGCCACCCTGTGTCCTCTCCCCTGCCTCTGTCTCTTATACACATCTGAC
+      1 CAGCCCAGCCCACCTGTGAGGAGGCTGCCCATCCCCTCTTTGAGGCCACCCTGTGTCCTCTCCCTGTCTCTTATACACATCTGACGCGGCAG
+      2 CAGCCCAGCCCACCTGTGAGGAGGCTGCCCATCCCCTCTTTGAGGCCACCCTGTGTCCTGTCTCTTATACACATCTGACGCGGCAGACTTCG
+      1 CAGCCCAGCCCACCTGTGAGGAGGCTGCCCATCCCCTCTTTGAGGCCACCCTGTGTCTGTCTCTTATACACATCTGACGCGGCAGACTTCGT
+      1 CAGCCCAGCCCACCTGTGAGGAGGCTGCCCATCCCCTCTTTGAGGCCTGTCTCTTATACACATCTGACGCGGCAGACTTCGTATGCCGTCTT
+      2 CAGCCCAGCCCACCTGTGAGGAGGCTGCCCATCCCCTCTTTGCTGTCTCTTATACACATCTGACGCGGCAGACTTCGTATGCCGTCTTCTGC
+      1 CAGCCCAGCCCACCTGTGAGGAGGTTGCCCATCCCCTCTTTGA</code></pre>
+<p>What a mess! So here is my current interpretation, which is all educated guesses. This molecule arises from some unannotated transcript. This sort of thing happens since most of the genome is transcribed at some low level. The varying in length is due to the fragmentation during the sonication step. The soft clipped reads are due to sequencing of the adapter. Overall there should just be one molecule here, and it shouldn’t map to any gene. featureCounts assigns the longer fragments to ENSG00000187583 (PLEKHN1) because their 3’ end overlaps it. But this makes no sense since the read arose from nowhere. I can fix this in featureCounts using the following option to only map the 5’ end of the sequence.</p>
+<pre class="bash"><code># Have to use 2&gt;&amp;1 redirection trick because featureCounts only sends its help
+# to stderr
+featureCounts 2&gt;&amp;1 | grep read2pos -A 2</code></pre>
+<pre><code>  --read2pos &lt;5:3&gt;    Reduce reads to their 5&#39; most base or 3&#39; most base. Read
+                      counting is then performed based on the single base the 
+                      read is reduced to.</code></pre>
+</div>
+<div id="checking-if-sequence-length-is-causing-the-problem" class="section level2">
+<h2>Checking if sequence length is causing the problem</h2>
+<p>So my current guess is that of those 40 sequences, the one that is kept is one of the shorter ones. Since these do not map to anything, the molecules report zero while the reads report sequences.</p>
+<p>But no! There is a 92M sequence in the bam-rmdup-umi file!!!!</p>
+<pre class="bash"><code>samtools view bam-rmdup-umi/19098.1.G11.trim.sickle.sorted.combined.rmdup.bam | grep UMI_AGAAGGGG | grep 911014</code></pre>
+<pre><code>HWI-700819F:303:C6WYKACXX:2:1311:13724:70217:UMI_AGAAGGGG   0   chr1    911014  59  92M *   0   0   CAGCCCAGCCCACCTGTGAGGAGGCTGCCCATCCCCTCTTTGAGGCCACCCTGTGTCCTCTCCCCTGCCTCTGCCCAGAGCTCCAGCCGGAG    FFFFFIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIFFFFFFFFFFFFFBFBFFFFFBBBFFFFFFFFFFFFFFFFFFBFBBB    HI:i:1  NH:i:1  NM:i:0</code></pre>
+<p>Why wasn’t it assigned to ENSG00000187583 (PLEKHN1) as expected?</p>
+<pre class="bash"><code>grep HWI-700819F:303:C6WYKACXX:2:1311:13724:70217:UMI_AGAAGGGG counts/19098.1.G11.trim.sickle.sorted.combined.rmdup.bam.featureCounts
+exit 0</code></pre>
+<p>For some reason, featureCounts has no record of having processed this read. And this isn’t the only read that is not accounted for.</p>
+<pre class="bash"><code>samtools view -c bam-rmdup-umi/19098.1.G11.trim.sickle.sorted.combined.rmdup.bam</code></pre>
+<pre><code>140494</code></pre>
+<pre class="bash"><code>wc -l counts/19098.1.G11.trim.sickle.sorted.combined.rmdup.bam.featureCounts</code></pre>
+<pre><code>138771 counts/19098.1.G11.trim.sickle.sorted.combined.rmdup.bam.featureCounts</code></pre>
+<p>This is super confusing. For the problem lane, the 4 reads were lost in the remove duplicate step. But for the combined file, the problem is at the featureCounts step.</p>
+<p>I really don’t know what is happening here, and I want this molecule removed from the analysis anyways. I’m going to re-run the gene counting with featureCounts uisng the flag <code>--read2pos 5</code> to remove this problem gene and any others, and then assess the extent of the problem.</p>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] knitr_1.10.5
+
+loaded via a namespace (and not attached):
+ [1] httr_0.6.1       magrittr_1.5     formatR_1.2      htmltools_0.2.6 
+ [5] tools_3.2.0      RCurl_1.95-4.6   yaml_2.1.13      codetools_0.2-11
+ [9] rmarkdown_0.6.1  stringi_0.4-1    digest_0.6.8     stringr_1.0.0   
+[13] bitops_1.0-6     evaluate_0.7    </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>
