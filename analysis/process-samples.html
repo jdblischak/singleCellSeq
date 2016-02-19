@@ -142,8 +142,8 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2016-01-15</p>
-<p><strong>Code version:</strong> c37876c8fae1a8599d70d7c77155aca9c48264c5</p>
+<p><strong>Last updated:</strong> 2016-02-19</p>
+<p><strong>Code version:</strong> a82b08d63e9164bb57307a210fd5ac09189f61f2</p>
 <p>All processing scripts were run from the data directory.</p>
 <pre class="bash"><code>cd /mnt/gluster/data/internal_supp/singleCellSeq</code></pre>
 <p>The raw fastq files were write-protected to avoid accidental deletion.</p>
@@ -255,7 +255,7 @@ cat ~/log/index/* | head</code></pre>
 </div>
 <div id="remove-duplicate-umis" class="section level2">
 <h2>Remove duplicate UMIs</h2>
-<p><a href="https://github.com/jdblischak/singleCellSeq/blob/update-pipeline/code/rmdup-umi.sh">rmdup-umi.sh</a> counts the number of UMIs at each start position using <a href="https://github.com/CGATOxford/UMI-tools">UMI-tools</a> (<a href="https://github.com/CGATOxford/UMI-tools/commit/e0ade5d0aad632cc95b6dfb95106e18c55ceecf9">version e0ade5d</a>). To account for errors introduced during PCR amplification and sequencing, UMIs are merged using the method “directional adjacency” (flags <code>--method=&quot;directional-adjacency&quot;</code> and <code>--edit-distance-threshold=1</code>), which is described in this <a href="https://cgatoxford.wordpress.com/2015/08/14/unique-molecular-identifiers-the-problem-the-solution-and-the-proof/">blog post</a>. The output is written to the directory <code>bam-rmdup-umi</code>.</p>
+<p><a href="https://github.com/jdblischak/singleCellSeq/blob/master/code/rmdup-umi.sh">rmdup-umi.sh</a> counts the number of UMIs at each start position using <a href="https://github.com/CGATOxford/UMI-tools">UMI-tools</a> (<a href="https://github.com/CGATOxford/UMI-tools/commit/e0ade5d0aad632cc95b6dfb95106e18c55ceecf9">version e0ade5d</a>). To account for errors introduced during PCR amplification and sequencing, UMIs are merged using the method “directional adjacency” (flags <code>--method=&quot;directional-adjacency&quot;</code> and <code>--edit-distance-threshold=1</code>), which is described in this <a href="https://cgatoxford.wordpress.com/2015/08/14/unique-molecular-identifiers-the-problem-the-solution-and-the-proof/">blog post</a>. The output is written to the directory <code>bam-rmdup-umi</code>.</p>
 <p>Two different sets of BAM files are processed in this way. The BAM files in <code>bam-processed</code> contain the mapped reads for a given sample for a given sequencing lane. We exclude the bulk samples because we do not want their molecule counts (<code>grep -v bulk</code>). These lane-level molecule counts will be used to assess the technical effects of sequencing on different flow cells and lanes (anticipated to be minimal). The molecule counts from the combined single cell samples in <code>bam-combined</code> are used in downstream analysis.</p>
 <pre class="bash"><code>submit-array.sh rmdup-umi.sh 2g `ls bam-processed/*bam | grep -v bulk` bam-combined/*bam</code></pre>
 <p>Expect 3,456 BAM files (864 combined samples + 3 individuals * 3 reps * 96 wells * 3 lanes).</p>
@@ -265,7 +265,7 @@ grep -w failure ~/log/rmdup-umi.sh/* | wc -l</code></pre>
 </div>
 <div id="count-reads-per-gene" class="section level2">
 <h2>Count reads per gene</h2>
-<p><a href="https://github.com/jdblischak/singleCellSeq/blob/update-pipeline/code/count-reads-per-gene.sh">count-reads-per-gene.sh</a> uses <a href="http://sourceforge.net/projects/subread/files/subread-1.5.0-p1/">featureCounts version 1.5.0-p1</a> to count the number or reads or molecules per gene. We perform strand-specific counting (flag <code>-s 1</code>) because the UMI protocol preserves sequence strand information. The per lane reads for both the bulk and single cell samples are in <code>bam-processed</code>. The per lane and combined molecules for the single cells only are contained in <code>bam-rmdup-umi</code>. The ouptut is written to the directory <code>counts</code>.</p>
+<p><a href="https://github.com/jdblischak/singleCellSeq/blob/master/code/count-reads-per-gene.sh">count-reads-per-gene.sh</a> uses <a href="http://sourceforge.net/projects/subread/files/subread-1.5.0-p1/">featureCounts version 1.5.0-p1</a> to count the number or reads or molecules per gene. We perform strand-specific counting (flag <code>-s 1</code>) because the UMI protocol preserves sequence strand information. The per lane reads for both the bulk and single cell samples are in <code>bam-processed</code>. The per lane and combined molecules for the single cells only are contained in <code>bam-rmdup-umi</code>. The ouptut is written to the directory <code>counts</code>.</p>
 <pre class="bash"><code>submit-array.sh count-reads-per-gene.sh 2g bam-processed/*bam bam-rmdup-umi/*bam</code></pre>
 <p>Expect 6120 files:</p>
 <ul>
@@ -285,12 +285,12 @@ grep -w failure ~/log/count-reads-per-gene.sh/* | wc -l</code></pre>
 </div>
 <div id="gather-summary-counts" class="section level2">
 <h2>Gather summary counts</h2>
-<p><a href="https://github.com/jdblischak/singleCellSeq/blob/update-pipeline/code/gather-summary-counts.py">gather-summary-counts.py</a> gathers the classification of reads assigned by featureCounts. It only gathers from the single cell samples, because this information is used for quality control filtering.</p>
+<p><a href="https://github.com/jdblischak/singleCellSeq/blob/master/code/gather-summary-counts.py">gather-summary-counts.py</a> gathers the classification of reads assigned by featureCounts. It only gathers from the single cell samples, because this information is used for quality control filtering.</p>
 <pre class="bash"><code>gather-summary-counts.py &gt; summary-counts.txt</code></pre>
 </div>
 <div id="gather-gene-counts" class="section level2">
 <h2>Gather gene counts</h2>
-<p><a href="https://github.com/jdblischak/singleCellSeq/blob/update-pipeline/code/gather-gene-counts.py">gather-gene-counts.py</a> gathers the featureCounts results and creates count matrices.</p>
+<p><a href="https://github.com/jdblischak/singleCellSeq/blob/master/code/gather-gene-counts.py">gather-gene-counts.py</a> gathers the featureCounts results and creates count matrices.</p>
 <pre class="bash"><code>mkdir -p counts-matrix
 gather-gene-counts.py counts-matrix/ counts/*genecounts.txt</code></pre>
 <p>It creates six files:</p>
