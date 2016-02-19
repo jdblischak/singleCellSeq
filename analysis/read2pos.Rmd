@@ -1,0 +1,239 @@
+---
+title: "Effect of using read2pos flag with featureCounts"
+author: "John Blischak"
+date: 2016-02-18
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+```
+
+To avoid assignment errors like the one identified in the [analysis to understand the conversion bug][bug], I re-ran featureCounts using the option `--read2pos 5`.
+This only considers the 5' most base.
+Since the reads are stranded, we do not want to count reads mapping to a gene just because their 3' end overlaps an exon (or conversely if the 3' end is unabmiguous but the 5' is not, we do not want to throw it away).
+I did a quick check to make sure this was not drastically changing the results.
+I inspected 19098.r1.A01, which is a quality single cell.
+I ran the following lines to make files which only contain the gene name and counts (not executed directly by this file).
+
+[bug]: bug-conversion-01.html
+
+```bash
+cut -f1,7 counts/19098.1.G11.GGCAGACT.L003.R1.C6WURACXX.trim.sickle.sorted.genecounts.txt > $ssc/data/new-reads.txt
+cut -f1,7 counts-prev/19098.1.G11.GGCAGACT.L003.R1.C6WURACXX.trim.sickle.sorted.genecounts.txt > $ssc/data/prev-reads.txt
+cut -f1,7 counts/19098.1.G11.GGCAGACT.L003.R1.C6WURACXX.trim.sickle.sorted.rmdup.genecounts.txt > $ssc/data/new-molecules.txt
+cut -f1,7 counts-prev/19098.1.G11.GGCAGACT.L003.R1.C6WURACXX.trim.sickle.sorted.rmdup.genecounts.txt > $ssc/data/prev-molecules.txt
+```
+
+```{r packages, message=FALSE}
+library("ggplot2")
+theme_set(theme_bw(base_size = 12))
+theme_update(panel.grid.minor.x = element_blank(),
+             panel.grid.minor.y = element_blank(),
+             panel.grid.major.x = element_blank(),
+             panel.grid.major.y = element_blank())
+```
+
+## Input
+
+```{r input}
+new_reads <- read.table("../data/new-reads.txt", header = TRUE,
+                  stringsAsFactors = FALSE)
+prev_reads <- read.table("../data/prev-reads.txt", header = TRUE,
+                  stringsAsFactors = FALSE)
+new_molecules <- read.table("../data/new-molecules.txt", header = TRUE,
+                  stringsAsFactors = FALSE)
+prev_molecules <- read.table("../data/prev-molecules.txt", header = TRUE,
+                  stringsAsFactors = FALSE)
+stopifnot(grepl("19098.1.G11.GGCAGACT.L003.R1.C6WURACXX", colnames(new_reads)[2]),
+          grepl("19098.1.G11.GGCAGACT.L003.R1.C6WURACXX", colnames(prev_reads)[2]),
+          grepl("19098.1.G11.GGCAGACT.L003.R1.C6WURACXX", colnames(new_molecules)[2]),
+          grepl("19098.1.G11.GGCAGACT.L003.R1.C6WURACXX", colnames(prev_molecules)[2]),
+          new_reads$Geneid == prev_reads$Geneid,
+          new_molecules$Geneid == prev_molecules$Geneid,
+          new_reads$Geneid == new_molecules$Geneid)
+d <- data.frame(new_reads = new_reads[, 2],
+                new_molecules = new_molecules[, 2],
+                prev_reads = prev_reads[, 2],
+                prev_molecules = prev_molecules[, 2],
+                row.names = new_reads$Geneid,
+                stringsAsFactors = FALSE)
+head(d)
+```
+
+## Complete chages in expression
+
+```{r zeros}
+# genes with zero reads that now have reads
+sum(d$prev_reads == 0 & d$new_reads != 0)
+# genes with reads that now have zero reads
+sum(d$prev_reads != 0 & d$new_reads == 0)
+# genes with zero molecules that now have molecules
+sum(d$prev_molecules == 0 & d$new_molecules != 0)
+# genes with molecules that now have zero molecules
+sum(d$prev_molecules != 0 & d$new_molecules == 0)
+```
+
+## Discordance problem?
+
+I know that the previous counts were sometimes discordant between the reads and the molecules.
+In the [bug analysis][bug], I found that the gene ENSG00000187583 had 4 reads in 19098.1.G11.GGCAGACT.L003.R1.C6WURACXX but zero molecules.
+These reads were lost somehow in the remove duplication stage, but based on their strand and start position they should never have been counted in the first place.
+`read2pos` worked for this read as now it is no longer assigned to ENSG00000187583.
+
+```{r ENSG00000187583}
+d["ENSG00000187583", ]
+```
+
+And it wasn't the only affected gene.
+
+```{r discordance-prev}
+# genes with > 0 reads and 0 molecules
+d[d$prev_reads > 0 & d$prev_molecules == 0, ]
+# genes with 0 reads and > 0 molecules
+d[d$prev_reads == 0 & d$prev_molecules > 0, ]
+```
+
+Were the other 3 problem genes also fixed by `read2pos` like ENSG00000187583?
+
+```{r discordance-new}
+# genes with > 0 reads and 0 molecules
+d[d$new_reads > 0 & d$new_molecules == 0, ]
+# genes with 0 reads and > 0 molecules
+d[d$new_reads == 0 & d$new_molecules > 0, ]
+```
+
+Yes!!!!
+
+## Endogenous genes
+
+Using `read2pos` is having an effect, but of course the results are still highly correlated.
+
+```{r}
+ensg_index <- grepl("ENSG", rownames(d))
+cor(d[ensg_index, ])
+```
+
+### Reads
+
+The red line is the least squares best fit.
+The blue line is y = x.
+
+```{r endo-reads}
+base_plot <- ggplot(d[ensg_index, ], aes(x = prev_reads, y = new_reads)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm", color = "red") +
+  geom_abline(intercept = 0, slope = 1, color = "blue")
+endo_reads <- base_plot
+endo_reads
+```
+
+Log transformed.
+
+```{r endo-reads-log}
+endo_reads_log <- base_plot %+% aes(x = log2(prev_reads + 1),
+                                    y = log2(new_reads + 1))
+endo_reads_log
+```
+
+### Molecules
+
+```{r endo-molecules}
+endo_molecules <- base_plot %+% aes(x = prev_molecules, y = new_molecules)
+endo_molecules
+```
+
+Log transformed.
+
+```{r endo-molecules-log}
+endo_molecules_log <- base_plot %+% aes(x = log2(prev_molecules + 1),
+                                        y = log2(new_molecules + 1))
+endo_molecules_log
+```
+
+### Conversion of reads to molecules
+
+Previously.
+
+```{r endo-reads2molecules-prev}
+endo_reads2molecules_prev <- base_plot %+% aes(x = log2(prev_reads + 1),
+                                               y = log2(prev_molecules + 1))
+endo_reads2molecules_prev
+```
+
+New with `read2pos`.
+
+```{r endo-reads2molecules-new}
+endo_reads2molecules_new <- base_plot %+% aes(x = log2(new_reads + 1),
+                                               y = log2(new_molecules + 1))
+endo_reads2molecules_new
+```
+
+## ERCC genes
+
+This had no effect on the ERCC reads (correlation = 1).
+This makes sense because each ERCC is treated as its own chromosome, there is no chance of an ERCC read overlapping more than one feature.
+On the other hand, the molecules are not perfectly correlated.
+I'm not sure why they would be any different, which is worrisome, because it suggests I haven't fixed all the strangeness with `read2pos`.
+
+```{r ercc-cor}
+ercc_index <- grepl("ERCC", rownames(d))
+cor(d[ercc_index, ])
+```
+
+### Reads
+
+```{r ercc-reads}
+ercc_reads <- base_plot %+% d[ercc_index, ]
+ercc_reads
+```
+
+Log transformed.
+
+```{r reads-ercc-log}
+ercc_reads_log <- ercc_reads %+% aes(x = log2(prev_reads + 1),
+                                     y = log2(new_reads + 1))
+ercc_reads_log
+```
+
+### Molecules
+
+```{r ercc-molecules}
+ercc_molecules <- ercc_reads %+% aes(x = prev_molecules, y = new_molecules)
+ercc_molecules
+```
+
+Log transformed.
+
+```{r molecules-ercc-log}
+ercc_molecules_log <- ercc_reads %+% aes(x = log2(prev_molecules + 1),
+                                         y = log2(new_molecules + 1))
+ercc_molecules_log
+```
+
+### Conversion of reads to molecules
+
+Previously.
+
+```{r ercc-reads2molecules-prev}
+ercc_reads2molecules_prev <- ercc_reads %+% aes(x = log2(prev_reads + 1),
+                                               y = log2(prev_molecules + 1))
+ercc_reads2molecules_prev
+```
+
+New with `read2pos`.
+
+```{r ercc-reads2molecules-new}
+ercc_reads2molecules_new <- ercc_reads %+% aes(x = log2(new_reads + 1),
+                                               y = log2(new_molecules + 1))
+ercc_reads2molecules_new
+```
+
+## Session information
+
+```{r info}
+sessionInfo()
+```

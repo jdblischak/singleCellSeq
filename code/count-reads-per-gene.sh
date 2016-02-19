@@ -21,7 +21,7 @@ then
 fi
 
 echo "Counting reads per gene..."
-featureCounts -a $EXONS -F SAF -R -s 1 -o $OUTDIR/$BASE.genecounts.txt $FILE
+featureCounts -a $EXONS -F SAF -R -s 1 --read2pos 5 -o $OUTDIR/$BASE.genecounts.txt $FILE
 
 # Bug introduced in 1.5 series. In 1.4 series, the "-R" file was the input
 # file with .featureCounts appended. Now it writes to the working directory
