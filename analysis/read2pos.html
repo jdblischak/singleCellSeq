@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+<meta name="author" content="John Blischak" />
+
+<meta name="date" content="2016-02-18" />
+
+<title>Effect of using read2pos flag with featureCounts</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Effect of using read2pos flag with featureCounts</h1>
+<h4 class="author"><em>John Blischak</em></h4>
+<h4 class="date"><em>2016-02-18</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#input">Input</a></li>
+<li><a href="#complete-chages-in-expression">Complete chages in expression</a></li>
+<li><a href="#discordance-problem">Discordance problem?</a></li>
+<li><a href="#endogenous-genes">Endogenous genes</a><ul>
+<li><a href="#reads">Reads</a></li>
+<li><a href="#molecules">Molecules</a></li>
+<li><a href="#conversion-of-reads-to-molecules">Conversion of reads to molecules</a></li>
+</ul></li>
+<li><a href="#ercc-genes">ERCC genes</a><ul>
+<li><a href="#reads-1">Reads</a></li>
+<li><a href="#molecules-1">Molecules</a></li>
+<li><a href="#conversion-of-reads-to-molecules-1">Conversion of reads to molecules</a></li>
+</ul></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2016-02-18</p>
+<p><strong>Code version:</strong> f51613737909d5bd9654cd6318fcff8e9e1ef28a</p>
+<p>To avoid assignment errors like the one identified in the <a href="bug-conversion-01.html">analysis to understand the conversion bug</a>, I re-ran featureCounts using the option <code>--read2pos 5</code>. This only considers the 5’ most base. Since the reads are stranded, we do not want to count reads mapping to a gene just because their 3’ end overlaps an exon (or conversely if the 3’ end is unabmiguous but the 5’ is not, we do not want to throw it away). I did a quick check to make sure this was not drastically changing the results. I inspected 19098.r1.A01, which is a quality single cell. I ran the following lines to make files which only contain the gene name and counts (not executed directly by this file).</p>
+<pre class="bash"><code>cut -f1,7 counts/19098.1.G11.GGCAGACT.L003.R1.C6WURACXX.trim.sickle.sorted.genecounts.txt &gt; $ssc/data/new-reads.txt
+cut -f1,7 counts-prev/19098.1.G11.GGCAGACT.L003.R1.C6WURACXX.trim.sickle.sorted.genecounts.txt &gt; $ssc/data/prev-reads.txt
+cut -f1,7 counts/19098.1.G11.GGCAGACT.L003.R1.C6WURACXX.trim.sickle.sorted.rmdup.genecounts.txt &gt; $ssc/data/new-molecules.txt
+cut -f1,7 counts-prev/19098.1.G11.GGCAGACT.L003.R1.C6WURACXX.trim.sickle.sorted.rmdup.genecounts.txt &gt; $ssc/data/prev-molecules.txt</code></pre>
+<pre class="r"><code>library(&quot;ggplot2&quot;)
+theme_set(theme_bw(base_size = 12))
+theme_update(panel.grid.minor.x = element_blank(),
+             panel.grid.minor.y = element_blank(),
+             panel.grid.major.x = element_blank(),
+             panel.grid.major.y = element_blank())</code></pre>
+<div id="input" class="section level2">
+<h2>Input</h2>
+<pre class="r"><code>new_reads &lt;- read.table(&quot;../data/new-reads.txt&quot;, header = TRUE,
+                  stringsAsFactors = FALSE)
+prev_reads &lt;- read.table(&quot;../data/prev-reads.txt&quot;, header = TRUE,
+                  stringsAsFactors = FALSE)
+new_molecules &lt;- read.table(&quot;../data/new-molecules.txt&quot;, header = TRUE,
+                  stringsAsFactors = FALSE)
+prev_molecules &lt;- read.table(&quot;../data/prev-molecules.txt&quot;, header = TRUE,
+                  stringsAsFactors = FALSE)
+stopifnot(grepl(&quot;19098.1.G11.GGCAGACT.L003.R1.C6WURACXX&quot;, colnames(new_reads)[2]),
+          grepl(&quot;19098.1.G11.GGCAGACT.L003.R1.C6WURACXX&quot;, colnames(prev_reads)[2]),
+          grepl(&quot;19098.1.G11.GGCAGACT.L003.R1.C6WURACXX&quot;, colnames(new_molecules)[2]),
+          grepl(&quot;19098.1.G11.GGCAGACT.L003.R1.C6WURACXX&quot;, colnames(prev_molecules)[2]),
+          new_reads$Geneid == prev_reads$Geneid,
+          new_molecules$Geneid == prev_molecules$Geneid,
+          new_reads$Geneid == new_molecules$Geneid)
+d &lt;- data.frame(new_reads = new_reads[, 2],
+                new_molecules = new_molecules[, 2],
+                prev_reads = prev_reads[, 2],
+                prev_molecules = prev_molecules[, 2],
+                row.names = new_reads$Geneid,
+                stringsAsFactors = FALSE)
+head(d)</code></pre>
+<pre><code>                new_reads new_molecules prev_reads prev_molecules
+ENSG00000186092         0             0          0              0
+ENSG00000237683         0             0          0              0
+ENSG00000235249         0             0          0              0
+ENSG00000185097         0             0          0              0
+ENSG00000269831         0             0          0              0
+ENSG00000269308         0             0          0              0</code></pre>
+</div>
+<div id="complete-chages-in-expression" class="section level2">
+<h2>Complete chages in expression</h2>
+<pre class="r"><code># genes with zero reads that now have reads
+sum(d$prev_reads == 0 &amp; d$new_reads != 0)</code></pre>
+<pre><code>[1] 30</code></pre>
+<pre class="r"><code># genes with reads that now have zero reads
+sum(d$prev_reads != 0 &amp; d$new_reads == 0)</code></pre>
+<pre><code>[1] 202</code></pre>
+<pre class="r"><code># genes with zero molecules that now have molecules
+sum(d$prev_molecules == 0 &amp; d$new_molecules != 0)</code></pre>
+<pre><code>[1] 30</code></pre>
+<pre class="r"><code># genes with molecules that now have zero molecules
+sum(d$prev_molecules != 0 &amp; d$new_molecules == 0)</code></pre>
+<pre><code>[1] 198</code></pre>
+</div>
+<div id="discordance-problem" class="section level2">
+<h2>Discordance problem?</h2>
+<p>I know that the previous counts were sometimes discordant between the reads and the molecules. In the <a href="bug-conversion-01.html">bug analysis</a>, I found that the gene ENSG00000187583 had 4 reads in 19098.1.G11.GGCAGACT.L003.R1.C6WURACXX but zero molecules. These reads were lost somehow in the remove duplication stage, but based on their strand and start position they should never have been counted in the first place. <code>read2pos</code> worked for this read as now it is no longer assigned to ENSG00000187583.</p>
+<pre class="r"><code>d[&quot;ENSG00000187583&quot;, ]</code></pre>
+<pre><code>                new_reads new_molecules prev_reads prev_molecules
+ENSG00000187583         0             0          4              0</code></pre>
+<p>And it wasn’t the only affected gene.</p>
+<pre class="r"><code># genes with &gt; 0 reads and 0 molecules
+d[d$prev_reads &gt; 0 &amp; d$prev_molecules == 0, ]</code></pre>
+<pre><code>                new_reads new_molecules prev_reads prev_molecules
+ENSG00000187583         0             0          4              0
+ENSG00000167766         0             0          3              0
+ENSG00000172869         0             0          5              0
+ENSG00000267645         0             0          1              0</code></pre>
+<pre class="r"><code># genes with 0 reads and &gt; 0 molecules
+d[d$prev_reads == 0 &amp; d$prev_molecules &gt; 0, ]</code></pre>
+<pre><code>[1] new_reads      new_molecules  prev_reads     prev_molecules
+&lt;0 rows&gt; (or 0-length row.names)</code></pre>
+<p>Were the other 3 problem genes also fixed by <code>read2pos</code> like ENSG00000187583?</p>
+<pre class="r"><code># genes with &gt; 0 reads and 0 molecules
+d[d$new_reads &gt; 0 &amp; d$new_molecules == 0, ]</code></pre>
+<pre><code>[1] new_reads      new_molecules  prev_reads     prev_molecules
+&lt;0 rows&gt; (or 0-length row.names)</code></pre>
+<pre class="r"><code># genes with 0 reads and &gt; 0 molecules
+d[d$new_reads == 0 &amp; d$new_molecules &gt; 0, ]</code></pre>
+<pre><code>[1] new_reads      new_molecules  prev_reads     prev_molecules
+&lt;0 rows&gt; (or 0-length row.names)</code></pre>
+<p>Yes!!!!</p>
+</div>
+<div id="endogenous-genes" class="section level2">
+<h2>Endogenous genes</h2>
+<p>Using <code>read2pos</code> is having an effect, but of course the results are still highly correlated.</p>
+<pre class="r"><code>ensg_index &lt;- grepl(&quot;ENSG&quot;, rownames(d))
+cor(d[ensg_index, ])</code></pre>
+<pre><code>               new_reads new_molecules prev_reads prev_molecules
+new_reads      1.0000000     0.9206626  0.9898788      0.9053786
+new_molecules  0.9206626     1.0000000  0.9193536      0.9823254
+prev_reads     0.9898788     0.9193536  1.0000000      0.9234511
+prev_molecules 0.9053786     0.9823254  0.9234511      1.0000000</code></pre>
+<div id="reads" class="section level3">
+<h3>Reads</h3>
+<p>The red line is the least squares best fit. The blue line is y = x.</p>
+<pre class="r"><code>base_plot &lt;- ggplot(d[ensg_index, ], aes(x = prev_reads, y = new_reads)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = &quot;lm&quot;, color = &quot;red&quot;) +
+  geom_abline(intercept = 0, slope = 1, color = &quot;blue&quot;)
+endo_reads &lt;- base_plot
+endo_reads</code></pre>
+<p><img src="figure/read2pos.Rmd/endo-reads-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>Log transformed.</p>
+<pre class="r"><code>endo_reads_log &lt;- base_plot %+% aes(x = log2(prev_reads + 1),
+                                    y = log2(new_reads + 1))
+endo_reads_log</code></pre>
+<p><img src="figure/read2pos.Rmd/endo-reads-log-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="molecules" class="section level3">
+<h3>Molecules</h3>
+<pre class="r"><code>endo_molecules &lt;- base_plot %+% aes(x = prev_molecules, y = new_molecules)
+endo_molecules</code></pre>
+<p><img src="figure/read2pos.Rmd/endo-molecules-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>Log transformed.</p>
+<pre class="r"><code>endo_molecules_log &lt;- base_plot %+% aes(x = log2(prev_molecules + 1),
+                                        y = log2(new_molecules + 1))
+endo_molecules_log</code></pre>
+<p><img src="figure/read2pos.Rmd/endo-molecules-log-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="conversion-of-reads-to-molecules" class="section level3">
+<h3>Conversion of reads to molecules</h3>
+<p>Previously.</p>
+<pre class="r"><code>endo_reads2molecules_prev &lt;- base_plot %+% aes(x = log2(prev_reads + 1),
+                                               y = log2(prev_molecules + 1))
+endo_reads2molecules_prev</code></pre>
+<p><img src="figure/read2pos.Rmd/endo-reads2molecules-prev-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>New with <code>read2pos</code>.</p>
+<pre class="r"><code>endo_reads2molecules_new &lt;- base_plot %+% aes(x = log2(new_reads + 1),
+                                               y = log2(new_molecules + 1))
+endo_reads2molecules_new</code></pre>
+<p><img src="figure/read2pos.Rmd/endo-reads2molecules-new-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+</div>
+<div id="ercc-genes" class="section level2">
+<h2>ERCC genes</h2>
+<p>This had no effect on the ERCC reads (correlation = 1). This makes sense because each ERCC is treated as its own chromosome, there is no chance of an ERCC read overlapping more than one feature. On the other hand, the molecules are not perfectly correlated. I’m not sure why they would be any different, which is worrisome, because it suggests I haven’t fixed all the strangeness with <code>read2pos</code>.</p>
+<pre class="r"><code>ercc_index &lt;- grepl(&quot;ERCC&quot;, rownames(d))
+cor(d[ercc_index, ])</code></pre>
+<pre><code>               new_reads new_molecules prev_reads prev_molecules
+new_reads      1.0000000     0.9914801  1.0000000      0.9898164
+new_molecules  0.9914801     1.0000000  0.9914801      0.9998716
+prev_reads     1.0000000     0.9914801  1.0000000      0.9898164
+prev_molecules 0.9898164     0.9998716  0.9898164      1.0000000</code></pre>
+<div id="reads-1" class="section level3">
+<h3>Reads</h3>
+<pre class="r"><code>ercc_reads &lt;- base_plot %+% d[ercc_index, ]
+ercc_reads</code></pre>
+<p><img src="figure/read2pos.Rmd/ercc-reads-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>Log transformed.</p>
+<pre class="r"><code>ercc_reads_log &lt;- ercc_reads %+% aes(x = log2(prev_reads + 1),
+                                     y = log2(new_reads + 1))
+ercc_reads_log</code></pre>
+<p><img src="figure/read2pos.Rmd/reads-ercc-log-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="molecules-1" class="section level3">
+<h3>Molecules</h3>
+<pre class="r"><code>ercc_molecules &lt;- ercc_reads %+% aes(x = prev_molecules, y = new_molecules)
+ercc_molecules</code></pre>
+<p><img src="figure/read2pos.Rmd/ercc-molecules-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>Log transformed.</p>
+<pre class="r"><code>ercc_molecules_log &lt;- ercc_reads %+% aes(x = log2(prev_molecules + 1),
+                                         y = log2(new_molecules + 1))
+ercc_molecules_log</code></pre>
+<p><img src="figure/read2pos.Rmd/molecules-ercc-log-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="conversion-of-reads-to-molecules-1" class="section level3">
+<h3>Conversion of reads to molecules</h3>
+<p>Previously.</p>
+<pre class="r"><code>ercc_reads2molecules_prev &lt;- ercc_reads %+% aes(x = log2(prev_reads + 1),
+                                               y = log2(prev_molecules + 1))
+ercc_reads2molecules_prev</code></pre>
+<p><img src="figure/read2pos.Rmd/ercc-reads2molecules-prev-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>New with <code>read2pos</code>.</p>
+<pre class="r"><code>ercc_reads2molecules_new &lt;- ercc_reads %+% aes(x = log2(new_reads + 1),
+                                               y = log2(new_molecules + 1))
+ercc_reads2molecules_new</code></pre>
+<p><img src="figure/read2pos.Rmd/ercc-reads2molecules-new-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] ggplot2_1.0.1 knitr_1.10.5 
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.12.0      digest_0.6.8     MASS_7.3-40      bitops_1.0-6    
+ [5] grid_3.2.0       plyr_1.8.3       gtable_0.1.2     formatR_1.2     
+ [9] magrittr_1.5     scales_0.2.4     evaluate_0.7     httr_0.6.1      
+[13] stringi_0.4-1    reshape2_1.4.1   rmarkdown_0.6.1  labeling_0.3    
+[17] proto_0.3-10     tools_3.2.0      stringr_1.0.0    munsell_0.4.2   
+[21] RCurl_1.95-4.6   yaml_2.1.13      colorspace_1.2-6 htmltools_0.2.6 </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>
