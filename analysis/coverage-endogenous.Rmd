@@ -1,0 +1,186 @@
+---
+title: "Coverage of endogenous genes"
+date: 2015-02-22
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+opts_chunk$set(cache = TRUE)
+```
+
+The sequencing coverage from the UMI protocol should show a very strong 5' bias.
+Do we observe this in our data?
+Here we explore this in a few samples using the [genomation][] package.
+Specifically, we calculate the mean coverage across all the genes that passed our expression filters for two regions:
+
+*  The transcription start site (TSS) +/- 1 kb
+*  The transcription end site (TES) +/- 1 kb
+
+[genomation]: http://www.bioconductor.org/packages/release/bioc/html/genomation.html
+
+```{r packages, message=FALSE, cache=FALSE}
+library("genomation")
+library("Rsamtools")
+library("plyr")
+library("tidyr")
+library("ggplot2")
+theme_set(theme_bw(base_size = 14))
+theme_update(panel.grid.minor.x = element_blank(),
+             panel.grid.minor.y = element_blank(),
+             panel.grid.major.x = element_blank(),
+             panel.grid.major.y = element_blank())
+```
+
+## Input
+
+Input filtered molecule counts.
+
+```{r input-molecule-counts-filter}
+molecules_filter <- read.table("../data/molecules-filter.txt", header = TRUE,
+                               stringsAsFactors = FALSE)
+```
+
+## Prepare bam files from high quality cells
+
+To investigate the coverage, we select one high quality cell from each individual.
+Note that for the actual data files, the names are more succinct to keep them shorter.
+
+```{r select-quality-cells}
+quality_cells <- c("19098.1.A01", "19101.1.A02", "19239.1.A01")
+names(quality_cells) <- c("NA19098.r1.A01", "NA19101.r1.A02", "NA19239.r1.A01")
+stopifnot(names(quality_cells) %in% colnames(molecules_filter))
+```
+
+From the [sequencing pipeline][pipeline], the bam files for the molecules are in `bam-rmdup-umi` and have the filename structure `individual.replicate.well.trim.sickle.sorted.combined.rmdup.bam`.
+Unfortunately, after processing with UMI-tools, the bam files are no longer sorted.
+It is necessary to sort them and then index them to use with [genomation][].
+
+[pipeline]: process-samples.html
+
+```{r prepare-bam}
+bam_molecules_unsorted <- paste0(quality_cells, ".trim.sickle.sorted.combined.rmdup.bam")
+data_dir <- "/mnt/gluster/home/jdblischak/ssd"
+from_file <- file.path(data_dir, "bam-rmdup-umi", bam_molecules_unsorted)
+to_file <- file.path("../data", bam_molecules_unsorted)
+sorted_file_prefix <- paste0(sub(".bam$", "", to_file), ".sorted")
+sorted_file <- paste0(sorted_file_prefix, ".bam")
+indexed_file <- paste0(sorted_file, ".bai")
+for (f in 1:length(bam_molecules_unsorted)) {
+  if (!file.exists(indexed_file[f])) {
+    stopifnot(file.exists(from_file[f]))
+    file.copy(from_file[f], to_file[f])
+    sortBam(to_file[f], sorted_file_prefix[f])
+    indexBam(sorted_file[f])
+  }
+}
+stopifnot(file.exists(indexed_file))
+bam <- sorted_file
+bam
+```
+
+## Prepare genomic features
+
+The genomic features are created with the script [create-transcripts.R](https://github.com/jdblischak/singleCellSeq/blob/master/code/create-transcripts.R).
+
+Input transcription start sites (TSS).
+
+```{r input-tss}
+tss <- readBed("../data/tss.bed")
+tss <- tss[tss$name %in% rownames(molecules_filter)]
+```
+
+Input transcription end sites (TES).
+
+```{r input-tes}
+tes <- readBed("../data/tes.bed")
+tes <- tes[tes$name %in% rownames(molecules_filter)]
+```
+
+## Calculate coverage over genomic features
+
+TSS
+
+```{r coverage-tss}
+tss_sm = ScoreMatrixList(target = bam, windows = tss, type = "bam",
+                         rpm = TRUE, strand.aware = TRUE)
+tss_sm
+```
+
+TES
+
+```{r coverage-tes}
+tes_sm = ScoreMatrixList(target = bam, windows = tes, type = "bam",
+                         rpm = TRUE, strand.aware = TRUE)
+tes_sm
+```
+
+## Summarize coverage
+
+Calculate the mean coverage per base pair for the TSS and and TES.
+
+```{r gather-tss}
+names(tss_sm) <- names(quality_cells)
+tss_sm_df <- ldply(tss_sm, colMeans, .id = "sample_id")
+colnames(tss_sm_df)[-1] <- paste0("p", 1:(ncol(tss_sm_df) - 1))
+tss_sm_df$feature = "TSS"
+tss_sm_df_long <- gather(tss_sm_df, key = "pos", value = "rpm", p1:p2001)
+```
+
+```{r gather-tes}
+names(tes_sm) <- names(quality_cells)
+tes_sm_df <- ldply(tes_sm, colMeans, .id = "sample_id")
+colnames(tes_sm_df)[-1] <- paste0("p", 1:(ncol(tes_sm_df) - 1))
+tes_sm_df$feature = "TES"
+tes_sm_df_long <- gather(tes_sm_df, key = "pos", value = "rpm", p1:p2001)
+```
+
+Combine the two features.
+
+```{r combine-features}
+features <- rbind(tss_sm_df_long, tes_sm_df_long)
+# Convert base position back to integer value
+features$pos <- sub("p", "", features$pos)
+features$pos <- as.numeric(features$pos)
+# Subtract 1001 to recalibrate as +/- 1 kb
+features$pos <- features$pos - 1001
+# Order factor so that TSS is displayed left of TES
+features$feature <- factor(features$feature, levels = c("TSS", "TES"),
+                           labels = c("Transcription start site",
+                                      "Transription end site"))
+```
+
+## Metagene plot
+
+```{r metaplot, fig.width=8, cache=FALSE}
+ggplot(features, aes(x = pos, y = rpm, color = sample_id)) +
+  geom_line() +
+  facet_wrap(~feature) +
+  scale_color_discrete(name = "Sample") +
+  labs(x = "Relative position (bp)",
+       y = "Counts per million (mean)",
+       title = "5' bias of UMI protocol") +
+  theme(legend.position = "bottom")
+```
+
+## Caveat
+
+The main caveat of this analysis is the very low coverage per gene of each single cell.
+
+```{r mean-expression}
+molecules_filter_sub <- molecules_filter[, names(quality_cells)]
+colSums(molecules_filter_sub) / 10^3
+mean_expr <- rowMeans(molecules_filter_sub)
+summary(mean_expr)
+```
+
+The median across the genes for the mean number of molecules across these three samples is only `r median(mean_expr)` molecules.
+
+## Session information
+
+```{r info}
+sessionInfo()
+```

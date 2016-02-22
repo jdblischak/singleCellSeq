@@ -1,5 +1,5 @@
 
-MARKDOWN := introduction.md results.md methods.md references.md
+MARKDOWN := introduction.md results.md discussion.md methods.md references.md
 TARGETS := title.yaml $(MARKDOWN)
 NAME := paper
 SUPP := supplement
@@ -47,6 +47,7 @@ $(SUPP).pdf: $(SUPP).md
 
 ## Format references
 
+# Need to use Python 3
 bibtex:
 	python format-bibtex.py $(BIBLIO)
 
