@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+
+<meta name="date" content="2015-02-22" />
+
+<title>Coverage of ERCC spike-ins</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Coverage of ERCC spike-ins</h1>
+<h4 class="date"><em>2015-02-22</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#input">Input</a></li>
+<li><a href="#prepare-data">Prepare data</a></li>
+<li><a href="#calculate-coverage">Calculate coverage</a></li>
+<li><a href="#summarize-coverage">Summarize coverage</a></li>
+<li><a href="#metagene-plot">Metagene plot</a></li>
+<li><a href="#interpretation">Interpretation</a></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2016-02-22</p>
+<p><strong>Code version:</strong> c583b1dbf009e01374eca3103be81ca554fd7fb1</p>
+<p>This is a companion to the analysis of the <a href="coverage-endogenous.html">coverage of endogenous genes</a>. It must be run first to prepare the bam files. We do not observe the expected 5’ bias of the UMI protocol for the ERCC spike-ins.</p>
+<pre class="r"><code>library(&quot;genomation&quot;)
+library(&quot;plyr&quot;)
+library(&quot;tidyr&quot;)
+library(&quot;ggplot2&quot;)
+theme_set(theme_bw(base_size = 14))
+theme_update(panel.grid.minor.x = element_blank(),
+             panel.grid.minor.y = element_blank(),
+             panel.grid.major.x = element_blank(),
+             panel.grid.major.y = element_blank())</code></pre>
+<div id="input" class="section level2">
+<h2>Input</h2>
+<p>Input filtered molecule counts.</p>
+<pre class="r"><code>molecules_filter &lt;- read.table(&quot;../data/molecules-filter.txt&quot;, header = TRUE,
+                               stringsAsFactors = FALSE)
+molecules_ercc &lt;- molecules_filter[grep(&quot;ERCC&quot;, rownames(molecules_filter)), ]</code></pre>
+<p>Input ERCC data from Invitrogen.</p>
+<pre class="r"><code>ercc_all &lt;- gffToGRanges(&quot;../data/ERCC92.gtf&quot;, split.group = TRUE)</code></pre>
+<pre><code>splitting the group.column...</code></pre>
+</div>
+<div id="prepare-data" class="section level2">
+<h2>Prepare data</h2>
+<p>Filter the ERCC spike-ins to only include those that pass the <a href="filter.html">filter</a>.</p>
+<pre class="r"><code>ercc_filter &lt;- ercc_all[ercc_all$gene_id %in% rownames(molecules_ercc)]</code></pre>
+<p>Create subset that only include 5 most highly expressed ERCC spike-ins.</p>
+<pre class="r"><code># Order by mean expression - from highest to lowest
+mean_expr_ercc &lt;- rowMeans(molecules_ercc)
+molecules_ercc &lt;- molecules_ercc[order(mean_expr_ercc, decreasing = TRUE), ]
+ercc_max &lt;- ercc_filter[ercc_filter$gene_id %in% rownames(molecules_ercc)[1:5]]</code></pre>
+<p>Using the same quality single cell samples from the analysis of the <a href="coverage-endogenous.html">coverage of endogenous genes</a>.</p>
+<pre class="r"><code>quality_cells &lt;- c(&quot;19098.1.A01&quot;, &quot;19101.1.A02&quot;, &quot;19239.1.A01&quot;)
+names(quality_cells) &lt;- c(&quot;NA19098.r1.A01&quot;, &quot;NA19101.r1.A02&quot;, &quot;NA19239.r1.A01&quot;)
+stopifnot(names(quality_cells) %in% colnames(molecules_filter))
+bam &lt;- paste0(&quot;../data/&quot;, quality_cells, &quot;.trim.sickle.sorted.combined.rmdup.sorted.bam&quot;)
+stopifnot(file.exists(bam), file.exists(paste0(bam, &quot;.bai&quot;)))</code></pre>
+</div>
+<div id="calculate-coverage" class="section level2">
+<h2>Calculate coverage</h2>
+<p>Because the ERCC have different lengths, we have to bin them. <code>ScoreMatrix</code> and <code>ScoreMatrixList</code> handle one or multiple files, respectively, and calculate the coverage over windows of equal size. <code>ScoreMatrixBin</code> computes the coverage of one file over windows of unequal size. For some reason, <code>ScoreMatrixBinList</code> does not exist (here is an old <a href="https://github.com/BIMSBbioinfo/genomation/issues/17">issue</a> from 2013 that discusses adding the feature for <code>ScoreMatrix</code> only). Thus we loop over the files manually.</p>
+<pre class="r"><code>filter_sm &lt;- list()
+for (b in bam) {
+  filter_sm[[b]] &lt;- ScoreMatrixBin(target = b, windows = ercc_filter, type = &quot;bam&quot;,
+                                   rpm = TRUE, strand.aware = TRUE, bin.num = 50)
+}</code></pre>
+<pre><code>Normalizing to rpm ...
+Normalizing to rpm ...
+Normalizing to rpm ...</code></pre>
+<pre class="r"><code>filter_sm &lt;- new(&quot;ScoreMatrixList&quot;, .Data = filter_sm)</code></pre>
+<p>Calculate coverage for only the 5 most highly expressed ERCC.</p>
+<pre class="r"><code>max_sm &lt;- list()
+for (b in bam) {
+  max_sm[[b]] &lt;- ScoreMatrixBin(target = b, windows = ercc_max, type = &quot;bam&quot;,
+                                   rpm = TRUE, strand.aware = TRUE, bin.num = 50)
+}</code></pre>
+<pre><code>Normalizing to rpm ...
+Normalizing to rpm ...
+Normalizing to rpm ...</code></pre>
+<pre class="r"><code>max_sm &lt;- new(&quot;ScoreMatrixList&quot;, .Data = max_sm)</code></pre>
+</div>
+<div id="summarize-coverage" class="section level2">
+<h2>Summarize coverage</h2>
+<pre class="r"><code>names(filter_sm) &lt;- names(quality_cells)
+filter_sm_df &lt;- ldply(filter_sm, colMeans, .id = &quot;sample_id&quot;)
+colnames(filter_sm_df)[-1] &lt;- paste0(&quot;p&quot;, 1:(ncol(filter_sm_df) - 1))
+filter_sm_df$subset = &quot;filter&quot;
+filter_sm_df_long &lt;- gather(filter_sm_df, key = &quot;pos&quot;, value = &quot;rpm&quot;, p1:p50)</code></pre>
+<pre class="r"><code>names(max_sm) &lt;- names(quality_cells)
+max_sm_df &lt;- ldply(max_sm, colMeans, .id = &quot;sample_id&quot;)
+colnames(max_sm_df)[-1] &lt;- paste0(&quot;p&quot;, 1:(ncol(max_sm_df) - 1))
+max_sm_df$subset = &quot;max&quot;
+max_sm_df_long &lt;- gather(max_sm_df, key = &quot;pos&quot;, value = &quot;rpm&quot;, p1:p50)</code></pre>
+<p>Combine the two features.</p>
+<pre class="r"><code>features &lt;- rbind(filter_sm_df_long, max_sm_df_long)
+# Convert base position back to integer value
+features$pos &lt;- sub(&quot;p&quot;, &quot;&quot;, features$pos)
+features$pos &lt;- as.numeric(features$pos)
+# Make subset factor more descriptive
+features$subset &lt;- factor(features$subset, levels = c(&quot;filter&quot;, &quot;max&quot;),
+                          labels = c(paste(length(ercc_filter), &quot;ERCC that pass expression filter&quot;),
+                                     &quot;5 most abundant ERCC&quot;))</code></pre>
+</div>
+<div id="metagene-plot" class="section level2">
+<h2>Metagene plot</h2>
+<pre class="r"><code>ggplot(features, aes(x = pos, y = rpm, color = sample_id)) +
+  geom_line() +
+  facet_wrap(~subset) + 
+  scale_color_discrete(name = &quot;Sample&quot;) +
+  labs(x = &quot;Bins (50) 5&#39; -&gt; 3&#39;&quot;,
+       y = &quot;Counts per million (mean)&quot;,
+       title = &quot;5&#39; bias of UMI protocol????&quot;) +
+  theme(legend.position = &quot;bottom&quot;)</code></pre>
+<p><img src="figure/coverage-ercc.Rmd/metaplot-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
+<div id="interpretation" class="section level2">
+<h2>Interpretation</h2>
+<p>This was an unexpected result. There appears to be more coverage on the 3’ end of the ERCC spike-ins. Some potential explanations:</p>
+<ul>
+<li>The GTF file lists the ERCC as on the positive strand. Maybe this needs to be switched (genomation does not filter reads based on strand). However, I checked (example code below) and this is not the case. The reads are mapped to the positive strand.</li>
+</ul>
+<pre class="bash"><code>samtools view ../data/19098.1.A01.trim.sickle.sorted.combined.rmdup.sorted.bam -c -F 1x10 ERCC-00002</code></pre>
+<ul>
+<li><p>We saw in the <a href="coverage-endogenous.html">coverage of the endogenous genes</a> that many molecules mapped just upstream of the TSS. Maybe there is some issue with the template switching, so that many reads do not get mapped to the 5’ of the ERCC?</p></li>
+<li><p>Maybe it could be a length issue? If a the transcript length is short, then the cumulative coverage at the 3’ end could be higher than it should. However, running it with only the 19 ERCC that pass the filter and are longer than 1 kb (<code>ercc_filter@ranges@width &gt; 1000</code>) did not change the overall pattern. The only difference was that NA19098 had a more noticeable peak at the 5’ end, but it was still less than the 3’ end.</p></li>
+</ul>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] grid      stats     graphics  grDevices utils     datasets  methods  
+[8] base     
+
+other attached packages:
+[1] ggplot2_1.0.1    tidyr_0.2.0      plyr_1.8.3       genomation_1.0.0
+[5] knitr_1.10.5    
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.12.0             formatR_1.2            
+ [3] futile.logger_1.4.1     GenomeInfoDb_1.4.0     
+ [5] XVector_0.8.0           bitops_1.0-6           
+ [7] futile.options_1.0.0    tools_3.2.0            
+ [9] zlibbioc_1.14.0         digest_0.6.8           
+[11] evaluate_0.7            gtable_0.1.2           
+[13] gridBase_0.4-7          DBI_0.3.1              
+[15] yaml_2.1.13             parallel_3.2.0         
+[17] proto_0.3-10            dplyr_0.4.2            
+[19] rtracklayer_1.28.4      httr_0.6.1             
+[21] stringr_1.0.0           Biostrings_2.36.1      
+[23] S4Vectors_0.6.0         IRanges_2.2.4          
+[25] stats4_3.2.0            data.table_1.9.4       
+[27] impute_1.42.0           R6_2.1.1               
+[29] XML_3.98-1.2            BiocParallel_1.2.2     
+[31] rmarkdown_0.6.1         reshape2_1.4.1         
+[33] lambda.r_1.1.7          magrittr_1.5           
+[35] Rsamtools_1.20.4        scales_0.2.4           
+[37] htmltools_0.2.6         GenomicAlignments_1.4.1
+[39] BiocGenerics_0.14.0     GenomicRanges_1.20.5   
+[41] MASS_7.3-40             assertthat_0.1         
+[43] colorspace_1.2-6        labeling_0.3           
+[45] stringi_0.4-1           lazyeval_0.1.10        
+[47] RCurl_1.95-4.6          munsell_0.4.2          
+[49] chron_2.3-45           </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>
