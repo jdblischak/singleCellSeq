@@ -1,7 +1,7 @@
 ---
-title: "Cell-to-cell variation analysis summary"
+title: "Cell-to-cell variation analysis: noisy genes"
 author: "Joyce Hsiao"
-date: 2016-02-02  
+date: 2016-02-22  
 ---
 
 **Last updated:** `r Sys.Date()`
@@ -20,7 +20,8 @@ opts_chunk$set(message = FALSE, warning = FALSE, eval = TRUE,
 
 ## Objective
 
-Analyze cell-to-cell heterogeneity in individual iPSC cell lines and identifies genes with differential cell-cell heterogeneity between individual iPSC cell lines. This document uses the final filtered data (poisson transformation).
+Investigate noise in gene expression at gene-by-gene basis, defined by DM (distance to the median) - distance of each individual's coefficieint of variation to median coefficient of variation of genes at similar RNA abundance level.
+
 
 
 ## Set up
@@ -78,279 +79,7 @@ gene_symbols <- read.table(file = "../data/gene-info.txt", sep = "\t",
                            header = TRUE, stringsAsFactors = FALSE, quote = "")
 ```
 
-
-
-## Helper functions
-
-*plot_density
-
-Per gene plot of overlaied density curves computed from individual cell lines.
-
-```{r overlapping-density-function}
-plot_density_overlay <- function(molecules_ENSG, annotation,
-                         individuals, batches = NULL,
-                         which_gene, labels, 
-                         xlims = NULL, ylims = NULL, gene_symbols) {
-  if_present <- which(rownames(molecules_ENSG) == which_gene)
-  if(length(if_present) == 0) {
-    stop("Gene not present in the data")
-  }
-  
-  library(scales)
-  library(broman)
-  crayon <- brocolors("crayon")
-  
-  if (is.null(batches)) {
-    individuals <- unique(annotation$individual)
-    colors <- c("Sunset Orange", "Tropical Rain Forest", "Denim")
-    dens <- lapply(1:3, function(per_individual) {
-      which_individual <- annotation$individual == individuals[per_individual]
-      density(unlist( molecules_ENSG[ rownames(molecules_ENSG) == which_gene, 
-                                      which_individual] ) )
-    })
-
-    if (is.null(xlims)) xlims <- range(sapply(dens, function(obj) obj$x))
-    if (is.null(ylims)) ylims <- range(sapply(dens, function(obj) obj$y))
-    
-    plot(dens[[1]], 
-         xlab = "log2 gene expression", main = "",
-         ylab = "Density", axes = F, lwd = 0, xlim = xlims, ylim = ylims)
-    for (i in 1:length(individuals)) {
-      polygon(dens[[i]], 
-              col = alpha(crayon[colors[i]], .4), 
-              border = "grey40")
-    }
-    axis(1); axis(2)
-    mtext(text = labels, side = 3)
-    title(main = with(gene_symbols, 
-                      external_gene_name[which(ensembl_gene_id == which_gene)]) )
-  }
-  
-  if (!is.null(batches)) {
-    
-    individuals <- unique(annotation$individual)
-    dens <- lapply(1:length(individuals), function(per_individual) {
-      which_individual <- annotation$individual == individuals[per_individual]
-      annotation_sub <- annotation[which_individual, ]
-      molecules_sub <- molecules_ENSG[ , which_individual]
-      replicates <- unique(annotation_sub$replicate)
-      dens_batch <- lapply(1:length(replicates), function(per_replicate) {
-        which_replicate <- annotation_sub$replicate == replicates[per_replicate]
-        density(unlist( molecules_sub[ rownames(molecules_ENSG) == which_gene, 
-                                       which_replicate] ) )
-      })
-    })
-    
-    if (is.null(xlims)) {
-      xlims <- range( c( sapply(dens, function(obj_individual) {
-        c( sapply(obj_individual, function(obj) {
-          range(obj$x)
-        }) )
-      }) ) )
-    }
-    if (is.null(ylims)) {
-      ylims <- range( c( sapply(dens, function(obj_individual) {
-        c( sapply(obj_individual, function(obj) {
-          range(obj$y)
-        }) )
-      }) ) )
-    }
-    
-    colors <- c("Sunset Orange", "Tropical Rain Forest", "Denim")
-    for (i in 1:length(dens)) {
-      
-      if (i == 1) col <- crayon["Sunset Orange"]
-      if (i == 2) col <- crayon["Tropical Rain Forest"]
-      if (i == 3) col <- crayon["Denim"]
- 
-      plot(dens[[i]][[1]], 
-           xlab = "log2 gene expression", main = "",
-           ylab = "Density", axes = F, lwd = 0, xlim = xlims, ylim = ylims)
-      for (j in 1:length(dens[[i]])) {
-        polygon(dens[[i]][[j]], 
-                col = alpha(col, .4), 
-                border = "grey40")
-      }
-    }
-      # first individual
-#       plot(dens[[1]][[1]], 
-#            xlab = "log2 gene expression", main = "",
-#            ylab = "Density", axes = F, lwd = 0, xlim = xlims, ylim = ylims)
-#       for (j in 1:length(dens[[1]]) ) {
-#         polygon(dens[[1]][[j]], col = alpha(crayon[colors[1]], .4), 
-#                 border = "grey40") }
-#       # second individuadl
-#       plot(dens[[2]][[1]], 
-#            xlab = "log2 gene expression", main = "",
-#            ylab = "Density", axes = F, lwd = 0, xlim = xlims, ylim = ylims)
-#       for (j in 1:length(dens[[2]]) ) {
-#         polygon(dens[[2]][[j]], col = alpha(crayon[colors[2]], .4), 
-#                 border = "grey40") }
-#       # third individual
-#       plot(dens[[3]][[1]], 
-#            xlab = "log2 gene expression", main = "",
-#            ylab = "Density", axes = F, lwd = 0, xlim = xlims, ylim = ylims)
-#       for (j in 1:length(dens[[3]]) ) {
-#         polygon(dens[[3]][[j]], col = alpha(crayon[colors[3]], .4), 
-#                 border = "grey40") }
-#       
-      
-        
-    axis(1); axis(2)
-    mtext(text = labels, side = 3)
-    title(main = with(gene_symbols, 
-                      external_gene_name[which(ensembl_gene_id == which_gene)]) )
-  }
-}
-```
-
-
-
-
-## CV-mean plots
-
-From the existing RNAseq literature, we learn that gene counts follow an overdispersed poission distribution, i.e., a negative binomial distribution, and that the size of the overdispersion parameter may suggest the degree to which biological variation affects the underlying distribution (see the voom paper). 
-
-Here we examine visually the gene molecule counts for each individual cell lines, before any data transformation or batch-effect correction. Points marked blue are ERCC genes, based on the *observed counts* before data transformation and batch correction. 
-
-*Red line* is the lossy Poission line predicted based on ERCC genes. 
-
-*Blue line* is based on Poisson distribution.
-
-*Yellow line* plots a poisson distribution which standard deviation is 3 times the size of its mean - an overdispersed poisson distribution. 
-
-Note: We decided to not make this plot for the entire data set, i.e., across the three cell lines. The goal of these plots are to assess the variation across the three C1 plates collected for each individual cell line. 
-
-
-*Helper function
-
-```{r plot-mean-cv-poission}
-plot_poisson_cv <- function(molecules_ENSG, molecules_ERCC, 
-
-                            is_log2count = FALSE,
-                            include_observed_ERCC = TRUE,
-                            main){
-    cbPalette <- c("#999999", "#0000FF", "#56B4E9", "#009E73", 
-                   "#F0E442", "#0072B2", "#D55E00", "#CC79A7")    
-    
-    library(matrixStats)
-    if (is_log2count == FALSE) {
-        molecules_ENSG <- as.matrix(molecules_ENSG)
-        molecules_ERCC <- as.matrix(molecules_ERCC)
-        # Remove genes with zero mean molecule count
-        which_ENSG_finite <- which(rowMeans(molecules_ENSG) > 0)
-        molecules_ENSG <- molecules_ENSG[which_ENSG_finite, ]
-        which_ERCC_finite <- which(rowMeans(molecules_ERCC) > 0)
-        molecules_ERCC <- molecules_ERCC[which_ERCC_finite, ]
-
-    }
-    if (is_log2count == TRUE) {
-        molecules_ENSG <- 2^as.matrix(molecules_ENSG)
-        molecules_ERCC <- 2^as.matrix(molecules_ERCC)
-    }
-
-    # defnine poisson function on a log x scale
-    ensg_cv   <- sqrt(rowVars(molecules_ENSG))/rowMeans(molecules_ENSG)
-    poisson.c <- function (x) {
-        (10^x)^(0.5)/(10^x) + min(ensg_cv)
-    }
-
-    # compute the lossy factor based on ERCC
-    ####   use maximum likelihood estimate
-    ####   dont use the points from ERCC.mol.mean < 0.1 to fit. 
-    ercc_mean <- rowMeans(molecules_ERCC)
-    ercc_cv   <- sqrt(rowVars(molecules_ERCC))/rowMeans(molecules_ERCC)
-
-
-    require(MASS)
-    glm_fit <- glm.nb(round(ercc_mean[log10(ercc_mean) > 0]) ~ 1)
-    dispersion <- summary.glm(glm_fit)$dispersion
-
-    # ERCC poisson
-    lossy.posson <- function (x) {
-        1/sqrt((10^x)/dispersion) + min(ercc_cv)
-    }
-
-    # 3 s.d. 
-    large_sd <- function (x) {
-        1/sqrt((10^x)/dispersion/3) + min(ensg_cv)
-    }
-
-    if (include_observed_ERCC == TRUE) {
-    return(
-      ggplot(rbind(data.frame(means = log10(rowMeans(molecules_ENSG)),
-                      cvs = sqrt(rowVars(molecules_ENSG))/rowMeans(molecules_ENSG),
-                      gene_type = rep(1, NROW(molecules_ENSG) ) ),
-                 data.frame(means = log10(ercc_mean),
-                            cvs = ercc_cv,
-                            gene_type = rep(2, NROW(molecules_ERCC) ) ) ), 
-           aes(x = means, y = cvs, 
-               col = as.factor(gene_type) ) )  + 
-      geom_point(size = 2, alpha = 0.5) + 
-      stat_function(fun = poisson.c, col= "red")  + 
-      stat_function(fun = lossy.posson, col= "blue") + 
-      stat_function(fun = large_sd, col = "yellow") +
-      scale_colour_manual(values = cbPalette) + 
-      labs(x = "log10 average molecule count",
-           y ="Coefficient of variation (CV)",
-           title = main) 
-    )
-    }
-    if (include_observed_ERCC == FALSE) {
-    return(
-      ggplot(rbind(data.frame(means = log10(rowMeans(molecules_ENSG)),
-                      cvs = sqrt(rowVars(molecules_ENSG))/rowMeans(molecules_ENSG),
-                      gene_type = rep(1, NROW(molecules_ENSG))),
-                 data.frame(means = log10(ercc_mean),
-                            cvs = ercc_cv,
-                            gene_type = rep(2, NROW(molecules_ERCC)))), 
-           aes(x = means, y = cvs, col = as.factor(gene_type)) )  + 
-      geom_point(size = 2, alpha = 0.5) + 
-      stat_function(fun = poisson.c, col= "red")  + 
-      scale_colour_manual(values = cbPalette) + 
-      labs(x = "log10 average molecule count",
-           y ="Coefficient of variation (CV)",
-           title = main) 
-    )
-    }
-}
-```
-
-
-```{r mean-cv-before-correction}
-theme_set(theme_bw(base_size = 8))
-cowplot::plot_grid(
-    plot_poisson_cv(molecules_filter[grep("ERCC", rownames(molecules_filter),
-                                          invert = TRUE), 
-                                      anno_filter$individual == "NA19098"], 
-                    molecules_filter[grep("ERCC", rownames(molecules_filter)), 
-                                     anno_filter$individual == "NA19098"], 
-                    is_log2count = FALSE,
-                    main = "Filtered counts, NA19098") +
-                    theme(legend.position = "none"),
-    plot_poisson_cv(molecules_filter[grep("ERCC", rownames(molecules_filter),
-                                      invert = TRUE), 
-                                  anno_filter$individual == "NA19101"], 
-                molecules_filter[grep("ERCC", rownames(molecules_filter)), 
-                                 anno_filter$individual == "NA19101"], 
-                is_log2count = FALSE,
-                main = "Filtered counts, NA19101") +
-                theme(legend.position = "none"),
-    plot_poisson_cv(molecules_filter[grep("ERCC", rownames(molecules_filter),
-                                  invert = TRUE), 
-                              anno_filter$individual == "NA19239"], 
-            molecules_filter[grep("ERCC", rownames(molecules_filter)), 
-                             anno_filter$individual == "NA19239"], 
-            is_log2count = FALSE,
-            main = "Filtered counts, NA19239") +
-            theme(legend.position = "none"),
-  ncol = 2,
-  labels = LETTERS[1:4])
-```
-
-
-### Cell-cycle or pluripotency?
-
+Import cell cycle and pluripotency genes.
 
 ```{r}
 cell_cycle_genes <- read.table("../data/cellcyclegenes.txt",
@@ -360,73 +89,6 @@ cell_cycle_genes <- read.table("../data/cellcyclegenes.txt",
 pluripotency_genes <- read.table("../data/pluripotency-genes.txt",
                                header = TRUE, sep = "\t",
                                stringsAsFactors = FALSE)$To
-```
-
-
-Identify outlier genes and check if they are cell-cycle genes or pluripotent genes.
-
-```{r mean-cv-outlier}
-molecules_filter_ENSG <- molecules_filter[grep("ERCC", rownames(molecules_filter),
-                                          invert = TRUE), ]
-individuals <- unique(anno_filter$individual)
-cv_outlier_list <- lapply(1:3,
-    function(ii) {
-      ensg <- molecules_filter_ENSG[ ,anno_filter$individual == individuals[ii]]
-      ensg <- as.matrix(ensg)
-      ensg <- ensg[rowMeans(ensg) > 0, ]
-      ensg_cv   <- sqrt(rowVars(ensg))/rowMeans(ensg)
-      ensg_mean   <- rowMeans(ensg)
-      
-#       ercc_mean <- rowMeans(molecules_cpm_ercc)
-#       glm_fit <- glm.nb(round(ercc_mean[log10(ensg_mean) > 0]) ~ 1)
-#       dispersion <- summary.glm(glm_fit)$dispersion
-
-      glm_fit <- glm.nb(round(ensg_mean) ~ 1)
-      dispersion <- summary.glm(glm_fit)$dispersion
-      
-      # Define large genes
-      ii <- ensg_cv > (1/sqrt(ensg_mean/dispersion/3)) + min(ensg_cv)
-      summary(ii)
-      list(dispersion = dispersion,
-      min_cv = min(ensg_cv),
-      outlier_list = ii)
-  })
-names(cv_outlier_list) <- individuals
-```
-
-Number of outlier genes
-
-```{r}
-sapply(cv_outlier_list, function(xx) sum(xx[[3]], na.rm = TRUE))
-```
-
-Names of outlier genes
-
-```{r}
-cv_outlier_ensg <- lapply(cv_outlier_list, 
-  function(xx) { 
-    ensg_id <- names(xx$outlier_list)[which(xx$outlier_list == TRUE)] 
-    gene_names <- 
-        do.call(c, lapply(1:length(ensg_id), function(i) {
-                    one_gene_name <-
-                      with(gene_symbols, 
-                           external_gene_name[which(ensembl_gene_id == ensg_id[i])]) 
-                    if (length(one_gene_name) == 0) one_gene_name <- "NULL"
-                    return(one_gene_name)
-                    }) )
-    cell_cycle <- 
-        do.call(c, lapply(1:length(ensg_id), function(i) {
-                    is_cell_cycle <- sum(unlist(cell_cycle_genes) == ensg_id[i]) > 0
-                    return(is_cell_cycle)
-                    }) )
-    pluripotent <- 
-        do.call(c, lapply(1:length(ensg_id), function(i) {
-                    is_pluripotent <- sum(unlist(pluripotency_genes) == ensg_id[i]) > 0
-                    return(is_pluripotent)
-                    }) )
-    cbind(ensg_id, gene_names, cell_cycle, pluripotent)
-    })
-cv_outlier_ensg
 ```
 
 
@@ -576,7 +238,7 @@ ggplot(data.frame(do.call(rbind, ENSG_cv_adj),
 
 ## Top ranked DM genes
 
-### Venn diagram
+### Venn diagram, 1000 genes
 
 Top 1000 genes based on DM.
 
@@ -673,13 +335,267 @@ cowplot::plot_grid(
 
 
 
+### Venn diagram, 100 genes
+
+Top 100 genes based on DM.
+
+```{r venn-top-100-dm}
+genes <- rownames(ENSG_cv[[1]])
+library(gplots)
+venn_cv_rank <- gplots::venn(
+  list(NA19098 = genes[ which( rank(ENSG_cv_adj$NA19098$log10cv2_adj) 
+                               > length(genes) - 100 ) ],
+       NA19101 = genes[ which( rank(ENSG_cv_adj$NA19101$log10cv2_adj) 
+                               > length(genes) - 100 ) ],
+       NA19239 = genes[ which( rank(ENSG_cv_adj$NA19239$log10cv2_adj) 
+                               > length(genes) - 100 ) ] ))
+```
 
 
-## Compare DMs
+Bottom 100 genes based on DM.
+
+```{r venn-bottom-100-dm}
+genes <- rownames(ENSG_cv[[1]])
+library(gplots)
+gplots::venn(
+  list(NA19098 = genes[ which( rank(ENSG_cv_adj$NA19098$log10cv2_adj) 
+                               <= 100 ) ],
+       NA19101 = genes[ which( rank(ENSG_cv_adj$NA19101$log10cv2_adj) 
+                               <= 100 ) ],
+       NA19239 = genes[ which( rank(ENSG_cv_adj$NA19239$log10cv2_adj) 
+                               <= 100 ) ] ))
+```
+
+
+Top 100 genes based on Means.
+
+```{r venn-top-100-means}
+genes <- rownames(ENSG_cv[[1]])
+library(gplots)
+gplots::venn( 
+  list(NA19098 = genes[ which(rank(ENSG_cv[[1]]$mean) > length(genes) - 100 ) ],
+       NA19101 = genes[ which(rank(ENSG_cv[[2]]$mean) > length(genes) - 100 ) ],
+       NA19239 = genes[ which(rank(ENSG_cv[[3]]$mean) > length(genes) - 100 ) ] ) )
+```
+
+
+
+
+### GO analysis - individual top genes
+
+Analyze top 1,000 genes in DM values.
+
+```{r, eval = FALSE}
+# output top 1000 genes in DM values
+top1000DM_genes <-
+  data.frame(NA19098 = genes[ which( rank(ENSG_cv_adj$NA19098$log10cv2_adj) 
+                               > length(genes) - 1000 ) ],
+       NA19101 = genes[ which( rank(ENSG_cv_adj$NA19101$log10cv2_adj) 
+                               > length(genes) - 1000 ) ],
+       NA19239 = genes[ which( rank(ENSG_cv_adj$NA19239$log10cv2_adj) 
+                               > length(genes) - 1000 ) ],
+       stringsAsFactors = FALSE)
+# write the gene names out to a text file,
+# then copy and paste to GO Consortium interface
+for (ind in c("NA19098", "NA19101", "NA19239")) {
+  write.table(top100DM_genes[[ind]],
+              file = paste0("../data/top-100-dm-",ind,".txt"),
+              sep = "/t", quote = FALSE,
+              col.names = FALSE, row.names = FALSE)
+}
+for (ind in c("NA19098", "NA19101", "NA19239")) {
+  write.table(top1000DM_genes[[ind]],
+              file = paste0("../data/top-1000-dm-",ind,".txt"),
+              sep = "/t", quote = FALSE,
+              col.names = FALSE, row.names = FALSE)
+}
+write.table(rownames(molecules_final),
+            file = "../data/gene-names.txt",
+            sep = "/t", quote = FALSE,
+            col.names = FALSE, row.names = FALSE)
+```
+
+
+
+#### GO consortium
+
+We found no significant GO terms in PANTHER database.
+
+
+#### GOStats
+
+Not yet figured out how to get genes associated with each sig. GO terms.
+
+*[Chunk not evaluated]*
+```{r, eval = FALSE}
+require(Humanzee)
+# Find GO terms
+go_top1000_results <- lapply(c("NA19098", "NA19101", "NA19239"),
+    function(individual) {
+        go_list <- lapply(c("BP", "MF", "CC"), function(term) {
+              sig_gene_go <- GOtest(rownames(molecules_final),
+                                    top1000DM_genes[[individual]],
+                                    ontology = term,
+                                    conditional.method = F)
+              
+              
+              go_data <- goHeatmapData(list(summary(sig_gene_go$GO[[term]], 
+                                                    pvalue = .01)))
+              return(go_data)
+        })
+        names(go_list) <- c("BP", "MF", "CC")
+        return(go_list)      
+})
+names(go_top1000_results) <- c("NA19098", "NA19101", "NA19239")
+
+go_gene_list <- sig_gene_go[["GO"]][[1]]@goDag@nodeData@data
+go_gene_list_names <- names(go_gene_list)
+go_sig <- which(go_gene_list_names %in% go_data[,1])
+go_gene_list_sig <- go_gene_list[go_sig]
+length(go_gene_list_sig)
+go_gene_list_sig
+head(go_data)
+# Plot heatmap
+go_heatmap <- plotHeatmap(go_data, 
+                          labCol = "")
+```
+
+
+#### CPDB
+
+ConsensusPATHDB-Human was used to perform GO over-representation analysis.
+
+##### GO terms
+
+*NA19098*
+
+```{r}
+go_NA19098 <- read.table("../data/go-cpdb-top-1000-dm-NA19098.tab",
+                         sep = "\t",
+                         header = TRUE)
+go_NA19098_sig <- go_NA19098[go_NA19098$q.value < .1, ]
+go_NA19098_sig$term_name
+```
+
+
+
+*NA19101*
+
+```{r}
+go_NA19101 <- read.table("../data/go-cpdb-top-1000-dm-NA19101.tab",
+                         sep = "\t",
+                         header = TRUE)
+head(go_NA19101$q.value)
+go_NA19101_sig <- go_NA19101[go_NA19101$q.value < .1, ]
+go_NA19101_sig$term_name
+```
+
+
+*NA19239*
+
+```{r}
+go_NA19239 <- read.table("../data/go-cpdb-top-1000-dm-NA19239.tab",
+           sep = "\t",
+           header = TRUE)
+go_NA19239_sig <- go_NA19239[go_NA19239$q.value < .1, ]
+
+go_NA19239_sig$term_name
+```
+
+
+
+##### Genes associated with the GO terms
+
+*NA19098*
+
+```{r}
+library(mygene)
+#go_NA19098_sig$term_name
+go_NA19098_genes <- getGenes(gsub(";", ",",
+                    as.character(go_NA19098_sig$members_input_overlap_geneids)))
+go_NA19098_genes <- go_NA19098_genes[!duplicated(go_NA19098_genes[ , "symbol"]), ]
+kable(data.frame(symbol = go_NA19098_genes[ ,"symbol"],
+                 name = go_NA19098_genes[,"name"]) )
+```
+
+
+
+*NA19101*
+
+```{r}
+#go_NA19101_sig$term_name
+go_NA19101_genes <- getGenes(gsub(";", ",",
+                    as.character(go_NA19101_sig$members_input_overlap_geneids)))
+go_NA19101_genes <- go_NA19101_genes[!duplicated(go_NA19101_genes[ , "symbol"]), ]
+kable(data.frame(symbol = go_NA19101_genes[ ,"symbol"],
+                 name = go_NA19101_genes[,"name"]) )
+```
+
+
+*NA19239*
+
+```{r}
+#go_NA19239_sig$term_name
+go_NA19239_genes <- getGenes(gsub(";", ",",
+                    as.character(go_NA19239_sig$members_input_overlap_geneids)))
+go_NA19239_genes <- go_NA19239_genes[!duplicated(go_NA19239_genes[ , "symbol"]), ]
+kable(data.frame(symbol = go_NA19239_genes[ ,"symbol"],
+                 name = go_NA19239_genes[,"name"]) )
+```
+
+
+
+
+
+### GO analysis - shared noisy genes
+
+
+```{r, eval = FALSE}
+shared_venn <- gplots::venn(
+  list(NA19098 = genes[ which( rank(ENSG_cv_adj$NA19098$log10cv2_adj) 
+                               > length(genes) - 1000 ) ],
+       NA19101 = genes[ which( rank(ENSG_cv_adj$NA19101$log10cv2_adj) 
+                               > length(genes) - 1000 ) ],
+       NA19239 = genes[ which( rank(ENSG_cv_adj$NA19239$log10cv2_adj) 
+                               > length(genes) - 1000 ) ] ) )
+
+shared_genes <- attr(shared_venn, "intersections")[['111']]
+
+write.table(shared_genes,
+            file = ("../data/top-1000-dm-shared.txt"),
+            sep = "/t", quote = FALSE,
+            col.names = FALSE, row.names = FALSE)
+```
+
+
+#### CPDB
+
+ConsensusPATHDB-Human was used to perform GO over-representation analysis.
+
+Of the 120 noisy genes that are common to all three individual cell lines, 38 of the genes are over-represented in the following functions: 
+
+```{r}
+go_top_shared <- read.table("../data/go-cpdb-top-1000-shared.tab",
+                         sep = "\t",
+                         header = TRUE)
+go_top_shared <- go_top_shared[go_top_shared$q.value < .1, ]
+go_top_shared$term_name
+```
+
+
+```{r}
+go_top_shared_genes <- getGenes(gsub(";", ",",
+                    as.character(go_top_shared$members_input_overlap_geneids)))
+go_top_shared_genes <- go_top_shared_genes[!duplicated(go_top_shared_genes[ , "symbol"]), ]
+kable(data.frame(symbol = go_top_shared_genes[ ,"symbol"],
+                 name = go_top_shared_genes[,"name"]) )
+```
+
+
+
+## Differential DMs 
 
 Compute median of absolute deviations (MAD) to quantify dissimilarity of the individual DM meausres. 
-
-### Compute MAD 
 
 ```{r}
 library(matrixStats)
@@ -691,7 +607,7 @@ mad <- rowMedians( abs( dm_matrix - rowMedians(dm_matrix) ) )
 ```
 
 
-Top 100 ranked genes by MAD. 
+### Top 100 ranked genes by MAD. 
 
 ```{r}
 ggplot(data.frame(do.call(rbind, ENSG_cv_adj),
@@ -911,15 +827,10 @@ if(!file.exists(file_name)) {
 
 
 
-
-### Pathway analysis
-
-![pathway.](../analysis/figure/cv-adjusted-summary-pois.Rmd/sig-genes-pathway-analysis.png) 
+### Over-represntation analysis
 
 
-### GO analysis
-
-### Gene Ontology Consortium
+#### Gene Ontology Consortium
 
 Search PANTHER database.
 
@@ -948,217 +859,102 @@ go_heatmap <- plotHeatmap(go_data,
 ```
 
 
+#### CPDB
+
+ConsensusPATHDB-Human was used to perform GO over-representation analysis.
+
+##### GO terms
 
 
-## Figures
+```{r}
+go_sig <- read.table("../data/go-cpdb-sig-dm.tab",
+                         sep = "\t",
+                         header = TRUE)
+go_sig <- go_sig[go_sig$q.value < .1, ]
+as.character(go_sig$term_name)
+```
 
-I made figure 6 in powerpoint. We can figure out later how to combine the venn diagrams and the density plots nicely...
 
 
-![Figure6.](../analysis/figure/cv-adjusted-summary-pois.Rmd/figure6.png) 
+##### Genes associated with the GO terms
 
-Legend: 
 
-Code for reproducing Figure 6 a-b
+```{r}
+library(mygene)
+go_genes <- getGenes(gsub(";", ",",
+                    as.character(go_sig$members_input_overlap_geneids)))
+go_genes <- go_genes[!duplicated(go_genes[ , "symbol"]), ]
+kable(data.frame(symbol = go_genes[ ,"symbol"],
+                 name = go_genes[,"name"]) )
+```
 
-*[Chunk not evaluted]*
 
-```{r figure6-venn, eval = F}
-## Venn diagrams
-genes <- rownames(ENSG_cv[[1]])
-library(gplots)
-venn_mean_rank <- gplots::venn( 
-  list(NA19098 = genes[ which(rank(ENSG_cv[[1]]$mean) > length(genes) - 1000 ) ],
-       NA19101 = genes[ which(rank(ENSG_cv[[2]]$mean) > length(genes) - 1000 ) ],
-       NA19239 = genes[ which(rank(ENSG_cv[[3]]$mean) > length(genes) - 1000 ) ] ) )
 
-venn_cv_rank <- gplots::venn(
-  list(NA19098 = genes[ which( rank(ENSG_cv_adj$NA19098$log10cv2_adj) 
+
+
+## Top DM-ranked genes vs. differential genes
+
+Top genes
+
+```{r}
+genes_top1000 <-data.frame(
+  NA19098 = genes[ which( rank(ENSG_cv_adj$NA19098$log10cv2_adj) 
                                > length(genes) - 1000 ) ],
-       NA19101 = genes[ which( rank(ENSG_cv_adj$NA19101$log10cv2_adj) 
+  NA19101 = genes[ which( rank(ENSG_cv_adj$NA19101$log10cv2_adj) 
                                > length(genes) - 1000 ) ],
-       NA19239 = genes[ which( rank(ENSG_cv_adj$NA19239$log10cv2_adj) 
-                               > length(genes) - 1000 ) ] ))
+  NA19239 = genes[ which( rank(ENSG_cv_adj$NA19239$log10cv2_adj) 
+                               > length(genes) - 1000 ) ] ) 
 ```
 
-Code for reproducing Figure 6c-f
+Sig. genes
 
-```{r figure6c-density, fig.width=12, fig.height=4, eval=F}
-NANOG and ZFP42: pluripotent genes, we found no significant individual difference in the Deviation-from-the-Median (DM) for these two genes. We also examined the density plots of 
-the other genes. See [here][link1].
-
-[link1]: http://jdblischak.github.io/singleCellSeq/analysis/compare-distribution-pluripotency.html
-
-I also picked two genes with significant individual differences.
-
-*[Chunk not evaluted]*
-```{r figure6-density, fig.width=8, fig.height=4, eval=F}
-query_genes <- c("NANOG", "ZFP42", "NLRP2", "FAT3")
-query_genes_ensg <- gene_symbols[which(gene_symbols$external_gene_name %in% query_genes), ]
-query_genes_ensg <- query_genes_ensg[c(2,4,1,3), ]
-
-par(mfrow = c(1,4))
-for (i in 1:nrow(query_genes_ensg)) {
-  plot_density_overlay(molecules_ENSG = molecules_final,
-               annotation = anno_filter,
-               which_gene = query_genes_ensg$ensembl_gene_id[i], 
-    #                   labels = round(genes_plot$dist[i], 6),
-               labels = "",
-               xlims = c(1,14), ylims = NULL,
-               gene_symbols = gene_symbols)
-}
+```{r}
+genes_sig_mad <- data.frame(
+  ensg = rownames(molecules_final)[which(permuted_pval$mad_pval == 0)] )
+genes_sig_mad$gene_names <- gene_symbols$external_gene_name[
+  match(genes_sig_mad$ensg, gene_symbols$ensembl_gene_id)]
+genes_sig_mad$is_cell_cycle <- genes_sig_mad$ensg %in% unlist(cell_cycle_genes)
+genes_sig_mad$is_pluripotent <- genes_sig_mad$ensg %in% unlist(pluripotency_genes)
 ```
 
-Supplemental figure XX0.
 
+Which ones of significant genes are also in the top ranked genes
 
-Legend: 
+```{r}
+overlap_list <- lapply(c(1:3), function(ii) {
+  as.character(genes_sig_mad$ensg)[
+    which( as.character(genes_sig_mad$ensg) %in% genes_top1000[[ii]]) ]  
+})
+length( c(overlap_list[[1]], overlap_list[[2]], overlap_list[[3]]) )
+length(unique( c(overlap_list[[1]], overlap_list[[2]], overlap_list[[3]]) ))
 
-
-```{r pluripotent-density-replicates, fig.width=8, fig.height=3, eval=T}
-pluri_pvals <- data.frame(pvals = permuted_pval,
-                          ENSG = rownames(molecules_final))
-pluri_pvals <- pluri_pvals[which(rownames(molecules_final) %in% 
-                                   pluripotency_genes), ]
-pluri_symbols <- gene_symbols[which(gene_symbols$ensembl_gene_id %in% pluri_pvals$ENSG) , 
-                              c(1,3)]
-pluri_results <- merge(pluri_pvals, pluri_symbols,
-                       by.x = c("ENSG"), by.y = "ensembl_gene_id") 
-pluri_results <- pluri_results[order(pluri_results$mad_pval), ]
-pluri_results
-
-for (i in 1:nrow(pluri_results)) {
-    par(mfrow = c(1,3))
-    for (which_individual in unique(anno_filter$individual)) {
-        plot_density_overlay(
-             molecules_ENSG = molecules_final[ , anno_filter$individual == which_individual],
-             annotation = anno_filter[anno_filter$individual == which_individual, ],
-             individuals = anno_filter$individual,
-             batches = anno_filter$sample_id,
-             which_gene = pluri_results$ENSG[i],
-             labels = which_individual,
-             xlims = c(2,14),
-             gene_symbols = gene_symbols)
-    }
-}
+write(unique( c(overlap_list[[1]], overlap_list[[2]], overlap_list[[3]]) ),
+      file = "../data/overlap-sig-top-dm-genes", sep = "\t")
 ```
 
 
 
-Supplemental figure XX1.
-
-Legend: Coefficients of variation plotted against average molecule counts across cells of each individual cell line. Grey dots represent endogeneous genes, and blue dots indicate ERCC spike-in control genes. Red curve depicts the expected coefficients of variation assuming the endogeneous genes follow a poisson distribution. Likewise, blue curve depicts the expected CVs of the ERCC spike-in control genes. Yellow curve predicts the expected CVs assuming standard deviation is 3 times the ERCC spike-in genes. 
+### CPDB
 
 
-```{r, fig.width=12, fig.height=6}
-theme_set(theme_bw(base_size = 12))
-theme_update(panel.grid.minor.x = element_blank(),
-             panel.grid.minor.y = element_blank(),
-             panel.grid.major.x = element_blank(),
-             panel.grid.major.y = element_blank())
-cowplot::plot_grid(
-    plot_poisson_cv(molecules_filter[grep("ERCC", rownames(molecules_filter),
-                                          invert = TRUE), 
-                                      anno_filter$individual == "NA19098"], 
-                    molecules_filter[grep("ERCC", rownames(molecules_filter)), 
-                                     anno_filter$individual == "NA19098"], 
-                    is_log2count = FALSE,
-                    main = "Filtered counts, NA19098") +
-                    theme(legend.position = "none"),
-    plot_poisson_cv(molecules_filter[grep("ERCC", rownames(molecules_filter),
-                                      invert = TRUE), 
-                                  anno_filter$individual == "NA19101"], 
-                molecules_filter[grep("ERCC", rownames(molecules_filter)), 
-                                 anno_filter$individual == "NA19101"], 
-                is_log2count = FALSE,
-                main = "Filtered counts, NA19101") +
-                theme(legend.position = "none"),
-    plot_poisson_cv(molecules_filter[grep("ERCC", rownames(molecules_filter),
-                                  invert = TRUE), 
-                              anno_filter$individual == "NA19239"], 
-            molecules_filter[grep("ERCC", rownames(molecules_filter)), 
-                             anno_filter$individual == "NA19239"], 
-            is_log2count = FALSE,
-            main = "Filtered counts, NA19239") +
-            theme(legend.position = "none"),
-  nrow = 1,
-  labels = LETTERS[1:3])
-```
+```{r}
+go_overlap <- read.table("../data/go-cpdb-sig-dm.tab",
+                         sep = "\t", header = TRUE,
+                         stringsAsFactors = FALSE)
+go_overlap <- go_overlap[go_overlap$q.value < .1, ]
+go_overlap$term_name
 
-Supplemental figure XX2. Legend: 
-
-Investigating distance-to-the-median (DM). (A) to (C) correspond to cell lines NA19098, NA19101, NA19239. DM values of each gene are plotted against log10 of the average molecule counts. 
-
-
-```{r, fig.width=12, fig.height=6}
-plot_grid(
-  ggplot(data.frame(dm = ENSG_cv_adj$NA19098$log10cv2_adj,
-                    log10_mean = log10(ENSG_cv_adj$NA19098$mean)),
-         aes(x = log10_mean, y = dm)) +
-      geom_point(cex = .4) +
-      xlab("log10 average molecule count") +
-      ylab("DM values") +
-      ggtitle("NA19098") +
-      theme(legend.position = "none"),
-    ggplot(data.frame(dm = ENSG_cv_adj$NA19101$log10cv2_adj,
-                    log10_mean = log10(ENSG_cv_adj$NA19101$mean)),
-         aes(x = log10_mean, y = dm)) +
-      geom_point(cex = .4) +
-      xlab("log10 average molecule count") +
-      ylab("DM values") +
-      ggtitle("NA19101") +
-      theme(legend.position = "none"),
-  ggplot(data.frame(dm = ENSG_cv_adj$NA19239$log10cv2_adj,
-                    log10_mean = log10(ENSG_cv_adj$NA19239$mean)),
-         aes(x = log10_mean, y = dm)) +
-      geom_point(cex = .4) +
-      xlab("log10 average molecule count") +
-      ylab("DM values") +
-      ggtitle("NA19239") +
-      theme(legend.position = "none"),
-  nrow = 1,
-  labels = LETTERS[4:6] )
+go_overlap_genes <- getGenes(gsub(";", ",",
+                    as.character(go_overlap$members_input_overlap_geneids)))
+go_overlap_genes <- go_overlap_genes[!duplicated(go_overlap_genes[ , "symbol"]), ]
+kable(data.frame(symbol =go_overlap_genes[ ,"symbol"],
+                 name = go_overlap_genes[,"name"]) )
 ```
 
 
-Supplemental XX3
+```{r}
 
-Legend: (A) Histogram of empirical p-values based on 12,192 permutations. (B) -log10 empirical p-values are plotted against average gene expression levels. Blue line displays predicted -log10 p-values using locally weighted scatterplot smooth (LOESS).  (C) Median of Absolute Deviation (MAD) of genes versus average gene expression levels. LOESS was also used to depict predicted MAD values. 
-
-```{r, fig.width=12, fig.height=12}
-# Bins average gene expression and make a boxplot of -log10 p-values
-# for each bin
-gene_means <- rowMeans(as.matrix(molecules_final))
-
-plot_grid(
-  ggplot( data.frame(pvals = permuted_pval$mad_pval),
-         aes(x = pvals) ) +
-    geom_histogram() + xlim(0, 1) +
-    labs(x = "Permutation-based p-values", y = "Count"),
-  ggplot( data.frame(pvals = permuted_pval$mad_pval,
-                     gene_mean = rowMeans(as.matrix(molecules_final)),
-                     bins = cut_number(gene_means, n = 10)),
-         aes(x = gene_mean, y = -log10(pvals)) ) +
-    geom_point(alpha = .5, cex = .2) +
-    stat_smooth() +
-    theme(legend.position = "none") +
-    ylab("-log10(p-value)") +
-    xlab("Average gene expression level"),
-  ggplot( data.frame(mad = mad,
-                   gene_mean = rowMeans(as.matrix(molecules_final)),
-                   bins = cut_number(gene_means, n = 10)),
-         aes(x = gene_mean, y = mad) ) +
-      geom_point( alpha = .5, cex = .2) +
-      stat_smooth(col = 11) +
-      theme(legend.position = "none") +
-      ylab("Median of absolute deviation (MAD)") +
-      xlab("Average gene expression level"),
-  ncol = 2,
-  labels = LETTERS[1:3]
-  )
 ```
-
-
 
 
 ## Session information
