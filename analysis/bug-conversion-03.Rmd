@@ -1,0 +1,391 @@
+---
+title: "Tracking down bug in reads to molecules conversion - Attempt 03"
+author: "John Blischak"
+date: 2015-02-23
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+opts_chunk$set(cache = TRUE)
+```
+
+Since my [last attempt][attempt-02] at debugging, I re-ran the deduplication step and also [fixed a bug in the initial gene filtering step][filter-bug-commit].
+The latter made all the tests in [test-summary-counts.R][] pass, but there are still problems with the reads to molecules conversion [tests][].
+This analysis continues the search for bugs lurking in the [sequence processsing pipeline][pipeline].
+
+[attempt-02]: bug-conversion-02.html
+[filter-bug-commit]: https://github.com/jdblischak/singleCellSeq/commit/7eac4298e66833961c13fb296cdb78a60e50aa26
+[test-summary-counts.R]: https://github.com/jdblischak/singleCellSeq/tree/master/tests/test-summary-counts.R
+[tests]: https://github.com/jdblischak/singleCellSeq/tree/master/tests
+[pipeline]: process-samples.html
+
+## Input
+
+Input annotation.
+
+```{r input-annotation}
+anno <- read.table("../data/annotation.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+```
+
+Input read counts.
+
+```{r input-read-counts}
+reads <- read.table("../data/reads.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+stopifnot(ncol(reads) == nrow(anno),
+          colnames(reads) == anno$sample_id)
+```
+
+Input molecule counts.
+
+```{r input-molecule-counts}
+molecules <- read.table("../data/molecules.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+stopifnot(ncol(molecules) == nrow(anno),
+          colnames(molecules) == anno$sample_id)
+```
+
+Input list of quality single cells.
+
+```{r input-quality-single-cells}
+quality_single_cells <- scan("../data/quality-single-cells.txt",
+                             what = "character")
+```
+
+## Identifying problem genes
+
+How often is this a problem? How many genes does it affect? For affected genes, how many samples are affected?
+
+```{r problem-genes}
+discordant_zeros <- (reads == 0) != (molecules == 0)
+all_genes <- rowSums(discordant_zeros)
+names(all_genes) <- rownames(reads)
+problem_genes <- all_genes[all_genes > 0]
+length(problem_genes)
+length(problem_genes) / length(all_genes)
+summary(problem_genes)
+```
+
+This problem affects `r length(problem_genes)`
+out of the `r length(all_genes)` total genes
+(`r round(length(problem_genes) / length(all_genes) * 100, digits = 2)`%).
+For these problem genes, the median number of affected samples is `r median(problem_genes)`
+and the max number of affected samples is `r max(problem_genes)`.
+
+Next I identify a problem gene-sample combination so that I can track down what happened.
+
+```{r problem-1}
+x <- names(problem_genes)[1]
+plot(as.numeric(reads[x, ]), as.numeric(molecules[x, ]))
+problem_sample <- colnames(reads)[discordant_zeros[x, ] == TRUE]
+reads[x, problem_sample]
+molecules[x, problem_sample]
+```
+
+For gene `r x`,
+the sample `r problem_sample`
+was assigned `r reads[x, problem_sample]` reads
+but `r molecules[x, problem_sample]` molecules.
+What happened?
+
+Note that `r problem_sample` is a high quality single cell.
+
+```{r check-sample-quality}
+problem_sample %in% quality_single_cells
+```
+
+## Searching for where the reads are lost during the processing pipeline
+
+Now I am going to search for the bug by inspecting the intermediate data files from the [sequence processsing pipeline][pipeline].
+
+The following chunks are all Bash commands run from the data directory.
+
+```{r change-chunk-opts, cache=FALSE}
+opts_chunk$set(engine = "bash")
+opts_knit$set(root.dir = "/mnt/gluster/home/jdblischak/ssd")
+```
+
+First I confirm that this difference is observed at the [featureCounts step][featureCounts]:
+
+[featureCounts]: process-samples.html#count-reads-per-gene
+
+```{r featureCounts-reads-per-lane}
+# reads per lane
+grep ENSG00000130762 counts/19239.1.B07*trim.sickle.sorted.genecounts.txt | cut -f1,7
+```
+
+```{r featureCounts-molecules-per-lane}
+# molecules per lane
+grep ENSG00000130762 counts/19239.1.B07*trim.sickle.sorted.rmdup.genecounts.txt | cut -f1,7
+```
+
+```{r featureCounts-molecules-per-sample}
+# molecules per sample
+grep ENSG00000130762 counts/19239.1.B07.trim.sickle.sorted.combined.rmdup.genecounts.txt | cut -f1,7
+```
+
+So one lane has one read, and that read is not converted to a molecule either for the molecule per lane or per sample file.
+
+Next I use the featureCounts assignments per read to obtain the read name.
+
+```{r assignments-reads-lane-3}
+grep ENSG00000130762 counts/19239.1.B07.TCAGTGTG.L006.R1.C6WURACXX.trim.sickle.sorted.bam.featureCounts
+```
+
+And just to confirm that it is not in the corresponding molecules file.
+
+```{r assignments-molecules-lane-3}
+grep ENSG00000130762 counts/19239.1.B07.TCAGTGTG.L006.R1.C6WURACXX.trim.sickle.sorted.rmdup.bam.featureCounts
+exit 0
+```
+
+Is it in the rmdup bam file?
+Presumably not since it was not passed to featureCounts.
+
+```{r checking-bam-files}
+read=`grep ENSG00000130762 counts/19239.1.B07.TCAGTGTG.L006.R1.C6WURACXX.trim.sickle.sorted.bam.featureCounts | cut -f1`
+echo "The read is $read"
+echo "Checking rmdup bam per lane:"
+samtools view bam-rmdup-umi/19239.1.B07.TCAGTGTG.L006.R1.C6WURACXX.trim.sickle.sorted.rmdup.bam | grep $read
+echo "Checking rmdup bam per sample:"
+samtools view bam-rmdup-umi/19239.1.B07.trim.sickle.sorted.combined.rmdup.bam | grep $read
+echo "Checking combined bam:"
+samtools view bam-combined/19239.1.B07.trim.sickle.sorted.combined.bam | grep $read
+echo "Checking reads per lane bam:"
+samtools view bam-processed/19239.1.B07.TCAGTGTG.L006.R1.C6WURACXX.trim.sickle.sorted.bam | grep $read
+exit 0
+```
+
+OK. So this read is lost during the remove duplicate step.
+But why?
+Are there other reads that map to this position?
+I'll focus on the lane file since it is smaller and displays the same problem.
+
+```{r reads-by-position}
+samtools view bam-processed/19239.1.B07.TCAGTGTG.L006.R1.C6WURACXX.trim.sickle.sorted.bam chr1:3394441-3394443
+```
+
+No. There are not other reads that map to this exact position.
+However, the reads nearby all have the same UMI and are strongly soft clipped at the 5' end.
+This is suspicious.
+Next I investigate the locus on the UCSC genome browser.
+
+## Viewing locus on UCSC genome browser
+
+I searched for this sequencing using BLAT.
+
+> GTCTGCGTAATTGCCACGGAGGGGTGAGTCTCTCACACTGATCTCCGCCTCCCGGTGGCTGCTGAAGCGCGGAGAGCTGTTCTTAGTGGAAG
+
+It is 92 bp long.
+85 bp mapped to the genome in two parts.
+The first 28 bp map to intergenic sequence, followed by a gap of 7 bp, and the latter 57 bp map to the exon of ENSG00000130762 (ARHGEF16) with one mismatch.
+
+![HWI-700819F:304:C6WURACXX:6:1115:10445:85729:UMI_GAGTAGGG](figure/bug-conversion-03.Rmd/BLAT-HWI-700819F:304:C6WURACXX:6:1115:10445:85729:UMI_GAGTAGGG.png)
+
+![chr1:3,394,030-3,394,569](figure/bug-conversion-03.Rmd/chr1;3,394,030-3,394,569.png)
+
+Now I can see why it was soft clipped.
+And this is how Subread is expected to work.
+It is how it is able to map exon-exon junctions in RNA-seq data quickly.
+As long as it can map one end of the fragment (sufficient subreads), this is sufficient for gene counting.
+From the [User's Guide][subread]:
+
+[subread]: http://bioinf.wehi.edu.au/subread-package/SubreadUsersGuide.pdf
+
+> Subread uses the largest mappable region in the read to determine its mapping
+> location, therefore it automatically determines whether a global alignment or
+> a local alignment should be found for the read. For the exon-spanning reads in
+> a RNA-seq dataset, Subread performs local alignments for them to find the
+> target regions in the reference genome that have the largest overlap with
+> them. Note that Subread does not perform global alignments for the 
+> exon-spanning reads and it soft clips those read bases which could not be
+> mapped. However, the Subread mapping result is suffcient for carrying out the
+> gene-level expression analysis using RNA-seq data, because the mapped read
+> bases can be reliably used to assign reads, including both exonic reads and
+> exon-spanning reads, to genes.
+
+But because of the soft clipping, Subread assigns it the position chr1:3394442.
+The CIGAR is 31S61M.
+This doesn't exactly match the BLAT output, which is 57 bp and starts 4 bp downstream at chr1:3394446.
+Subread matches the 4 upstream bases in the read CTCA to the genome CTCC, which is completely reasonable because it is only 1 mismatch.
+Because this most 5' mapped base in the exon of ENSG00000130762 (ARHGEF16), featureCounts correctly assigns it to this gene.
+
+## How does UMI-tools handle these soft-clipped reads?
+
+I observed that there were multiple heavily soft-clipped reads with the same UMI mapping closely in the genome.
+Subread assigns the start position to the first base of the mapped portion of the read, and then featureCounts uses this start position to assign the read to a gene.
+However, it appears that UMI-tools is accounting for the soft-clipping.
+
+UMI-tools has a command line option [--soft-clip-threshold](https://github.com/CGATOxford/UMI-tools/blob/5628d9da0aea65ebd2a3ee72789ef31368bb611a/dedup_umi.py#L120).
+However, this is not really what I am interested in.
+I would need a filter to limit reads that have too many bases soft-clipped at the 5' end.
+This option only looks at the 3' end, and it only affects the other option [--spliced-is-unique](https://github.com/CGATOxford/UMI-tools/blob/5628d9da0aea65ebd2a3ee72789ef31368bb611a/dedup_umi.py#L114),
+which will treat two reads with the same UMI and start position as different molecules if they are spliced in different ways.
+
+> --spliced-is-unique  
+>       Causes two reads that start in the same position on the same  
+>       strand and having the same UMI to be considered unique if one is spliced  
+>       and the other is not. (Uses the 'N' cigar operation to test for  
+>       splicing)  
+>
+> --soft-clip-threshold (int)  
+>       Mappers that soft clip, will sometimes do so rather than mapping a  
+>       spliced read if there is only a small overhang over the exon  
+>       junction. By setting this option, you can treat reads with at least  
+>       this many bases soft-clipped at the 3' end as spliced.  
+
+More relevant to my problem, they have an [Issue](https://github.com/CGATOxford/UMI-tools/issues/11) that discusses how soft clipping is used when determining the start position of the read.
+They use [pysam][] to access the mapped position and the CIGAR information,
+and use the CIGAR information to adjust the start position ([their code](https://github.com/CGATOxford/UMI-tools/blob/master/dedup_umi.py#L545)).
+Maybe once the soft clipping is accounted for, all these reads may map to the same start location.
+Following the [pysam manual][pysam], I should be able to investigate this quickly using example boiler plate code.
+Note that I need to run this with Python 2 because I [can't install pysam for Python 3 on the cluster][pysam-install].
+
+[pysam]: http://pysam.readthedocs.org/en/latest/
+[pysam-install]: https://groups.google.com/forum/#!searchin/pysam-user-group/blischak/pysam-user-group/55oufoA3vxQ/ULtwf2tmCCQJ
+
+```{r pysam-cigar, engine='python'}
+import pysam
+
+fname = "bam-processed/19239.1.B07.TCAGTGTG.L006.R1.C6WURACXX.trim.sickle.sorted.bam"
+samfile = pysam.AlignmentFile(fname, "rb")
+
+for read in samfile.fetch("chr1", 3394441, 3394443):
+    print read.tostring(samfile)
+
+    print "CIGAR:", read.cigarstring, "and as a tuple:", read.cigartuples
+    print "Is read on reverse strand?", read.is_reverse
+    print "The query sequence starts at",  read.query_alignment_start
+    print "The first non-soft-clipped base maps to:",  read.reference_start + 1
+    print "The first soft-clipped base maps to:",  read.reference_start + 1 - read.cigartuples[0][1]
+    print "\n"
+
+samfile.close()
+```
+
+This is the problem!!!!
+The problem read that maps to ENSG00000130762 (ARHGEF16) is removed by `dedup_umi.py`.
+This is because even though its first non-soft-clipped base starts at a different position in the genome compared to the other reads, its first soft-clipped base matches the other reads with the same UMI.
+This small 4 bp difference from 3,394,437 to 3,394,442 makes a huge difference because the exon starts at 3,394,439!
+
+## Going forward
+
+How to handle this mapping based artifact?
+One option would be to filter out reads that have many soft-clipped at the 5' end.
+I worry this might be too blunt an instrument though.
+Subread relies on the ability to have lots of soft-clipping to map exon-exon reads.
+Also, I have observed that some ERCC reads begin with soft-clipped sequence (presumably adapter or some other unwanted sequence), and I wouldn't want to lose those.
+
+Since the 5' start position of these reads is proving to be so critical, another option would be to use a more exact mapper.
+Subjunc should do the job.
+From the [User's Guide][subread]:
+
+> To get the full alignments for exon-spanning RNA-seq reads, the Subjunc 
+> aligner can be used. Subjunc is designd to discover exon-exon junctions from
+> using RNA-seq data, but it performs full alignments for all the reads at the
+> same time. The Subjunc mapping results should be used for detecting genomic
+> variations in RNA-seq data, allele-specific expression analysis and exon-level
+> gene expression analysis.
+
+To test if Subjunc can solve the problem, I created a new bam file that contains these soft-clipped reads.
+
+```{r create-bam, engine='python'}
+import pysam
+
+fname = "bam-processed/19239.1.B07.TCAGTGTG.L006.R1.C6WURACXX.trim.sickle.sorted.bam"
+infile = pysam.AlignmentFile(fname, "rb")
+outfile = pysam.AlignmentFile("subjunc-test.bam", "wb", template = infile)
+count = 0
+
+for read in infile.fetch("chr1", 3394441, 3394443):
+    count += 1
+    outfile.write(read)
+
+infile.close()
+outfile.close()
+print "Number of sequences written to file:", count
+```
+
+And then I can run subjunc with the following command.
+The main difference between running `subread-align` and `subjunc` is the flag `-t` is no longer used (see my script [map-subread.sh][]).
+
+[map-subread.sh]: https://github.com/jdblischak/singleCellSeq/blob/master/code/map-subread.sh
+
+```{r subjunc, eval=FALSE}
+# Not actually run as part of this document because too memory intensive
+subjunc -i genome/combined -r subjunc-test.bam -u --BAMinput > subjunc-test-results.bam
+# The output is copy-pasted below:
+        ==========     _____ _    _ ____  _____  ______          _____  
+        =====         / ____| |  | |  _ \|  __ \|  ____|   /\   |  __ \ 
+          =====      | (___ | |  | | |_) | |__) | |__     /  \  | |  | |
+            ====      \___ \| |  | |  _ <|  _  /|  __|   / /\ \ | |  | |
+              ====    ____) | |__| | |_) | | \ \| |____ / ____ \| |__| |
+        ==========   |_____/ \____/|____/|_|  \_\______/_/    \_\_____/
+	v1.5.0-p1
+
+//============================= subjunc setting ==============================\\
+||                                                                            ||
+||           Function : Read alignment + Junction detection (RNA-Seq)         ||
+||            Threads : 1                                                     ||
+||         Input file : subjunc-test.bam (BAM)                                ||
+||      Output method : STDOUT (BAM)                                          ||
+||         Index name : genome/combined                                       ||
+||       Phred offset : 33                                                    ||
+||                                                                            ||
+||          Min votes : 1 / 14                                                ||
+||   Allowed mismatch : 3 bases                                               ||
+||         Max indels : 5                                                     ||
+||  # of Best mapping : 1                                                     ||
+||     Unique mapping : yes                                                   ||
+||   Hamming distance : yes                                                   ||
+||     Quality scores : no                                                    ||
+||                                                                            ||
+\\===================== http://subread.sourceforge.net/ ======================//
+
+//====================== Running (23-Feb-2016 20:20:14) ======================\\
+||                                                                            ||
+|| The input BAM file contains single-end reads.                              ||
+|| Convert the input BAM file...                                              ||
+|| The input file contains base space reads.                                  ||
+|| The range of Phred scores observed in the data is [6,40]                   ||
+|| Load the 1-th index block...                                               ||
+|| Map reads...                                                               ||
+|| Finish the 9 reads...                                                      ||
+||                                                                            ||
+||                          Completed successfully.                           ||
+||                                                                            ||
+\\============================================================================//
+
+//================================= Summary ==================================\\
+||                                                                            ||
+||          Processed : 9 reads                                               ||
+||             Mapped : 9 reads (100.0%)                                      ||
+||                                                                            ||
+||       Running time : 1.3 minutes                                           ||
+||                                                                            ||
+\\===================== http://subread.sourceforge.net/ ======================//
+```
+
+And viewing the results.
+
+```{r subjunc-results}
+samtools view subjunc-test-results.bam | cut -f3-6
+```
+
+This does solve the problem!
+The 5' end of the reads are all mapped, and most importantly they are all mapped to the same position.
+This reflects the reality that these all originate from the same molecule.
+
+Now to re-map everything with Subjunc.
+Because it is more precise than Subread, this is going to take even longer!
+
+## Session information
+
+```{r info, engine='R'}
+sessionInfo()
+```
