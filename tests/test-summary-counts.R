@@ -34,14 +34,12 @@ reads <- read.table("../data/reads.txt", header = TRUE)
 
 molecules <- read.table("../data/molecules.txt", header = TRUE)
 
-# fails
 assert(
   "Sum of read counts are equal to Assigned summary counts",
   ncol(reads) == nrow(summary_counts[summary_counts$rmdup == "reads", ]),
   colSums(reads) == summary_counts$Assigned[summary_counts$rmdup == "reads"]
 )
 
-# fails
 assert(
   "Sum of molceule counts are equal to Assigned summary counts",
   ncol(molecules) == nrow(summary_counts[summary_counts$rmdup == "molecules", ]),

@@ -7,22 +7,44 @@ source("chunk-options-paper.R")
 ```
 
 ## Discussion
-### Summary
+### Study design and QC
+With the intention to remove batch effect and other unwanted technical cell-to-cell variation from our study, we collected scRNA-seq data from multiple C1 replicates and multiple individuals with the additions of both ERCC spike-in control and UMIs.
 
-### Design and QC
-UMI, ERCC, technical and biological replicates, 
 
-### Molecule number 
-absolute number, relative number, sequencing depth
+To fully capture the batch effect across C1 plates, a balanced study design consisting of multiple individuals within a C1 plate and multiple C1 replicates is necessary.  
+
+Our results of subsampling provide practical information for the number of cells and the sequencing depths required to recapitulate bulk population and also to represent variability across single cells.
+
+### UMIs and molecule numbers 
+When UMIs was first incorporated in the scRNA-seq protocol of the C1 system, a strong assumption that total molecule counts represent the absolute numbers of mRNA molecules within as cell was made [@Islam2014].
+In other words, the relative differences in total number of observed molecules between cells are the relative difference in the absolute number of mRNA molecules in cells [@Vallejos2015].
+In the deal situation, samples with more mRNA content, the ones with more than one cells or in G2 phase, would have more total molecules than those have only one cells or in G1 phase, respectively [@Vallejos2015; @Buettner2015].
+While we were able to observe a positive correlation between sample concentration and total molecule counts, the variance is quite substantial (Sup Figure. 5C), emphasizing the existence of non-negligible technical variability.
+We also found similar results in cells with different cell cycle phases (Sup Figure. 6), suggesting that total molecule counts is a noisy estimate for interring the difference of mRNA content across cells.
+Current single cell studies using the cell cycle information were done by first sorting the cells and then collecting data on separate C1 plates [@Buettner2015; @Leng2015], which could result in the observed difference in molecule counts across cell cycle phases due to merely batch effect.
+More importantly, total molecule counts are highly correlated with total read counts of the sample (Figure. 3), indicating that the sequencing depth of 2-3 million reads per sample is not reaching the saturation point yet (Figure. 2) and that the effect of sequencing depth is still dominant.
+We therefore conclude that molecule counts per gene should be standardized by the total number of molecules per sample as has been done in traditional bulk RNA-seq.
 
 ### Read to molecule conversion
-vary across samples, batch effect, individual effect
+Another underlying assumption of using UMI-based method is that the conversion of read counts to molecule counts by counting the UMI is consistent across samples.
+Unfortunately, our data showed that, with the same number of total read counts, individual 19098 had the highest total molecule counts of both endogenous genes and ERCC spike-ins among the three individuals (Figure. 3A and B, respectively).
+We then calculated the conversion efficiency, total molecule counts divided by total read counts, per sample and found that there is significant difference across individuals and also sometimes across C1 replicates of specific individual (Figure. 3C and D).
+Notably, the number of genes being detected per sample of individual 19098 was also consistently higher compared to the two individuals, both before and after the low expression filter was applied (Sup Figure. 3A and B, respectively).
+There are various potential causes, both biological or technical, to the observed differences of conversion efficiency, including cell sizes, cell proliferation rate, response to the reverse transcription, UMI tagging efficiency and so on.
+Due to the inconsistency of conversion efficiency, we cannot assume that counting UMIs is a completely unbiased process, and hence further experiments need to be conducted to identify the actual causes.
 
-### ERCC spike-ins
-filter low quality sample, techcnical variability across sample, and cellular content
+### ERCC spike-in controls
+ERCC spike-in controls have been systematically included in numerous scRNA-seq studies for multiple purposes: to filter for low quality cells, to model the technical variability across cells, and to infer the cellular mRNA content [@Brennecke2013; @Grun2014; @Ding2015; @Vallejos2015]. 
+Using the percentage of ERCC spike-ins as a filter of potential dead or raptured cells, we removed a small group of samples with higher percentages, but at the meantime we also observed a continuous distribution of the samples (Figure. 1E and Sup Figure. 7B), indicating that choosing a cutoff based on ERCC read percentage is not as obvious as we anticipated. 
+While ERCC spike-in controls cover a wide range of concentration, the fact that they are relative short in length and have shorter ployA tails compared to mammalian mRNAs brings up the question of whether these differences will affect mRNA capture efficiency.
+In our hands, only 43 out of the 92 ERCC spike-ins passed our expression filter and were used for normalization across samples (Figure. 1G), which is a reason why we did not explicitly model technical variability across samples.
+For the estimation of cellular mRNA contents, theoretically, the total molecule counts of ERCCs should be the same across samples and the proportion of ERCC molecule can serve as an indicator of the amount of total endogenous gene molecules [@Vallejos2015].
+Nonetheless, samples with multiple cells have not only higher ERCC percentage but also higher ERCC molecule counts than samples with one cells (data not shown), which could be caused simply by sampling bias during sequencing.
+This sampling bias is also evident across individuals where individual 19098 have both higher percentage of ERCCs and higher ERCC molecule counts compared to individual 19239 (Figure. 3C and Sup Figure. 7A-C).
+Furthermore, the differences of ERCC percentages and ERCC molecule counts across individuals caused by unknown factors have never been reported nor taken into account while modeling the technical variability of scRNA-seq data.
+Even though ERCC spike-in controls can provide the information required to create a standard baseline measurement of RNA abundance across samples, as well as to determine both the dynamic range and the lower detection limit [@Mortazavi2008], the strong library preparation effects have also been observed in bulk RNA-seq data [@Risso2014; @SEQC/MAQC-IIIConsortium2014].
+A better alternative to the ERCC spike-in controls is highly desired and somewhat required in future scRNA-seq studies.
 
-### Pipeline
-collision probability, standardization, normalization, and batch correction
 
 ### Cell to cell variation of gene expression
 measure of noise level, identify different distribution patterns, pluripotency genes 
