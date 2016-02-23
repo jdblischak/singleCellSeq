@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+
+<meta name="date" content="2015-02-23" />
+
+<title>Coverage of endogenous genes - bulk reads</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Coverage of endogenous genes - bulk reads</h1>
+<h4 class="date"><em>2015-02-23</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#input">Input</a></li>
+<li><a href="#prepare-bam-files-from-bulk-samples">Prepare bam files from bulk samples</a></li>
+<li><a href="#prepare-genomic-features">Prepare genomic features</a></li>
+<li><a href="#calculate-coverage-over-genomic-features">Calculate coverage over genomic features</a></li>
+<li><a href="#summarize-coverage">Summarize coverage</a></li>
+<li><a href="#metagene-plot">Metagene plot</a></li>
+<li><a href="#interpretation">Interpretation</a></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2016-02-23</p>
+<p><strong>Code version:</strong> 70509eb9a08ffe0fe459efc9de23d89ec424fe99</p>
+<p>The sequencing coverage from the UMI protocol should show a very strong 5’ bias. Do we observe this in our data? Here we explore this in a few samples using the <a href="http://www.bioconductor.org/packages/release/bioc/html/genomation.html">genomation</a> package. Specifically, we calculate the mean coverage across all the genes that passed our expression filters for two regions:</p>
+<ul>
+<li>The transcription start site (TSS) +/- 1 kb</li>
+<li>The transcription end site (TES) +/- 1 kb</li>
+</ul>
+<p><strong>Using the reads from the bulk samples, we observe the same pattern as with the single cell <a href="coverage-endogenous.html">molecules</a> and <a href="coverage-endogenous-reads.html">reads</a>.</strong></p>
+<pre class="r"><code>library(&quot;genomation&quot;)
+library(&quot;Rsamtools&quot;)
+library(&quot;plyr&quot;)
+library(&quot;tidyr&quot;)
+library(&quot;ggplot2&quot;)
+theme_set(theme_bw(base_size = 14))
+theme_update(panel.grid.minor.x = element_blank(),
+             panel.grid.minor.y = element_blank(),
+             panel.grid.major.x = element_blank(),
+             panel.grid.major.y = element_blank())</code></pre>
+<div id="input" class="section level2">
+<h2>Input</h2>
+<p>Input filtered read counts for bulk samples.</p>
+<pre class="r"><code>reads_bulk_filter &lt;- read.table(&quot;../data/reads-bulk-filter.txt&quot;, header = TRUE,
+                               stringsAsFactors = FALSE)</code></pre>
+</div>
+<div id="prepare-bam-files-from-bulk-samples" class="section level2">
+<h2>Prepare bam files from bulk samples</h2>
+<p>To investigate the coverage in the bulk samples, we use the first bulk replicate from each individual. Combined reads files for the bulk samples are not available because they are unnecessary for the pipeline. Since each per lane bam file has many sequences, we will choose an arbitrary lane.</p>
+<pre class="r"><code>bulk_lanes &lt;- c(&quot;19098.1.bulk.GCTGAGGT.L001.R1.C6WYKACXX&quot;,
+                &quot;19101.1.bulk.GGATACGT.L001.R1.C6WYKACXX&quot;,
+                &quot;19239.1.bulk.ACAGCGAA.L001.R1.C6WYKACXX&quot;)</code></pre>
+<p>From the <a href="process-samples.html">sequencing pipeline</a>, the per lane bam files for the bulk reads are in <code>bam-processed</code> and have the filename structure <code>individual.replicate.well.index.lane.R1.flowcell.trim.sickle.sorted.bam</code>. These files are already sorted and indexed.</p>
+<pre class="r"><code>bam_reads &lt;- paste0(bulk_lanes, &quot;.trim.sickle.sorted.bam&quot;)
+data_dir &lt;- &quot;/mnt/gluster/home/jdblischak/ssd&quot;
+from_file &lt;- file.path(data_dir, &quot;bam-processed&quot;, bam_reads)
+to_file &lt;- file.path(&quot;../data&quot;, bam_reads)
+indexed_file &lt;- paste0(bam_reads, &quot;.bai&quot;)
+from_file_index &lt;- file.path(data_dir, &quot;bam-processed&quot;, indexed_file)
+to_file_index &lt;- file.path(&quot;../data&quot;, indexed_file)
+for (f in 1:length(bam_reads)) {
+  if (!file.exists(to_file_index[f])) {
+    stopifnot(file.exists(from_file[f], from_file_index[f]))
+    file.copy(from_file[f], to_file[f])
+    file.copy(from_file_index[f], to_file_index[f])
+  }
+}
+stopifnot(file.exists(to_file, to_file_index))
+bam &lt;- to_file
+bam</code></pre>
+<pre><code>[1] &quot;../data/19098.1.bulk.GCTGAGGT.L001.R1.C6WYKACXX.trim.sickle.sorted.bam&quot;
+[2] &quot;../data/19101.1.bulk.GGATACGT.L001.R1.C6WYKACXX.trim.sickle.sorted.bam&quot;
+[3] &quot;../data/19239.1.bulk.ACAGCGAA.L001.R1.C6WYKACXX.trim.sickle.sorted.bam&quot;</code></pre>
+</div>
+<div id="prepare-genomic-features" class="section level2">
+<h2>Prepare genomic features</h2>
+<p>The genomic features are created with the script <a href="https://github.com/jdblischak/singleCellSeq/blob/master/code/create-transcripts.R">create-transcripts.R</a>.</p>
+<p>Input transcription start sites (TSS).</p>
+<pre class="r"><code>tss &lt;- readBed(&quot;../data/tss.bed&quot;)
+tss &lt;- tss[tss$name %in% rownames(reads_bulk_filter)]</code></pre>
+<p>Input transcription end sites (TES).</p>
+<pre class="r"><code>tes &lt;- readBed(&quot;../data/tes.bed&quot;)
+tes &lt;- tes[tes$name %in% rownames(reads_bulk_filter)]</code></pre>
+</div>
+<div id="calculate-coverage-over-genomic-features" class="section level2">
+<h2>Calculate coverage over genomic features</h2>
+<p>TSS</p>
+<pre class="r"><code>tss_sm = ScoreMatrixList(target = bam, windows = tss, type = &quot;bam&quot;,
+                         rpm = TRUE, strand.aware = TRUE)</code></pre>
+<pre><code>working on: 19098.1.bulk.GCTGAGGT.L001.R1.C6WYKACXX.trim.sickle.sorted.bam
+Normalizing to rpm ...
+working on: 19101.1.bulk.GGATACGT.L001.R1.C6WYKACXX.trim.sickle.sorted.bam
+Normalizing to rpm ...
+working on: 19239.1.bulk.ACAGCGAA.L001.R1.C6WYKACXX.trim.sickle.sorted.bam
+Normalizing to rpm ...</code></pre>
+<pre class="r"><code>tss_sm</code></pre>
+<pre><code>scoreMatrixlist of length:3
+
+1. scoreMatrix with dims: 12192 2001
+2. scoreMatrix with dims: 12192 2001
+3. scoreMatrix with dims: 12192 2001</code></pre>
+<p>TES</p>
+<pre class="r"><code>tes_sm = ScoreMatrixList(target = bam, windows = tes, type = &quot;bam&quot;,
+                         rpm = TRUE, strand.aware = TRUE)</code></pre>
+<pre><code>working on: 19098.1.bulk.GCTGAGGT.L001.R1.C6WYKACXX.trim.sickle.sorted.bam
+Normalizing to rpm ...
+working on: 19101.1.bulk.GGATACGT.L001.R1.C6WYKACXX.trim.sickle.sorted.bam
+Normalizing to rpm ...
+working on: 19239.1.bulk.ACAGCGAA.L001.R1.C6WYKACXX.trim.sickle.sorted.bam
+Normalizing to rpm ...</code></pre>
+<pre class="r"><code>tes_sm</code></pre>
+<pre><code>scoreMatrixlist of length:3
+
+1. scoreMatrix with dims: 12191 2001
+2. scoreMatrix with dims: 12191 2001
+3. scoreMatrix with dims: 12191 2001</code></pre>
+</div>
+<div id="summarize-coverage" class="section level2">
+<h2>Summarize coverage</h2>
+<p>Calculate the mean coverage per base pair for the TSS and and TES.</p>
+<pre class="r"><code>names(tss_sm) &lt;- bulk_lanes
+tss_sm_df &lt;- ldply(tss_sm, colMeans, .id = &quot;sample_id&quot;)
+colnames(tss_sm_df)[-1] &lt;- paste0(&quot;p&quot;, 1:(ncol(tss_sm_df) - 1))
+tss_sm_df$feature = &quot;TSS&quot;
+tss_sm_df_long &lt;- gather(tss_sm_df, key = &quot;pos&quot;, value = &quot;rpm&quot;, p1:p2001)</code></pre>
+<pre class="r"><code>names(tes_sm) &lt;- bulk_lanes
+tes_sm_df &lt;- ldply(tes_sm, colMeans, .id = &quot;sample_id&quot;)
+colnames(tes_sm_df)[-1] &lt;- paste0(&quot;p&quot;, 1:(ncol(tes_sm_df) - 1))
+tes_sm_df$feature = &quot;TES&quot;
+tes_sm_df_long &lt;- gather(tes_sm_df, key = &quot;pos&quot;, value = &quot;rpm&quot;, p1:p2001)</code></pre>
+<p>Combine the two features.</p>
+<pre class="r"><code>features &lt;- rbind(tss_sm_df_long, tes_sm_df_long)
+# Convert base position back to integer value
+features$pos &lt;- sub(&quot;p&quot;, &quot;&quot;, features$pos)
+features$pos &lt;- as.numeric(features$pos)
+# Subtract 1001 to recalibrate as +/- 1 kb
+features$pos &lt;- features$pos - 1001
+# Order factor so that TSS is displayed left of TES
+features$feature &lt;- factor(features$feature, levels = c(&quot;TSS&quot;, &quot;TES&quot;),
+                           labels = c(&quot;Transcription start site&quot;,
+                                      &quot;Transription end site&quot;))</code></pre>
+</div>
+<div id="metagene-plot" class="section level2">
+<h2>Metagene plot</h2>
+<pre class="r"><code>ggplot(features, aes(x = pos, y = rpm, color = sample_id)) +
+  geom_line() +
+  facet_wrap(~feature) +
+  scale_color_discrete(name = &quot;Sample&quot;) +
+  labs(x = &quot;Relative position (bp)&quot;,
+       y = &quot;Counts per million (mean)&quot;,
+       title = &quot;5&#39; bias of UMI protocol&quot;) +
+  theme(legend.position = &quot;bottom&quot;,
+        legend.text = element_text(size = 6))</code></pre>
+<p><img src="figure/coverage-endogenous-bulk.Rmd/metaplot-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
+<div id="interpretation" class="section level2">
+<h2>Interpretation</h2>
+<p>These results are similar to those obtained using the single cell <a href="coverage-endogenous.html">molecules</a> and <a href="coverage-endogenous-reads.html">reads</a>. Furthermore, they have many more reads and thus do not suffer as much from sparsity.</p>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+ [1] parallel  stats4    grid      stats     graphics  grDevices utils    
+ [8] datasets  methods   base     
+
+other attached packages:
+ [1] ggplot2_1.0.1        tidyr_0.2.0          plyr_1.8.3          
+ [4] Rsamtools_1.20.4     Biostrings_2.36.1    XVector_0.8.0       
+ [7] GenomicRanges_1.20.5 GenomeInfoDb_1.4.0   IRanges_2.2.4       
+[10] S4Vectors_0.6.0      BiocGenerics_0.14.0  genomation_1.0.0    
+[13] knitr_1.10.5        
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.12.0             formatR_1.2            
+ [3] futile.logger_1.4.1     bitops_1.0-6           
+ [5] futile.options_1.0.0    tools_3.2.0            
+ [7] zlibbioc_1.14.0         digest_0.6.8           
+ [9] evaluate_0.7            gtable_0.1.2           
+[11] gridBase_0.4-7          DBI_0.3.1              
+[13] yaml_2.1.13             proto_0.3-10           
+[15] dplyr_0.4.2             rtracklayer_1.28.4     
+[17] httr_0.6.1              stringr_1.0.0          
+[19] data.table_1.9.4        impute_1.42.0          
+[21] R6_2.1.1                XML_3.98-1.2           
+[23] BiocParallel_1.2.2      rmarkdown_0.6.1        
+[25] reshape2_1.4.1          lambda.r_1.1.7         
+[27] magrittr_1.5            codetools_0.2-11       
+[29] scales_0.2.4            htmltools_0.2.6        
+[31] GenomicAlignments_1.4.1 MASS_7.3-40            
+[33] assertthat_0.1          colorspace_1.2-6       
+[35] labeling_0.3            stringi_0.4-1          
+[37] lazyeval_0.1.10         RCurl_1.95-4.6         
+[39] munsell_0.4.2           chron_2.3-45           </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>

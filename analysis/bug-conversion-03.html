@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+<meta name="author" content="John Blischak" />
+
+<meta name="date" content="2015-02-23" />
+
+<title>Tracking down bug in reads to molecules conversion - Attempt 03</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Tracking down bug in reads to molecules conversion - Attempt 03</h1>
+<h4 class="author"><em>John Blischak</em></h4>
+<h4 class="date"><em>2015-02-23</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#input">Input</a></li>
+<li><a href="#identifying-problem-genes">Identifying problem genes</a></li>
+<li><a href="#searching-for-where-the-reads-are-lost-during-the-processing-pipeline">Searching for where the reads are lost during the processing pipeline</a></li>
+<li><a href="#viewing-locus-on-ucsc-genome-browser">Viewing locus on UCSC genome browser</a></li>
+<li><a href="#how-does-umi-tools-handle-these-soft-clipped-reads">How does UMI-tools handle these soft-clipped reads?</a></li>
+<li><a href="#going-forward">Going forward</a></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2016-02-23</p>
+<p><strong>Code version:</strong> 70509eb9a08ffe0fe459efc9de23d89ec424fe99</p>
+<p>Since my <a href="bug-conversion-02.html">last attempt</a> at debugging, I re-ran the deduplication step and also <a href="https://github.com/jdblischak/singleCellSeq/commit/7eac4298e66833961c13fb296cdb78a60e50aa26">fixed a bug in the initial gene filtering step</a>. The latter made all the tests in <a href="https://github.com/jdblischak/singleCellSeq/tree/master/tests/test-summary-counts.R">test-summary-counts.R</a> pass, but there are still problems with the reads to molecules conversion <a href="https://github.com/jdblischak/singleCellSeq/tree/master/tests">tests</a>. This analysis continues the search for bugs lurking in the <a href="process-samples.html">sequence processsing pipeline</a>.</p>
+<div id="input" class="section level2">
+<h2>Input</h2>
+<p>Input annotation.</p>
+<pre class="r"><code>anno &lt;- read.table(&quot;../data/annotation.txt&quot;, header = TRUE,
+                   stringsAsFactors = FALSE)</code></pre>
+<p>Input read counts.</p>
+<pre class="r"><code>reads &lt;- read.table(&quot;../data/reads.txt&quot;, header = TRUE,
+                    stringsAsFactors = FALSE)
+stopifnot(ncol(reads) == nrow(anno),
+          colnames(reads) == anno$sample_id)</code></pre>
+<p>Input molecule counts.</p>
+<pre class="r"><code>molecules &lt;- read.table(&quot;../data/molecules.txt&quot;, header = TRUE,
+                    stringsAsFactors = FALSE)
+stopifnot(ncol(molecules) == nrow(anno),
+          colnames(molecules) == anno$sample_id)</code></pre>
+<p>Input list of quality single cells.</p>
+<pre class="r"><code>quality_single_cells &lt;- scan(&quot;../data/quality-single-cells.txt&quot;,
+                             what = &quot;character&quot;)</code></pre>
+</div>
+<div id="identifying-problem-genes" class="section level2">
+<h2>Identifying problem genes</h2>
+<p>How often is this a problem? How many genes does it affect? For affected genes, how many samples are affected?</p>
+<pre class="r"><code>discordant_zeros &lt;- (reads == 0) != (molecules == 0)
+all_genes &lt;- rowSums(discordant_zeros)
+names(all_genes) &lt;- rownames(reads)
+problem_genes &lt;- all_genes[all_genes &gt; 0]
+length(problem_genes)</code></pre>
+<pre><code>[1] 959</code></pre>
+<pre class="r"><code>length(problem_genes) / length(all_genes)</code></pre>
+<pre><code>[1] 0.05319503</code></pre>
+<pre class="r"><code>summary(problem_genes)</code></pre>
+<pre><code>   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+  1.000   1.000   1.000   1.441   1.000  19.000 </code></pre>
+<p>This problem affects 959 out of the 18028 total genes (5.32%). For these problem genes, the median number of affected samples is 1 and the max number of affected samples is 19.</p>
+<p>Next I identify a problem gene-sample combination so that I can track down what happened.</p>
+<pre class="r"><code>x &lt;- names(problem_genes)[1]
+plot(as.numeric(reads[x, ]), as.numeric(molecules[x, ]))</code></pre>
+<p><img src="figure/bug-conversion-03.Rmd/problem-1-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>problem_sample &lt;- colnames(reads)[discordant_zeros[x, ] == TRUE]
+reads[x, problem_sample]</code></pre>
+<pre><code>[1] 1</code></pre>
+<pre class="r"><code>molecules[x, problem_sample]</code></pre>
+<pre><code>[1] 0</code></pre>
+<p>For gene ENSG00000130762, the sample NA19239.r1.B07 was assigned 1 reads but 0 molecules. What happened?</p>
+<p>Note that NA19239.r1.B07 is a high quality single cell.</p>
+<pre class="r"><code>problem_sample %in% quality_single_cells</code></pre>
+<pre><code>[1] TRUE</code></pre>
+</div>
+<div id="searching-for-where-the-reads-are-lost-during-the-processing-pipeline" class="section level2">
+<h2>Searching for where the reads are lost during the processing pipeline</h2>
+<p>Now I am going to search for the bug by inspecting the intermediate data files from the <a href="process-samples.html">sequence processsing pipeline</a>.</p>
+<p>The following chunks are all Bash commands run from the data directory.</p>
+<pre class="r"><code>opts_chunk$set(engine = &quot;bash&quot;)
+opts_knit$set(root.dir = &quot;/mnt/gluster/home/jdblischak/ssd&quot;)</code></pre>
+<p>First I confirm that this difference is observed at the <a href="process-samples.html#count-reads-per-gene">featureCounts step</a>:</p>
+<pre class="bash"><code># reads per lane
+grep ENSG00000130762 counts/19239.1.B07*trim.sickle.sorted.genecounts.txt | cut -f1,7</code></pre>
+<pre><code>counts/19239.1.B07.TCAGTGTG.L001.R1.C72JMACXX.trim.sickle.sorted.genecounts.txt:ENSG00000130762 0
+counts/19239.1.B07.TCAGTGTG.L005.R1.C6WYKACXX.trim.sickle.sorted.genecounts.txt:ENSG00000130762 0
+counts/19239.1.B07.TCAGTGTG.L006.R1.C6WURACXX.trim.sickle.sorted.genecounts.txt:ENSG00000130762 1</code></pre>
+<pre class="bash"><code># molecules per lane
+grep ENSG00000130762 counts/19239.1.B07*trim.sickle.sorted.rmdup.genecounts.txt | cut -f1,7</code></pre>
+<pre><code>counts/19239.1.B07.TCAGTGTG.L001.R1.C72JMACXX.trim.sickle.sorted.rmdup.genecounts.txt:ENSG00000130762   0
+counts/19239.1.B07.TCAGTGTG.L005.R1.C6WYKACXX.trim.sickle.sorted.rmdup.genecounts.txt:ENSG00000130762   0
+counts/19239.1.B07.TCAGTGTG.L006.R1.C6WURACXX.trim.sickle.sorted.rmdup.genecounts.txt:ENSG00000130762   0</code></pre>
+<pre class="bash"><code># molecules per sample
+grep ENSG00000130762 counts/19239.1.B07.trim.sickle.sorted.combined.rmdup.genecounts.txt | cut -f1,7</code></pre>
+<pre><code>ENSG00000130762 0</code></pre>
+<p>So one lane has one read, and that read is not converted to a molecule either for the molecule per lane or per sample file.</p>
+<p>Next I use the featureCounts assignments per read to obtain the read name.</p>
+<pre class="bash"><code>grep ENSG00000130762 counts/19239.1.B07.TCAGTGTG.L006.R1.C6WURACXX.trim.sickle.sorted.bam.featureCounts</code></pre>
+<pre><code>HWI-700819F:304:C6WURACXX:6:1115:10445:85729:UMI_GAGTAGGG   Assigned    ENSG00000130762 *</code></pre>
+<p>And just to confirm that it is not in the corresponding molecules file.</p>
+<pre class="bash"><code>grep ENSG00000130762 counts/19239.1.B07.TCAGTGTG.L006.R1.C6WURACXX.trim.sickle.sorted.rmdup.bam.featureCounts
+exit 0</code></pre>
+<p>Is it in the rmdup bam file? Presumably not since it was not passed to featureCounts.</p>
+<pre class="bash"><code>read=`grep ENSG00000130762 counts/19239.1.B07.TCAGTGTG.L006.R1.C6WURACXX.trim.sickle.sorted.bam.featureCounts | cut -f1`
+echo &quot;The read is $read&quot;
+echo &quot;Checking rmdup bam per lane:&quot;
+samtools view bam-rmdup-umi/19239.1.B07.TCAGTGTG.L006.R1.C6WURACXX.trim.sickle.sorted.rmdup.bam | grep $read
+echo &quot;Checking rmdup bam per sample:&quot;
+samtools view bam-rmdup-umi/19239.1.B07.trim.sickle.sorted.combined.rmdup.bam | grep $read
+echo &quot;Checking combined bam:&quot;
+samtools view bam-combined/19239.1.B07.trim.sickle.sorted.combined.bam | grep $read
+echo &quot;Checking reads per lane bam:&quot;
+samtools view bam-processed/19239.1.B07.TCAGTGTG.L006.R1.C6WURACXX.trim.sickle.sorted.bam | grep $read
+exit 0</code></pre>
+<pre><code>The read is HWI-700819F:304:C6WURACXX:6:1115:10445:85729:UMI_GAGTAGGG
+Checking rmdup bam per lane:
+Checking rmdup bam per sample:
+Checking combined bam:
+HWI-700819F:304:C6WURACXX:6:1115:10445:85729:UMI_GAGTAGGG   0   chr1    3394442 56  31S61M  *   0   0   GTCTGCGTAATTGCCACGGAGGGGTGAGTCTCTCACACTGATCTCCGCCTCCCGGTGGCTGCTGAAGCGCGGAGAGCTGTTCTTAGTGGAAG    B7BFFFFBFFFBBBBFFFF0&lt;B&lt;&#39;B000BF077&lt;&#39;&lt;7BF7&lt;BB77&lt;BFB&lt;BBBB7BB0&lt;&lt;BB&lt;B&lt;BBB7&lt;B&lt;B&lt;B&lt;BBBBBBFBBBBBB&lt;BB    HI:i:1  NH:i:1  NM:i:2
+Checking reads per lane bam:
+HWI-700819F:304:C6WURACXX:6:1115:10445:85729:UMI_GAGTAGGG   0   chr1    3394442 56  31S61M  *   0   0   GTCTGCGTAATTGCCACGGAGGGGTGAGTCTCTCACACTGATCTCCGCCTCCCGGTGGCTGCTGAAGCGCGGAGAGCTGTTCTTAGTGGAAG    B7BFFFFBFFFBBBBFFFF0&lt;B&lt;&#39;B000BF077&lt;&#39;&lt;7BF7&lt;BB77&lt;BFB&lt;BBBB7BB0&lt;&lt;BB&lt;B&lt;BBB7&lt;B&lt;B&lt;B&lt;BBBBBBFBBBBBB&lt;BB    HI:i:1  NH:i:1  NM:i:2</code></pre>
+<p>OK. So this read is lost during the remove duplicate step. But why? Are there other reads that map to this position? I’ll focus on the lane file since it is smaller and displays the same problem.</p>
+<pre class="bash"><code>samtools view bam-processed/19239.1.B07.TCAGTGTG.L006.R1.C6WURACXX.trim.sickle.sorted.bam chr1:3394441-3394443</code></pre>
+<pre><code>HWI-700819F:304:C6WURACXX:6:1101:2320:21285:UMI_GAGTAGGG    0   chr1    3394437 56  26S66M  *   0   0   GTCTGCGTAATTGCCACGGAGGGGTGAGTCTCTCCCACTGATCTCCGCCTCCCGGTGGCTGCTGAAGCGCGGAGAGCTGTTCTTAGTGGAAG    FFFFFIIFIIIIIIIIIIIFFIIIFFFFBFFIIIIIIIFFFFFFFFFFFFFFFFF&lt;BBFBFFFFFBBBFBFFFFFFBFFBBFFFFFBFBFFF    HI:i:1  NH:i:1  NM:i:2
+HWI-700819F:304:C6WURACXX:6:1202:1354:7385:UMI_GAGTAGGG 0   chr1    3394437 56  26S66M  *   0   0   GTCTGCGTAATTGCCACGGAGGGGTGAGTCTCTCCCACTGATCTCCGCCTCCCGGTGGCTGCTGAAGCGCGGAGAGCTGTTCTTAGTGGAAG    FFFFFIIFIIIIIIIIIIIIIIIIFIIIFFIIIIIIIIFFFFFFFFFFFFFFFFFBBFFBFFFFFFFBFFFFFFBFFFFFFFFFFFFFFFFF    HI:i:1  NH:i:1  NM:i:2
+HWI-700819F:304:C6WURACXX:6:1301:15366:47559:UMI_GAGTAGGG   0   chr1    3394437 56  26S66M  *   0   0   GTCTGCGTAATTGCCGCGGAGGGGTGAGTCTCTCCCACTGATCTCCGCCTCCCGGTGGCTGCTGAAGCGCGGAGAGCTGTTCTTAGTGGAAG    F&lt;FFFFIBFIIIFFIBFIIFFFIIBFFFFFFFFBFFFFFBBFFFFFBFFFBFFFFFBFFBFFFFFFFBBFFBFFFFFBFBBBFFFB0&lt;BBFF    HI:i:1  NH:i:1  NM:i:2
+HWI-700819F:304:C6WURACXX:6:1302:19839:75968:UMI_GAGTAGGG   0   chr1    3394437 56  26S66M  *   0   0   GTCTGCGTAATTGCCACGGAGGGGTGAGTCTCTCCCACTGATCTCCGCCTCCCGGTGGCTGCTGAAGCGCGGAGAGCTGTTCTTAGTGGAAG    FFFFFIFFFFFFFIIIIIIFFFIIFIIFFIFIFFBFFIFFFFFFFFFFFFFFFFFBFBBBBFFFFFFBFFFFFBBBFFFBBFBBBFBFBBBF    HI:i:1  NH:i:1  NM:i:2
+HWI-700819F:304:C6WURACXX:6:2209:1548:85704:UMI_GAGTAGGG    0   chr1    3394437 56  26S66M  *   0   0   GTCTGCGTAATTGCCACGGAGGGGTGAGTCTCTCCCACTGATCTCCGCCTCCCGGTGGCTGCTGAAGCGCGGAGAGCTGTTCTTAGTGGAAG    FFFFFFFFFIIIIIIIIIIIFFFBBFFFFIFFIIIIIIFFFFFFFFFFFFFFFFBBFFFBFFBBFFFFFFFFFFBFFFFFFFFFFBBBBFFF    HI:i:1  NH:i:1  NM:i:2
+HWI-700819F:304:C6WURACXX:6:2306:7973:18259:UMI_GAGTAGGG    0   chr1    3394437 56  26S66M  *   0   0   GTCTGCGTAATTGCCACGGAGGGGTGAGTCTCTCCCACTGATCTCCGCCTCCCGGTGGCTGCTGAAGCGCGGAGAGCTGTTCTTAGTGGAAG    FFFFFIIFFFFIIIIIFIIFFFIIFFIIIIIIFFIIIIFFFFFFFFFFFFFBFFFFFFFFFFFFFFBBFFFBFFFFFFFFBFFBFFBBFFFF    HI:i:1  NH:i:1  NM:i:2
+HWI-700819F:304:C6WURACXX:6:2310:7455:94209:UMI_GAGTAGGG    0   chr1    3394437 56  26S66M  *   0   0   GTCTGCGTAATTGCCACGGAGGGGTGAGTCTCTCCCACTGATCTCCGCCTCCCGGTGGCTGCTGAAGCGCGGAGAGCTGTTCTTAGTGGAAG    FFFFFIIIIIIIIIIIIIIIIIIIFIIIIIIIIIIIIIFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF    HI:i:1  NH:i:1  NM:i:2
+HWI-700819F:304:C6WURACXX:6:2316:16378:58221:UMI_GAGTAGGG   0   chr1    3394437 56  26S66M  *   0   0   GTCTGCGTAATTGCCACGGAGGGGTGAGTCTCTCCCACTGATCTCCGCCTCCCGGTGGCTGCTGAAGCGCGGAGAGCTGTTCTTAGTGGAAG    FFFFFIIIIIIIIIIIIIIFIIIIFFBFFFIIIIIIIIFFFFFFFFFFFFFFFFFBFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF    HI:i:1  NH:i:1  NM:i:2
+HWI-700819F:304:C6WURACXX:6:1115:10445:85729:UMI_GAGTAGGG   0   chr1    3394442 56  31S61M  *   0   0   GTCTGCGTAATTGCCACGGAGGGGTGAGTCTCTCACACTGATCTCCGCCTCCCGGTGGCTGCTGAAGCGCGGAGAGCTGTTCTTAGTGGAAG    B7BFFFFBFFFBBBBFFFF0&lt;B&lt;&#39;B000BF077&lt;&#39;&lt;7BF7&lt;BB77&lt;BFB&lt;BBBB7BB0&lt;&lt;BB&lt;B&lt;BBB7&lt;B&lt;B&lt;B&lt;BBBBBBFBBBBBB&lt;BB    HI:i:1  NH:i:1  NM:i:2</code></pre>
+<p>No. There are not other reads that map to this exact position. However, the reads nearby all have the same UMI and are strongly soft clipped at the 5’ end. This is suspicious. Next I investigate the locus on the UCSC genome browser.</p>
+</div>
+<div id="viewing-locus-on-ucsc-genome-browser" class="section level2">
+<h2>Viewing locus on UCSC genome browser</h2>
+<p>I searched for this sequencing using BLAT.</p>
+<blockquote>
+<p>GTCTGCGTAATTGCCACGGAGGGGTGAGTCTCTCACACTGATCTCCGCCTCCCGGTGGCTGCTGAAGCGCGGAGAGCTGTTCTTAGTGGAAG</p>
+</blockquote>
+<p>It is 92 bp long. 85 bp mapped to the genome in two parts. The first 28 bp map to intergenic sequence, followed by a gap of 7 bp, and the latter 57 bp map to the exon of ENSG00000130762 (ARHGEF16) with one mismatch.</p>
+<p><img src="figure/bug-conversion-03.Rmd/BLAT-HWI-700819F:304:C6WURACXX:6:1115:10445:85729:UMI_GAGTAGGG.png" alt="HWI-700819F:304:C6WURACXX:6:1115:10445:85729:UMI_GAGTAGGG" /></p>
+<p><img src="figure/bug-conversion-03.Rmd/chr1;3,394,030-3,394,569.png" alt="chr1:3,394,030-3,394,569" /></p>
+<p>Now I can see why it was soft clipped. And this is how Subread is expected to work. It is how it is able to map exon-exon junctions in RNA-seq data quickly. As long as it can map one end of the fragment (sufficient subreads), this is sufficient for gene counting. From the <a href="http://bioinf.wehi.edu.au/subread-package/SubreadUsersGuide.pdf">User’s Guide</a>:</p>
+<blockquote>
+<p>Subread uses the largest mappable region in the read to determine its mapping location, therefore it automatically determines whether a global alignment or a local alignment should be found for the read. For the exon-spanning reads in a RNA-seq dataset, Subread performs local alignments for them to find the target regions in the reference genome that have the largest overlap with them. Note that Subread does not perform global alignments for the exon-spanning reads and it soft clips those read bases which could not be mapped. However, the Subread mapping result is suffcient for carrying out the gene-level expression analysis using RNA-seq data, because the mapped read bases can be reliably used to assign reads, including both exonic reads and exon-spanning reads, to genes.</p>
+</blockquote>
+<p>But because of the soft clipping, Subread assigns it the position chr1:3394442. The CIGAR is 31S61M. This doesn’t exactly match the BLAT output, which is 57 bp and starts 4 bp downstream at chr1:3394446. Subread matches the 4 upstream bases in the read CTCA to the genome CTCC, which is completely reasonable because it is only 1 mismatch. Because this most 5’ mapped base in the exon of ENSG00000130762 (ARHGEF16), featureCounts correctly assigns it to this gene.</p>
+</div>
+<div id="how-does-umi-tools-handle-these-soft-clipped-reads" class="section level2">
+<h2>How does UMI-tools handle these soft-clipped reads?</h2>
+<p>I observed that there were multiple heavily soft-clipped reads with the same UMI mapping closely in the genome. Subread assigns the start position to the first base of the mapped portion of the read, and then featureCounts uses this start position to assign the read to a gene. However, it appears that UMI-tools is accounting for the soft-clipping.</p>
+<p>UMI-tools has a command line option <a href="https://github.com/CGATOxford/UMI-tools/blob/5628d9da0aea65ebd2a3ee72789ef31368bb611a/dedup_umi.py#L120">–soft-clip-threshold</a>. However, this is not really what I am interested in. I would need a filter to limit reads that have too many bases soft-clipped at the 5’ end. This option only looks at the 3’ end, and it only affects the other option <a href="https://github.com/CGATOxford/UMI-tools/blob/5628d9da0aea65ebd2a3ee72789ef31368bb611a/dedup_umi.py#L114">–spliced-is-unique</a>, which will treat two reads with the same UMI and start position as different molecules if they are spliced in different ways.</p>
+<blockquote>
+<p>–spliced-is-unique<br /> Causes two reads that start in the same position on the same<br /> strand and having the same UMI to be considered unique if one is spliced<br /> and the other is not. (Uses the ‘N’ cigar operation to test for<br /> splicing)</p>
+<p>–soft-clip-threshold (int)<br /> Mappers that soft clip, will sometimes do so rather than mapping a<br /> spliced read if there is only a small overhang over the exon<br /> junction. By setting this option, you can treat reads with at least<br /> this many bases soft-clipped at the 3’ end as spliced.</p>
+</blockquote>
+<p>More relevant to my problem, they have an <a href="https://github.com/CGATOxford/UMI-tools/issues/11">Issue</a> that discusses how soft clipping is used when determining the start position of the read. They use <a href="http://pysam.readthedocs.org/en/latest/">pysam</a> to access the mapped position and the CIGAR information, and use the CIGAR information to adjust the start position (<a href="https://github.com/CGATOxford/UMI-tools/blob/master/dedup_umi.py#L545">their code</a>). Maybe once the soft clipping is accounted for, all these reads may map to the same start location. Following the <a href="http://pysam.readthedocs.org/en/latest/">pysam manual</a>, I should be able to investigate this quickly using example boiler plate code. Note that I need to run this with Python 2 because I <a href="https://groups.google.com/forum/#!searchin/pysam-user-group/blischak/pysam-user-group/55oufoA3vxQ/ULtwf2tmCCQJ">can’t install pysam for Python 3 on the cluster</a>.</p>
+<pre class="python"><code>import pysam
+
+fname = &quot;bam-processed/19239.1.B07.TCAGTGTG.L006.R1.C6WURACXX.trim.sickle.sorted.bam&quot;
+samfile = pysam.AlignmentFile(fname, &quot;rb&quot;)
+
+for read in samfile.fetch(&quot;chr1&quot;, 3394441, 3394443):
+    print read.tostring(samfile)
+
+    print &quot;CIGAR:&quot;, read.cigarstring, &quot;and as a tuple:&quot;, read.cigartuples
+    print &quot;Is read on reverse strand?&quot;, read.is_reverse
+    print &quot;The query sequence starts at&quot;,  read.query_alignment_start
+    print &quot;The first non-soft-clipped base maps to:&quot;,  read.reference_start + 1
+    print &quot;The first soft-clipped base maps to:&quot;,  read.reference_start + 1 - read.cigartuples[0][1]
+    print &quot;\n&quot;
+
+samfile.close()</code></pre>
+<pre><code>HWI-700819F:304:C6WURACXX:6:1101:2320:21285:UMI_GAGTAGGG    0   chr1    3394437 56  26S66M  *   0   0   GTCTGCGTAATTGCCACGGAGGGGTGAGTCTCTCCCACTGATCTCCGCCTCCCGGTGGCTGCTGAAGCGCGGAGAGCTGTTCTTAGTGGAAG    FFFFFIIFIIIIIIIIIIIFFIIIFFFFBFFIIIIIIIFFFFFFFFFFFFFFFFF&lt;BBFBFFFFFBBBFBFFFFFFBFFBBFFFFFBFBFFF    HI:i:1  NH:i:1  NM:i:2
+
+CIGAR: 26S66M and as a tuple: [(4, 26), (0, 66)]
+Is read on reverse strand? False
+The query sequence starts at 26
+The first non-soft-clipped base maps to: 3394437
+The first soft-clipped base maps to: 3394411
+
+
+HWI-700819F:304:C6WURACXX:6:1202:1354:7385:UMI_GAGTAGGG 0   chr1    3394437 56  26S66M  *   0   0   GTCTGCGTAATTGCCACGGAGGGGTGAGTCTCTCCCACTGATCTCCGCCTCCCGGTGGCTGCTGAAGCGCGGAGAGCTGTTCTTAGTGGAAG    FFFFFIIFIIIIIIIIIIIIIIIIFIIIFFIIIIIIIIFFFFFFFFFFFFFFFFFBBFFBFFFFFFFBFFFFFFBFFFFFFFFFFFFFFFFF    HI:i:1  NH:i:1  NM:i:2
+
+CIGAR: 26S66M and as a tuple: [(4, 26), (0, 66)]
+Is read on reverse strand? False
+The query sequence starts at 26
+The first non-soft-clipped base maps to: 3394437
+The first soft-clipped base maps to: 3394411
+
+
+HWI-700819F:304:C6WURACXX:6:1301:15366:47559:UMI_GAGTAGGG   0   chr1    3394437 56  26S66M  *   0   0   GTCTGCGTAATTGCCGCGGAGGGGTGAGTCTCTCCCACTGATCTCCGCCTCCCGGTGGCTGCTGAAGCGCGGAGAGCTGTTCTTAGTGGAAG    F&lt;FFFFIBFIIIFFIBFIIFFFIIBFFFFFFFFBFFFFFBBFFFFFBFFFBFFFFFBFFBFFFFFFFBBFFBFFFFFBFBBBFFFB0&lt;BBFF    HI:i:1  NH:i:1  NM:i:2
+
+CIGAR: 26S66M and as a tuple: [(4, 26), (0, 66)]
+Is read on reverse strand? False
+The query sequence starts at 26
+The first non-soft-clipped base maps to: 3394437
+The first soft-clipped base maps to: 3394411
+
+
+HWI-700819F:304:C6WURACXX:6:1302:19839:75968:UMI_GAGTAGGG   0   chr1    3394437 56  26S66M  *   0   0   GTCTGCGTAATTGCCACGGAGGGGTGAGTCTCTCCCACTGATCTCCGCCTCCCGGTGGCTGCTGAAGCGCGGAGAGCTGTTCTTAGTGGAAG    FFFFFIFFFFFFFIIIIIIFFFIIFIIFFIFIFFBFFIFFFFFFFFFFFFFFFFFBFBBBBFFFFFFBFFFFFBBBFFFBBFBBBFBFBBBF    HI:i:1  NH:i:1  NM:i:2
+
+CIGAR: 26S66M and as a tuple: [(4, 26), (0, 66)]
+Is read on reverse strand? False
+The query sequence starts at 26
+The first non-soft-clipped base maps to: 3394437
+The first soft-clipped base maps to: 3394411
+
+
+HWI-700819F:304:C6WURACXX:6:2209:1548:85704:UMI_GAGTAGGG    0   chr1    3394437 56  26S66M  *   0   0   GTCTGCGTAATTGCCACGGAGGGGTGAGTCTCTCCCACTGATCTCCGCCTCCCGGTGGCTGCTGAAGCGCGGAGAGCTGTTCTTAGTGGAAG    FFFFFFFFFIIIIIIIIIIIFFFBBFFFFIFFIIIIIIFFFFFFFFFFFFFFFFBBFFFBFFBBFFFFFFFFFFBFFFFFFFFFFBBBBFFF    HI:i:1  NH:i:1  NM:i:2
+
+CIGAR: 26S66M and as a tuple: [(4, 26), (0, 66)]
+Is read on reverse strand? False
+The query sequence starts at 26
+The first non-soft-clipped base maps to: 3394437
+The first soft-clipped base maps to: 3394411
+
+
+HWI-700819F:304:C6WURACXX:6:2306:7973:18259:UMI_GAGTAGGG    0   chr1    3394437 56  26S66M  *   0   0   GTCTGCGTAATTGCCACGGAGGGGTGAGTCTCTCCCACTGATCTCCGCCTCCCGGTGGCTGCTGAAGCGCGGAGAGCTGTTCTTAGTGGAAG    FFFFFIIFFFFIIIIIFIIFFFIIFFIIIIIIFFIIIIFFFFFFFFFFFFFBFFFFFFFFFFFFFFBBFFFBFFFFFFFFBFFBFFBBFFFF    HI:i:1  NH:i:1  NM:i:2
+
+CIGAR: 26S66M and as a tuple: [(4, 26), (0, 66)]
+Is read on reverse strand? False
+The query sequence starts at 26
+The first non-soft-clipped base maps to: 3394437
+The first soft-clipped base maps to: 3394411
+
+
+HWI-700819F:304:C6WURACXX:6:2310:7455:94209:UMI_GAGTAGGG    0   chr1    3394437 56  26S66M  *   0   0   GTCTGCGTAATTGCCACGGAGGGGTGAGTCTCTCCCACTGATCTCCGCCTCCCGGTGGCTGCTGAAGCGCGGAGAGCTGTTCTTAGTGGAAG    FFFFFIIIIIIIIIIIIIIIIIIIFIIIIIIIIIIIIIFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF    HI:i:1  NH:i:1  NM:i:2
+
+CIGAR: 26S66M and as a tuple: [(4, 26), (0, 66)]
+Is read on reverse strand? False
+The query sequence starts at 26
+The first non-soft-clipped base maps to: 3394437
+The first soft-clipped base maps to: 3394411
+
+
+HWI-700819F:304:C6WURACXX:6:2316:16378:58221:UMI_GAGTAGGG   0   chr1    3394437 56  26S66M  *   0   0   GTCTGCGTAATTGCCACGGAGGGGTGAGTCTCTCCCACTGATCTCCGCCTCCCGGTGGCTGCTGAAGCGCGGAGAGCTGTTCTTAGTGGAAG    FFFFFIIIIIIIIIIIIIIFIIIIFFBFFFIIIIIIIIFFFFFFFFFFFFFFFFFBFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF    HI:i:1  NH:i:1  NM:i:2
+
+CIGAR: 26S66M and as a tuple: [(4, 26), (0, 66)]
+Is read on reverse strand? False
+The query sequence starts at 26
+The first non-soft-clipped base maps to: 3394437
+The first soft-clipped base maps to: 3394411
+
+
+HWI-700819F:304:C6WURACXX:6:1115:10445:85729:UMI_GAGTAGGG   0   chr1    3394442 56  31S61M  *   0   0   GTCTGCGTAATTGCCACGGAGGGGTGAGTCTCTCACACTGATCTCCGCCTCCCGGTGGCTGCTGAAGCGCGGAGAGCTGTTCTTAGTGGAAG    B7BFFFFBFFFBBBBFFFF0&lt;B&lt;&#39;B000BF077&lt;&#39;&lt;7BF7&lt;BB77&lt;BFB&lt;BBBB7BB0&lt;&lt;BB&lt;B&lt;BBB7&lt;B&lt;B&lt;B&lt;BBBBBBFBBBBBB&lt;BB    HI:i:1  NH:i:1  NM:i:2
+
+CIGAR: 31S61M and as a tuple: [(4, 31), (0, 61)]
+Is read on reverse strand? False
+The query sequence starts at 31
+The first non-soft-clipped base maps to: 3394442
+The first soft-clipped base maps to: 3394411</code></pre>
+<p>This is the problem!!!! The problem read that maps to ENSG00000130762 (ARHGEF16) is removed by <code>dedup_umi.py</code>. This is because even though its first non-soft-clipped base starts at a different position in the genome compared to the other reads, its first soft-clipped base matches the other reads with the same UMI. This small 4 bp difference from 3,394,437 to 3,394,442 makes a huge difference because the exon starts at 3,394,439!</p>
+</div>
+<div id="going-forward" class="section level2">
+<h2>Going forward</h2>
+<p>How to handle this mapping based artifact? One option would be to filter out reads that have many soft-clipped at the 5’ end. I worry this might be too blunt an instrument though. Subread relies on the ability to have lots of soft-clipping to map exon-exon reads. Also, I have observed that some ERCC reads begin with soft-clipped sequence (presumably adapter or some other unwanted sequence), and I wouldn’t want to lose those.</p>
+<p>Since the 5’ start position of these reads is proving to be so critical, another option would be to use a more exact mapper. Subjunc should do the job. From the <a href="http://bioinf.wehi.edu.au/subread-package/SubreadUsersGuide.pdf">User’s Guide</a>:</p>
+<blockquote>
+<p>To get the full alignments for exon-spanning RNA-seq reads, the Subjunc aligner can be used. Subjunc is designd to discover exon-exon junctions from using RNA-seq data, but it performs full alignments for all the reads at the same time. The Subjunc mapping results should be used for detecting genomic variations in RNA-seq data, allele-specific expression analysis and exon-level gene expression analysis.</p>
+</blockquote>
+<p>To test if Subjunc can solve the problem, I created a new bam file that contains these soft-clipped reads.</p>
+<pre class="python"><code>import pysam
+
+fname = &quot;bam-processed/19239.1.B07.TCAGTGTG.L006.R1.C6WURACXX.trim.sickle.sorted.bam&quot;
+infile = pysam.AlignmentFile(fname, &quot;rb&quot;)
+outfile = pysam.AlignmentFile(&quot;subjunc-test.bam&quot;, &quot;wb&quot;, template = infile)
+count = 0
+
+for read in infile.fetch(&quot;chr1&quot;, 3394441, 3394443):
+    count += 1
+    outfile.write(read)
+
+infile.close()
+outfile.close()
+print &quot;Number of sequences written to file:&quot;, count</code></pre>
+<pre><code>Number of sequences written to file: 9</code></pre>
+<p>And then I can run subjunc with the following command. The main difference between running <code>subread-align</code> and <code>subjunc</code> is the flag <code>-t</code> is no longer used (see my script <a href="https://github.com/jdblischak/singleCellSeq/blob/master/code/map-subread.sh">map-subread.sh</a>).</p>
+<pre class="bash"><code># Not actually run as part of this document because too memory intensive
+subjunc -i genome/combined -r subjunc-test.bam -u --BAMinput &gt; subjunc-test-results.bam
+# The output is copy-pasted below:
+        ==========     _____ _    _ ____  _____  ______          _____  
+        =====         / ____| |  | |  _ \|  __ \|  ____|   /\   |  __ \ 
+          =====      | (___ | |  | | |_) | |__) | |__     /  \  | |  | |
+            ====      \___ \| |  | |  _ &lt;|  _  /|  __|   / /\ \ | |  | |
+              ====    ____) | |__| | |_) | | \ \| |____ / ____ \| |__| |
+        ==========   |_____/ \____/|____/|_|  \_\______/_/    \_\_____/
+    v1.5.0-p1
+
+//============================= subjunc setting ==============================\\
+||                                                                            ||
+||           Function : Read alignment + Junction detection (RNA-Seq)         ||
+||            Threads : 1                                                     ||
+||         Input file : subjunc-test.bam (BAM)                                ||
+||      Output method : STDOUT (BAM)                                          ||
+||         Index name : genome/combined                                       ||
+||       Phred offset : 33                                                    ||
+||                                                                            ||
+||          Min votes : 1 / 14                                                ||
+||   Allowed mismatch : 3 bases                                               ||
+||         Max indels : 5                                                     ||
+||  # of Best mapping : 1                                                     ||
+||     Unique mapping : yes                                                   ||
+||   Hamming distance : yes                                                   ||
+||     Quality scores : no                                                    ||
+||                                                                            ||
+\\===================== http://subread.sourceforge.net/ ======================//
+
+//====================== Running (23-Feb-2016 20:20:14) ======================\\
+||                                                                            ||
+|| The input BAM file contains single-end reads.                              ||
+|| Convert the input BAM file...                                              ||
+|| The input file contains base space reads.                                  ||
+|| The range of Phred scores observed in the data is [6,40]                   ||
+|| Load the 1-th index block...                                               ||
+|| Map reads...                                                               ||
+|| Finish the 9 reads...                                                      ||
+||                                                                            ||
+||                          Completed successfully.                           ||
+||                                                                            ||
+\\============================================================================//
+
+//================================= Summary ==================================\\
+||                                                                            ||
+||          Processed : 9 reads                                               ||
+||             Mapped : 9 reads (100.0%)                                      ||
+||                                                                            ||
+||       Running time : 1.3 minutes                                           ||
+||                                                                            ||
+\\===================== http://subread.sourceforge.net/ ======================//</code></pre>
+<p>And viewing the results.</p>
+<pre class="bash"><code>samtools view subjunc-test-results.bam | cut -f3-6</code></pre>
+<pre><code>chr1    3394098 57  28M313N64M
+chr1    3394098 57  28M313N64M
+chr1    3394098 56  28M313N64M
+chr1    3394098 57  28M313N64M
+chr1    3394098 57  28M313N64M
+chr1    3394098 57  28M313N64M
+chr1    3394098 57  28M313N64M
+chr1    3394098 57  28M313N64M
+chr1    3394098 55  28M313N6M58S</code></pre>
+<p>This does solve the problem! The 5’ end of the reads are all mapped, and most importantly they are all mapped to the same position. This reflects the reality that these all originate from the same molecule.</p>
+<p>Now to re-map everything with Subjunc. Because it is more precise than Subread, this is going to take even longer!</p>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] knitr_1.10.5
+
+loaded via a namespace (and not attached):
+ [1] httr_0.6.1       magrittr_1.5     formatR_1.2      htmltools_0.2.6 
+ [5] tools_3.2.0      RCurl_1.95-4.6   yaml_2.1.13      codetools_0.2-11
+ [9] rmarkdown_0.6.1  stringi_0.4-1    digest_0.6.8     stringr_1.0.0   
+[13] bitops_1.0-6     evaluate_0.7    </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>
