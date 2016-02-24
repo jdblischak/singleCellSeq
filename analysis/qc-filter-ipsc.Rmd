@@ -279,11 +279,6 @@ outliers <- summary_per_sample_reads_qc %>% filter(cell_number == 1, concentrati
                                    total_gene_molecule > 100000)
 
 outliers %>% dplyr::select(sample_id)
-
-summary_per_sample_reads_qc$molecule_outlier <- summary_per_sample_reads_qc$cell_number == 1 &
-  summary_per_sample_reads_qc$concentration < 1.25 &
-  summary_per_sample_reads_qc$concentration > .15 &
-  summary_per_sample_reads_qc$total_gene_molecule > 100000
 ```
 
 ### Linear Discriminat Analysis
@@ -332,11 +327,12 @@ outliers_lda <- data_con %>% filter(cell_number == 1, data_con_lda_p == "two")
 outliers_lda$sample_id
 
 ## The lds method identifies outliers
-stopifnot(outliers %>% dplyr::select(sample_id) == outliers_lda$sample_id)
-
 plot_grid(plot_before + theme(legend.position=c(.8,.85)), 
           plot_after + theme(legend.position = "none"),
           labels = LETTERS[1:2])
+
+## create filter
+summary_per_sample_reads_qc$molecule_outlier <- summary_per_sample_reads_qc$sample_id %in% outliers_lda$sample_id
 ```
 
 ## Reads to molecule conversion
@@ -373,11 +369,9 @@ outliers_ercc$sample_id
 
 ## cutoff
 out_ercc_con <- summary_per_sample_reads_qc %>% filter(cell_number == "1", ERCC_conversion > .08)
-# The two methods no longer give identical results
-stopifnot(out_ercc_con %>% dplyr::select(sample_id) == outliers_ercc$sample_id)
 
-summary_per_sample_reads_qc$conversion_outlier <- summary_per_sample_reads_qc$cell_number == 1 &
-                                                         summary_per_sample_reads_qc$ERCC_conversion > .08
+## create filter
+summary_per_sample_reads_qc$conversion_outlier <- summary_per_sample_reads_qc$sample_id %in% outliers_ercc$sample_id
 
 plot_ercc_before <- ggplot(data_lda, aes(x = ERCC_conversion, y = conversion,
                color = as.factor(group))) +
