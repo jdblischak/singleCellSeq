@@ -1,0 +1,1090 @@
+---
+title: "Cell-to-cell variation analysis: expressed cells"
+author: "Joyce Hsiao"
+date: 2016-02-24  
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+
+library(knitr)
+opts_chunk$set(message = FALSE, warning = FALSE, eval = TRUE, 
+               echo = TRUE)
+```
+
+
+
+## Objective
+
+Compare expression variability among the expressed cells between individuals. Here are our observations:
+
+1. CV-mean relationship is not the same as when we include the drop-outs (non-expressed cells). CV increases at low gene mean expression values and after
+some value of mean gene expression (quite low), it increases again.
+
+2. The overlaps of individual top CV genes are similar to when including the drop-outs, except that there's even fewer common genes across individauls. Perhaps the expression variability among the expressed cells is individual specific and noise regulation is a general mechanism underlying all cell lines.
+
+3. Consider individual differences expression, we see a large discrepancy between expression across all cells and expression across expresse cells. In other words, we observed no relationship between individual differences in noise regulation and individual differences in transcriptional stochasticity. 
+
+4. When looking at the top 100 genes in differences between individual normalized CV, we found that these genes are enriched with genes responsible for regulation of nervous development, neuron differentiation, and immune system activity.
+
+
+## Set up
+
+```{r, message=FALSE, warning=FALSE}
+library("data.table")
+library("dplyr")
+library("limma")
+library("edgeR")
+library("ggplot2")
+library("grid")
+theme_set(theme_bw(base_size = 12))
+source("functions.R")
+library("Humanzee")
+library("cowplot")
+library("MASS")
+library("matrixStats")
+source("../code/cv-functions.r")
+library("mygene")
+```
+
+
+
+## Helper functions
+
+*plot_density
+
+Per gene plot of overlaied density curves computed from individual cell lines.
+
+```{r overlapping-density-function}
+plot_density_overlay <- function(molecules, annotation,
+                         individual_label = NULL, batches = NULL,
+                         which_gene, labels, 
+                         xlims = NULL, ylims = NULL, gene_symbols) {
+  if_present <- which(rownames(molecules) == which_gene)
+  if(length(if_present) == 0) {
+    stop("Gene not present in the data")
+  }
+  
+  library(scales)
+  library(broman)
+  crayon <- brocolors("crayon")
+  colors <- c("Sunset Orange", "Tropical Rain Forest", "Denim")
+
+  if (!is.null(individual_label)) {
+    annotation_df <- annotation[
+        which(annotation$individual == individual_label), ]
+    molecules_df <- molecules[ ,
+        which(annotation$individual == individual_label)]
+    colors_df <- colors[which(unique(annotation$individual) == individual_label)]
+    individuals <- individual_label
+  } else {
+    annotation_df <- annotation
+    molecules_df <- molecules
+    colors_df <- colors
+    individuals <- unique(annotation_df$individual)
+  }
+      # compute density estimates
+      dens <- lapply(individuals, function(ind) {
+          df <- unlist(molecules_df[ rownames(molecules_df) == which_gene, 
+                                        annotation_df$individual == ind])
+          dens_try <- try(density(df, na.rm = TRUE), silent = TRUE)
+          if(class(dens_try) == "try-error") {
+            return(NULL)
+          } else {
+            return(dens_try)
+          }
+      })
+      
+      # find ranges of x and y-axis
+      if (is.null(xlims)) xlims <- range(sapply(dens, function(obj) obj$x))
+      if (is.null(ylims)) ylims <- range(sapply(dens, function(obj) obj$y))
+    
+      plot(dens[[1]], 
+           xlab = "log2 gene expression", main = "",
+           ylab = "Density", axes = F, lwd = 0, xlim = xlims, ylim = ylims)
+      for (i in 1:length(individuals)) {
+        polygon(dens[[i]], 
+                col = alpha(crayon[colors_df[i]], .4), 
+                border = "grey40")
+      }
+      axis(1); axis(2)
+      mtext(text = labels, side = 3)
+      title(main = with(gene_symbols, 
+                        external_gene_name[which(ensembl_gene_id == which_gene)]) )
+
+#   # TBD  
+#   if (!is.null(batches)) {
+#     
+#     individuals <- unique(annotation$individual)
+#     dens <- lapply(1:length(individuals), function(per_individual) {
+#       which_individual <- annotation$individual == individuals[per_individual]
+#       annotation_sub <- annotation[which_individual, ]
+#       molecules_sub <- molecules_ENSG[ , which_individual]
+#       replicates <- unique(annotation_sub$replicate)
+#       dens_batch <- lapply(1:length(replicates), function(per_replicate) {
+#         which_replicate <- annotation_sub$replicate == replicates[per_replicate]
+#         density(unlist( molecules_sub[ rownames(molecules_ENSG) == which_gene, 
+#                                        which_replicate] ) )
+#       })
+#     })
+#     
+#     if (is.null(xlims)) {
+#       xlims <- range( c( sapply(dens, function(obj_individual) {
+#         c( sapply(obj_individual, function(obj) {
+#           range(obj$x)
+#         }) )
+#       }) ) )
+#     }
+#     if (is.null(ylims)) {
+#       ylims <- range( c( sapply(dens, function(obj_individual) {
+#         c( sapply(obj_individual, function(obj) {
+#           range(obj$y)
+#         }) )
+#       }) ) )
+#     }
+#     
+#     colors <- c("Sunset Orange", "Tropical Rain Forest", "Denim")
+#     for (i in 1:length(dens)) {
+#       
+#       if (i == 1) col <- crayon["Sunset Orange"]
+#       if (i == 2) col <- crayon["Tropical Rain Forest"]
+#       if (i == 3) col <- crayon["Denim"]
+#  
+#       plot(dens[[i]][[1]], 
+#            xlab = "log2 gene expression", main = "",
+#            ylab = "Density", axes = F, lwd = 0, xlim = xlims, ylim = ylims)
+#       for (j in 1:length(dens[[i]])) {
+#         polygon(dens[[i]][[j]], 
+#                 col = alpha(col, .4), 
+#                 border = "grey40")
+#       }
+#     }
+        
+    axis(1); axis(2)
+    mtext(text = labels, side = 3)
+    title(main = with(gene_symbols, 
+                      external_gene_name[which(ensembl_gene_id == which_gene)]) )
+}
+```
+
+
+
+## Prepare data
+
+Input annotation of only QC-filtered single cells, with NA19098.r2 removed.
+
+```{r import-annotation}
+anno_filter <- read.table("../data/annotation-filter.txt", 
+                      header = TRUE,
+                      stringsAsFactors = FALSE)
+dim(anno_filter)
+head(anno_filter, 2)
+```
+
+Import molecule counts after filtering and before any correction.
+
+```{r import-molecule-counts-after-filtering}
+molecules_filter <- read.table("../data/molecules-filter.txt",
+                               header = TRUE, stringsAsFactors = FALSE)
+stopifnot(NROW(anno_filter) == NCOL(molecules_filter))
+```
+
+Import final processed molecule counts of endogeneous genes.
+
+```{r import-ensg-final-transformed-log2counts}
+molecules_final <- read.table("../data/molecules-final.txt", 
+                             header = TRUE, stringsAsFactors = FALSE)
+dim(molecules_final)
+stopifnot(NROW(anno_filter) == NCOL(molecules_final))
+```
+
+
+Import gene symbols.
+
+```{r}
+gene_symbols <- read.table(file = "../data/gene-info.txt", sep = "\t",
+                           header = TRUE, stringsAsFactors = FALSE, quote = "")
+```
+
+
+```{r}
+cell_cycle_genes <- read.table("../data/cellcyclegenes.txt",
+                               header = TRUE, sep = "\t",
+                               stringsAsFactors = FALSE)
+
+pluripotency_genes <- read.table("../data/pluripotency-genes.txt",
+                               header = TRUE, sep = "\t",
+                               stringsAsFactors = FALSE)$To
+```
+
+
+Load CV results of all cells
+
+```{r}
+load("rda/cv-adjusted-summary-pois-expressed/cv.rda")
+```
+
+
+
+## Compute gene mean and variance in the expressed cells
+
+```{r}
+file_name <- "../data/expressed_cv.rda"
+if (file.exists(file_name)) {
+  load(file_name)
+} else {
+expressed_cv <- compute_expressed_cv(molecules_filter, 
+                                     molecules_final, 
+                                     anno_filter$individual)
+
+expressed_dm <- normalize_cv_input(expressed_cv,
+                                   anno_filter$individual)
+
+save(expressed_cv, expressed_dm, file = file_name)
+}
+```
+
+
+## CV-mean plots
+
+*Helper function*
+
+```{r plot-mean-cv-poission-expressed}
+plot_poisson_cv_expressed <- 
+  function(expr_mean = NULL, 
+           exprs_cv = NULL,
+           main, ylab = NULL) {
+    
+    # define colors
+    cbPalette <- c("#999999", "#0000FF", "#56B4E9", "#009E73", 
+                   "#F0E442", "#0072B2", "#D55E00", "#CC79A7")    
+
+    # exclude genes with missing mean or variance
+    gene_valid <- intersect(which(!is.na(expr_mean)), which(!is.na(exprs_cv)) ) 
+    
+    # defnine poisson function on a log x scale
+    poisson.c <- function (x) {
+        (10^x)^(0.5)/(10^x) + min(exprs_cv[gene_valid])
+    }
+    
+    return(
+      ggplot(data.frame(means = log10(expr_mean[gene_valid]),
+                      cvs = exprs_cv[gene_valid],
+                      gene_type = rep(1, length(expr_mean[gene_valid])) ),
+           aes(x = means, y = cvs, col = as.factor(gene_type)) )  + 
+      geom_point(size = 2, alpha = 0.5) + 
+      stat_function(fun = poisson.c, col= "red")  + 
+      scale_colour_manual(values = cbPalette) + 
+      labs(x = "log10 average molecule count",
+           y = ylab,
+           title = main) 
+    ) 
+}
+```
+
+
+```{r}
+theme_set(theme_bw(base_size = 8))
+cowplot::plot_grid(
+    plot_poisson_cv_expressed(
+          expr_mean = expressed_cv$all$expr_mean, 
+          exprs_cv = expressed_cv$all$expr_cv, 
+          ylab = "Coefficient of variation (CV)", 
+          main = "All individauls, expressed cells") +
+          theme(legend.position = "none"),
+    plot_poisson_cv_expressed(
+          expr_mean = expressed_cv$NA19098$expr_mean, 
+          exprs_cv = expressed_cv$NA19098$expr_cv, 
+          ylab = "Coefficient of variation (CV)", 
+          main = "NA19098 expressed cells") +
+          theme(legend.position = "none"),
+    plot_poisson_cv_expressed(
+          expr_mean = expressed_cv$NA19101$expr_mean, 
+          exprs_cv = expressed_cv$NA19101$expr_cv, 
+          ylab = "Coefficient of variation (CV)", 
+          main = "NA19101 expressed cells") +
+          theme(legend.position = "none"),
+    plot_poisson_cv_expressed(
+          expr_mean = expressed_cv$NA19239$expr_mean, 
+          exprs_cv = expressed_cv$NA19239$expr_cv, 
+          ylab = "Coefficient of variation (CV)", 
+          main = "NA19239 expressed cells") +
+          theme(legend.position = "none"),
+  ncol = 2,
+  labels = LETTERS[1:4])
+```
+
+
+sqrt(SD) vs. mean
+
+```{r}
+theme_set(theme_bw(base_size = 8))
+cowplot::plot_grid(
+    plot_poisson_cv_expressed(
+          expr_mean = expressed_cv$all$expr_mean, 
+          exprs_cv = (expressed_cv$all$expr_var)^(1/4), 
+          main = "All individauls, expressed cells",
+          ylab = "Variance^(1/4)") + 
+          theme(legend.position = "none"),
+    plot_poisson_cv_expressed(
+          expr_mean = expressed_cv$NA19098$expr_mean, 
+          exprs_cv = (expressed_cv$NA19098$expr_var)^(1/4), 
+          main = "All individauls, expressed cells",
+          ylab = "Variance^(1/4)") + 
+          theme(legend.position = "none"),
+    plot_poisson_cv_expressed(
+          expr_mean = expressed_cv$NA19101$expr_mean, 
+          exprs_cv = (expressed_cv$NA19101$expr_var)^(1/4), 
+          main = "All individauls, expressed cells",
+          ylab = "Variance^(1/4)") + 
+          theme(legend.position = "none"),
+    plot_poisson_cv_expressed(
+          expr_mean = expressed_cv$NA19239$expr_mean, 
+          exprs_cv = (expressed_cv$NA19239$expr_var)^(1/4), 
+          main = "All individauls, expressed cells",
+          ylab = "Variance^(1/4)") + 
+          theme(legend.position = "none"),
+  ncol = 2,
+  labels = LETTERS[1:4])
+```
+
+
+CV before vs after
+
+
+```{r}
+gene_ind <- which(rownames(ENSG_cv[[1]]) %in% rownames(expressed_cv[[1]]))
+par(mfrow = c(2,2))
+plot(x = matrixStats::rowSds(2^as.matrix(molecules_final[gene_ind, ]))/
+       rowMeans(2^as.matrix(molecules_final[gene_ind, ])),
+     y = expressed_cv$all$expr_cv)
+for (ind in names(ENSG_cv)) {
+  plot(x = ENSG_cv[[ind]]$cv[
+              which(rownames(ENSG_cv[[1]]) %in% rownames(expressed_cv[[1]]))],
+       y = expressed_cv[[ind]]$expr_cv)
+}
+```
+
+
+Quick check on DM values. DM values are orthogonal between individuals.
+
+```{r}
+par(mfrow = c(2,2))
+plot(expressed_cv$NA19098$expr_cv,
+     expressed_cv$NA19101$expr_cv)
+plot(expressed_cv$NA19098$expr_cv,
+     expressed_cv$NA19239$expr_cv)
+plot(expressed_cv$NA19098$expr_cv,
+     expressed_cv$NA19101$expr_cv)
+title(main = "Coefficient of variation")
+
+par(mfrow = c(2,2))
+plot(expressed_dm$NA19098,
+     expressed_dm$NA19101)
+plot(expressed_dm$NA19098,
+     expressed_dm$NA19239)
+plot(expressed_dm$NA19098,
+     expressed_dm$NA19101)
+title(main = "DM")
+```
+
+
+
+## Extreme CV genes - top 1000
+
+Expressed cells
+
+```{r}
+par(mfrow = c(1,1))
+genes <- rownames(molecules_final)
+library(gplots)
+venn_cv_rank <- gplots::venn(
+  list(NA19098 = genes[ which( rank(expressed_cv$NA19098$expr_cv) 
+                               > length(genes) - 1000 ) ],
+       NA19101 = genes[ which( rank(expressed_cv$NA19101$expr_cv) 
+                               > length(genes) - 1000 ) ],
+       NA19239 = genes[ which( rank(expressed_cv$NA19239$expr_cv) 
+                               > length(genes) - 1000 ) ] ))
+```
+
+
+
+All cells, CV
+
+```{r}
+par(mfrow = c(1,1))
+genes <- rownames(molecules_final)
+library(gplots)
+venn_cv_rank <- gplots::venn(
+  list(NA19098 = genes[ which( rank(ENSG_cv$NA19098$cv) 
+                               > length(genes) - 1000 ) ],
+       NA19101 = genes[ which( rank(ENSG_cv$NA19101$cv)
+                               > length(genes) - 1000 ) ],
+       NA19239 = genes[ which( rank(ENSG_cv$NA19239$cv)
+                               > length(genes) - 1000 ) ] ))
+```
+
+
+
+Expressed cells, corrected CV
+
+```{r}
+par(mfrow = c(1,1))
+genes <- rownames(molecules_final)
+library(gplots)
+venn_cv_rank <- gplots::venn(
+  list(NA19098 = genes[ which( rank(expressed_dm$NA19098) 
+                               > length(genes) - 1000 ) ],
+       NA19101 = genes[ which( rank(expressed_dm$NA19101) 
+                               > length(genes) - 1000 ) ],
+       NA19239 = genes[ which( rank(expressed_dm$NA19239) 
+                               > length(genes) - 1000 ) ] ))
+```
+
+
+All cells, corrected CV
+
+```{r}
+par(mfrow = c(1,1))
+genes <- rownames(molecules_final)
+library(gplots)
+venn_cv_rank <- gplots::venn(
+  list(NA19098 = genes[ which( rank(ENSG_cv_adj$NA19098$log10cv2_adj) 
+                               > length(genes) - 1000 ) ],
+       NA19101 = genes[ which( rank(ENSG_cv_adj$NA19101$log10cv2_adj)
+                               > length(genes) - 1000 ) ],
+       NA19239 = genes[ which( rank(ENSG_cv_adj$NA19239$log10cv2_adj)
+                               > length(genes) - 1000 ) ] ))
+```
+
+
+Compare rankings. Genes with noisy expression range from low to high range of
+transcriptional variability in the expressed cells. 
+
+
+```{r}
+gene_ind <- which(rownames(ENSG_cv[[1]]) %in% rownames(expressed_cv[[1]]))
+par(mfrow = c(2,2))
+plot(x = rank(ENSG_cv$NA19098$cv[gene_ind]),
+     y = rank(expressed_cv$NA19098$expr_cv))
+plot(x = rank(ENSG_cv$NA19101$cv[gene_ind]),
+     y = rank(expressed_cv$NA19101$expr_cv))
+plot(x = rank(ENSG_cv$NA19239$cv[gene_ind]),
+     y = rank(expressed_cv$NA19239$expr_cv))
+```
+
+
+
+
+## Differential testing
+
+
+Compute median of absolute deviations (MAD) to quantify dissimilarity of the individual DM meausres. 
+
+```{r}
+library(matrixStats)
+mad_expressed <- rowMedians( abs( as.matrix(expressed_dm) - rowMedians(as.matrix(expressed_dm)) ) )
+
+dm_matrix <- as.matrix(
+                data.frame(NA19098 = ENSG_cv_adj$NA19098$log10cv2_adj,
+                           NA19101 = ENSG_cv_adj$NA19101$log10cv2_adj,
+                           NA19239 = ENSG_cv_adj$NA19239$log10cv2_adj) )
+mad_all <- rowMedians( abs( dm_matrix - rowMedians(dm_matrix) ) )
+```
+
+Compute drop-out rates.
+
+```{r}
+molecules_filter_df <- molecules_filter[which(rownames(molecules_filter) %in%
+                                                rownames(expressed_cv[[1]])), ]
+drop_out <- lapply(unique(anno_filter$individual), function(ind) {
+  temp_df <- molecules_filter_df[,anno_filter$individual == ind]
+  zero_count <- rowMeans(temp_df == 0)
+  return(zero_count)
+})  
+names(drop_out) <- unique(anno_filter$individual)
+```
+
+Compare gene rankings in differential testings using the expressed cells versus using all the cells.
+
+We observed that differential genes in the set of analysis using the expressed cells are more likely to include drop-outs than when the anaysis includes all the cells.
+
+```{r}
+gene_ind <- which(rownames(ENSG_cv[[1]]) %in% rownames(expressed_cv[[1]]))
+par(mfrow = c(1,1))
+plot(rank(mad_all[gene_ind]), rank(mad_expressed), log = "xy",
+     xlab = "Across all cells",
+     ylab = "Expressed cells",
+     main = "Dissimilarity measure of individual DM (rank)",
+      cex = .9, col = alpha("grey40", .8), lwd = .6)
+points(rank(mad_all[gene_ind]), rank(mad_expressed), 
+       col = rev(RColorBrewer::brewer.pal(10, "RdYlBu"))[
+                cut(drop_out$NA19098, breaks = seq(0, 1, by = .1),
+                     include.lowest = TRUE)], 
+       cex = .6, pch = 16)
+abline(0, 1, col = "blue")
+```
+
+
+*CPDB
+
+ConsensusPATHDB-Human was used to perform GO over-representation analysis.
+
+Look up top 100 genes in MAD values
+
+```{r}
+mad_expressed_genes <- rownames(expressed_cv[[1]])[rank(mad_expressed) > 
+                                             (length(mad_expressed) - 100) ]
+# write.table(mad_expressed_genes,
+#             file = "../data/mad-expressed-genes.txt",
+#             sep = "\t", quote = FALSE,
+#             col.names = FALSE, row.names = FALSE)
+
+library(mygene)
+go_top <- read.table("figure/cv-adjusted-summary-pois-expressed.Rmd/go-cpdb-expressed-top.tab",
+                         sep = "\t",
+                         header = TRUE)
+go_top <- go_top[go_top$q.value < .1, ]
+as.character(go_top$term_name)
+
+#go_top_genes <- getGenes(gsub(";", ",",
+#                    as.character(go_top$members_input_overlap_geneids)))
+#go_top_genes <- go_top_genes[!duplicated(go_top_genes[ , "symbol"]), ]
+#kable(data.frame(symbol =go_top_genes[ ,"symbol"],
+#                 name = go_top_genes[,"name"]) )
+```
+
+
+
+### Compare with the top differential CV list of all cells
+
+25% of the differential CV genes in the expressed cells were also identified as differential CV across all the cells. Note that here we considier rankings of the dissimilarity measure. 
+
+```{r}
+gene_ind <- which(rownames(ENSG_cv[[1]]) %in% rownames(expressed_cv[[1]]))
+mad_venn <- gplots::venn(
+  list(all = rownames(molecules_final)[rank(mad_expressed) > length(mad_expressed) - 100],
+       expressed = rownames(molecules_final)[rank(mad_all[gene_ind]) > length(mad_all[gene_ind]) - 100])
+)
+```
+
+Look up genes that are top in both. Genes that are different in individuals in both noise of gene expression and variabilty of expression.
+
+23 genes
+
+```{r, eval = F}
+write.table(intersect(rownames(expressed_cv[[1]])[rank(mad_expressed) > length(mad_expressed) - 100], rownames(molecules_final)[rank(mad_all) > length(mad_all) - 100]), file = "../data/genes-overlap-all-expressed.txt",
+            quote = F, row.names = F, col.names = F)
+```
+
+
+
+```{r, eval = TRUE}
+library(mygene)
+go_top <- read.table("figure/cv-adjusted-summary-pois-expressed.Rmd/go-cpdb-overlap-all-expressed.tab",
+                         sep = "\t",
+                         header = TRUE)
+go_top <- go_top[go_top$q.value < .1, ]
+as.character(go_top$term_name)
+
+go_top_genes <- getGenes(gsub(";", ",",
+                    as.character(go_top$members_input_overlap_geneids)))
+go_top_genes <- go_top_genes[!duplicated(go_top_genes[ , "symbol"]), ]
+kable(data.frame(symbol =go_top_genes[ ,"symbol"],
+                 name = go_top_genes[,"name"]) )
+```
+
+
+*Make some density plots.
+
+First, let's exclude the non-expressed cells.
+
+```{r}
+gene_ind <- which(rownames(ENSG_cv[[1]]) %in% rownames(expressed_cv[[1]]))
+molecules_filter_df <- molecules_filter[which(rownames(molecules_filter) %in%
+                                                rownames(expressed_cv[[1]])), ]
+molecules_filter_df[which(molecules_filter_df == 0, arr.ind= TRUE)] <- NA
+
+molecules_final_df <- molecules_final[gene_ind, ]
+molecules_expressed_df <- molecules_filter_df
+molecules_expressed_df[which(molecules_filter_df>0, arr.ind = TRUE)] <- 1
+
+all.equal(rownames(molecules_filter_df), rownames(molecules_final_df))
+```
+
+
+Genes with differential CV in both sets.
+
+```{r}
+gene_elect <- attr(mad_venn, "intersections")$'11'
+
+par(mfrow = c(2,2))
+for (i in 1:8) {
+plot_density_overlay(
+  molecules = molecules_final_df*molecules_expressed_df,
+  annotation = anno_filter,
+  individual_label = NULL,
+  which_gene = gene_elect[i], 
+  labels = "",
+  xlims = c(1,14), ylims = NULL,
+  gene_symbols = gene_symbols)
+plot_density_overlay(
+  molecules = molecules_final_df,
+  annotation = anno_filter,
+  individual_label = NULL,
+  which_gene = gene_elect[i], 
+  labels = "",
+  xlims = c(1,14), ylims = NULL,
+  gene_symbols = gene_symbols)
+}
+```
+
+
+```{r include = FALSE, eval = FALSE, echo = FALSE}
+pdf(file = "figure/cv-adjusted-summary-pois-expressed.Rmd/mad-rank-both-expr-all.pdf", 
+    height = 12, width = 8)
+par(mfrow = c(5,4))
+for (i in 1:length(gene_elect)) {
+plot_density_overlay(
+  molecules = molecules_final_df*molecules_expressed_df,
+  annotation = anno_filter,
+  individual_label = NULL,
+  which_gene = gene_elect[i], 
+  labels = "",
+  xlims = c(1,14), ylims = NULL,
+  gene_symbols = gene_symbols)
+plot_density_overlay(
+  molecules = molecules_final_df,
+  annotation = anno_filter,
+  individual_label = NULL,
+  which_gene = gene_elect[i], 
+  labels = "",
+  xlims = c(1,14), ylims = NULL,
+  gene_symbols = gene_symbols)
+}
+dev.off()
+```
+
+```{r}
+# write.table(gene_elect,
+#             file = "../data/mad-rank-both-expr-all.txt",
+#             sep = "\t", quote = FALSE,
+#             col.names = FALSE, row.names = FALSE)
+
+go_top <- read.table("figure/cv-adjusted-summary-pois-expressed.Rmd/mad-rank-both-expr-all.tab",
+                         sep = "\t",
+                         header = TRUE)
+go_top <- go_top[go_top$q.value < .1, ]
+as.character(go_top$term_name)
+
+library(mygene)
+go_top_genes <- getGenes(gsub(";", ",",
+                    as.character(go_top$members_input_overlap_geneids)))
+go_top_genes <- go_top_genes[!duplicated(go_top_genes[ , "symbol"]), ]
+kable(data.frame(symbol = go_top_genes[ ,"symbol"],
+                 name = go_top_genes[,"name"]) )
+```
+
+
+*Genes with differential CV in only the expressed but not when all cells are included.
+
+```{r}
+gene_elect <- attr(mad_venn, "intersections")$'01'
+
+par(mfrow = c(2,2))
+for (i in 1:4) {
+plot_density_overlay(
+  molecules = molecules_final_df*molecules_expressed_df,
+  annotation = anno_filter,
+  individual_label = NULL,
+  which_gene = gene_elect[i], 
+  labels = "",
+  xlims = c(1,14), ylims = NULL,
+  gene_symbols = gene_symbols)
+plot_density_overlay(
+  molecules = molecules_final_df,
+  annotation = anno_filter,
+  individual_label = NULL,
+  which_gene = gene_elect[i], 
+  labels = "",
+  xlims = c(1,14), ylims = NULL,
+  gene_symbols = gene_symbols)
+}
+```
+
+
+```{r include = FALSE, eval = FALSE, echo = FALSE}
+pdf(file = "figure/cv-adjusted-summary-pois-expressed.Rmd/mad-rank-expr-not-all.pdf", 
+    height = 12, width = 8)
+par(mfrow = c(5,4))
+for (i in 1:length(gene_elect)) {
+plot_density_overlay(
+  molecules = molecules_final_df*molecules_expressed_df,
+  annotation = anno_filter,
+  individual_label = NULL,
+  which_gene = gene_elect[i], 
+  labels = "",
+  xlims = c(1,14), ylims = NULL,
+  gene_symbols = gene_symbols)
+plot_density_overlay(
+  molecules = molecules_final_df,
+  annotation = anno_filter,
+  individual_label = NULL,
+  which_gene = gene_elect[i], 
+  labels = "",
+  xlims = c(1,14), ylims = NULL,
+  gene_symbols = gene_symbols)
+}
+dev.off()
+```
+
+
+```{r}
+# write.table(gene_elect,
+#             file = "../data/mad-rank-expr-not-all.txt",
+#             sep = "\t", quote = FALSE,
+#             col.names = FALSE, row.names = FALSE)
+
+go_top <- read.table("figure/cv-adjusted-summary-pois-expressed.Rmd/mad-rank-expr-not-all.tab",
+                         sep = "\t",
+                         header = TRUE)
+go_top <- go_top[go_top$q.value < .1, ]
+as.character(go_top$term_name)
+
+library(mygene)
+go_top_genes <- getGenes(gsub(";", ",",
+                    as.character(go_top$members_input_overlap_geneids)))
+go_top_genes <- go_top_genes[!duplicated(go_top_genes[ , "symbol"]), ]
+kable(data.frame(symbol = go_top_genes[ ,"symbol"],
+                 name = go_top_genes[,"name"]) )
+```
+
+
+*Genes with differential CV when only all cells are included but not when only the expressed ells are included. 
+
+```{r}
+gene_elect <- attr(mad_venn, "intersections")$'10'
+
+par(mfrow = c(2,2))
+for (i in 1:4) {
+plot_density_overlay(
+  molecules = molecules_final_df*molecules_expressed_df,
+  annotation = anno_filter,
+  individual_label = NULL,
+  which_gene = gene_elect[i], 
+  labels = "",
+  xlims = c(1,14), ylims = NULL,
+  gene_symbols = gene_symbols)
+plot_density_overlay(
+  molecules = molecules_final_df,
+  annotation = anno_filter,
+  individual_label = NULL,
+  which_gene = gene_elect[i], 
+  labels = "",
+  xlims = c(1,14), ylims = NULL,
+  gene_symbols = gene_symbols)
+}
+```
+
+```{r include = FALSE, eval = FALSE, echo = FALSE}
+pdf(file = "figure/cv-adjusted-summary-pois-expressed.Rmd/mad-rank-all-not-expr.pdf", 
+    height = 12, width = 8)
+par(mfrow = c(5,4))
+for (i in 1:length(gene_elect)) {
+plot_density_overlay(
+  molecules = molecules_final_df*molecules_expressed_df,
+  annotation = anno_filter,
+  individual_label = NULL,
+  which_gene = gene_elect[i], 
+  labels = "",
+  xlims = c(1,14), ylims = NULL,
+  gene_symbols = gene_symbols)
+plot_density_overlay(
+  molecules = molecules_final_df,
+  annotation = anno_filter,
+  individual_label = NULL,
+  which_gene = gene_elect[i], 
+  labels = "",
+  xlims = c(1,14), ylims = NULL,
+  gene_symbols = gene_symbols)
+}
+dev.off()
+```
+
+```{r}
+# write.table(gene_elect,
+#             file = "../data/mad-rank-all-not-expr.txt",
+#             sep = "\t", quote = FALSE,
+#             col.names = FALSE, row.names = FALSE)
+
+go_top <- read.table("figure/cv-adjusted-summary-pois-expressed.Rmd/mad-rank-all-not-expr.tab",
+                         sep = "\t",
+                         header = TRUE)
+go_top <- go_top[go_top$q.value < .1, ]
+as.character(go_top$term_name)
+
+library(mygene)
+go_top_genes <- getGenes(gsub(";", ",",
+                    as.character(go_top$members_input_overlap_geneids)))
+go_top_genes <- go_top_genes[!duplicated(go_top_genes[ , "symbol"]), ]
+kable(data.frame(symbol = go_top_genes[ ,"symbol"],
+                 name = go_top_genes[,"name"]) )
+```
+
+
+
+## Correlation of CV and drop-out rates
+
+```{r}
+gene_ind <- which(rownames(ENSG_cv[[1]]) %in% rownames(expressed_cv[[1]]))
+molecules_filter_df <- molecules_filter[
+  which(rownames(molecules_filter) %in% rownames(expressed_cv[[1]])),]
+all.equal(rownames(molecules_filter_df), rownames(expressed_cv[[1]]))
+
+drop_out <- lapply(unique(anno_filter$individual), function(ind) {
+  temp_df <- molecules_filter_df[,anno_filter$individual == ind]
+  zero_count <- rowMeans(temp_df == 0)
+  return(zero_count)
+})  
+names(drop_out) <- unique(anno_filter$individual)
+```
+
+
+```{r, fig.height=5, fig.width=5}
+par(mfrow = c(2,2))
+plot(y = expressed_cv$NA19098$expr_cv,
+     x = drop_out$NA19098,
+     xlab = "Percent of drop-outs",
+     ylab = "CV")
+plot(y = log10(expressed_cv$NA19098$expr_mean),
+     x = drop_out$NA19098,
+     xlab = "Percent of drop-outs",
+     ylab = "log10 mean expression")
+plot(y = log10(expressed_cv$NA19098$expr_var),
+     x = drop_out$NA19098,
+     xlab = "Percent of drop-outs",
+     ylab = "log10 variance of expression")
+plot(y = expressed_dm$NA19098,
+     x = drop_out$NA19098,
+     xlab = "Percent of drop-outs",
+     ylab = "Corrected CV")
+title(main = "Expressed cells", outer = TRUE, line = -1)
+
+
+
+par(mfrow = c(2,2))
+plot(y = ENSG_cv$NA19098$cv[gene_ind],
+     x = drop_out$NA19098,
+     xlab = "Percent of drop-outs",
+     ylab = "CV")
+plot(y = log10(ENSG_cv$NA19098$mean)[gene_ind],
+     x = drop_out$NA19098,
+     xlab = "Percent of drop-outs",
+     ylab = "log10 mean expression")
+plot(y = log10(ENSG_cv$NA19098$sd^2)[gene_ind],
+     x = drop_out$NA19098,
+     xlab = "Percent of drop-outs",
+     ylab = "log10 variance of expression")
+plot(y = ENSG_cv_adj$NA19098$log10cv2_adj[gene_ind],
+     x = drop_out$NA19098,
+     xlab = "Percent of drop-outs",
+     ylab = "Corrected CV")
+title(main = "All cells", outer = TRUE, line = -1)
+```
+
+
+```{r}
+par(mfrow = c(2,2))
+plot(y = ENSG_cv$NA19098$cv,
+     x = log10(ENSG_cv$NA19098$mean),
+     cex = .9, col = alpha("grey40", .8), lwd = .6,
+     xlab = "log10 gene mean abundance",
+     ylab = "CV",
+     main = "All cells, NA19098",
+     xlim = c(1,5), ylim = c(0,2.5))
+points(y = ENSG_cv$NA19098$cv,
+       x = log10(ENSG_cv$NA19098$mean),
+       col = rev(RColorBrewer::brewer.pal(10, "RdYlBu"))[
+                cut(drop_out$NA19098, breaks = seq(0, 1, by = .1),
+                     include.lowest = TRUE)], 
+       cex = .6, pch = 16)
+
+plot(y = expressed_cv$NA19098$expr_cv,
+     x = log10(expressed_cv$NA19098$expr_mean),
+     cex = .9, col = alpha("grey40", .8), lwd = .6,
+     xlab = "log10 gene mean abundance",
+     ylab = "CV",
+     main = "Expressed cells, NA19098",
+     xlim = c(1,5), ylim = c(0,2.5))
+
+points(y = expressed_cv$NA19098$expr_cv,
+       x = log10(expressed_cv$NA19098$expr_mean), 
+       col = rev(RColorBrewer::brewer.pal(10, "RdYlBu"))[
+                cut(drop_out$NA19098, breaks = seq(0, 1, by = .1),
+                     include.lowest = TRUE)], 
+       cex = .6, pch = 16)
+
+# all cell mean abundance versus
+# expressed cells CV
+gene_ind <- which(rownames(ENSG_cv[[1]]) %in% rownames(expressed_cv[[1]]))
+plot(y = expressed_cv$NA19098$expr_cv,
+     x = log10(ENSG_cv$NA19098$mean)[gene_ind],
+     cex = .9, col = alpha("grey40", .8), lwd = .6,
+     xlab = "All cells log10 gene mean abundance",
+     ylab = "Expressed cell CV",
+     main = "All cells, NA19098",
+     xlim = c(1,5), ylim = c(0,2.5))
+points(y = expressed_cv$NA19098$expr_cv,
+       x = log10(ENSG_cv$NA19098$mean)[gene_ind],
+       col = rev(RColorBrewer::brewer.pal(10, "RdYlBu"))[
+                cut(drop_out$NA19098, breaks = seq(0, 1, by = .1),
+                     include.lowest = TRUE)], 
+       cex = .6, pch = 16)
+
+plot(1:10, pch = 15, cex = 2, axes = F, xlab = "", ylab = "",
+     col = rev(RColorBrewer::brewer.pal(10, "RdYlBu")), xlim = c(0, 13))
+text(labels = levels(cut(drop_out$NA19098, breaks = seq(0, 1, by = .1),
+                     include.lowest = TRUE)),
+     y = 1:10, x = 1:10 + 2, cex = .7)
+title(main = "drop-out rate")
+```
+
+
+Genes with low abundance levela and low CV (in the expressed cells).
+
+```{r}
+gene_elect <- which(log10(expressed_cv$NA19098$expr_mean) < 2.2 &
+                    expressed_cv$NA19098$expr_cv < .2 )
+
+gene_ind <- which(rownames(ENSG_cv[[1]]) %in% rownames(expressed_cv[[1]]))
+par(mfrow = c(2,2))
+for (i in 1:4) {
+plot_density_overlay(
+  molecules = molecules_final[gene_ind, ],
+  annotation = anno_filter,
+  individual_label = "NA19098",
+  which_gene = rownames(expressed_dm)[gene_elect[i]], 
+  labels = "",
+  xlims = c(1,14), ylims = NULL,
+  gene_symbols = gene_symbols)
+}
+```
+
+
+
+## Pluripotency genes
+
+```{r}
+pluri_genes <- pluripotency_genes[
+  which(pluripotency_genes %in% rownames(molecules_final_df) )]
+par(mfrow = c(2,2))
+for (i in 1:length(pluri_genes)) {
+plot_density_overlay(
+  molecules = molecules_final_df*molecules_expressed_df,
+  annotation = anno_filter,
+  individual_label = NULL,
+  which_gene = pluri_genes[i], 
+  labels = "",
+  xlims = c(1,14), ylims = NULL,
+  gene_symbols = gene_symbols)
+plot_density_overlay(
+  molecules = molecules_final_df,
+  annotation = anno_filter,
+  individual_label = NULL,
+  which_gene = pluri_genes[i], 
+  labels = "",
+  xlims = c(1,14), ylims = NULL,
+  gene_symbols = gene_symbols)
+}
+```
+
+
+
+
+## Previous Figure 6 genes
+
+```{r}
+query_genes <- c("NANOG", "ZFP42", "NLRP2", "FAT3")
+query_genes_ensg <- gene_symbols[which(gene_symbols$external_gene_name %in% query_genes), ]
+query_genes_ensg <- query_genes_ensg[c(2,4,1,3), ]
+
+
+# ii <- 3
+# df_vec <- lapply(unique(anno_filter$individual), function(ind) {
+#   temp_filter <- unlist(molecules_filter_df[
+#     which(rownames(molecules_filter_df) %in% query_genes_ensg$ensembl_gene_id[ii]),
+#     anno_filter$individual == ind]) 
+#   temp_final <- unlist(molecules_final_df[
+#     which(rownames(molecules_final_df) %in% query_genes_ensg$ensembl_gene_id[ii]),
+#     anno_filter$individual == ind]) 
+#   temp_expressed <- unlist(molecules_expressed_df[
+#     which(rownames(molecules_expressed_df) %in% query_genes_ensg$ensembl_gene_id[ii]),
+#     anno_filter$individual == ind]) 
+#   list(temp_filter = temp_filter,
+#        temp_expressed = temp_expressed,
+#        temp_final = temp_final)
+# })
+# table(df_vec[[3]]$temp_filter)
+# summary(df_vec[[3]]$temp_final*df_vec[[3]]$temp_expressed)
+# summary(df_vec[[3]]$temp_final)
+# plot(density(df_vec[[1]], na.rm = TRUE) )
+
+
+par(mfrow = c(2,2))
+for (i in 1:length(query_genes_ensg$ensembl_gene_id)) {
+plot_density_overlay(
+  molecules = molecules_final_df*molecules_expressed_df,
+  annotation = anno_filter,
+  individual_label = NULL,
+  which_gene = query_genes_ensg$ensembl_gene_id[i], 
+  labels = "",
+  xlims = c(1,14), ylims = NULL,
+  gene_symbols = gene_symbols)
+plot_density_overlay(
+  molecules = molecules_final_df,
+  annotation = anno_filter,
+  individual_label = NULL,
+  which_gene = query_genes_ensg$ensembl_gene_id[i], 
+  labels = "",
+  xlims = c(1,14), ylims = NULL,
+  gene_symbols = gene_symbols)
+}
+```
+
+
+
+
+## Output some results
+
+
+```{r, eval = F}
+gene_ind <- which(rownames(ENSG_cv[[ind]]) %in% rownames(expressed_cv[[ind]]))
+pdf("figure/cv-adjusted-summary-pois-expressed.Rmd/density-high-mad-expressed.pdf",
+    height = 12, width =8)
+par(mfrow = c(5,4))
+for (i in 1:100) {
+  plot_density_overlay(molecules = molecules_final_df*molecules_expressed_df,
+               annotation = anno_filter,
+               individual_label = NULL,
+               which_gene = rownames(expressed_dm)[
+                 which(rank(mad_expressed) > length(mad_expressed) - 100)][i], 
+               labels = "",
+               xlims = c(1,14), 
+               ylims = NULL,
+               gene_symbols = gene_symbols)
+}
+dev.off()
+```
+
+
+
+
+## Session information
+
+```{r info}
+sessionInfo()
+```
