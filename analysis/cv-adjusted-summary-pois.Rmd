@@ -1,7 +1,7 @@
 ---
 title: "Cell-to-cell variation analysis: noisy genes"
 author: "Joyce Hsiao"
-date: 2016-02-22  
+date: 2016-02-23  
 ---
 
 **Last updated:** `r Sys.Date()`
@@ -93,6 +93,13 @@ pluripotency_genes <- read.table("../data/pluripotency-genes.txt",
 
 
 
+Load CV results of all cells
+
+```{r}
+load("rda/cv-adjusted-summary-pois-expressed/cv.rda")
+```
+
+
 
 ## Compute DM vlaues (distance-from-the-median)
 
@@ -103,24 +110,29 @@ pluripotency_genes <- read.table("../data/pluripotency-genes.txt",
 deviation of adjusted CVs.    
 
 
-```{r load-functions-for-computing-cv}
+```{r, include = FALSE, echo = FALSE, eval = FALSE}
+# Save the cv values to local repository
+file_name <- "rda/cv-adjusted-summary-pois-expressed/cv.rda"
+if (file.exists(file_name)) {
+  load("rda/cv-adjusted-summary-pois-expressed/cv.rda")
+} else {
+
+# load functions for computing CVs
 source("../code/cv-functions.r")
-```
 
-Compute individual CVs.
-
-```{r compute-cv}
+# Compute individual CVs.
 ENSG_cv <- compute_cv(log2counts = molecules_final,
                       grouping_vector = anno_filter$individual)
-```
 
-Adjust CVs for mean dependency.
-
-```{r adjust-cv}
+# Adjust CVs for mean dependency.
 ENSG_cv_adj <- normalize_cv(group_cv = ENSG_cv, 
                             log2counts = molecules_final, 
                             anno = anno_filter)
+save(ENSG_cv_adj, ENSG_cv,
+     file =  "rda/cv-adjusted-summary-pois-expressed/cv.rda")
+}
 ```
+
 
 
 ### Sanity-check plots. 
@@ -231,7 +243,6 @@ ggplot(data.frame(do.call(rbind, ENSG_cv_adj),
   labs(x = "log10 average gene expression level",
        y = "DM values")
 ```
-
 
 
 
@@ -395,6 +406,7 @@ top1000DM_genes <-
        NA19239 = genes[ which( rank(ENSG_cv_adj$NA19239$log10cv2_adj) 
                                > length(genes) - 1000 ) ],
        stringsAsFactors = FALSE)
+
 # write the gene names out to a text file,
 # then copy and paste to GO Consortium interface
 for (ind in c("NA19098", "NA19101", "NA19239")) {
@@ -504,43 +516,32 @@ go_NA19239_sig$term_name
 
 
 
-##### Genes associated with the GO terms
+*Why is there so many more GO terms in NA19239 than the other two individuals?
 
-*NA19098*
+*[Chunk not evaluated]*
+```{r, eval = FALSE}
+top1000DM_genes <-
+  data.frame(NA19098 = genes[ which( rank(ENSG_cv_adj$NA19098$log10cv2_adj) 
+                               > length(genes) - 1000 ) ],
+       NA19101 = genes[ which( rank(ENSG_cv_adj$NA19101$log10cv2_adj) 
+                               > length(genes) - 1000 ) ],
+       NA19239 = genes[ which( rank(ENSG_cv_adj$NA19239$log10cv2_adj) 
+                               > length(genes) - 1000 ) ],
+       stringsAsFactors = FALSE)
 
-```{r}
-library(mygene)
-#go_NA19098_sig$term_name
-go_NA19098_genes <- getGenes(gsub(";", ",",
-                    as.character(go_NA19098_sig$members_input_overlap_geneids)))
-go_NA19098_genes <- go_NA19098_genes[!duplicated(go_NA19098_genes[ , "symbol"]), ]
-kable(data.frame(symbol = go_NA19098_genes[ ,"symbol"],
-                 name = go_NA19098_genes[,"name"]) )
-```
+par(mfrow = c(2,2))
+boxplot(cbind(ENSG_cv_adj$NA19101$log10cv2_adj[which( rank(ENSG_cv_adj$NA19101$log10cv2_adj) 
+                               > length(genes) - 1000 )],
+              ENSG_cv_adj$NA19239$log10cv2_adj[which( rank(ENSG_cv_adj$NA19239$log10cv2_adj) 
+                               > length(genes) - 1000 )]) )
+title(main = "adjusted CV")
 
+boxplot(
+  cbind(ENSG_cv_adj$NA19101$mean[ which( rank(ENSG_cv_adj$NA19101$log10cv2_adj)
+                                        > length(genes) - 1000 )],
+        ENSG_cv_adj$NA19239$mean[which( rank(ENSG_cv_adj$NA19239$log10cv2_adj) 
+                               > length(genes) - 1000 )]) )
 
-
-*NA19101*
-
-```{r}
-#go_NA19101_sig$term_name
-go_NA19101_genes <- getGenes(gsub(";", ",",
-                    as.character(go_NA19101_sig$members_input_overlap_geneids)))
-go_NA19101_genes <- go_NA19101_genes[!duplicated(go_NA19101_genes[ , "symbol"]), ]
-kable(data.frame(symbol = go_NA19101_genes[ ,"symbol"],
-                 name = go_NA19101_genes[,"name"]) )
-```
-
-
-*NA19239*
-
-```{r}
-#go_NA19239_sig$term_name
-go_NA19239_genes <- getGenes(gsub(";", ",",
-                    as.character(go_NA19239_sig$members_input_overlap_geneids)))
-go_NA19239_genes <- go_NA19239_genes[!duplicated(go_NA19239_genes[ , "symbol"]), ]
-kable(data.frame(symbol = go_NA19239_genes[ ,"symbol"],
-                 name = go_NA19239_genes[,"name"]) )
 ```
 
 
@@ -561,10 +562,10 @@ shared_venn <- gplots::venn(
 
 shared_genes <- attr(shared_venn, "intersections")[['111']]
 
-write.table(shared_genes,
-            file = ("../data/top-1000-dm-shared.txt"),
-            sep = "/t", quote = FALSE,
-            col.names = FALSE, row.names = FALSE)
+# write.table(shared_genes,
+#             file = ("../data/top-1000-dm-shared.txt"),
+#             sep = "/t", quote = FALSE,
+#            col.names = FALSE, row.names = FALSE)
 ```
 
 
@@ -580,15 +581,12 @@ go_top_shared <- read.table("../data/go-cpdb-top-1000-shared.tab",
                          header = TRUE)
 go_top_shared <- go_top_shared[go_top_shared$q.value < .1, ]
 go_top_shared$term_name
-```
 
-
-```{r}
-go_top_shared_genes <- getGenes(gsub(";", ",",
-                    as.character(go_top_shared$members_input_overlap_geneids)))
-go_top_shared_genes <- go_top_shared_genes[!duplicated(go_top_shared_genes[ , "symbol"]), ]
-kable(data.frame(symbol = go_top_shared_genes[ ,"symbol"],
-                 name = go_top_shared_genes[,"name"]) )
+# go_top_shared_genes <- getGenes(gsub(";", ",",
+#                     as.character(go_top_shared$members_input_overlap_geneids)))
+# go_top_shared_genes <- go_top_shared_genes[!duplicated(go_top_shared_genes[ , "symbol"]), ]
+# kable(data.frame(symbol = go_top_shared_genes[ ,"symbol"],
+#                  name = go_top_shared_genes[,"name"]) )
 ```
 
 
@@ -609,26 +607,45 @@ mad <- rowMedians( abs( dm_matrix - rowMedians(dm_matrix) ) )
 
 ### Top 100 ranked genes by MAD. 
 
+
+### Over-represntation analysis (CPDB)
+
+ConsensusPATHDB-Human was used to perform GO over-representation analysis.
+
+Look up top 100 genes in MAD values
+
 ```{r}
-ggplot(data.frame(do.call(rbind, ENSG_cv_adj),
-                  dm = c(ENSG_cv_adj$NA19098$log10cv2_adj, 
-                         ENSG_cv_adj$NA19101$log10cv2_adj, 
-                         ENSG_cv_adj$NA19239$log10cv2_adj) ),
-       aes(x = log10(mean), y = dm )) +
-  geom_point(aes(col = group), cex = 1.2) + facet_wrap( ~ group) +
-  ggtitle("Top 1000 ranked genes by MAD") + 
-  geom_point(
-    data = subset(
-    data.frame(do.call(rbind, ENSG_cv_adj),
-               dm = c(ENSG_cv_adj$NA19098$log10cv2_adj, 
-                      ENSG_cv_adj$NA19101$log10cv2_adj, 
-                      ENSG_cv_adj$NA19239$log10cv2_adj)),                   
-                      rep(rank(mad) > length(genes) - 1000, times = 3) ), 
-             colour = "grey20", cex = 1.2 ) +
-  labs(x = "log10 Mean gene expression level",
-       y = "MAD")
+mad_genes <- rownames(molecules_final)[rank(mad) > 
+                                             (length(mad) - 100) ]
+#write.table(mad_genes,
+#            file = "../data/mad-genes.txt",
+#            sep = "\t", quote = FALSE,
+#            col.names = FALSE, row.names = FALSE)
 ```
 
+```{r}
+library(mygene)
+go_top <- read.table("../data/go-cpdb-all-top.tab",
+                         sep = "\t",
+                         header = TRUE)
+go_top <- go_top[go_top$q.value < .1, ]
+as.character(go_top$term_name)
+
+# go_top_genes <- getGenes(gsub(";", ",",
+#                     as.character(go_top$members_input_overlap_geneids)))
+# go_top_genes <- go_top_genes[!duplicated(go_top_genes[ , "symbol"]), ]
+# kable(data.frame(symbol =go_top_genes[ ,"symbol"],
+#                  name = go_top_genes[,"name"]) )
+```
+
+
+
+
+### Permutation-based test
+
+All computations are done in midway.
+
+Compute MAD based on permuted data.
 
 Export data to rda format and then transport them to midway for permutation-based
 test. 
@@ -645,15 +662,6 @@ if (!file.exists("rda/cv-adjusted-summary-pois/permute-cv-test.rda")) {
        file = "rda/cv-adjusted-summary-pois/permute-cv-test.rda")
 }
 ```
-
-
-
-
-### Permutation-based test
-
-All computations are done in midway.
-
-Compute MAD based on permuted data.
 
 *[Chunk not evaluated]*
 ```
@@ -709,12 +717,12 @@ genes_sig_mad <- genes_sig_mad[order(genes_sig_mad$mad_value,
                                      decreasing = TRUE), ]
 head(genes_sig_mad)
 
-if (!file.exists("../data/sig-permute-gene.txt")) {
-write.table(genes_sig_mad,
-            file = "../data/sig-permute-gene.txt",
-            col.names = TRUE, row.names = FALSE, sep = "\t",
-            quote = FALSE)
-}
+# if (!file.exists("../data/sig-permute-gene.txt")) {
+# write.table(genes_sig_mad,
+#             file = "../data/sig-permute-gene.txt",
+#             col.names = TRUE, row.names = FALSE, sep = "\t",
+#             quote = FALSE)
+# }
 ```
 
 
@@ -876,25 +884,9 @@ as.character(go_sig$term_name)
 
 
 
-##### Genes associated with the GO terms
-
-
-```{r}
-library(mygene)
-go_genes <- getGenes(gsub(";", ",",
-                    as.character(go_sig$members_input_overlap_geneids)))
-go_genes <- go_genes[!duplicated(go_genes[ , "symbol"]), ]
-kable(data.frame(symbol = go_genes[ ,"symbol"],
-                 name = go_genes[,"name"]) )
-```
-
-
-
-
-
 ## Top DM-ranked genes vs. differential genes
 
-Top genes
+Top genes in each individual
 
 ```{r}
 genes_top1000 <-data.frame(
@@ -920,22 +912,26 @@ genes_sig_mad$is_pluripotent <- genes_sig_mad$ensg %in% unlist(pluripotency_gene
 
 Which ones of significant genes are also in the top ranked genes
 
+94 genes
+
 ```{r}
 overlap_list <- lapply(c(1:3), function(ii) {
   as.character(genes_sig_mad$ensg)[
     which( as.character(genes_sig_mad$ensg) %in% genes_top1000[[ii]]) ]  
 })
+overlap_list
+
 length( c(overlap_list[[1]], overlap_list[[2]], overlap_list[[3]]) )
-length(unique( c(overlap_list[[1]], overlap_list[[2]], overlap_list[[3]]) ))
+
+length(Reduce("union",
+       list(overlap_list[[1]], overlap_list[[2]], overlap_list[[3]]) ) )
 
 write(unique( c(overlap_list[[1]], overlap_list[[2]], overlap_list[[3]]) ),
       file = "../data/overlap-sig-top-dm-genes", sep = "\t")
 ```
 
 
-
-### CPDB
-
+*CPDB
 
 ```{r}
 go_overlap <- read.table("../data/go-cpdb-sig-dm.tab",
@@ -944,19 +940,83 @@ go_overlap <- read.table("../data/go-cpdb-sig-dm.tab",
 go_overlap <- go_overlap[go_overlap$q.value < .1, ]
 go_overlap$term_name
 
-go_overlap_genes <- getGenes(gsub(";", ",",
-                    as.character(go_overlap$members_input_overlap_geneids)))
-go_overlap_genes <- go_overlap_genes[!duplicated(go_overlap_genes[ , "symbol"]), ]
-kable(data.frame(symbol =go_overlap_genes[ ,"symbol"],
-                 name = go_overlap_genes[,"name"]) )
+# go_overlap_genes <- getGenes(gsub(";", ",",
+#                     as.character(go_overlap$members_input_overlap_geneids)))
+# go_overlap_genes <- go_overlap_genes[!duplicated(go_overlap_genes[ , "symbol"]), ]
+# kable(data.frame(symbol =go_overlap_genes[ ,"symbol"],
+#                  name = go_overlap_genes[,"name"]) )
 ```
+
+
+
+
+## Top MAD genes vs. differential genes
+
+MAD genes in each individual
+
+```{r}
+par(mfrow = c(1,1))
+gplots::venn(list(
+  MAD = rownames(molecules_final)[rank(mad) > (length(mad) - 100)],
+  PERM = rownames(molecules_final)[which(permuted_pval$mad_pval == 0)] ) )
+```
+
+
+MAD in the top 1000 genes of each individual?
+
+```{r}
+MAD = rownames(molecules_final)[rank(mad) > (length(mad) - 100)]
+genes_top1000 <-data.frame(
+  NA19098 = genes[ which( rank(ENSG_cv_adj$NA19098$log10cv2_adj) 
+                               > length(genes) - 1000 ) ],
+  NA19101 = genes[ which( rank(ENSG_cv_adj$NA19101$log10cv2_adj) 
+                               > length(genes) - 1000 ) ],
+  NA19239 = genes[ which( rank(ENSG_cv_adj$NA19239$log10cv2_adj) 
+                               > length(genes) - 1000 ) ] ) 
+overlap_list <- lapply(c(1:3), function(ii) {
+  as.character(MAD)[
+    which( MAD %in% genes_top1000[[ii]]) ]  
+})
+length( c(overlap_list[[1]], overlap_list[[2]], overlap_list[[3]]) )
+length( unique(c(overlap_list[[1]], overlap_list[[2]], overlap_list[[3]])))
+length( Reduce("intersect",
+               list(overlap_list[[1]], overlap_list[[2]], overlap_list[[3]])))
+```
+
+
+
+Which ones of significant genes are also in the top MAD genes
+
+62
+
+```{r}
+overlap_list <- intersect(
+  rownames(molecules_final)[rank(mad) > (length(mad) - 100)],
+  rownames(molecules_final)[which(permuted_pval$mad_pval == 0)] )
+
+write(overlap_list,
+      file = "../data/overlap-sig-mad-dm-genes", sep = "\t")
+```
+
+
+
+
+### CPDB
 
 
 ```{r}
+go_overlap <- read.table("../data/go-cpdb-mad-dm.tab",
+                         sep = "\t", header = TRUE,
+                         stringsAsFactors = FALSE)
+go_overlap <- go_overlap[go_overlap$q.value < .1, ]
+go_overlap$term_name
 
+# go_overlap_genes <- getGenes(gsub(";", ",",
+#                     as.character(go_overlap$members_input_overlap_geneids)))
+# go_overlap_genes <- go_overlap_genes[!duplicated(go_overlap_genes[ , "symbol"]), ]
+# kable(data.frame(symbol =go_overlap_genes[ ,"symbol"],
+#                  name = go_overlap_genes[,"name"]) )
 ```
-
-
 ## Session information
 
 ```{r info}
