@@ -133,8 +133,8 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2016-02-02</p>
-<p><strong>Code version:</strong> 9501eaeb09744a248aad0a918db0e7671688586a</p>
+<p><strong>Last updated:</strong> 2016-02-27</p>
+<p><strong>Code version:</strong> e913fc0a3f954acf436955c670b4cdf1d052c075</p>
 <pre class="r"><code>library(&quot;biomaRt&quot;)
 library(&quot;dplyr&quot;)
 library(&quot;edgeR&quot;)
@@ -206,13 +206,13 @@ stopifnot(nrow(anno_filter) == ncol(reads_filter),
 <pre class="r"><code>table(anno_filter$individual, anno_filter$replicate)</code></pre>
 <pre><code>         
           r1 r2 r3
-  NA19098 85  0 56
-  NA19101 80 70 49
-  NA19239 73 68 79</code></pre>
+  NA19098 85  0 57
+  NA19101 80 70 51
+  NA19239 74 68 79</code></pre>
 <div id="filter-genes" class="section level3">
 <h3>Filter genes</h3>
 <p>We filter the genes to exlude both those that are lowly expressed or over-expressed (&gt;= 1024 molecules in a given cell).</p>
-<p>We identify the lower cutoff using the mean log<sub>2</sub> molecule counts per million (cpm) in the 560 high quality single cells.</p>
+<p>We identify the lower cutoff using the mean log<sub>2</sub> molecule counts per million (cpm) in the 564 high quality single cells.</p>
 <pre class="r"><code>molecules_cpm_mean &lt;- rowMeans(cpm(molecules_filter, log = TRUE))
 hist(molecules_cpm_mean, xlab = &quot;Mean log2 molecule cpm in single cells&quot;,
      ylab = &quot;Number of genes&quot;, main = &quot;Identifying expression cutoff&quot;)
@@ -220,13 +220,13 @@ lower_exp_cutoff &lt;- 2
 abline(v = lower_exp_cutoff, col = &quot;red&quot;)</code></pre>
 <p><img src="figure/filter.Rmd/identify-lower-expression-cutoff-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>genes_pass_filter &lt;- rownames(molecules_filter)[molecules_cpm_mean &gt; lower_exp_cutoff]</code></pre>
-<p>12240 genes have a mean log<sub>2</sub> molecule cpm greater than 2, including 43 ERCC genes.</p>
+<p>13112 genes have a mean log<sub>2</sub> molecule cpm greater than 2, including 48 ERCC genes.</p>
 <p>Next we identify any genes which have greater than 1024 molecules in any given single cell. These are above our theoretical maximum number of UMIs (it can happen when a highly expressed gene as multiple start sites), and thus we cannot correct them for the <a href="cpm.html#correct-for-collision-probability">collision probability</a>.</p>
 <pre class="r"><code>overexpressed_rows &lt;- apply(molecules_filter, 1, function(x) any(x &gt;= 1024))
 overexpressed_genes &lt;- rownames(molecules_filter)[overexpressed_rows]
 overexpressed_genes</code></pre>
-<pre><code>[1] &quot;ENSG00000198888&quot; &quot;ENSG00000198804&quot; &quot;ENSG00000198712&quot; &quot;ENSG00000198938&quot;
-[5] &quot;ENSG00000198886&quot;</code></pre>
+<pre><code>[1] &quot;ENSG00000198888&quot; &quot;ENSG00000198804&quot; &quot;ENSG00000198712&quot; &quot;ENSG00000198899&quot;
+[5] &quot;ENSG00000198938&quot; &quot;ENSG00000198886&quot;</code></pre>
 <pre class="r"><code>ensembl &lt;- useMart(host = &quot;grch37.ensembl.org&quot;,
                    biomart = &quot;ENSEMBL_MART_ENSEMBL&quot;,
                    dataset = &quot;hsapiens_gene_ensembl&quot;)
@@ -242,17 +242,19 @@ overexpressed_genes_info</code></pre>
 2 ENSG00000198804              MT             MT-CO1                1
 3 ENSG00000198886              MT             MT-ND4                1
 4 ENSG00000198888              MT             MT-ND1                1
-5 ENSG00000198938              MT             MT-CO3                1
+5 ENSG00000198899              MT            MT-ATP6                1
+6 ENSG00000198938              MT             MT-CO3                1
                                                                      description
 1  mitochondrially encoded cytochrome c oxidase II [Source:HGNC Symbol;Acc:7421]
 2   mitochondrially encoded cytochrome c oxidase I [Source:HGNC Symbol;Acc:7419]
 3     mitochondrially encoded NADH dehydrogenase 4 [Source:HGNC Symbol;Acc:7459]
 4     mitochondrially encoded NADH dehydrogenase 1 [Source:HGNC Symbol;Acc:7455]
-5 mitochondrially encoded cytochrome c oxidase III [Source:HGNC Symbol;Acc:7422]</code></pre>
-<p>5 genes have molecule counts greater than or equal to 1024 in at least one single cell, which includes 0 ERCC control genes.</p>
+5           mitochondrially encoded ATP synthase 6 [Source:HGNC Symbol;Acc:7414]
+6 mitochondrially encoded cytochrome c oxidase III [Source:HGNC Symbol;Acc:7422]</code></pre>
+<p>6 genes have molecule counts greater than or equal to 1024 in at least one single cell, which includes 0 ERCC control genes.</p>
 <p>Update the list of genes passing the filters.</p>
 <pre class="r"><code>genes_pass_filter &lt;- setdiff(genes_pass_filter, overexpressed_genes)</code></pre>
-<p>Filter the data to only include the subset of 12235 genes which pass the lower and upper expression cutoffs. This subset includes 43 ERCC genes.</p>
+<p>Filter the data to only include the subset of 13106 genes which pass the lower and upper expression cutoffs. This subset includes 48 ERCC genes.</p>
 <pre class="r"><code>reads_filter &lt;- reads_filter[rownames(reads_filter) %in% genes_pass_filter, ]
 molecules_filter &lt;- molecules_filter[rownames(molecules_filter) %in% genes_pass_filter, ]
 reads_bulk_filter &lt;- reads_bulk[rownames(reads_bulk) %in% genes_pass_filter, ]
@@ -285,7 +287,11 @@ pca_molecules_filter_plot &lt;- plot_pca(pca_molecules_filter$PCs, explained = p
   labs(title = &quot;Filtered raw molecules for single cells&quot;)
 pca_molecules_filter_plot</code></pre>
 <p><img src="figure/filter.Rmd/pca-molecules-filter-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>pca_reads_bulk_filter &lt;- run_pca(reads_bulk_filter)
+<p>Because we start with the <a href="http://jdblischak.github.io/singleCellSeq/analysis/prepare-counts.html#observed-genes">intersection of observed genes in the single cell or bulk samples</a> and then the expression cutoff is based on the expresssion in the single cells, it is possible that a gene is not observed at all in the bulk samples. This causes an error with the PCA because that gene is invariant, so they are filtered before performing PCA.</p>
+<pre class="r"><code>reads_bulk_zeros &lt;- rowSums(reads_bulk_filter) == 0
+rownames(reads_bulk_filter)[reads_bulk_zeros]</code></pre>
+<pre><code>[1] &quot;ERCC-00048&quot;</code></pre>
+<pre class="r"><code>pca_reads_bulk_filter &lt;- run_pca(reads_bulk_filter[!reads_bulk_zeros, ])
 pca_reads_bulk_filter_plot &lt;- plot_pca(pca_reads_bulk_filter$PCs, explained = pca_reads_bulk_filter$explained,
          metadata = anno_bulk, color = &quot;individual&quot;,
          shape = &quot;replicate&quot;) +

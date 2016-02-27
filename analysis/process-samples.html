@@ -142,8 +142,8 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2016-02-19</p>
-<p><strong>Code version:</strong> a82b08d63e9164bb57307a210fd5ac09189f61f2</p>
+<p><strong>Last updated:</strong> 2016-02-27</p>
+<p><strong>Code version:</strong> e913fc0a3f954acf436955c670b4cdf1d052c075</p>
 <p>All processing scripts were run from the data directory.</p>
 <pre class="bash"><code>cd /mnt/gluster/data/internal_supp/singleCellSeq</code></pre>
 <p>The raw fastq files were write-protected to avoid accidental deletion.</p>
@@ -189,11 +189,11 @@ grep -w failure ~/log/qc.sh/* | wc -l</code></pre>
 </div>
 <div id="map-to-genome" class="section level2">
 <h2>Map to genome</h2>
-<p><a href="https://github.com/jdblischak/singleCellSeq/blob/master/code/map-subread.sh">map-subread.sh</a> maps the reads to the combined genome described above. We used <a href="http://sourceforge.net/projects/subread/files/subread-1.5.0-p1/">Subread version 1.5.0-p1</a> with the default thresholds and reporting only uniquely mapping reads (flag <code>-u</code>). Output BAM files are written to the directory <code>bam</code>.</p>
-<pre class="bash"><code>submit-array.sh map-subread.sh 12g sickle/*fastq.gz</code></pre>
+<p><a href="https://github.com/jdblischak/singleCellSeq/blob/master/code/map-subjunc.sh">map-subjunc.sh</a> maps the reads to the combined genome described above. We use Subjunc to ensure precise mapping of the 5’ end of the read. This is necessary because the combination of the 5’ start position and the UMI sequence are used to convert reads to molecules. We used <a href="http://sourceforge.net/projects/subread/files/subread-1.5.0-p1/">Subread version 1.5.0-p1</a> with the default thresholds and reporting only uniquely mapping reads (flag <code>-u</code>). Output BAM files are written to the directory <code>bam</code>.</p>
+<pre class="bash"><code>submit-array.sh map-subjunc.sh 12g sickle/*fastq.gz</code></pre>
 <pre class="bash"><code>ls bam/*bam | wc -l
-grep -w success ~/log/map-subread.sh/* | wc -l
-grep -w failure ~/log/map-subread.sh/* | wc -l</code></pre>
+grep -w success ~/log/map-subjunc.sh/* | wc -l
+grep -w failure ~/log/map-subjunc.sh/* | wc -l</code></pre>
 </div>
 <div id="process-bam-files" class="section level2">
 <h2>Process bam files</h2>
@@ -221,7 +221,7 @@ do
       do
         ID=`printf &quot;%s.%s.%s%02d\n&quot; $IND $REP $ROW $COL`
         echo $ID
-        echo &quot;samtools merge bam-combined/$ID.trim.sickle.sorted.combined.bam bam-processed/$ID*trim.sickle.sorted.bam&quot; | qsub -l h_vmem=4g -N $ROW$COL.$IND.$REP.combine -cwd -o ~/log/combine.sh -j y -V
+        echo &quot;samtools merge bam-combined/$ID.trim.sickle.sorted.combined.bam bam-processed/$ID*trim.sickle.sorted.bam&quot; | qsub -l h_vmem=4g -N $ROW$COL.$IND.$REP.combine -cwd -o ~/log/combine -j y -V
       done
     done
   done
