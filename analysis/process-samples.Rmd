@@ -104,21 +104,23 @@ grep -w failure ~/log/qc.sh/* | wc -l
 
 ## Map to genome
 
-[map-subread.sh][] maps the reads to the combined genome described above.
+[map-subjunc.sh][] maps the reads to the combined genome described above.
+We use Subjunc to ensure precise mapping of the 5' end of the read.
+This is necessary because the combination of the 5' start position and the UMI sequence are used to convert reads to molecules.
 We used [Subread version 1.5.0-p1][subread] with the default thresholds and reporting only uniquely mapping reads (flag `-u`).
 Output BAM files are written to the directory `bam`.
 
 ```bash
-submit-array.sh map-subread.sh 12g sickle/*fastq.gz
+submit-array.sh map-subjunc.sh 12g sickle/*fastq.gz
 ```
 
-[map-subread.sh]: https://github.com/jdblischak/singleCellSeq/blob/master/code/map-subread.sh
+[map-subjunc.sh]: https://github.com/jdblischak/singleCellSeq/blob/master/code/map-subjunc.sh
 [subread]: http://sourceforge.net/projects/subread/files/subread-1.5.0-p1/
 
 ```bash
 ls bam/*bam | wc -l
-grep -w success ~/log/map-subread.sh/* | wc -l
-grep -w failure ~/log/map-subread.sh/* | wc -l
+grep -w success ~/log/map-subjunc.sh/* | wc -l
+grep -w failure ~/log/map-subjunc.sh/* | wc -l
 ```
 
 ## Process bam files
@@ -165,7 +167,7 @@ do
       do
         ID=`printf "%s.%s.%s%02d\n" $IND $REP $ROW $COL`
         echo $ID
-        echo "samtools merge bam-combined/$ID.trim.sickle.sorted.combined.bam bam-processed/$ID*trim.sickle.sorted.bam" | qsub -l h_vmem=4g -N $ROW$COL.$IND.$REP.combine -cwd -o ~/log/combine.sh -j y -V
+        echo "samtools merge bam-combined/$ID.trim.sickle.sorted.combined.bam bam-processed/$ID*trim.sickle.sorted.bam" | qsub -l h_vmem=4g -N $ROW$COL.$IND.$REP.combine -cwd -o ~/log/combine -j y -V
       done
     done
   done
