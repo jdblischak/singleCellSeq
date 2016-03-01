@@ -1,7 +1,7 @@
 ---
-title: "Cell-to-cell variation analysis: final"
+title: "Cell-to-cell variation analysis: summary"
 author: "Joyce Hsiao"
-date: 2016-02-22  
+date: 2016-02-29  
 ---
 
 **Last updated:** `r Sys.Date()`
@@ -20,7 +20,7 @@ opts_chunk$set(message = FALSE, warning = FALSE, eval = TRUE,
 
 ## Objective
 
-Analyze cell-to-cell heterogeneity in individual iPSC cell lines using the final filtered data (poisson transformation).
+This page documents analysis performed for the paper figures. 
 
 
 1. Gene expression noise
@@ -47,286 +47,97 @@ library("Humanzee")
 library("cowplot")
 library("MASS")
 library("matrixStats")
+source("../code/plotting-functions.R")
 ```
+
+
+
 
 
 ## Prepare data
 
-Input annotation of only QC-filtered single cells, with NA19098.r2 removed.
+We import molecule counts before standardizing and transformation and also log2-transformed counts after batch-correction. Biological variation analysis of the individuals is performed on the batch-corrected and log2-transformed counts. 
 
-```{r import-annotation}
+
+```{r import-data}
+# Import filtered annotations
 anno_filter <- read.table("../data/annotation-filter.txt", 
                       header = TRUE,
                       stringsAsFactors = FALSE)
-dim(anno_filter)
-head(anno_filter, 2)
-```
 
-Import molecule counts after filtering and before any correction.
-
-```{r import-molecule-counts-after-filtering}
+# Import filtered molecule counts
 molecules_filter <- read.table("../data/molecules-filter.txt",
                                header = TRUE, stringsAsFactors = FALSE)
 stopifnot(NROW(anno_filter) == NCOL(molecules_filter))
-```
 
-
-Import final processed molecule counts of endogeneous genes.
-
-```{r import-ensg-final-transformed-log2counts}
+# Import final processed molecule counts of endogeneous genes
 molecules_final <- read.table("../data/molecules-final.txt", 
                              header = TRUE, stringsAsFactors = FALSE)
-dim(molecules_final)
 stopifnot(NROW(anno_filter) == NCOL(molecules_final))
-```
 
-
-Import gene symbols.
-
-```{r}
+# Import gene symbols
 gene_symbols <- read.table(file = "../data/gene-info.txt", sep = "\t",
                            header = TRUE, stringsAsFactors = FALSE, quote = "")
+
+# Import cell-cycle gene list
+cell_cycle_genes <- read.table("../data/cellcyclegenes.txt",
+                               header = TRUE, sep = "\t",
+                               stringsAsFactors = FALSE)
+
+# Import pluripotency gene list
+
+pluripotency_genes <- read.table("../data/pluripotency-genes.txt",
+                               header = TRUE, sep = "\t",
+                               stringsAsFactors = FALSE)$To
+```
+
+
+Load CV results of all cells from [previous analysis][link]
+
+[link]: http://jdblischak.github.io/singleCellSeq/analysis/cv-adjusted-summary-pois.html
+
+```{r}
+load("../data/cv-all-cells.rda")
+load("../data/cv-expressed-cells.rda")
+```
+
+
+Compute a matrix of 0's and 1's indicating non-detected and detected cells, respectively.
+
+```{r}
+molecules_expressed <- molecules_filter
+molecules_expressed[which(molecules_filter > 0 , arr.ind = TRUE)] <- 1
+molecules_expressed <- as.matrix((molecules_expressed))
+```
+
+
+Take the gene subset included in the final data.
+
+```{r}
+genes_included <- rownames(molecules_final)
+
+molecules_filter_subset <- molecules_filter[
+  which(rownames(molecules_filter) %in% genes_included), ]
+
+molecules_final_subset <- molecules_final[
+  which(rownames(molecules_final) %in% genes_included), ]
+
+molecules_expressed_subset <- molecules_expressed[
+  which(rownames(molecules_expressed) %in% genes_included), ]
+
+# make a batch-corrected data set in which the non-detected cells are 
+# code as NA
+molecules_final_expressed_subset <- molecules_final_subset
+molecules_final_expressed_subset[which(molecules_expressed_subset == 0, arr.ind= TRUE)] <- NA
 ```
 
 
 
-## Helper functions
-
-*plot_density
-
-Per gene plot of overlaied density curves computed from individual cell lines.
-
-```{r overlapping-density-function}
-plot_density_overlay <- function(molecules_ENSG, annotation,
-                         individuals, batches = NULL,
-                         which_gene, labels, 
-                         xlims = NULL, ylims = NULL, gene_symbols) {
-  if_present <- which(rownames(molecules_ENSG) == which_gene)
-  if(length(if_present) == 0) {
-    stop("Gene not present in the data")
-  }
-  
-  library(scales)
-  library(broman)
-  crayon <- brocolors("crayon")
-  
-  if (is.null(batches)) {
-    individuals <- unique(annotation$individual)
-    colors <- c("Sunset Orange", "Tropical Rain Forest", "Denim")
-    dens <- lapply(1:3, function(per_individual) {
-      which_individual <- annotation$individual == individuals[per_individual]
-      density(unlist( molecules_ENSG[ rownames(molecules_ENSG) == which_gene, 
-                                      which_individual] ) )
-    })
-
-    if (is.null(xlims)) xlims <- range(sapply(dens, function(obj) obj$x))
-    if (is.null(ylims)) ylims <- range(sapply(dens, function(obj) obj$y))
-    
-    plot(dens[[1]], 
-         xlab = "log2 gene expression", main = "",
-         ylab = "Density", axes = F, lwd = 0, xlim = xlims, ylim = ylims)
-    for (i in 1:length(individuals)) {
-      polygon(dens[[i]], 
-              col = alpha(crayon[colors[i]], .4), 
-              border = "grey40")
-    }
-    axis(1); axis(2)
-    mtext(text = labels, side = 3)
-    title(main = with(gene_symbols, 
-                      external_gene_name[which(ensembl_gene_id == which_gene)]) )
-  }
-  
-  if (!is.null(batches)) {
-    
-    individuals <- unique(annotation$individual)
-    dens <- lapply(1:length(individuals), function(per_individual) {
-      which_individual <- annotation$individual == individuals[per_individual]
-      annotation_sub <- annotation[which_individual, ]
-      molecules_sub <- molecules_ENSG[ , which_individual]
-      replicates <- unique(annotation_sub$replicate)
-      dens_batch <- lapply(1:length(replicates), function(per_replicate) {
-        which_replicate <- annotation_sub$replicate == replicates[per_replicate]
-        density(unlist( molecules_sub[ rownames(molecules_ENSG) == which_gene, 
-                                       which_replicate] ) )
-      })
-    })
-    
-    if (is.null(xlims)) {
-      xlims <- range( c( sapply(dens, function(obj_individual) {
-        c( sapply(obj_individual, function(obj) {
-          range(obj$x)
-        }) )
-      }) ) )
-    }
-    if (is.null(ylims)) {
-      ylims <- range( c( sapply(dens, function(obj_individual) {
-        c( sapply(obj_individual, function(obj) {
-          range(obj$y)
-        }) )
-      }) ) )
-    }
-    
-    colors <- c("Sunset Orange", "Tropical Rain Forest", "Denim")
-    for (i in 1:length(dens)) {
-      
-      if (i == 1) col <- crayon["Sunset Orange"]
-      if (i == 2) col <- crayon["Tropical Rain Forest"]
-      if (i == 3) col <- crayon["Denim"]
- 
-      plot(dens[[i]][[1]], 
-           xlab = "log2 gene expression", main = "",
-           ylab = "Density", axes = F, lwd = 0, xlim = xlims, ylim = ylims)
-      for (j in 1:length(dens[[i]])) {
-        polygon(dens[[i]][[j]], 
-                col = alpha(col, .4), 
-                border = "grey40")
-      }
-    }
-      # first individual
-#       plot(dens[[1]][[1]], 
-#            xlab = "log2 gene expression", main = "",
-#            ylab = "Density", axes = F, lwd = 0, xlim = xlims, ylim = ylims)
-#       for (j in 1:length(dens[[1]]) ) {
-#         polygon(dens[[1]][[j]], col = alpha(crayon[colors[1]], .4), 
-#                 border = "grey40") }
-#       # second individuadl
-#       plot(dens[[2]][[1]], 
-#            xlab = "log2 gene expression", main = "",
-#            ylab = "Density", axes = F, lwd = 0, xlim = xlims, ylim = ylims)
-#       for (j in 1:length(dens[[2]]) ) {
-#         polygon(dens[[2]][[j]], col = alpha(crayon[colors[2]], .4), 
-#                 border = "grey40") }
-#       # third individual
-#       plot(dens[[3]][[1]], 
-#            xlab = "log2 gene expression", main = "",
-#            ylab = "Density", axes = F, lwd = 0, xlim = xlims, ylim = ylims)
-#       for (j in 1:length(dens[[3]]) ) {
-#         polygon(dens[[3]][[j]], col = alpha(crayon[colors[3]], .4), 
-#                 border = "grey40") }
-#       
-      
-        
-    axis(1); axis(2)
-    mtext(text = labels, side = 3)
-    title(main = with(gene_symbols, 
-                      external_gene_name[which(ensembl_gene_id == which_gene)]) )
-  }
-}
-```
 
 
 
 
 ## CV-mean plots
-
-From the existing RNAseq literature, we learn that gene counts follow an overdispersed poission distribution, i.e., a negative binomial distribution, and that the size of the overdispersion parameter may suggest the degree to which biological variation affects the underlying distribution (see the voom paper). 
-
-Here we examine visually the gene molecule counts for each individual cell lines, before any data transformation or batch-effect correction. Points marked blue are ERCC genes, based on the *observed counts* before data transformation and batch correction. 
-
-*Red line* is the lossy Poission line predicted based on ERCC genes. 
-
-*Blue line* is based on Poisson distribution.
-
-*Yellow line* plots a poisson distribution which standard deviation is 3 times the size of its mean - an overdispersed poisson distribution. 
-
-Note: We decided to not make this plot for the entire data set, i.e., across the three cell lines. The goal of these plots are to assess the variation across the three C1 plates collected for each individual cell line. 
-
-
-*Helper function
-
-```{r plot-mean-cv-poission}
-plot_poisson_cv <- function(molecules_ENSG = NULL, molecules_ERCC = NULL, 
-                            is_log2count = FALSE,
-                            include_observed_ERCC = TRUE,
-                            summary_stats = NULL,
-                            main) {
-    cbPalette <- c("#999999", "#0000FF", "#56B4E9", "#009E73", 
-                   "#F0E442", "#0072B2", "#D55E00", "#CC79A7")    
-    
-    library(matrixStats)
-    if (is_log2count == FALSE) {
-        molecules_ENSG <- as.matrix(molecules_ENSG)
-        molecules_ERCC <- as.matrix(molecules_ERCC)
-        # Remove genes with zero mean molecule count
-        which_ENSG_finite <- which(rowMeans(molecules_ENSG) > 0)
-        molecules_ENSG <- molecules_ENSG[which_ENSG_finite, ]
-        which_ERCC_finite <- which(rowMeans(molecules_ERCC) > 0)
-        molecules_ERCC <- molecules_ERCC[which_ERCC_finite, ]
-
-    }
-    if (is_log2count == TRUE) {
-        molecules_ENSG <- 2^as.matrix(molecules_ENSG)
-        molecules_ERCC <- 2^as.matrix(molecules_ERCC)
-    }
-
-    # defnine poisson function on a log x scale
-    ensg_cv   <- sqrt(rowVars(molecules_ENSG))/rowMeans(molecules_ENSG)
-    poisson.c <- function (x) {
-        (10^x)^(0.5)/(10^x) + min(ensg_cv)
-    }
-
-    # compute the lossy factor based on ERCC
-    ####   use maximum likelihood estimate
-    ####   dont use the points from ERCC.mol.mean < 0.1 to fit. 
-    ercc_mean <- rowMeans(molecules_ERCC)
-    ercc_cv   <- sqrt(rowVars(molecules_ERCC))/rowMeans(molecules_ERCC)
-
-
-    require(MASS)
-    glm_fit <- glm.nb(round(ercc_mean[log10(ercc_mean) > 0]) ~ 1)
-    dispersion <- summary.glm(glm_fit)$dispersion
-
-    # ERCC poisson
-    lossy.posson <- function (x) {
-        1/sqrt((10^x)/dispersion) + min(ercc_cv)
-    }
-
-    # 3 s.d. 
-    large_sd <- function (x) {
-        1/sqrt((10^x)/dispersion/3) + min(ensg_cv)
-    }
-     
-
-    if (include_observed_ERCC == TRUE) {
-    return(
-      ggplot(rbind(data.frame(means = log10(rowMeans(molecules_ENSG)),
-                      cvs = sqrt(rowVars(molecules_ENSG))/rowMeans(molecules_ENSG),
-                      gene_type = rep(1, NROW(molecules_ENSG) ) ),
-                 data.frame(means = log10(ercc_mean),
-                            cvs = ercc_cv,
-                            gene_type = rep(2, NROW(molecules_ERCC) ) ) ), 
-           aes(x = means, y = cvs, 
-               col = as.factor(gene_type) ) )  + 
-      geom_point(size = 2, alpha = 0.5) + 
-      stat_function(fun = poisson.c, col= "red")  + 
-      stat_function(fun = lossy.posson, col= "blue") + 
-      stat_function(fun = large_sd, col = "yellow") +
-      scale_colour_manual(values = cbPalette) + 
-      labs(x = "log10 average molecule count",
-           y ="Coefficient of variation (CV)",
-           title = main) 
-    )
-    }
-    if (include_observed_ERCC == FALSE) {
-    return(
-      ggplot(rbind(data.frame(means = log10(rowMeans(molecules_ENSG)),
-                      cvs = sqrt(rowVars(molecules_ENSG))/rowMeans(molecules_ENSG),
-                      gene_type = rep(1, NROW(molecules_ENSG))),
-                 data.frame(means = log10(ercc_mean),
-                            cvs = ercc_cv,
-                            gene_type = rep(2, NROW(molecules_ERCC)))), 
-           aes(x = means, y = cvs, col = as.factor(gene_type)) )  + 
-      geom_point(size = 2, alpha = 0.5) + 
-      stat_function(fun = poisson.c, col= "red")  + 
-      scale_colour_manual(values = cbPalette) + 
-      labs(x = "log10 average molecule count",
-           y ="Coefficient of variation (CV)",
-           title = main) 
-    )
-    }
-}
-```
-
 
 ```{r mean-cv-before-correction}
 theme_set(theme_bw(base_size = 8))
@@ -482,30 +293,52 @@ venn_cv_rank <- gplots::venn(
 Code for reproducing Figure 6c-f
 
 ```{r figure6c-density, fig.width=12, fig.height=4, eval=F}
-NANOG and ZFP42: pluripotent genes, we found no significant individual difference in the Deviation-from-the-Median (DM) for these two genes. We also examined the density plots of 
+NANOG and ZFP42: pluripotent genes, we found no significant individual difference in the expressed cells. But we found significant individual difference in the expressed cells foro DNMT3B and NR6A1. We also examined the density plots of 
 the other genes. See [here][link1].
 
 [link1]: http://jdblischak.github.io/singleCellSeq/analysis/compare-distribution-pluripotency.html
 
-I also picked two genes with significant individual differences.
-
-*[Chunk not evaluted]*
-```{r figure6-density, fig.width=8, fig.height=4, eval=F}
-query_genes <- c("NANOG", "ZFP42", "NLRP2", "FAT3")
+query_genes <- c("NANOG", "ZFP42", "DNMT3B", "NR6A1")
 query_genes_ensg <- gene_symbols[which(gene_symbols$external_gene_name %in% query_genes), ]
 query_genes_ensg <- query_genes_ensg[c(2,4,1,3), ]
 
 par(mfrow = c(1,4))
 for (i in 1:nrow(query_genes_ensg)) {
-  plot_density_overlay(molecules_ENSG = molecules_final,
-               annotation = anno_filter,
-               which_gene = query_genes_ensg$ensembl_gene_id[i], 
-    #                   labels = round(genes_plot$dist[i], 6),
-               labels = "",
-               xlims = c(1,14), ylims = NULL,
-               gene_symbols = gene_symbols)
+  plot_density_overlay(
+    molecules = molecules_final_expressed_subset,
+    annotation = anno_filter,
+    which_gene = query_genes_ensg$ensembl_gene_id[i], 
+    labels = "",
+    xlims = c(4,15), ylims = NULL,
+    gene_symbols = gene_symbols)
 }
+
+individuals <- unique(anno_filter$individual)
+library(scales)
+library(broman)
+crayon <- brocolors("crayon")
+cols <- c("Mango Tango", "Green", "Violet Blue")
+cols <- alpha(crayon[cols], .7)
+
+par(mfrow = c(1,4))
+for (i in 1:nrow(query_genes_ensg)) {
+  which_gene <- which(rownames(molecules_final_expressed_subset) %in%
+                      query_genes_ensg$ensembl_gene_id[i])
+  xlims <- range(unlist(molecules_final_expressed_subset[which_gene, ]),
+                 na.rm = TRUE)
+  plot(ecdf(unlist(molecules_final_expressed_subset[which_gene, 
+          anno_filter$individual == individuals[1] ] )),
+    main = gene_symbols$external_gene_name[which(gene_symbols$ensembl_gene_id %in% query_genes_ensg$ensembl_gene_id[i])], 
+    col = cols[1], xlim = xlims,
+    xlab = "log2 gene expression",
+    ylab = "Empirical cumulative distribution function")
+for (ii_individual in c(2:length(individuals))) {
+lines( ecdf( molecules_final_expressed_subset[which_gene, 
+          anno_filter$individual == individuals[ii_individual] ]), 
+          col = cols[ii_individual] ) 
+}  }
 ```
+
 
 Supplemental figure XX0.
 
