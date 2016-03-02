@@ -70,9 +70,19 @@ make_subsample <- function(counts, anno,
 #'
 compute_cv <- function(log2counts, grouping_vector) {
 
-  group_cv <- lapply( unique(grouping_vector), function(per_group) {
-    # Convert log2cpm to counts
-    counts_per_group <- 2^log2counts[ , grouping_vector == per_group ]
+  log2counts <- as.matrix(log2counts)
+
+  groups <- c(unique(grouping_vector), "all")
+
+  group_cv <- lapply( groups, function(per_group) {
+    if(per_group != "all") {
+      # Convert log2cpm to counts
+      counts_per_group <- 2^log2counts[ , grouping_vector == per_group ]
+    }
+    if (per_group == "all") {
+      # Convert log2cpm to counts
+      counts_per_group <- 2^log2counts
+    }
     mean_per_gene <- apply(counts_per_group, 1, mean, na.rm = TRUE)
     sd_per_gene <- apply(counts_per_group, 1, sd, na.rm = TRUE)
     cv_per_gene <- data.frame(mean = mean_per_gene,
@@ -83,7 +93,7 @@ compute_cv <- function(log2counts, grouping_vector) {
 
     return(cv_per_gene)
   })
-  names(group_cv) <- unique(grouping_vector)
+  names(group_cv) <- groups
   group_cv
 }
 
