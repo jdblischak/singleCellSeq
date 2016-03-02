@@ -261,6 +261,8 @@ cv_outlier_ensg
 
 ## Figures
 
+### Figure 6
+
 I made figure 6 in powerpoint. We can figure out later how to combine the venn diagrams and the density plots nicely...
 
 
@@ -289,6 +291,7 @@ venn_cv_rank <- gplots::venn(
        NA19239 = genes[ which( rank(ENSG_cv_adj$NA19239$log10cv2_adj) 
                                > length(genes) - 1000 ) ] ))
 ```
+
 
 Code for reproducing Figure 6c-f
 
@@ -337,8 +340,85 @@ lines( ecdf( molecules_final_expressed_subset[which_gene,
           anno_filter$individual == individuals[ii_individual] ]), 
           col = cols[ii_individual] ) 
 }  }
+
+
+## scatter plot
+
+par(mfrow = c(1,4))
+qqplot(x = unlist(molecules_final_expressed_subset[
+  which(rownames(molecules_final_expressed_subset) %in% query_genes_ensg$ensembl_gene_id[1]), anno_filter$individual == "NA19098"]),
+  y = unlist(molecules_final_expressed_subset[
+  which(rownames(molecules_final_expressed_subset) %in% query_genes_ensg$ensembl_gene_id[1]), anno_filter$individual == "NA19101"]),
+    xlim = c(5, 11), ylim = c(5,11))
+abline(0,1, col = "red")
+abline(1, 1, col = "red", lty = 2)
+
+qqplot(x = unlist(molecules_final_expressed_subset[
+  which(rownames(molecules_final_expressed_subset) %in% query_genes_ensg$ensembl_gene_id[2]), anno_filter$individual == "NA19098"]),
+  y = unlist(molecules_final_expressed_subset[
+  which(rownames(molecules_final_expressed_subset) %in% query_genes_ensg$ensembl_gene_id[2]), anno_filter$individual == "NA19101"]),
+    xlim = c(6,12), ylim = c(6,12))
+abline(0,1, col = "red")
+abline(1, 1, col = "red", lty = 2)
+
+qqplot(x = unlist(molecules_final_expressed_subset[
+  which(rownames(molecules_final_expressed_subset) %in% query_genes_ensg$ensembl_gene_id[3]), anno_filter$individual == "NA19098"]),
+  y = unlist(molecules_final_expressed_subset[
+  which(rownames(molecules_final_expressed_subset) %in% query_genes_ensg$ensembl_gene_id[3]), anno_filter$individual == "NA19101"]),
+    xlim = c(11, 14), ylim = c(11,14))
+abline(0,1, col = "red")
+abline(1, 1, col = "red", lty = 2)
+
+qqplot(x = unlist(molecules_final_expressed_subset[
+  which(rownames(molecules_final_expressed_subset) %in% query_genes_ensg$ensembl_gene_id[4]), anno_filter$individual == "NA19098"]),
+  y = unlist(molecules_final_expressed_subset[
+  which(rownames(molecules_final_expressed_subset) %in% query_genes_ensg$ensembl_gene_id[4]), anno_filter$individual == "NA19101"]),
+  xlim = c(10, 13), ylim = c(10,13))
+abline(0,1, col = "red")
+abline(1, 1, col = "red", lty = 2)
+
+
+## violin + boxplot 
+p_list <- lapply(1:4, function(i) {
+         which_gene <- which(rownames(molecules_final_expressed_subset) %in%
+            query_genes_ensg$ensembl_gene_id[i])
+        ggplot(
+          data.frame(counts = unlist(molecules_final_expressed_subset[which_gene, ]),
+                     ind = anno_filter$individual),
+          aes(x = as.factor(ind), y = counts, 
+              fill = as.factor(ind))) + 
+          geom_violin(alpha = 0.5) + 
+          geom_boxplot(alpha = 0.01, 
+                       width = 0.1, 
+                       position = position_dodge(width = 0.9)) +
+          xlab("") + ylab("log2 gene expression") +
+          ggtitle(query_genes_ensg$external_gene_name[i]) +
+          theme(legend.position = "none")
+})
+cowplot::plot_grid(p_list[[1]], p_list[[2]],
+                   p_list[[3]], p_list[[4]],
+                   ncol = 2)
+
+
+which_pluri <- rownames(molecules_final_expressed_subset) %in% pluripotency_genes
+
+df <- as.matrix(molecules_final_subset[which_pluri,])
+df[which(molecules_filter_subset[which_pluri,] == 0, arr.ind = TRUE)] <- 0
+gplots::heatmap.2(
+  df,
+  Colv = FALSE,
+  trace = "none",
+  dendro = "row",
+  labCol = "",
+  labRow = gene_symbols$external_gene_name[match(rownames(molecules_final_subset)[which_pluri], gene_symbols$ensembl_gene_id)],
+  col = rev(viridis::viridis(256)))
 ```
 
+
+
+
+
+### Supplemental figures
 
 Supplemental figure XX0.
 

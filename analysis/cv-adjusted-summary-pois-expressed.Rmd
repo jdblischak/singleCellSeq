@@ -1,7 +1,7 @@
 ---
 title: "Cell-to-cell variation analysis: expressed cells"
 author: "Joyce Hsiao"
-date: 2016-02-29  
+date: 2016-03-01  
 ---
 
 **Last updated:** `r Sys.Date()`
@@ -22,19 +22,19 @@ opts_chunk$set(message = FALSE, warning = FALSE, eval = TRUE,
 
 Compare expression variability among the expressed cells between individuals. Here are our observations:
 
-1. __CV-mean relationship__: The pattern among the expressed cells was different from the usual concave pattern we observe in scRNA-seq data when all cells are included or in  bulk RNA-seq data. Specifically, CV increases at low gene mean expression values and after some value of mean gene expression (quite low), it increases again.
+1. __CV-mean relationship__: This pattern in the expressed cells is different from the usual concave function we observe in bulk RNA-seq and scRNA-seq. Gene CVs increase as a function of gene abundance for genes with more than 50 percent of undetected cells; while, gene CVs decrease as a function of mean abundance, a pattern similar to previous studies for genes with 50 percent or less undetected cells.
 
-2. __Overlaps of individual top CV genes__: Similar to when including non-expressed cells, there are few common top genes across individuals (~100 genes). This suggests possible individual differences in expression variablity. 
+2. __Overlaps of individual top mean and top CV genes__: Similar to when including non-expressed cells, there are few common top CV genes across individuals (~100 genes) and many more common top genes across individuals ( > 800 genes). This suggests possible individual differences in expression variablity. 
 
-3. __Non-detected cells__: Overall, about 30% of the genes in each iPSC cell line had 50 percent or more non-detected cells. The number of detected cells is assoicated with the dynamic range of gene expression. Small number of detected cells limits the dynamic range of gene expression, which in turns associates with low expression level and limited variation. 
+3. __Compare CV of the expressed cells__: We found 680 genes with differential variation across the expressed cell. 
 
-4. __Differential testing__: We found 680 genes with differential variation across the expressed cell. These 
-
+4. __Compare mean abundance of the expressed cells__: Due to the large number of cells in each individual cell lines, more than 95% of the genes were found to have statistically significant differences between all three individuals. We identified differential expression genes between pairs of individuals under the conditions of q-value less than .01 in the test and also log2 fold change greater than 2: 5 genes in NA19098-NA19101, 6 in NA19098-NA19239, and 2 genes in NA19101-NA19239. *Note: The criterion for differential expression genes may be stringent, but the goal of this analysis is not to have a final say on the biological differences between the cell line, but rather to begin a conversatoin about the relationship between percent of undeteced cells and mean abundance*
 
 
 ## Set up
 
 ```{r, message=FALSE, warning=FALSE}
+library(knitr)
 library("data.table")
 library("dplyr")
 library("limma")
@@ -199,39 +199,6 @@ cowplot::plot_grid(
 ```
 
 
-sqrt(SD) vs. mean
-
-```{r}
-theme_set(theme_bw(base_size = 8))
-cowplot::plot_grid(
-    plot_poisson_cv_expressed(
-          expr_mean = expressed_cv$all$expr_mean, 
-          exprs_cv = (expressed_cv$all$expr_var)^(1/4), 
-          main = "All individauls, expressed cells",
-          ylab = "Variance^(1/4)") + 
-          theme(legend.position = "none"),
-    plot_poisson_cv_expressed(
-          expr_mean = expressed_cv$NA19098$expr_mean, 
-          exprs_cv = (expressed_cv$NA19098$expr_var)^(1/4), 
-          main = "All individauls, expressed cells",
-          ylab = "Variance^(1/4)") + 
-          theme(legend.position = "none"),
-    plot_poisson_cv_expressed(
-          expr_mean = expressed_cv$NA19101$expr_mean, 
-          exprs_cv = (expressed_cv$NA19101$expr_var)^(1/4), 
-          main = "All individauls, expressed cells",
-          ylab = "Variance^(1/4)") + 
-          theme(legend.position = "none"),
-    plot_poisson_cv_expressed(
-          expr_mean = expressed_cv$NA19239$expr_mean, 
-          exprs_cv = (expressed_cv$NA19239$expr_var)^(1/4), 
-          main = "All individauls, expressed cells",
-          ylab = "Variance^(1/4)") + 
-          theme(legend.position = "none"),
-  ncol = 2,
-  labels = LETTERS[1:4])
-```
-
 
 CV all cells vs. expressed cells
 
@@ -390,7 +357,7 @@ grid.arrange(gTree(children = venn.diagram(overlap_list_expressed,filename = NUL
 
 
 
-## Differential testing - permutation
+## Differential testing of adjusted CV - permutation
 
 Permutation analysis was done on midway. The following objects were exported to midway for the analysis.
 
@@ -466,7 +433,7 @@ write.table(sig_genes,
 
 
 
-## Enrichment analysis 
+## Enrichment analysis of differential CV genes
 
 I used CPDB go perform enrichment analysis. The enriched GO term are represented in WordCloud as follows.
 
@@ -491,6 +458,218 @@ kable(data.frame(symbol = go_top_genes[ ,"symbol"],
 ```
 
 
+## Differential testing of gene abundance
+
+We would like to compare abundance levels using the expression data that were already log-transformed, standardized, and batch-corrected. 
+
+
+```{r, fig.width=7, fig.height=3.5}
+# MA plot
+par(mfrow = c(1,2))
+plot(y = rowMeans(molecules_final_expressed_subset[,
+                   anno_filter$individual == "NA19098"], na.rm = TRUE) -
+         rowMeans(molecules_final_expressed_subset[,
+                   anno_filter$individual == "NA19101"], na.rm = TRUE),
+     x = rowMeans(molecules_final_expressed_subset[,
+                   anno_filter$individual != "NA19239"], na.rm = TRUE),
+     xlab = "Avg. log2 agene expression",
+     ylab = "log2 NA19098 - log2 NA19101",
+     main = "MA-plot: NA19098 vs. NA19101",
+     pch = 16, cex = 0.25)
+abline(h = 0, col = "red")
+
+
+# make a voom plot straight from our corrected counts
+fit <- limma::lmFit(as.matrix(molecules_final_expressed_subset),
+                     design = model.matrix(~ anno_filter$individual + 
+                                     anno_filter$replicate + 0) )
+sx <- fit$Amean 
+sy <- sqrt(fit$sigma)
+allzero <- rowSums(as.matrix(molecules_final_expressed_subset), na.rm = TRUE) == 0
+if (any(allzero)) {
+  sx <- sx[!allzero]
+  sy <- sy[!allzero]
+}
+l <- lowess(sx, sy, f = .5)
+plot(sx, sy, xlab = "log2 gene expression", 
+     ylab = "Sqrt( standard deviation )", 
+     pch = 16, cex = 0.25)
+title("voom: Mean-variance trend")
+lines(l, col = "red")
+```
+
+
+Fit a linear model to each gene, compute voom weights to account for CV as a convex function of gene abundance.
+
+
+```{r}
+file_name <- "../data/sig-mean-expressed.rda"
+if (file.exists(file_name)) {
+  load(file_name)  
+} else {
+  # make a voom plot straight from our corrected counts
+  fit <- limma::lmFit(as.matrix(molecules_final_expressed_subset),
+                       design = model.matrix(~ anno_filter$individual +
+                                       anno_filter$replicate + 0) )
+  sx <- fit$Amean 
+  sy <- sqrt(fit$sigma)
+  allzero <- rowSums(as.matrix(molecules_final_expressed_subset), na.rm = TRUE) == 0
+  if (any(allzero)) {
+    sx <- sx[!allzero]
+    sy <- sy[!allzero]
+  }
+  l <- lowess(sx, sy, f = .5)
+  # compute voom weights
+  f <- approxfun(l, rule = 2)
+  fitted.values <- fit$coef %*% t(fit$design)
+  fitted.logcount <- fitted.values
+  w <- 1/f(fitted.logcount)^4
+  dim(w) <- dim(fitted.logcount)
+  
+  # differential testing of mean abundance
+  design <-  model.matrix( ~ individual + replicate + 0,
+                 data = data.frame(individual = factor(anno_filter$individual),
+                                   replicate = factor(anno_filter$replicate)) )
+  fit_w <- lmFit(as.matrix(molecules_final_expressed_subset),
+                  design = design, weights = w)
+  cont.matrix <- makeContrasts(
+    NA19098_NA19101 = "individualNA19098 - individualNA19101",
+    NA19098_NA19239 = "individualNA19098 - individualNA19239",
+    NA19101_NA19239 = "individualNA19101 - individualNA19239",
+    levels = design)
+  fit_w <- contrasts.fit(fit_w, cont.matrix)
+  fit_w <- eBayes(fit_w)
+  
+  save(fit_w, file = file_name)
+}
+
+colnames(fit_w)
+names(fit_w)
+par(mfrow = c(2,2))
+for (i in 1:3) {
+  hist(fit_w$p.value[,i],
+       main = colnames(fit_w$p.value)[i],
+       xlab = "p-value")
+  mtext(side = 3, text = paste(sum(p.adjust(fit_w$p.value[,i], method = "fdr") < .01, na.rm = TRUE), "sig. genes (q <.01)"))
+}
+title(main = "Differential expression p-value",
+      outer = TRUE, line = -1)
+```
+
+
+
+Genes with large sig. difference and fold change more than 2.
+
+```{r}
+log2fc <- data.frame(
+  NA19098_NA19101 = rowMeans(molecules_final_expressed_subset[,anno_filter$individual == "NA19098"], na.rm = TRUE) - rowMeans(molecules_final_expressed_subset[,anno_filter$individual == "NA19101"], na.rm = TRUE),
+  NA19098_NA19239 = rowMeans(molecules_final_expressed_subset[,anno_filter$individual == "NA19098"], na.rm = TRUE) - rowMeans(molecules_final_expressed_subset[,anno_filter$individual == "NA19239"], na.rm = TRUE),
+  NA19101_NA19239 = rowMeans(molecules_final_expressed_subset[,anno_filter$individual == "NA19101"], na.rm = TRUE) - rowMeans(molecules_final_expressed_subset[,anno_filter$individual == "NA19239"], na.rm = TRUE) )
+```
+
+
+Density plots
+
+```{r}
+print(colnames(fit_w)[1])
+gene_elect <- rownames(fit_w)[which(p.adjust(fit_w$p.value[,1], method = "fdr") < .01 & abs(log2fc$NA19098_NA19101) < 1)]
+
+par(mfrow = c(3,2))
+for (i in 1:6) {
+  plot_density_overlay(
+    molecules = molecules_final_expressed_subset,
+    annotation = anno_filter,
+    which_gene = gene_elect[i], 
+    labels = "",
+    xlims = c(1,14), ylims = NULL,
+    gene_symbols = gene_symbols)
+}
+title(main = "NA19098_NA19101", outer = TRUE, line = -1)
+
+library(mygene)
+kable(getGenes(gene_elect, 
+         fields = c("symbol", "name", "summary")))
+```
+
+
+```{r, fig.width=7, fig.height=10}
+print(colnames(fit_w)[1])
+sum(p.adjust(fit_w$p.value[,1], method = "fdr") < .01 & abs(log2fc$NA19098_NA19101) > 2, na.rm = TRUE)
+gene_elect <- rownames(fit_w)[which(p.adjust(fit_w$p.value[,1], method = "fdr") < .01 & abs(log2fc$NA19098_NA19101) > 2)]
+
+par(mfrow = c(3,2))
+for (i in 1:length(gene_elect)) {
+  plot_density_overlay(
+    molecules = molecules_final_expressed_subset,
+    annotation = anno_filter,
+    which_gene = gene_elect[i], 
+    labels = "",
+    xlims = c(1,14), ylims = NULL,
+    gene_symbols = gene_symbols)
+}
+title(main = "NA19098_NA19101", outer = TRUE, line = -1)
+
+library(mygene)
+kable(getGenes(gene_elect, 
+         fields = c("symbol", "name", "summary")))
+```
+
+
+```{r, fig.width=7, fig.height=10}
+print(colnames(fit_w)[2])
+sum(p.adjust(fit_w$p.value[,2], method = "fdr") < .01 & abs(log2fc$NA19098_NA19239) > 2, na.rm = TRUE)
+
+gene_elect <- rownames(fit_w)[which(p.adjust(fit_w$p.value[,2], method = "fdr") < .01 & abs(log2fc$NA19098_NA19239) > 2)]
+
+par(mfrow = c(3,2))
+for (i in 1:length(gene_elect)) {
+  plot_density_overlay(
+    molecules = molecules_final_expressed_subset,
+    annotation = anno_filter,
+    which_gene = gene_elect[i], 
+    labels = "",
+    xlims = c(1,14), ylims = NULL,
+    gene_symbols = gene_symbols)
+}
+title(main = "NA19098_NA19239", outer = TRUE, line = -1)
+
+library(mygene)
+kable(getGenes(gene_elect, 
+         fields = c("symbol", "name", "summary")))
+```
+
+
+
+
+```{r, fig.width=7, fig.height=3.5}
+print(colnames(fit_w)[3])
+sum(p.adjust(fit_w$p.value[,3], method = "fdr") < .01 & abs(log2fc$NA19101_NA19239) > 2, na.rm = TRUE)
+
+gene_elect <- rownames(fit_w)[which(p.adjust(fit_w$p.value[,3], method = "fdr") < .01 & abs(log2fc$NA19101_NA19239) > 2)]
+
+par(mfrow = c(1,2))
+for (i in 1:length(gene_elect)) {
+  plot_density_overlay(
+    molecules = molecules_final_expressed_subset,
+    annotation = anno_filter,
+    which_gene = gene_elect[i], 
+    labels = "",
+    xlims = c(1,14), ylims = NULL,
+    gene_symbols = gene_symbols)
+}
+title(main = "NA19098_NA19239", outer = TRUE, line = -1)
+
+library(mygene)
+kable(getGenes(gene_elect, 
+         fields = c("symbol", "name", "summary")))
+```
+
+
+
+
+
+
+## Others
 
 ```{r, eval = FALSE, echo = FALSE, include = F}
 # output some results
