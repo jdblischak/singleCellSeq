@@ -171,3 +171,95 @@ plot_poisson_cv_expressed <-
     )
   }
 
+
+
+
+#' Coefficient of variation versus mean including ERCC genes
+plot_poisson_cv <- function(molecules_ENSG, molecules_ERCC,
+
+                            is_log2count = FALSE,
+                            include_observed_ERCC = TRUE,
+                            main){
+  cbPalette <- c("#999999", "#0000FF", "#56B4E9", "#009E73",
+                 "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+
+  library(matrixStats)
+  if (is_log2count == FALSE) {
+    molecules_ENSG <- as.matrix(molecules_ENSG)
+    molecules_ERCC <- as.matrix(molecules_ERCC)
+    # Remove genes with zero mean molecule count
+    which_ENSG_finite <- which(rowMeans(molecules_ENSG) > 0)
+    molecules_ENSG <- molecules_ENSG[which_ENSG_finite, ]
+    which_ERCC_finite <- which(rowMeans(molecules_ERCC) > 0)
+    molecules_ERCC <- molecules_ERCC[which_ERCC_finite, ]
+
+  }
+  if (is_log2count == TRUE) {
+    molecules_ENSG <- 2^as.matrix(molecules_ENSG)
+    molecules_ERCC <- 2^as.matrix(molecules_ERCC)
+  }
+
+  # defnine poisson function on a log x scale
+  ensg_cv   <- sqrt(rowVars(molecules_ENSG))/rowMeans(molecules_ENSG)
+  poisson.c <- function (x) {
+    (10^x)^(0.5)/(10^x) + min(ensg_cv)
+  }
+
+  # compute the lossy factor based on ERCC
+  ####   use maximum likelihood estimate
+  ####   dont use the points from ERCC.mol.mean < 0.1 to fit.
+  ercc_mean <- rowMeans(molecules_ERCC)
+  ercc_cv   <- sqrt(rowVars(molecules_ERCC))/rowMeans(molecules_ERCC)
+
+  require(MASS)
+  glm_fit <- glm.nb(round(ercc_mean[log10(ercc_mean) > 0]) ~ 1)
+  dispersion <- summary.glm(glm_fit)$dispersion
+
+  # ERCC poisson
+  lossy.posson <- function (x) {
+    1/sqrt((10^x)/dispersion) + min(ercc_cv)
+  }
+
+  # 3 s.d.
+  large_sd <- function (x) {
+    1/sqrt((10^x)/dispersion/3) + min(ensg_cv)
+  }
+
+  if (include_observed_ERCC == TRUE) {
+    return(
+      ggplot(rbind(data.frame(means = log10(rowMeans(molecules_ENSG)),
+                              cvs = sqrt(rowVars(molecules_ENSG))/rowMeans(molecules_ENSG),
+                              gene_type = rep(1, NROW(molecules_ENSG) ) ),
+                   data.frame(means = log10(ercc_mean),
+                              cvs = ercc_cv,
+                              gene_type = rep(2, NROW(molecules_ERCC) ) ) ),
+             aes(x = means, y = cvs,
+                 col = as.factor(gene_type) ) )  +
+        geom_point(size = 2, alpha = 0.5) +
+        stat_function(fun = poisson.c, col= "red")  +
+        stat_function(fun = lossy.posson, col= "blue") +
+        stat_function(fun = large_sd, col = "yellow") +
+        scale_colour_manual(values = cbPalette) +
+        labs(x = "log10 average molecule count",
+             y ="Coefficient of variation (CV)",
+             title = main)
+    )
+  }
+  if (include_observed_ERCC == FALSE) {
+    return(
+      ggplot(rbind(data.frame(means = log10(rowMeans(molecules_ENSG)),
+                              cvs = sqrt(rowVars(molecules_ENSG))/rowMeans(molecules_ENSG),
+                              gene_type = rep(1, NROW(molecules_ENSG))),
+                   data.frame(means = log10(ercc_mean),
+                              cvs = ercc_cv,
+                              gene_type = rep(2, NROW(molecules_ERCC)))),
+             aes(x = means, y = cvs, col = as.factor(gene_type)) )  +
+        geom_point(size = 2, alpha = 0.5) +
+        stat_function(fun = poisson.c, col= "red")  +
+        scale_colour_manual(values = cbPalette) +
+        labs(x = "log10 average molecule count",
+             y ="Coefficient of variation (CV)",
+             title = main)
+    )
+  }
+}
