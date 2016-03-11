@@ -208,7 +208,7 @@ plot(y = all_cv,
      x = log2(all_mn),
      cex = .9, col = alpha("grey40", .8), lwd = .6,
      xlab = "log2 gene mean abundance",
-     ylab = "CV",
+     ylab = "Coefficient of variation",
      main = "All cells, all indviduals",
      xlim = c(5,17), ylim = c(0,4.5))
 points(y = all_cv,
@@ -224,7 +224,7 @@ plot(y = expressed_cv_subset$all$expr_cv,
      x = log2(expressed_cv_subset$all$expr_mean),
      cex = .9, col = alpha("grey40", .8), lwd = .6,
      xlab = "log2 gene mean abundance",
-     ylab = "CV",
+     ylab = "Coefficient of variation",
      main = "Expressed cells, all individuals",
      xlim = c(5,17), ylim = c(0,4.5))
 points(y = expressed_cv_subset$all$expr_cv,
@@ -233,6 +233,15 @@ points(y = expressed_cv_subset$all$expr_cv,
                 cut(drop_out$all, breaks = seq(0, 1, by = .1),
                      include.lowest = TRUE)], 
        cex = .6, pch = 16)
+
+# make labels
+plot(x = rep(1,10), y = 1:10, 
+     pch = 15, cex = 2, axes = F, xlab = "", ylab = "",
+     col = (RColorBrewer::brewer.pal(10, "RdYlBu")), xlim = c(0, 13))
+text(labels = rev( levels(cut(drop_out$NA19098, breaks = seq(0, 1, by = .1),
+                     include.lowest = TRUE))) ,
+     y = 1:10, x = 3, cex = .7, adj = 0)
+title(main = "drop-out rate")
 ```
 
 
@@ -260,20 +269,15 @@ pdf("figure/cv-adjusted-summary-pois-final.Rmd/chosen-genes.pdf",
     height = 8, width = 8)
 par(mfrow = c(3,3))
 for (i in 1:nrow(query_genes_ensg)) {
-#   plot_density_overlay(
-#     molecules = molecules_final_subset,
-#     annotation = anno_filter,
-#     which_gene = query_genes_ensg$ensembl_gene_id[i],
-#     labels = round(drop_out$all[which(rownames(molecules_final_subset) %in% query_genes_ensg$ensembl_gene_id[i])], digits = 2),
-#     xlims = c(0,15), ylims = NULL,
-#     gene_symbols = gene_symbols)
+
   df <- do.call(cbind,
     lapply(unique(anno_filter$individual), function(ind) {
     table(molecules_filter_subset[which(rownames(molecules_final_expressed_subset) %in% query_genes_ensg$ensembl_gene[i]), anno_filter$individual == ind] == 0)
     }) )
   colnames(df) <- unique(anno_filter$individual)
   df <- t(t(df)/colSums(df))
-  barplot(df, col = c("grey40", "grey80"))
+  barplot(df, col = c("grey40", "grey80"),
+          ylab = "Proportion of detected cells")
 
   plot_density_overlay(
     molecules = molecules_final_expressed_subset,
@@ -290,11 +294,13 @@ for (i in 1:nrow(query_genes_ensg)) {
   cols <- alpha(crayon[cols], .7)
 
   barplot(height = abs(unlist(expressed_dm_subset[which(rownames(expressed_dm_subset) %in% query_genes_ensg$ensembl_gene_id[i]),])), col = cols,
-          ylim = c(0,.7), border = "white")
+          ylim = c(0,.7), border = "white",
+          ylab = "Absolute value of adjusted CV")
   abline(h = 0)
 }
 dev.off()
 
+  
 ```
 
 
