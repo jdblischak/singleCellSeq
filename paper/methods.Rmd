@@ -24,7 +24,7 @@ Using the standard staining script, the iPSCs were stained with StainAlive TRA-1
 The capture efficiency and TRA-1-60 staining were then inspected using the EVOS FL Cell Imaging System (ThermoFisher)(supplemental Table 2). 
 
 Immediately after imaging, reverse transcription and cDNA amplification were performed in the C1 system using the SMARTer PCR cDNA Synthesis kit (Clontech) and the Advantage 2 PCR kit (Clontech) according to the instructions in the Fluidigm user manual with minor changes to incorporate UMI labeling [@Islam2014].
-Specifically, the reverse transcription primer and the 1:50,000 Ambion® ERCC Spike-In Mix1 (Life Tech) were added to the lysis buffer, and the template-switching RNA oligos which contain the UMI (5-bp random sequence) were included in the reverse transcription mix. 
+Specifically, the reverse transcription primer and the 1:50,000 Ambion® ERCC Spike-In Mix1 (Life Tech) were added to the lysis buffer, and the template-switching RNA oligos which contain the UMI (5-bp random sequence) were included in the reverse transcription mix [@Islam2011; @Islam2012; @Islam2014]. 
 When the run finished, full-length, amplified, single-cell cDNA libraries were harvested in a total of approximately 13 ul C1 Harvesting Reagent and quantified using DNA High Sensitivity LabChip (Caliper). 
 The average yield of samples per C1 plate ranged from 1.26-1.88 ng per microliter (Sup. Table 1A).
 A bulk sample, a 40 ul aliquot of ~10,000 cells, was collected in parallel with each C1 chip using the same reaction mixes following the C1 protocol of "Tube Controls with Purified RNA" (PN 100-7168, Appendix A).
@@ -129,22 +129,22 @@ We standardized them to log~2~ cpm.
 
 Our last normalization step adjusts the transformed log~2~ gene expression levels for cell-to-cell correlation within each C1 plate. The algorithm mimics a method that was initially develops for adjusting within-replicate correlation in microarray data [@Smyth2005]. We assumed that for each gene $g$, cells that belong to the same batch $j$ are correlated, for batches $j = 1, \dots, 8$. The batch effect is specific to each C1 plate and is independent of biological variation across cell lines. 
 
-We then fit a linear mixed model for each gene $g$ that includes a fixed effect of individual cell lines and a random effect for within-batch variation attributed to cell-to-cell correlation within each C1 plate: 
+We fit a linear mixed model for each gene $g$ that includes a fixed effect of individual cell lines and a random effect for within-batch variation attributed to cell-to-cell correlation in each C1 plate: 
 
-$$ y_{g,ijk} = \mu_{g} + \alpha_{g,i} + b_{g,j} + \epsilon_{g,ijk}, $$
+$$ y_{g,ijk} = \mu_{g} + \alpha_{g,i} + b_{g,ij} + \epsilon_{g,ijk}, $$
 
-where $y_{g,ijk}$ denotes log~2~ counts-per-million (cpm) for gene $g$ in individual cell line $i$, batch $j$, and cell $k$, and $i = NA19098, NA19101, NA19239$, $j = 1, \dots, 8$, $k = 1, \dots, n_{g,j}$ with $n_{g,j}$ denotes the number of cells in batch $j$; $\mu_g$ describes gene-specific expression level across cells, $\alpha_{g,i}$ quantifies mean gene expression level for individual cell line $i$, $b_{g,j}$ models cell-to-cell correlation in batch $j$, and $\epsilon_{g,ijk}$ describes residual variation in gene expression levels. We assumed $b_{g,j}$ are independent and identically distributed with mean 0 and variance $\sigma^2_{g,b})$ for $j = 1, \dots, 8$.
+where $y_{g,ijk}$ denotes log~2~ counts-per-million (cpm) of gene $g$ in individual cell line $i$, replicate $j$, and cell $k$; $i = NA19098, NA19101, NA19239$, $j = 1, \dots, n_i$ with $n_i$ the number of replicates in individual $i$, $k = 1, \dots, n_{g,ij}$ with $n_{g,ij}$ the number of cells in individual $i$ replicate $j$. $\mu_g$ denote gene mean expression level across cells, $\alpha_{g,i}$ quantify individual effect in mean gene expression, $b_{g,ij}$ model replicate effect in mean expression level, which are assumed to be stochastic, independent, and identifically distributed with mean 0 and variance $\sigma^2_{g,b})$, finally $\epsilon_{g,ijk}$ describe residual variation in gene expression. 
 
-Next, we applied Least-Squared (LS) method and computed the batch-corrected expression as:
+Batch-corrected expression are computed as 
 
-$$ \widehat{y}_{g,ijk} = y_{g,ijk} - \widehat{b}_{g,j}, $$
+$$ \widehat{y}_{g,ijk} = y_{g,ijk} - \widehat{b}_{g,ij}, $$
 
-where $\widehat{b}_{g,j}$ is the LS estimate of batch-effect specific to replicate $j$. The computations in this step are performed with the gls.series function of the limma package [@limma].
+where $\widehat{b}_{g,ij}$ are the LS estimates. The computations in this step are done with the gls.series function of the limma package [@limma].
 
 
 ### Analysis of cell-to-cell transcriptional variation: calculating the measure of noise 
 
-We computed a measure of transcriptional variability noise that is independent of RNA abundance levels across individuals [@Kolodziejczyk2015, @Newman2006]. First, squared coefficients of variation (CVs) for each gene were computed for each individual and across cell lines, using molecule counts after collision correction and transformations. Then we computed the distance of individual-specific CVs to the rolling median of global CVs among genes that have similar RNA abundance levels. These transformed individual CV values are referred to our noise measure. We outline the computations as follows:
+We computed a measure of transcriptional variability noise that is independent of RNA abundance across individuals [@Kolodziejczyk2015, @Newman2006]. First, squared coefficients of variation (CVs) for each gene were computed for each individual and also across cell lines, using molecule counts after collision correction and transformations. Then we computed the distance of individual-specific CVs to the rolling median of global CVs among genes that have similar RNA abundance levels. These transformed individual CV values are referred to our noise measure. We outline the computations as follows:
 
 1. Compute squared CVs of molecule counts in individual cell lines and across individuals. 
 
@@ -158,9 +158,9 @@ We computed a measure of transcriptional variability noise that is independent o
 
 To identify differential DM between individuals, we computed median absolute deviation (MAD) - a robust and distribution-free dissimilarity measure for gene $g$: 
 
-$$ MAD_{g} = Median_{i= 1,2,3} \left| DM_{g,i} - Median{DM}_{g} \right|$$
+$$ MAD_{g} = Median_{i= 1,2,3} \left| DM_{g,i} - Median{DM}_{g} \right|. $$
 
-. Large values of $MAD_{g}$ suggest large deviation from the median of the DM values. We then computed permutation-based p-values for each gene based on 12,192 permutation - equals to the number of genes included in the filtered and transformed data. In each permutation, the cell line labels are shuffled between cells, and the permutation-based p-value is 
+Large values of $MAD_{g}$ suggest large deviation from the median of the DM values. We computed permutation-based p-values for each gene based on 12,192 permutation - the number of genes included in the filtered and batch-corrected data set. In each permutation, the cell line labels were shuffled between cells. The permutation-based p-value was computed as
 
 $$ \frac{1}{B} \sum_{B=1}^{12,192} \mathbb{I} \left( MAD_{g} > MAD_{g,B} \right),$$
 

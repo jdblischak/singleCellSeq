@@ -1,7 +1,7 @@
 ---
-title: "Cell-to-cell variation analysis: noisy genes"
+title: "Cell-to-cell variation analysis: noisy genes (all cells)"
 author: "Joyce Hsiao"
-date: 2016-02-23  
+date: 2016-02-26  
 ---
 
 **Last updated:** `r Sys.Date()`
@@ -17,11 +17,13 @@ opts_chunk$set(message = FALSE, warning = FALSE, eval = TRUE,
 ```
 
 
+## Background and some observations
 
-## Objective
+Preliminary investigation into expression noise at the transcriptional level. We looked at expression noise across all the cells, including the cells that were not detected (i.e., count = 0) in the experiment. The investigatino begins with coefficeint of variation - a popular measure for quantifying variation in the data. 
 
-Investigate noise in gene expression at gene-by-gene basis, defined by DM (distance to the median) - distance of each individual's coefficieint of variation to median coefficient of variation of genes at similar RNA abundance level.
+1. Computation of CV: We were interested in the variation in our batch-corrected data. But since these data are log2-transformed counts. We take 2 to the power of log-transformed counts and then compute the CV based on these corrected counts. 
 
+2. Corrected CV: Because in sequencing data, CVs are confounded with abundance levels, we performed a calculation that transformed each CV into a measure of deviation from the median of the CVs from the genes of similar abudance levels. 
 
 
 ## Set up
@@ -97,7 +99,7 @@ pluripotency_genes <- read.table("../data/pluripotency-genes.txt",
 Load CV results of all cells
 
 ```{r}
-load("rda/cv-adjusted-summary-pois-expressed/cv.rda")
+load("../data/cv.rda")
 ```
 
 
@@ -111,11 +113,10 @@ load("rda/cv-adjusted-summary-pois-expressed/cv.rda")
 deviation of adjusted CVs.    
 
 
-```{r, include = FALSE, echo = FALSE, eval = FALSE}
-# Save the cv values to local repository
-file_name <- "rda/cv-adjusted-summary-pois-expressed/cv.rda"
+```{r, include = FALSE, echo = FALSE, eval = TRUE}
+file_name <- "../data/cv-all-cells.rda"
 if (file.exists(file_name)) {
-  load("rda/cv-adjusted-summary-pois-expressed/cv.rda")
+  load(file_name)
 } else {
 
 # load functions for computing CVs
@@ -130,7 +131,7 @@ ENSG_cv_adj <- normalize_cv(group_cv = ENSG_cv,
                             log2counts = molecules_final, 
                             anno = anno_filter)
 save(ENSG_cv_adj, ENSG_cv,
-     file =  "rda/cv-adjusted-summary-pois-expressed/cv.rda")
+     file =  file_name)
 }
 ```
 
@@ -674,7 +675,7 @@ sbatch permuted-cv-compute-pval.sbatch
 Import permutation results.
 
 ```{r}
-load("../data/permuted-pval.rda")
+load("../data/permuted-pval-all.rda")
 sum(permuted_pval$mad_pval == 0)
 ```
 

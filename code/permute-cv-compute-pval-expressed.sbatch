@@ -1,8 +1,8 @@
 #!/bin/bash
 
-#SBATCH --job-name=permute-cv-test
-#SBATCH --output=permute-cv-test.out
-#SBATCH --error=permute-cv-test.err
+#SBATCH --job-name=permute-cv-compute-pval-expressed
+#SBATCH --output=permute-cv-compute-pval-expressed.out
+#SBATCH --error=permute-cv-compute-pval-expressed.err
 #SBATCH --time=36:00:00
 #SBATCH --mail-type=END,FAIL
 #SBATCH --mail-user=joycehsiao@uchicago.edu
@@ -13,5 +13,5 @@
 module add R/3.2
 module load R/3.2
 
-Rscript permute-cv-test.r
+Rscript permute-cv-compute-pval-expressed.r
 
