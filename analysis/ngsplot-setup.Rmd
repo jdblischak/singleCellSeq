@@ -31,8 +31,15 @@ ngsplot requires all the chromosomes names to either start with "chr" or not sta
 They do this to accomodate reads mapped to UCSC or Ensembl named chromosomes, but I found this [causes problems with mitochondrial reads][issue59].
 Because the ngsplot annotation uses the UCSC chromosome names like in my BAM files, I can overide this check, which I did by having the function `chrTag` always return `TRUE` (see [lib/coverage.r][]).
 
+The above worked when focusing on endogenous genes.
+For the ERCC, I provided my own custom BED file with the ERCC regions.
+Custom BED files get passed through the function [chromFormat][], which adds "chr" to the beginning of each chromosome name.
+One option would have been to have `chrTag` always return `FALSE`, but then the code would have to be edited by hand before running either the endogenous or ERCC gene analysis.
+Thus I simply disabled [chromFormat][] so that it does not add "chr" to the ERCC chromosome names.
+
 [issue59]: https://github.com/shenlab-sinai/ngsplot/issues/59
-[lib/coverage.r]: https://github.com/shenlab-sinai/ngsplot/blob/develop/lib/coverage.r#L544
+[lib/coverage.r]: https://github.com/shenlab-sinai/ngsplot/blob/b73f9194e792111fa44afa8bc873a2dd2639863d/lib/coverage.r#L544
+[chromFormat]: https://github.com/shenlab-sinai/ngsplot/blob/b73f9194e792111fa44afa8bc873a2dd2639863d/lib/genedb.r#L9
 
 ## Preparing the BAM files
 
@@ -46,14 +53,15 @@ Instead of using all genes, you can provide ngsplot with a list of Ensembl genes
 
 ### All filtered genes
 
-First I create a list of all endogenous genes that passed the expression filter.
+First I create a list of all genes that passed the expression filter,
+separate files for the endogenous and ERCC genes.
 
 Input filtered molecule counts.
 
 ```{r input-molecule-counts-filter}
 molecules_filter <- read.table("../data/molecules-filter.txt", header = TRUE,
                                stringsAsFactors = FALSE)
-# Remove ERCC
+# Endogenous
 molecules_filter_endo <- molecules_filter[grep("ENSG", rownames(molecules_filter)), ]
 cat(rownames(molecules_filter_endo),
     file = "../data/endogenous-filter.txt", sep = "\n")
@@ -63,10 +71,12 @@ cat(rownames(molecules_filter_endo),
 
 Next I create four gene lists corresponding to the quartiles of their mean expression level.
 
-```{r expression-quartiles}
+Endogenous genes
+
+```{r expression-quartiles-endo}
 mean_expr <- rowMeans(molecules_filter_endo)
 expr_q <- quantile(mean_expr)
-genes_by_quartile <- cut(mean_expr, breaks = expr_q)
+genes_by_quartile <- cut(mean_expr, breaks = expr_q, include.lowest = TRUE)
 # Purposely converting the factor to the underlying numeric representation
 genes_by_quartile <- as.numeric(genes_by_quartile)
 names(genes_by_quartile) <- names(mean_expr)
@@ -81,7 +91,7 @@ for (i in 1:4) {
 
 Next I create four gene lists corresponding to the quartiles of their maximum transcript length.
 
-```{r length-quartiles}
+```{r length-quartiles-endo}
 ensembl <- useMart(host = "grch37.ensembl.org",
                    biomart = "ENSEMBL_MART_ENSEMBL",
                    dataset = "hsapiens_gene_ensembl")
@@ -94,10 +104,10 @@ len_genes <- tapply(len_transcripts$transcript_length,
 stopifnot(rownames(molecules_filter_endo) %in% names(len_genes),
           nrow(molecules_filter_endo) == length(len_genes))
 len_q <- quantile(len_genes)
-genes_by_len <- cut(len_genes, breaks = len_q)
+genes_by_len <- cut(len_genes, breaks = len_q, include.lowest = TRUE)
 # Purposely converting the factor to the underlying numeric representation
 genes_by_len <- as.numeric(genes_by_len)
-names(genes_by_len) <- names(mean_expr)
+names(genes_by_len) <- names(len_genes)
 for (i in 1:4) {
   genes <- names(genes_by_len)[genes_by_len == i]
   q_fname <- paste0("../data/endogenous-filter-len-q", i, ".txt")
@@ -133,6 +143,101 @@ cat ../data/ngsplot-length.txt
 I wrote a Makefile, [make-ngsplot][], that runs the three configuration files for different features and strand specificity.
 
 [make-ngsplot]: https://github.com/jdblischak/singleCellSeq/tree/master/analysis/make-ngsplot
+
+## For the ERCC genes
+
+For the ERCC genes, I do the same as above.
+The main difference is that I need to create a BED file because the ERCC genes are not in the database.
+
+Import the SAF file of exons used with featureCounts.
+Filter to only include ERCC genes and convert to BED format.
+
+```{r input-ercc-saf}
+exons <- read.delim("../data/exons.saf", stringsAsFactors = FALSE)
+molecules_filter_ercc <- molecules_filter[grep("ERCC", rownames(molecules_filter)), ]
+exons_ercc <- exons[exons$GeneID %in% rownames(molecules_filter_ercc), ]
+ercc_bed <- data.frame(chr = exons_ercc$Chr,
+                       start = exons_ercc$Start - 1,
+                       end = exons_ercc$End,
+                       name = exons_ercc$GeneID,
+                       score = 0,
+                       strand = exons_ercc$Strand,
+                       stringsAsFactors = FALSE)
+```
+
+Filter the BED file to only include ERCC that passed the expression filter.
+
+```{r foramt-bed}
+ercc_bed_filter <- ercc_bed[ercc_bed$name %in% rownames(molecules_filter_ercc), ]
+```
+
+Save a file with all ERCC that passed the filter.
+
+```{r}
+write.table(ercc_bed_filter, file = "../data/ercc-filter.bed",
+            quote = FALSE, sep = "\t", row.names = FALSE, col.names = FALSE)
+```
+
+Split by expression level.
+
+```{r expression-quartiles-ercc}
+stopifnot(ercc_bed_filter$name == rownames(molecules_filter_ercc))
+mean_expr <- rowMeans(molecules_filter_ercc)
+expr_q <- quantile(mean_expr)
+genes_by_quartile <- cut(mean_expr, breaks = expr_q, include.lowest = TRUE)
+# Purposely converting the factor to the underlying numeric representation
+genes_by_quartile <- as.numeric(genes_by_quartile)
+names(genes_by_quartile) <- names(mean_expr)
+for (i in 1:4) {
+  genes <- names(genes_by_quartile)[genes_by_quartile == i]
+  q_fname <- paste0("../data/ercc-filter-q", i, ".bed")
+  write.table(ercc_bed_filter[ercc_bed_filter$name %in% genes, ], file = q_fname,
+              quote = FALSE, sep = "\t", row.names = FALSE, col.names = FALSE)
+}
+```
+
+Split by length.
+Because the coordinates are 0-based and the end position is exlusive, the length for the ERCC is just the end position.
+
+```{r length-quartiles-ercc}
+len_genes <- ercc_bed_filter$end
+names(len_genes) <- ercc_bed_filter$name
+stopifnot(rownames(molecules_filter_ercc) %in% names(len_genes),
+          nrow(molecules_filter_ercc) == length(len_genes))
+len_q <- quantile(len_genes)
+genes_by_len <- cut(len_genes, breaks = len_q, include.lowest = TRUE)
+# Purposely converting the factor to the underlying numeric representation
+genes_by_len <- as.numeric(genes_by_len)
+names(genes_by_len) <- names(len_genes)
+for (i in 1:4) {
+  genes <- names(genes_by_len)[genes_by_len == i]
+  q_fname <- paste0("../data/ercc-filter-len-q", i, ".bed")
+  write.table(ercc_bed_filter[ercc_bed_filter$name %in% genes, ], file = q_fname,
+              quote = FALSE, sep = "\t", row.names = FALSE, col.names = FALSE)  
+}
+```
+
+Made configuration files.
+
+```{r ngsplot-molecules-ercc, engine='bash'}
+cat ../data/ngsplot-molecules-ercc.txt
+```
+
+The second runs the BAM file for 19101 for different subsets of expression level.
+
+```{r ngsplot-expression-ercc, engine='bash'}
+cat ../data/ngsplot-expression-ercc.txt
+```
+
+The third runs the BAM file for 19101 for different subsets of gene length.
+
+```{r ngsplot-length-ercc, engine='bash'}
+cat ../data/ngsplot-length-ercc.txt
+```
+
+And made a similar Makefile: [make-ngsplot-ercc][].
+
+[make-ngsplot-ercc]: https://github.com/jdblischak/singleCellSeq/tree/master/analysis/make-ngsplot-ercc
 
 ## Session information
 

@@ -1,6 +1,6 @@
 ---
-title: "Using ngsplot to calculate coverage over endogenous genes"
-date: 2015-03-07
+title: "Using ngsplot to calculate coverage over ERCC genes"
+date: 2015-03-15
 ---
 
 **Last updated:** `r Sys.Date()`
@@ -16,12 +16,15 @@ Here I use [ngsplot][] to calculate coverage.
 
 Conclusions:
 
-*  The UMI protocol has a 5' bias, but also has a signficant 3' peak
-*  There is antisense transcription upstream of the TSS
+*  The coverage across the ERCC genes is uniform with a 3' increase
+*  Though minimal, there is unexpected coverage in the antisense direction
 *  The majority of the signal is coming from the highest expressed genes
-*  There is an inverse correlation between coverage and gene length, which is likely just a technical artifact of using a fragment length of 100. Using a sufficiently long fragment length is required to smooth the curves
+*  When split by length, the shortest and longest genes contribute most to the coverage signal
 
 [ngsplot]: https://github.com/shenlab-sinai/ngsplot
+
+Since the ERCC are quite short, I use a fragment length of 50.
+The [endogenous](ngsplot-endogenous.html) analysis used a fragment length of 100.
 
 ```{r packages, message=FALSE, cache=FALSE}
 library("tidyr")
@@ -94,25 +97,18 @@ import_data <- function(path, datatype, id) {
 
 ## Coverage
 
-First I observe the coverage at the TSS, gene body, and TES for all filtered genes.
+First I observe the coverage for all filtered ERCC genes.
 
 Unzip and import the raw coverage data.
 
 ```{r import-coverage}
-cov <- import_ngsplot(results = c("../data/ngsplot-molecules-tss-both",
-                                  "../data/ngsplot-molecules-genebody-both",
-                                  "../data/ngsplot-molecules-tes-both",
-                                  "../data/ngsplot-molecules-tss-same",
-                                  "../data/ngsplot-molecules-genebody-same",
-                                  "../data/ngsplot-molecules-tes-same",
-                                  "../data/ngsplot-molecules-tss-opposite",
-                                  "../data/ngsplot-molecules-genebody-opposite",
-                                  "../data/ngsplot-molecules-tes-opposite"),
-                      id = c("tss-both", "genebody-both", "tes-both",
-                             "tss-same", "genebody-same", "tes-same",
-                             "tss-opposite", "genebody-opposite", "tes-opposite"))
+cov <- import_ngsplot(results = c("../data/ngsplot-molecules-ercc-both",
+                                  "../data/ngsplot-molecules-ercc-same",
+                                  "../data/ngsplot-molecules-ercc-opposite"),
+                      id = c("ercc-both",
+                             "ercc-same",
+                             "ercc-opposite"))
 cov <- separate(cov, "id", into = c("feature", "strand"), sep = "-")
-cov$id <- factor(cov$feature, levels = c("tss", "genebody", "tes"))
 ```
 
 Plotting results.
@@ -122,68 +118,46 @@ p <- ggplot(NULL, aes(x = position, y = avgprof, color = metainfo)) +
   geom_line()+
   geom_ribbon(aes(ymin = avgprof - sem, ymax = avgprof + sem,
                   color = NULL, fill = metainfo), alpha = 0.25) +
-  facet_wrap(~strand, ncol = 1) +
-  theme(legend.position = "none") +
-  labs(x = "Position", y = "Mean molecules per million") +
-  ylim(0, 8)
-```
-
-TSS
-
-```{r plot-tss}
-plot_tss <- p %+% cov[cov$feature == "tss", ] +
-  geom_vline(x = 50, col = "grey") +
-  scale_x_continuous(breaks = c(0, 25, 50, 75, 100),
-                     labels = c(-1000, -500, "TSS", 500, 1000)) +
-  labs(title = "Transcription start site")
-```
-
-Gene body
-
-```{r plot-genebody}
-plot_genebody <- p %+% cov[cov$feature == "genebody", ] +
   geom_vline(x = c(20, 80), color = "grey") +
   scale_x_continuous(breaks = c(0, 20, 40, 60, 80, 100),
-                     labels = c(-1000, "TSS", "33%", "66%", "TES", 1000)) +
-  labs(title = "Gene body")
+                     labels = c(-100, "TSS", "33%", "66%", "TES", 100)) +
+  facet_wrap(~strand, ncol = 1, scales = "free_y") +
+  theme(legend.position = "none") +
+  labs(x = "Position", y = "Mean molecules per million")
 ```
 
-TES
-
-```{r plot-tes}
-plot_tes <- p %+% cov[cov$feature == "tes", ] +
-  geom_vline(x = 50, color = "grey") +
-  scale_x_continuous(breaks = c(0, 25, 50, 75, 100),
-                     labels = c(-1000, -500, "TES", 500, 1000)) +
-  labs(title = "Transcription end site")
+```{r plot-ercc}
+plot_ercc <- p %+% cov + labs(title = "ERCC")
 ```
 
 ### Plot
 
-```{r ngsplot-coverage, fig.width=8, fig.height=8}
-plot_grid(plot_tss, plot_genebody, plot_tes, ncol = 3, labels = LETTERS[1:3])
+Note the smaller y-axis for the opposite strand.
+While it is very small compared to the sense strand, I highlight it because we expect no reads mapping in the antisense direction.
+
+```{r ngsplot-coverage-ercc, fig.width=8, fig.height=8}
+plot_ercc
 ```
 
 ## Coverage by expression level
 
 Next I compare the coverage for NA19091 for genes split into expression quartiles.
 
-```{r import-coverage-expr}
-cov_expr <- import_ngsplot(results = c("../data/ngsplot-genebody-expr-both",
-                                  "../data/ngsplot-genebody-expr-same",
-                                  "../data/ngsplot-genebody-expr-opposite"),
-                      id = c("both", "same", "opposite"))
+```{r import-coverage-ercc-expr}
+cov_expr <- import_ngsplot(results = c("../data/ngsplot-ercc-expr-both",
+                                       "../data/ngsplot-ercc-expr-same",
+                                       "../data/ngsplot-ercc-expr-opposite"),
+                           id = c("both", "same", "opposite"))
 colnames(cov_expr)[colnames(cov_expr) == "id"] <- "strand"
 ```
 
 ### Plot
 
-```{r plot-genebody-expr, fig.width = 4, fig.height=8}
-plot_expr <- plot_genebody %+% cov_expr +
+```{r plot-ercc-expr, fig.width = 4, fig.height=8}
+plot_expr <- plot_ercc %+% cov_expr +
   scale_color_discrete(name = "Expression quartile") +
   scale_fill_discrete(name = "Expression quartile") +
-  theme(legend.position = "bottom") +
-  ylim(0, 25)
+  theme(legend.position = "bottom")
 plot_expr
 ```
 
@@ -193,25 +167,23 @@ Notice the increased y-axis.
 
 Next I compare the coverage for NA19091 for genes split by gene length.
 
-```{r import-coverage-len}
-cov_len <- import_ngsplot(results = c("../data/ngsplot-genebody-len-both",
-                                  "../data/ngsplot-genebody-len-same",
-                                  "../data/ngsplot-genebody-len-opposite"),
+```{r import-coverage-ercc-len}
+cov_len <- import_ngsplot(results = c("../data/ngsplot-ercc-len-both",
+                                  "../data/ngsplot-ercc-len-same",
+                                  "../data/ngsplot-ercc-len-opposite"),
                       id = c("both", "same", "opposite"))
 colnames(cov_len)[colnames(cov_len) == "id"] <- "strand"
 ```
 
 ### Plot
 
-```{r plot-genebody-len, fig.width = 4, fig.height=8}
-plot_len <- plot_genebody %+% cov_len +
+```{r plot-ercc-len, fig.width = 4, fig.height=8}
+plot_len <- plot_ercc %+% cov_len +
   scale_color_discrete(name = "Length quartile") +
   scale_fill_discrete(name = "Length quartile") +
-  theme(legend.position = "bottom") +
-  ylim(0, 20)
+  theme(legend.position = "bottom")
 plot_len
 ```
-
 
 ## Session information
 
