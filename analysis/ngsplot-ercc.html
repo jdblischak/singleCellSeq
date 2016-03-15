@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+
+<meta name="date" content="2015-03-15" />
+
+<title>Using ngsplot to calculate coverage over ERCC genes</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Using ngsplot to calculate coverage over ERCC genes</h1>
+<h4 class="date"><em>2015-03-15</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#functions">Functions</a></li>
+<li><a href="#coverage">Coverage</a><ul>
+<li><a href="#plot">Plot</a></li>
+</ul></li>
+<li><a href="#coverage-by-expression-level">Coverage by expression level</a><ul>
+<li><a href="#plot-1">Plot</a></li>
+</ul></li>
+<li><a href="#coverage-by-gene-length">Coverage by gene length</a><ul>
+<li><a href="#plot-2">Plot</a></li>
+</ul></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2016-03-15</p>
+<p><strong>Code version:</strong> 1db9308a307e8e4185c5d233188ba21e5996e560</p>
+<p>Here I use <a href="https://github.com/shenlab-sinai/ngsplot">ngsplot</a> to calculate coverage.</p>
+<p>Conclusions:</p>
+<ul>
+<li>The coverage across the ERCC genes is uniform with a 3’ increase</li>
+<li>Though minimal, there is unexpected coverage in the antisense direction</li>
+<li>The majority of the signal is coming from the highest expressed genes</li>
+<li>When split by length, the shortest and longest genes contribute most to the coverage signal</li>
+</ul>
+<p>Since the ERCC are quite short, I use a fragment length of 50. The <a href="ngsplot-endogenous.html">endogenous</a> analysis used a fragment length of 100.</p>
+<pre class="r"><code>library(&quot;tidyr&quot;)
+library(&quot;ggplot2&quot;)
+library(&quot;cowplot&quot;)
+theme_set(theme_bw(base_size = 12))
+theme_update(panel.grid.minor.x = element_blank(),
+             panel.grid.minor.y = element_blank(),
+             panel.grid.major.x = element_blank(),
+             panel.grid.major.y = element_blank())</code></pre>
+<div id="functions" class="section level2">
+<h2>Functions</h2>
+<p>The following function aggregate results from the various ngsplot runs.</p>
+<pre class="r"><code>import_ngsplot &lt;- function(results, id = 1:length(results)) {
+  # Imports and combines results from multiple ngsplot analyses 
+  #
+  # results - name of ngsplot results (specified with -O flag)
+  # id - description of analysis
+  library(&quot;tidyr&quot;)
+  stopifnot(length(results) &gt; 0, length(results) == length(id))
+  avgprof_list &lt;- list()
+  sem_list &lt;- list()
+  for (i in seq_along(results)) {
+    zipfile &lt;- paste0(results[i], &quot;.zip&quot;)
+    extract_zip(zipfile)
+    # Import mean coverage
+    avgprof_list[[i]] &lt;- import_data(path = results[i], datatype = &quot;avgprof&quot;,
+                                     id = id[i])
+    # Import standard error of mean coverage
+    sem_list[[i]] &lt;- import_data(path = results[i], datatype = &quot;sem&quot;,
+                                 id = id[i])
+  }
+  avgprof_df &lt;- do.call(rbind, avgprof_list)
+  sem_df &lt;- do.call(rbind, sem_list)
+  final &lt;- merge(avgprof_df, sem_df)
+  return(final)
+}
+
+extract_zip &lt;- function(zipfile) {
+  # Unzip the ngsplot results into the same directory
+  stopifnot(length(zipfile) == 1, file.exists(zipfile))
+  unzip(zipfile, exdir = dirname(zipfile))
+  return(invisible())
+}
+
+import_data &lt;- function(path, datatype, id) {
+  # Import the data from a specific ngsplot file.
+  #
+  # path - path to the ngsplot results directory
+  # datatype - either &quot;avgprof&quot; for the mean coverage or
+  #            &quot;sem&quot; for the standard error of the mean coverage
+  # id - description of analysis (length == 1)
+  stopifnot(datatype == &quot;avgprof&quot; | datatype == &quot;sem&quot;,
+            length(id) == 1)
+  fname &lt;- paste0(path, &quot;/&quot;, datatype, &quot;.txt&quot;)
+  df &lt;- read.delim(fname)
+  df$position &lt;- paste0(&quot;p&quot;, 1:nrow(df))
+  df$id &lt;- id
+  df_long &lt;- gather_(df, key_col = &quot;metainfo&quot;, value = datatype)
+  df_long$metainfo &lt;- as.character(df_long$metainfo)
+  df_long$position &lt;- sub(&quot;^p&quot;, &quot;&quot;, df_long$position)
+  df_long$position &lt;- as.numeric(df_long$position)
+  return(df_long)
+}</code></pre>
+</div>
+<div id="coverage" class="section level2">
+<h2>Coverage</h2>
+<p>First I observe the coverage for all filtered ERCC genes.</p>
+<p>Unzip and import the raw coverage data.</p>
+<pre class="r"><code>cov &lt;- import_ngsplot(results = c(&quot;../data/ngsplot-molecules-ercc-both&quot;,
+                                  &quot;../data/ngsplot-molecules-ercc-same&quot;,
+                                  &quot;../data/ngsplot-molecules-ercc-opposite&quot;),
+                      id = c(&quot;ercc-both&quot;,
+                             &quot;ercc-same&quot;,
+                             &quot;ercc-opposite&quot;))</code></pre>
+<pre><code>Using position, id as id variables
+Using position, id as id variables
+Using position, id as id variables
+Using position, id as id variables
+Using position, id as id variables
+Using position, id as id variables</code></pre>
+<pre class="r"><code>cov &lt;- separate(cov, &quot;id&quot;, into = c(&quot;feature&quot;, &quot;strand&quot;), sep = &quot;-&quot;)</code></pre>
+<p>Plotting results.</p>
+<pre class="r"><code>p &lt;- ggplot(NULL, aes(x = position, y = avgprof, color = metainfo)) +
+  geom_line()+
+  geom_ribbon(aes(ymin = avgprof - sem, ymax = avgprof + sem,
+                  color = NULL, fill = metainfo), alpha = 0.25) +
+  geom_vline(x = c(20, 80), color = &quot;grey&quot;) +
+  scale_x_continuous(breaks = c(0, 20, 40, 60, 80, 100),
+                     labels = c(-100, &quot;TSS&quot;, &quot;33%&quot;, &quot;66%&quot;, &quot;TES&quot;, 100)) +
+  facet_wrap(~strand, ncol = 1, scales = &quot;free_y&quot;) +
+  theme(legend.position = &quot;none&quot;) +
+  labs(x = &quot;Position&quot;, y = &quot;Mean molecules per million&quot;)</code></pre>
+<pre class="r"><code>plot_ercc &lt;- p %+% cov + labs(title = &quot;ERCC&quot;)</code></pre>
+<div id="plot" class="section level3">
+<h3>Plot</h3>
+<p>Note the smaller y-axis for the opposite strand. While it is very small compared to the sense strand, I highlight it because we expect no reads mapping in the antisense direction.</p>
+<pre class="r"><code>plot_ercc</code></pre>
+<p><img src="figure/ngsplot-ercc.Rmd/ngsplot-coverage-ercc-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
+</div>
+<div id="coverage-by-expression-level" class="section level2">
+<h2>Coverage by expression level</h2>
+<p>Next I compare the coverage for NA19091 for genes split into expression quartiles.</p>
+<pre class="r"><code>cov_expr &lt;- import_ngsplot(results = c(&quot;../data/ngsplot-ercc-expr-both&quot;,
+                                       &quot;../data/ngsplot-ercc-expr-same&quot;,
+                                       &quot;../data/ngsplot-ercc-expr-opposite&quot;),
+                           id = c(&quot;both&quot;, &quot;same&quot;, &quot;opposite&quot;))</code></pre>
+<pre><code>Using position, id as id variables
+Using position, id as id variables
+Using position, id as id variables
+Using position, id as id variables
+Using position, id as id variables
+Using position, id as id variables</code></pre>
+<pre class="r"><code>colnames(cov_expr)[colnames(cov_expr) == &quot;id&quot;] &lt;- &quot;strand&quot;</code></pre>
+<div id="plot-1" class="section level3">
+<h3>Plot</h3>
+<pre class="r"><code>plot_expr &lt;- plot_ercc %+% cov_expr +
+  scale_color_discrete(name = &quot;Expression quartile&quot;) +
+  scale_fill_discrete(name = &quot;Expression quartile&quot;) +
+  theme(legend.position = &quot;bottom&quot;)
+plot_expr</code></pre>
+<p><img src="figure/ngsplot-ercc.Rmd/plot-ercc-expr-1.png" title="" alt="" width="384" style="display: block; margin: auto;" /></p>
+<p>Notice the increased y-axis.</p>
+</div>
+</div>
+<div id="coverage-by-gene-length" class="section level2">
+<h2>Coverage by gene length</h2>
+<p>Next I compare the coverage for NA19091 for genes split by gene length.</p>
+<pre class="r"><code>cov_len &lt;- import_ngsplot(results = c(&quot;../data/ngsplot-ercc-len-both&quot;,
+                                  &quot;../data/ngsplot-ercc-len-same&quot;,
+                                  &quot;../data/ngsplot-ercc-len-opposite&quot;),
+                      id = c(&quot;both&quot;, &quot;same&quot;, &quot;opposite&quot;))</code></pre>
+<pre><code>Using position, id as id variables
+Using position, id as id variables
+Using position, id as id variables
+Using position, id as id variables
+Using position, id as id variables
+Using position, id as id variables</code></pre>
+<pre class="r"><code>colnames(cov_len)[colnames(cov_len) == &quot;id&quot;] &lt;- &quot;strand&quot;</code></pre>
+<div id="plot-2" class="section level3">
+<h3>Plot</h3>
+<pre class="r"><code>plot_len &lt;- plot_ercc %+% cov_len +
+  scale_color_discrete(name = &quot;Length quartile&quot;) +
+  scale_fill_discrete(name = &quot;Length quartile&quot;) +
+  theme(legend.position = &quot;bottom&quot;)
+plot_len</code></pre>
+<p><img src="figure/ngsplot-ercc.Rmd/plot-ercc-len-1.png" title="" alt="" width="384" style="display: block; margin: auto;" /></p>
+</div>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] cowplot_0.3.1   ggplot2_1.0.1   tidyr_0.2.0     knitr_1.10.5   
+[5] rmarkdown_0.6.1
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.12.0      magrittr_1.5     MASS_7.3-40      munsell_0.4.2   
+ [5] colorspace_1.2-6 stringr_1.0.0    httr_0.6.1       plyr_1.8.3      
+ [9] tools_3.2.0      grid_3.2.0       gtable_0.1.2     htmltools_0.2.6 
+[13] yaml_2.1.13      digest_0.6.8     reshape2_1.4.1   formatR_1.2     
+[17] bitops_1.0-6     RCurl_1.95-4.6   evaluate_0.7     labeling_0.3    
+[21] stringi_0.4-1    scales_0.2.4     proto_0.3-10    </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>

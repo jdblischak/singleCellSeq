@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+
+<meta name="date" content="2015-03-07" />
+
+<title>Setup for using ngsplot</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Setup for using ngsplot</h1>
+<h4 class="date"><em>2015-03-07</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#modifying-the-source-code">Modifying the source code</a></li>
+<li><a href="#preparing-the-bam-files">Preparing the BAM files</a></li>
+<li><a href="#preparing-gene-lists">Preparing gene lists</a><ul>
+<li><a href="#all-filtered-genes">All filtered genes</a></li>
+<li><a href="#coverage-by-expression-level">Coverage by expression level</a></li>
+<li><a href="#coverage-by-gene-length">Coverage by gene length</a></li>
+</ul></li>
+<li><a href="#creating-ngsplot-configuration-files">Creating ngsplot configuration files</a></li>
+<li><a href="#makefile">Makefile</a></li>
+<li><a href="#for-the-ercc-genes">For the ERCC genes</a></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2016-03-15</p>
+<p><strong>Code version:</strong> 1db9308a307e8e4185c5d233188ba21e5996e560</p>
+<p><a href="https://github.com/shenlab-sinai/ngsplot">ngsplot</a> calculates coverage of genomic regions. It provides the option to calcalate coverage over the exons for each gene, which is ideal for RNA-seq data. Furthermore, it has the option to filter the reads based on which strand they map to. See <a href="https://github.com/shenlab-sinai/ngsplot/wiki/ProgramArguments101">here</a> for an explanation of all the program arguments.</p>
+<pre class="r"><code>library(&quot;biomaRt&quot;)</code></pre>
+<div id="modifying-the-source-code" class="section level2">
+<h2>Modifying the source code</h2>
+<p>I initially could not run ngsplot because of the ERCC chromosomes in my BAM files. ngsplot requires all the chromosomes names to either start with “chr” or not start with “chr”. They do this to accomodate reads mapped to UCSC or Ensembl named chromosomes, but I found this <a href="https://github.com/shenlab-sinai/ngsplot/issues/59">causes problems with mitochondrial reads</a>. Because the ngsplot annotation uses the UCSC chromosome names like in my BAM files, I can overide this check, which I did by having the function <code>chrTag</code> always return <code>TRUE</code> (see <a href="https://github.com/shenlab-sinai/ngsplot/blob/b73f9194e792111fa44afa8bc873a2dd2639863d/lib/coverage.r#L544">lib/coverage.r</a>).</p>
+<p>The above worked when focusing on endogenous genes. For the ERCC, I provided my own custom BED file with the ERCC regions. Custom BED files get passed through the function <a href="https://github.com/shenlab-sinai/ngsplot/blob/b73f9194e792111fa44afa8bc873a2dd2639863d/lib/genedb.r#L9">chromFormat</a>, which adds “chr” to the beginning of each chromosome name. One option would have been to have <code>chrTag</code> always return <code>FALSE</code>, but then the code would have to be edited by hand before running either the endogenous or ERCC gene analysis. Thus I simply disabled <a href="https://github.com/shenlab-sinai/ngsplot/blob/b73f9194e792111fa44afa8bc873a2dd2639863d/lib/genedb.r#L9">chromFormat</a> so that it does not add “chr” to the ERCC chromosome names.</p>
+</div>
+<div id="preparing-the-bam-files" class="section level2">
+<h2>Preparing the BAM files</h2>
+<p>For the ngsplot analyses, I use the BAM files of single cell molecules <a href="coverage-endogenous.html#prepare-bam-files-from-high-quality-cells">created in the coverage analysis where I used the genomation library</a>.</p>
+</div>
+<div id="preparing-gene-lists" class="section level2">
+<h2>Preparing gene lists</h2>
+<p>Instead of using all genes, you can provide ngsplot with a list of Ensembl genes to subset (flag <code>-E</code>).</p>
+<div id="all-filtered-genes" class="section level3">
+<h3>All filtered genes</h3>
+<p>First I create a list of all genes that passed the expression filter, separate files for the endogenous and ERCC genes.</p>
+<p>Input filtered molecule counts.</p>
+<pre class="r"><code>molecules_filter &lt;- read.table(&quot;../data/molecules-filter.txt&quot;, header = TRUE,
+                               stringsAsFactors = FALSE)
+# Endogenous
+molecules_filter_endo &lt;- molecules_filter[grep(&quot;ENSG&quot;, rownames(molecules_filter)), ]
+cat(rownames(molecules_filter_endo),
+    file = &quot;../data/endogenous-filter.txt&quot;, sep = &quot;\n&quot;)</code></pre>
+</div>
+<div id="coverage-by-expression-level" class="section level3">
+<h3>Coverage by expression level</h3>
+<p>Next I create four gene lists corresponding to the quartiles of their mean expression level.</p>
+<p>Endogenous genes</p>
+<pre class="r"><code>mean_expr &lt;- rowMeans(molecules_filter_endo)
+expr_q &lt;- quantile(mean_expr)
+genes_by_quartile &lt;- cut(mean_expr, breaks = expr_q, include.lowest = TRUE)
+# Purposely converting the factor to the underlying numeric representation
+genes_by_quartile &lt;- as.numeric(genes_by_quartile)
+names(genes_by_quartile) &lt;- names(mean_expr)
+for (i in 1:4) {
+  genes &lt;- names(genes_by_quartile)[genes_by_quartile == i]
+  q_fname &lt;- paste0(&quot;../data/endogenous-filter-q&quot;, i, &quot;.txt&quot;)
+  cat(genes, file = q_fname, sep = &quot;\n&quot;)
+}</code></pre>
+</div>
+<div id="coverage-by-gene-length" class="section level3">
+<h3>Coverage by gene length</h3>
+<p>Next I create four gene lists corresponding to the quartiles of their maximum transcript length.</p>
+<pre class="r"><code>ensembl &lt;- useMart(host = &quot;grch37.ensembl.org&quot;,
+                   biomart = &quot;ENSEMBL_MART_ENSEMBL&quot;,
+                   dataset = &quot;hsapiens_gene_ensembl&quot;)
+len_transcripts &lt;- getBM(attributes = c(&quot;ensembl_gene_id&quot;, &quot;transcript_length&quot;),
+                         filters = &quot;ensembl_gene_id&quot;,
+                         values = rownames(molecules_filter_endo),
+                         mart = ensembl)
+len_genes &lt;- tapply(len_transcripts$transcript_length,
+                    len_transcripts$ensembl_gene_id, max)
+stopifnot(rownames(molecules_filter_endo) %in% names(len_genes),
+          nrow(molecules_filter_endo) == length(len_genes))
+len_q &lt;- quantile(len_genes)
+genes_by_len &lt;- cut(len_genes, breaks = len_q, include.lowest = TRUE)
+# Purposely converting the factor to the underlying numeric representation
+genes_by_len &lt;- as.numeric(genes_by_len)
+names(genes_by_len) &lt;- names(len_genes)
+for (i in 1:4) {
+  genes &lt;- names(genes_by_len)[genes_by_len == i]
+  q_fname &lt;- paste0(&quot;../data/endogenous-filter-len-q&quot;, i, &quot;.txt&quot;)
+  cat(genes, file = q_fname, sep = &quot;\n&quot;)
+}</code></pre>
+</div>
+</div>
+<div id="creating-ngsplot-configuration-files" class="section level2">
+<h2>Creating ngsplot configuration files</h2>
+<p>To run multiple BAM files or gene lists at the same time, you can create a configuration file to pass to ngsplot instead of a single BAM file (flag <code>-C</code>).</p>
+<p>The first configuration file contains the BAM files for one example single cell per individual. The gene set is all filtered genes.</p>
+<pre class="bash"><code>cat ../data/ngsplot-molecules.txt</code></pre>
+<pre><code># base command: ngs.plot.r -G hg19 -C ../data/ngsplot-molecules.txt -L 1000 -FL 100
+# For different genomic features: -R tss/genebody/tes
+# For different strands: -SS both/same/opposite
+# For rnaseq mode for genebody: -F rnaseq
+# For more info: https://github.com/shenlab-sinai/ngsplot/wiki/ProgramArguments101
+../data/19098.1.A01.trim.sickle.sorted.combined.rmdup.sorted.bam  ../data/endogenous-filter.txt &quot;NA19098.r1.A01&quot;
+../data/19101.1.A02.trim.sickle.sorted.combined.rmdup.sorted.bam  ../data/endogenous-filter.txt &quot;NA19101.r1.A02&quot;
+../data/19239.1.A01.trim.sickle.sorted.combined.rmdup.sorted.bam  ../data/endogenous-filter.txt &quot;NA19239.r1.A01&quot;</code></pre>
+<p>The second runs the BAM file for 19101 for different subsets of expression level.</p>
+<pre class="bash"><code>cat ../data/ngsplot-expression.txt</code></pre>
+<pre><code># Run:
+# ngs.plot.r -G hg19 -C ../data/ngsplot-expression.txt -L 1000 -FL 100 \
+#   -R genebody -F rnaseq
+# For different strands: -SS both/same/opposite
+# For more info: https://github.com/shenlab-sinai/ngsplot/wiki/ProgramArguments101
+../data/19101.1.A02.trim.sickle.sorted.combined.rmdup.sorted.bam  ../data/endogenous-filter-q1.txt &quot;q1&quot;
+../data/19101.1.A02.trim.sickle.sorted.combined.rmdup.sorted.bam  ../data/endogenous-filter-q2.txt &quot;q2&quot;
+../data/19101.1.A02.trim.sickle.sorted.combined.rmdup.sorted.bam  ../data/endogenous-filter-q3.txt &quot;q3&quot;
+../data/19101.1.A02.trim.sickle.sorted.combined.rmdup.sorted.bam  ../data/endogenous-filter-q4.txt &quot;q4&quot;</code></pre>
+<p>The third runs the BAM file for 19101 for different subsets of gene length.</p>
+<pre class="bash"><code>cat ../data/ngsplot-length.txt</code></pre>
+<pre><code># Run:
+# ngs.plot.r -G hg19 -C ../data/ngsplot-length.txt -L 1000 -FL 100 \
+#   -R genebody -F rnaseq
+# For different strands: -SS both/same/opposite
+# For more info: https://github.com/shenlab-sinai/ngsplot/wiki/ProgramArguments101
+../data/19101.1.A02.trim.sickle.sorted.combined.rmdup.sorted.bam  ../data/endogenous-filter-len-q1.txt &quot;q1&quot;
+../data/19101.1.A02.trim.sickle.sorted.combined.rmdup.sorted.bam  ../data/endogenous-filter-len-q2.txt &quot;q2&quot;
+../data/19101.1.A02.trim.sickle.sorted.combined.rmdup.sorted.bam  ../data/endogenous-filter-len-q3.txt &quot;q3&quot;
+../data/19101.1.A02.trim.sickle.sorted.combined.rmdup.sorted.bam  ../data/endogenous-filter-len-q4.txt &quot;q4&quot;</code></pre>
+</div>
+<div id="makefile" class="section level2">
+<h2>Makefile</h2>
+<p>I wrote a Makefile, <a href="https://github.com/jdblischak/singleCellSeq/tree/master/analysis/make-ngsplot">make-ngsplot</a>, that runs the three configuration files for different features and strand specificity.</p>
+</div>
+<div id="for-the-ercc-genes" class="section level2">
+<h2>For the ERCC genes</h2>
+<p>For the ERCC genes, I do the same as above. The main difference is that I need to create a BED file because the ERCC genes are not in the database.</p>
+<p>Import the SAF file of exons used with featureCounts. Filter to only include ERCC genes and convert to BED format.</p>
+<pre class="r"><code>exons &lt;- read.delim(&quot;../data/exons.saf&quot;, stringsAsFactors = FALSE)
+molecules_filter_ercc &lt;- molecules_filter[grep(&quot;ERCC&quot;, rownames(molecules_filter)), ]
+exons_ercc &lt;- exons[exons$GeneID %in% rownames(molecules_filter_ercc), ]
+ercc_bed &lt;- data.frame(chr = exons_ercc$Chr,
+                       start = exons_ercc$Start - 1,
+                       end = exons_ercc$End,
+                       name = exons_ercc$GeneID,
+                       score = 0,
+                       strand = exons_ercc$Strand,
+                       stringsAsFactors = FALSE)</code></pre>
+<p>Filter the BED file to only include ERCC that passed the expression filter.</p>
+<pre class="r"><code>ercc_bed_filter &lt;- ercc_bed[ercc_bed$name %in% rownames(molecules_filter_ercc), ]</code></pre>
+<p>Save a file with all ERCC that passed the filter.</p>
+<pre class="r"><code>write.table(ercc_bed_filter, file = &quot;../data/ercc-filter.bed&quot;,
+            quote = FALSE, sep = &quot;\t&quot;, row.names = FALSE, col.names = FALSE)</code></pre>
+<p>Split by expression level.</p>
+<pre class="r"><code>stopifnot(ercc_bed_filter$name == rownames(molecules_filter_ercc))
+mean_expr &lt;- rowMeans(molecules_filter_ercc)
+expr_q &lt;- quantile(mean_expr)
+genes_by_quartile &lt;- cut(mean_expr, breaks = expr_q, include.lowest = TRUE)
+# Purposely converting the factor to the underlying numeric representation
+genes_by_quartile &lt;- as.numeric(genes_by_quartile)
+names(genes_by_quartile) &lt;- names(mean_expr)
+for (i in 1:4) {
+  genes &lt;- names(genes_by_quartile)[genes_by_quartile == i]
+  q_fname &lt;- paste0(&quot;../data/ercc-filter-q&quot;, i, &quot;.bed&quot;)
+  write.table(ercc_bed_filter[ercc_bed_filter$name %in% genes, ], file = q_fname,
+              quote = FALSE, sep = &quot;\t&quot;, row.names = FALSE, col.names = FALSE)
+}</code></pre>
+<p>Split by length. Because the coordinates are 0-based and the end position is exlusive, the length for the ERCC is just the end position.</p>
+<pre class="r"><code>len_genes &lt;- ercc_bed_filter$end
+names(len_genes) &lt;- ercc_bed_filter$name
+stopifnot(rownames(molecules_filter_ercc) %in% names(len_genes),
+          nrow(molecules_filter_ercc) == length(len_genes))
+len_q &lt;- quantile(len_genes)
+genes_by_len &lt;- cut(len_genes, breaks = len_q, include.lowest = TRUE)
+# Purposely converting the factor to the underlying numeric representation
+genes_by_len &lt;- as.numeric(genes_by_len)
+names(genes_by_len) &lt;- names(len_genes)
+for (i in 1:4) {
+  genes &lt;- names(genes_by_len)[genes_by_len == i]
+  q_fname &lt;- paste0(&quot;../data/ercc-filter-len-q&quot;, i, &quot;.bed&quot;)
+  write.table(ercc_bed_filter[ercc_bed_filter$name %in% genes, ], file = q_fname,
+              quote = FALSE, sep = &quot;\t&quot;, row.names = FALSE, col.names = FALSE)  
+}</code></pre>
+<p>Made configuration files.</p>
+<pre class="bash"><code>cat ../data/ngsplot-molecules-ercc.txt</code></pre>
+<pre><code># base command: ngs.plot.r -G hg19 -L 100 -FL 100 -R bed -C ../data/ngsplot-molecules-ercc.txt
+# For different strands: -SS both/same/opposite
+# For more info: https://github.com/shenlab-sinai/ngsplot/wiki/ProgramArguments101
+../data/19098.1.A01.trim.sickle.sorted.combined.rmdup.sorted.bam  ../data/ercc-filter.bed &quot;NA19098.r1.A01&quot;
+../data/19101.1.A02.trim.sickle.sorted.combined.rmdup.sorted.bam  ../data/ercc-filter.bed &quot;NA19101.r1.A02&quot;
+../data/19239.1.A01.trim.sickle.sorted.combined.rmdup.sorted.bam  ../data/ercc-filter.bed &quot;NA19239.r1.A01&quot;</code></pre>
+<p>The second runs the BAM file for 19101 for different subsets of expression level.</p>
+<pre class="bash"><code>cat ../data/ngsplot-expression-ercc.txt</code></pre>
+<pre><code># Run:
+# ngs.plot.r -G hg19 -L 100 -FL 100 -R bed -C ../data/ngsplot-expression-ercc.txt
+# For different strands: -SS both/same/opposite
+# For more info: https://github.com/shenlab-sinai/ngsplot/wiki/ProgramArguments101
+../data/19101.1.A02.trim.sickle.sorted.combined.rmdup.sorted.bam  ../data/ercc-filter-q1.bed &quot;q1&quot;
+../data/19101.1.A02.trim.sickle.sorted.combined.rmdup.sorted.bam  ../data/ercc-filter-q2.bed &quot;q2&quot;
+../data/19101.1.A02.trim.sickle.sorted.combined.rmdup.sorted.bam  ../data/ercc-filter-q3.bed &quot;q3&quot;
+../data/19101.1.A02.trim.sickle.sorted.combined.rmdup.sorted.bam  ../data/ercc-filter-q4.bed &quot;q4&quot;</code></pre>
+<p>The third runs the BAM file for 19101 for different subsets of gene length.</p>
+<pre class="bash"><code>cat ../data/ngsplot-length-ercc.txt</code></pre>
+<pre><code># Run:
+# ngs.plot.r -G hg19 -L 100 -FL 100 -R bed -C ../data/ngsplot-length-ercc.txt
+# For different strands: -SS both/same/opposite
+# For more info: https://github.com/shenlab-sinai/ngsplot/wiki/ProgramArguments101
+../data/19101.1.A02.trim.sickle.sorted.combined.rmdup.sorted.bam  ../data/ercc-filter-len-q1.bed &quot;q1&quot;
+../data/19101.1.A02.trim.sickle.sorted.combined.rmdup.sorted.bam  ../data/ercc-filter-len-q2.bed &quot;q2&quot;
+../data/19101.1.A02.trim.sickle.sorted.combined.rmdup.sorted.bam  ../data/ercc-filter-len-q3.bed &quot;q3&quot;
+../data/19101.1.A02.trim.sickle.sorted.combined.rmdup.sorted.bam  ../data/ercc-filter-len-q4.bed &quot;q4&quot;</code></pre>
+<p>And made a similar Makefile: <a href="https://github.com/jdblischak/singleCellSeq/tree/master/analysis/make-ngsplot-ercc">make-ngsplot-ercc</a>.</p>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] biomaRt_2.24.0  cowplot_0.3.1   ggplot2_1.0.1   tidyr_0.2.0    
+[5] knitr_1.10.5    rmarkdown_0.6.1
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.12.0          AnnotationDbi_1.30.1 magrittr_1.5        
+ [4] IRanges_2.2.4        BiocGenerics_0.14.0  MASS_7.3-40         
+ [7] munsell_0.4.2        colorspace_1.2-6     GenomeInfoDb_1.4.0  
+[10] stringr_1.0.0        httr_0.6.1           plyr_1.8.3          
+[13] tools_3.2.0          parallel_3.2.0       grid_3.2.0          
+[16] Biobase_2.28.0       gtable_0.1.2         DBI_0.3.1           
+[19] htmltools_0.2.6      yaml_2.1.13          digest_0.6.8        
+[22] reshape2_1.4.1       formatR_1.2          S4Vectors_0.6.0     
+[25] bitops_1.0-6         RCurl_1.95-4.6       RSQLite_1.0.0       
+[28] evaluate_0.7         labeling_0.3         stringi_0.4-1       
+[31] scales_0.2.4         stats4_3.2.0         XML_3.98-1.2        
+[34] proto_0.3-10        </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>

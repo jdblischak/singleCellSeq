@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+<meta name="author" content="Joyce Hsiao" />
+
+<meta name="date" content="2016-03-13" />
+
+<title>Cell-cell variation analysis: summary</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Cell-cell variation analysis: summary</h1>
+<h4 class="author"><em>Joyce Hsiao</em></h4>
+<h4 class="date"><em>2016-03-13</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#objective">Objective</a></li>
+<li><a href="#set-up">Set up</a></li>
+<li><a href="#prepare-data">Prepare data</a></li>
+<li><a href="#main-figure-1">Main figure 1</a></li>
+<li><a href="#main-figure-2">Main figure 2</a></li>
+<li><a href="#supp.-figure-pluripotent-gens-density-plot-for-all-batches">Supp. figure: pluripotent gens density plot for all batches</a></li>
+<li><a href="#supp.-figure-cv-mean-all-cells">Supp. figure: CV-mean, all cells</a></li>
+<li><a href="#supplemental-figure-xx-adjusted-cv-sanity-checks">Supplemental figure XX: Adjusted CV sanity checks</a></li>
+<li><a href="#supp.-figure-permutation-test-results">Supp. figure: permutation test results</a></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2016-03-15</p>
+<p><strong>Code version:</strong> 1db9308a307e8e4185c5d233188ba21e5996e560</p>
+<div id="objective" class="section level2">
+<h2>Objective</h2>
+<p>This page documents analysis performed for the paper figures.</p>
+</div>
+<div id="set-up" class="section level2">
+<h2>Set up</h2>
+<pre class="r"><code>library(&quot;data.table&quot;)
+library(&quot;dplyr&quot;)
+library(&quot;limma&quot;)
+library(&quot;edgeR&quot;)
+library(&quot;ggplot2&quot;)
+library(&quot;grid&quot;)
+theme_set(theme_bw(base_size = 12))
+source(&quot;functions.R&quot;)
+library(&quot;Humanzee&quot;)
+library(&quot;cowplot&quot;)
+library(&quot;MASS&quot;)
+library(&quot;matrixStats&quot;)
+source(&quot;../code/plotting-functions.R&quot;)</code></pre>
+</div>
+<div id="prepare-data" class="section level2">
+<h2>Prepare data</h2>
+<p>We import molecule counts before standardizing and transformation and also log2-transformed counts after batch-correction. Biological variation analysis of the individuals is performed on the batch-corrected and log2-transformed counts.</p>
+<pre class="r"><code># Import filtered annotations
+anno_filter &lt;- read.table(&quot;../data/annotation-filter.txt&quot;, 
+                      header = TRUE,
+                      stringsAsFactors = FALSE)
+
+# Import filtered molecule counts
+molecules_filter &lt;- read.table(&quot;../data/molecules-filter.txt&quot;,
+                               header = TRUE, stringsAsFactors = FALSE)
+stopifnot(NROW(anno_filter) == NCOL(molecules_filter))
+
+# Import final processed molecule counts of endogeneous genes
+molecules_final &lt;- read.table(&quot;../data/molecules-final.txt&quot;, 
+                             header = TRUE, stringsAsFactors = FALSE)
+stopifnot(NROW(anno_filter) == NCOL(molecules_final))
+
+# Import gene symbols
+gene_symbols &lt;- read.table(file = &quot;../data/gene-info.txt&quot;, sep = &quot;\t&quot;,
+                           header = TRUE, stringsAsFactors = FALSE, quote = &quot;&quot;)
+
+# Import cell-cycle gene list
+cell_cycle_genes &lt;- read.table(&quot;../data/cellcyclegenes.txt&quot;,
+                               header = TRUE, sep = &quot;\t&quot;,
+                               stringsAsFactors = FALSE)
+
+# Import pluripotency gene list
+
+pluripotency_genes &lt;- read.table(&quot;../data/pluripotency-genes.txt&quot;,
+                               header = TRUE, sep = &quot;\t&quot;,
+                               stringsAsFactors = FALSE)$To</code></pre>
+<p>Load gene CVs computed over all cells (<a href="http://jdblischak.github.io/singleCellSeq/analysis/cv-adjusted-summary-pois.html">link1</a>), CV computed only over the expressed cells (<a href="http://jdblischak.github.io/singleCellSeq/analysis/cv-adjusted-summary-pois-expressed.html">link2</a>), and differential CV results when including only the expressed cells (<a href="http://jdblischak.github.io/singleCellSeq/analysis/cv-adjusted-summary-pois-expressed.html">link3</a>).</p>
+<pre class="r"><code>load(&quot;../data/cv-all-cells.rda&quot;)
+load(&quot;../data/cv-expressed-cells.rda&quot;)
+load(&quot;../data/sig-mean-expressed.rda&quot;)
+
+## permutation results
+# expressed cells
+load(&quot;../data/permuted-pval-expressed.rda&quot;)
+# # all cells
+# load(&quot;../data/permuted-pval.rda&quot;)</code></pre>
+<p>Compute a matrix of 0’s and 1’s labeling non-detected and detected cells, respectively.</p>
+<pre class="r"><code>molecules_expressed &lt;- molecules_filter
+molecules_expressed[which(molecules_filter &gt; 0 , arr.ind = TRUE)] &lt;- 1
+molecules_expressed &lt;- as.matrix((molecules_expressed))</code></pre>
+<p>Take the gene subset included in the final data.</p>
+<pre class="r"><code>genes_included &lt;- Reduce(intersect,
+                         list(rownames(molecules_final),
+                             rownames(expressed_cv$NA19098),
+                             rownames(permuted_pval)) )
+
+molecules_filter_subset &lt;- molecules_filter[
+  which(rownames(molecules_filter) %in% genes_included), ]
+
+molecules_final_subset &lt;- molecules_final[
+  which(rownames(molecules_final) %in% genes_included), ]
+
+molecules_expressed_subset &lt;- molecules_expressed[
+  which(rownames(molecules_expressed) %in% genes_included), ]
+
+molecules_final_expressed_subset &lt;- molecules_final_subset*molecules_expressed_subset
+molecules_final_expressed_subset[which(molecules_expressed_subset == 0, arr.ind = TRUE)] &lt;- NA
+
+permuted_pval_subset &lt;- permuted_pval[which(rownames(permuted_pval) %in% genes_included), ]
+names(permuted_pval_subset) &lt;- rownames(permuted_pval)[which(rownames(permuted_pval) %in% genes_included)]
+
+expressed_cv_subset &lt;- lapply(expressed_cv, function(x)
+  x[which(rownames(x) %in% genes_included), ] )
+names(expressed_cv_subset) &lt;- names(expressed_cv)
+
+expressed_dm_subset &lt;- expressed_dm[which(rownames(expressed_dm) %in% genes_included), , ] 
+
+dim(molecules_final_subset)</code></pre>
+<pre><code>[1] 12137   564</code></pre>
+<pre class="r"><code>dim(molecules_expressed_subset)</code></pre>
+<pre><code>[1] 12137   564</code></pre>
+<pre class="r"><code>all.equal(rownames(expressed_cv_subset$NA19098), 
+          rownames(molecules_final_expressed_subset) )</code></pre>
+<pre><code>[1] TRUE</code></pre>
+<pre class="r"><code>all.equal(names(permuted_pval_subset), 
+          rownames(molecules_expressed_subset) )</code></pre>
+<pre><code>[1] TRUE</code></pre>
+<p>Compute drop-out rates.</p>
+<pre class="r"><code>drop_out &lt;- lapply(unique(anno_filter$individual), function(ind) {
+  temp_df &lt;- molecules_filter_subset[,anno_filter$individual == ind]
+  zero_count &lt;- rowMeans(temp_df == 0)
+  return(zero_count)
+})  
+names(drop_out) &lt;- unique(anno_filter$individual)
+drop_out$all &lt;- rowMeans(as.matrix(molecules_filter_subset) == 0)
+
+
+summary(drop_out$NA19098)</code></pre>
+<pre><code>   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+0.00000 0.01408 0.17610 0.27930 0.50700 0.99300 </code></pre>
+<pre class="r"><code>summary(drop_out$NA19101)</code></pre>
+<pre><code>   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+0.00000 0.03483 0.24880 0.32610 0.58210 0.99500 </code></pre>
+<pre class="r"><code>summary(drop_out$NA19239)</code></pre>
+<pre><code>   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+0.00000 0.02262 0.20810 0.30980 0.56560 0.99550 </code></pre>
+<pre class="r"><code>summary(drop_out$all)</code></pre>
+<pre><code>   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+0.00000 0.02837 0.21990 0.30800 0.56030 0.92730 </code></pre>
+</div>
+<div id="main-figure-1" class="section level2">
+<h2>Main figure 1</h2>
+<p><img src="figure/cv-adjusted-summary-pois-final.Rmd/bio-figure1.png" alt="bio-figure1" /></p>
+<p><em>[Chunk not evaluted]</em></p>
+<pre class="r"><code>## Venn diagrams
+genes &lt;- rownames(expressed_cv_subset[[1]])
+library(gplots)
+venn_mean_rank &lt;- gplots::venn( 
+  list(NA19098 = genes[ which(rank(expressed_cv_subset[[1]]$expr_mean) &gt; length(genes) - 1000 ) ],
+       NA19101 = genes[ which(rank(expressed_cv_subset[[2]]$expr_mean) &gt; length(genes) - 1000 ) ],
+       NA19239 = genes[ which(rank(expressed_cv_subset[[3]]$expr_mean) &gt; length(genes) - 1000 ) ] ) )
+
+venn_cv_rank &lt;- gplots::venn( 
+  list(NA19098 = genes[ which(rank(expressed_cv_subset[[1]]$expr_cv) &gt; length(genes) - 1000 ) ],
+       NA19101 = genes[ which(rank(expressed_cv_subset[[2]]$expr_cv) &gt; length(genes) - 1000 ) ],
+       NA19239 = genes[ which(rank(expressed_cv_subset[[3]]$expr_cv) &gt; length(genes) - 1000 ) ] ) )
+
+
+# cv and mean of batch-corrected data including all cells
+# across all three indivivduals
+par(mfrow = c(1,2))
+all_cv &lt;- matrixStats::rowSds(2^molecules_final_subset)/rowMeans(2^molecules_final_subset)
+all_mn &lt;- rowMeans(2^molecules_final_subset)
+plot(y = all_cv,
+     x = log2(all_mn),
+     cex = .9, col = alpha(&quot;grey40&quot;, .8), lwd = .6,
+     xlab = &quot;log2 gene mean abundance&quot;,
+     ylab = &quot;Coefficient of variation&quot;,
+     main = &quot;All cells, all indviduals&quot;,
+     xlim = c(5,17), ylim = c(0,4.5))
+points(y = all_cv,
+       x = log2(all_mn), 
+       col = rev(RColorBrewer::brewer.pal(10, &quot;RdYlBu&quot;))[
+                cut(drop_out$all, breaks = seq(0, 1, by = .1),
+                     include.lowest = TRUE)], 
+       cex = .6, pch = 16)
+
+# cv and mean of batch-corrected data including only expressed cells
+# across all three indivivduals
+plot(y = expressed_cv_subset$all$expr_cv,
+     x = log2(expressed_cv_subset$all$expr_mean),
+     cex = .9, col = alpha(&quot;grey40&quot;, .8), lwd = .6,
+     xlab = &quot;log2 gene mean abundance&quot;,
+     ylab = &quot;Coefficient of variation&quot;,
+     main = &quot;Expressed cells, all individuals&quot;,
+     xlim = c(5,17), ylim = c(0,4.5))
+points(y = expressed_cv_subset$all$expr_cv,
+       x = log2(expressed_cv_subset$all$expr_mean), 
+       col = rev(RColorBrewer::brewer.pal(10, &quot;RdYlBu&quot;))[
+                cut(drop_out$all, breaks = seq(0, 1, by = .1),
+                     include.lowest = TRUE)], 
+       cex = .6, pch = 16)
+
+# make labels
+plot(x = rep(1,10), y = 1:10, 
+     pch = 15, cex = 2, axes = F, xlab = &quot;&quot;, ylab = &quot;&quot;,
+     col = (RColorBrewer::brewer.pal(10, &quot;RdYlBu&quot;)), xlim = c(0, 13))
+text(labels = rev( levels(cut(drop_out$NA19098, breaks = seq(0, 1, by = .1),
+                     include.lowest = TRUE))) ,
+     y = 1:10, x = 3, cex = .7, adj = 0)
+title(main = &quot;drop-out rate&quot;)</code></pre>
+</div>
+<div id="main-figure-2" class="section level2">
+<h2>Main figure 2</h2>
+<p><img src="figure/cv-adjusted-summary-pois-final.Rmd/bio-figure2.png" alt="bio-figure2" /></p>
+<p><em>[chunk not evaluated]</em></p>
+<pre class="r"><code>par(mfrow = c(1,1))
+hist(drop_out$all, xlim = c(0,1))
+
+#NANOG: a key pluripotency gene.
+#All the other genes had significant difference between adjusted CV of the expressed cells.
+
+query_genes &lt;- c(&quot;NANOG&quot;, &quot;TFPI&quot;, &quot;SLC9A5&quot;, &quot;SLC25A16&quot;, &quot;SREK1IP1&quot;)
+query_genes_ensg &lt;- gene_symbols[which(gene_symbols$external_gene_name %in% query_genes), ]
+
+
+pdf(&quot;figure/cv-adjusted-summary-pois-final.Rmd/chosen-genes.pdf&quot;,
+    height = 8, width = 8)
+par(mfrow = c(3,3))
+for (i in 1:nrow(query_genes_ensg)) {
+
+  df &lt;- do.call(cbind,
+    lapply(unique(anno_filter$individual), function(ind) {
+    table(molecules_filter_subset[which(rownames(molecules_final_expressed_subset) %in% query_genes_ensg$ensembl_gene[i]), anno_filter$individual == ind] == 0)
+    }) )
+  colnames(df) &lt;- unique(anno_filter$individual)
+  df &lt;- t(t(df)/colSums(df))
+  barplot(df, col = c(&quot;grey40&quot;, &quot;grey80&quot;),
+          ylab = &quot;Proportion of detected cells&quot;)
+
+  plot_density_overlay(
+    molecules = molecules_final_expressed_subset,
+    annotation = anno_filter,
+    which_gene = query_genes_ensg$ensembl_gene_id[i], 
+    labels = round(drop_out$all[which(rownames(molecules_final_subset) %in% query_genes_ensg$ensembl_gene_id[i])], digits = 2),
+    xlims = c(4,12.5), ylims = c(0,1),
+    gene_symbols = gene_symbols)
+    individuals &lt;- unique(anno_filter$individual)
+  library(scales)
+  library(broman)
+  crayon &lt;- brocolors(&quot;crayon&quot;)
+  cols &lt;- c(&quot;Mango Tango&quot;, &quot;Green&quot;, &quot;Violet Blue&quot;)
+  cols &lt;- alpha(crayon[cols], .7)
+
+  barplot(height = abs(unlist(expressed_dm_subset[which(rownames(expressed_dm_subset) %in% query_genes_ensg$ensembl_gene_id[i]),])), col = cols,
+          ylim = c(0,.7), border = &quot;white&quot;,
+          ylab = &quot;Absolute value of adjusted CV&quot;)
+  abline(h = 0)
+}
+dev.off()</code></pre>
+<p><em>[chunk not evaluated]</em></p>
+<p>heatmap of pluripotent genes</p>
+<pre class="r"><code>## Heatmap
+
+library(scales)
+library(broman)
+library(viridis)
+
+crayon &lt;- brocolors(&quot;crayon&quot;)
+cols &lt;- c(&quot;Mango Tango&quot;, &quot;Green&quot;, &quot;Violet Blue&quot;)
+cols &lt;- alpha(crayon[cols], .7)
+
+which_pluri &lt;- rownames(molecules_final_expressed_subset) %in% pluripotency_genes
+
+df &lt;- as.matrix(molecules_final_subset[which_pluri,])
+df[which(molecules_filter_subset[which_pluri,] == 0, arr.ind = TRUE)] &lt;- 0
+gplots::heatmap.2(
+  df,
+  Colv = FALSE,
+  trace = &quot;none&quot;,
+  dendro = &quot;row&quot;,
+  labCol = &quot;&quot;,
+  labRow = gene_symbols$external_gene_name[match(rownames(molecules_final_subset)[which_pluri], gene_symbols$ensembl_gene_id)],
+  col = rev(viridis::viridis(256)))</code></pre>
+<p><img src="figure/cv-adjusted-summary-pois-final.Rmd/unnamed-chunk-5-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="supp.-figure-pluripotent-gens-density-plot-for-all-batches" class="section level2">
+<h2>Supp. figure: pluripotent gens density plot for all batches</h2>
+<p><em>[chunk not evaluated]</em></p>
+<pre class="r"><code>pluri_pvals &lt;- data.frame(pvals = permuted_pval_subset,
+                          ENSG = rownames(molecules_final_subset))
+pluri_pvals &lt;- pluri_pvals[which(rownames(molecules_final_subset) %in% 
+                                   pluripotency_genes), ]
+pluri_symbols &lt;- gene_symbols[which(gene_symbols$ensembl_gene_id %in% pluri_pvals$ENSG) , c(1,3)]
+pluri_results &lt;- merge(pluri_pvals, pluri_symbols,
+                       by.x = c(&quot;ENSG&quot;), by.y = &quot;ensembl_gene_id&quot;) 
+pluri_results &lt;- pluri_results[order(pluri_results$pval), ]
+pluri_results
+
+for (i in 1:nrow(pluri_results)) {
+    par(mfrow = c(1,3))
+    for (which_individual in unique(anno_filter$individual)) {
+        plot_density_overlay(
+             molecules = molecules_final[ , anno_filter$individual == which_individual],
+             annotation = anno_filter[anno_filter$individual == which_individual, ],
+             individual_label = which_individual,
+             batches = anno_filter$sample_id,
+             which_gene = pluri_results$ENSG[i],
+             labels = which_individual,
+             xlims = c(2,14),
+             gene_symbols = gene_symbols)
+    }
+}</code></pre>
+</div>
+<div id="supp.-figure-cv-mean-all-cells" class="section level2">
+<h2>Supp. figure: CV-mean, all cells</h2>
+<p>Legend: Coefficients of variation plotted against average molecule counts across cells of each individual cell line. Grey dots represent endogeneous genes, and blue dots indicate ERCC spike-in control genes. Red curve depicts the expected coefficients of variation assuming the endogeneous genes follow a poisson distribution. Likewise, blue curve depicts the expected CVs of the ERCC spike-in control genes. Yellow curve predicts the expected CVs assuming standard deviation is 3 times the ERCC spike-in genes.</p>
+<pre class="r"><code>theme_set(theme_bw(base_size = 12))
+theme_update(panel.grid.minor.x = element_blank(),
+             panel.grid.minor.y = element_blank(),
+             panel.grid.major.x = element_blank(),
+             panel.grid.major.y = element_blank())
+cowplot::plot_grid(
+    plot_poisson_cv(molecules_filter[grep(&quot;ERCC&quot;, rownames(molecules_filter),
+                                          invert = TRUE), 
+                                      anno_filter$individual == &quot;NA19098&quot;], 
+                    molecules_filter[grep(&quot;ERCC&quot;, rownames(molecules_filter)), 
+                                     anno_filter$individual == &quot;NA19098&quot;], 
+                    is_log2count = FALSE,
+                    main = &quot;Filtered counts, NA19098&quot;) +
+                    theme(legend.position = &quot;none&quot;),
+    plot_poisson_cv(molecules_filter[grep(&quot;ERCC&quot;, rownames(molecules_filter),
+                                      invert = TRUE), 
+                                  anno_filter$individual == &quot;NA19101&quot;], 
+                molecules_filter[grep(&quot;ERCC&quot;, rownames(molecules_filter)), 
+                                 anno_filter$individual == &quot;NA19101&quot;], 
+                is_log2count = FALSE,
+                main = &quot;Filtered counts, NA19101&quot;) +
+                theme(legend.position = &quot;none&quot;),
+    plot_poisson_cv(molecules_filter[grep(&quot;ERCC&quot;, rownames(molecules_filter),
+                                  invert = TRUE), 
+                              anno_filter$individual == &quot;NA19239&quot;], 
+            molecules_filter[grep(&quot;ERCC&quot;, rownames(molecules_filter)), 
+                             anno_filter$individual == &quot;NA19239&quot;], 
+            is_log2count = FALSE,
+            main = &quot;Filtered counts, NA19239&quot;) +
+            theme(legend.position = &quot;none&quot;),
+  nrow = 1,
+  labels = LETTERS[1:3])</code></pre>
+<p><img src="figure/cv-adjusted-summary-pois-final.Rmd/unnamed-chunk-6-1.png" title="" alt="" width="960" style="display: block; margin: auto;" /></p>
+</div>
+<div id="supplemental-figure-xx-adjusted-cv-sanity-checks" class="section level2">
+<h2>Supplemental figure XX: Adjusted CV sanity checks</h2>
+<p>Investigating distance-to-the-median (DM). (A) to (C) correspond to cell lines NA19098, NA19101, NA19239. DM values of each gene are plotted against log10 of the average molecule counts.</p>
+<p>All cells</p>
+<pre class="r"><code>plot_grid(
+  ggplot(data.frame(dm = ENSG_cv_adj$NA19098$log10cv2_adj,
+                    log2_mean = log2(ENSG_cv_adj$NA19098$mean)),
+         aes(x = log2_mean, y = dm)) +
+      geom_point(cex = .4) +
+      xlab(&quot;log2 average molecule count&quot;) +
+      ylab(&quot;DM values&quot;) +
+      ggtitle(&quot;NA19098&quot;) +
+      theme(legend.position = &quot;none&quot;),
+    ggplot(data.frame(dm = ENSG_cv_adj$NA19101$log10cv2_adj,
+                    log2_mean = log10(ENSG_cv_adj$NA19101$mean)),
+         aes(x = log2_mean, y = dm)) +
+      geom_point(cex = .4) +
+      xlab(&quot;log2 average molecule count&quot;) +
+      ylab(&quot;DM values&quot;) +
+      ggtitle(&quot;NA19101&quot;) +
+      theme(legend.position = &quot;none&quot;),
+  ggplot(data.frame(dm = ENSG_cv_adj$NA19239$log10cv2_adj,
+                    log2_mean = log10(ENSG_cv_adj$NA19239$mean)),
+         aes(x = log2_mean, y = dm)) +
+      geom_point(cex = .4) +
+      xlab(&quot;log2 average molecule count&quot;) +
+      ylab(&quot;DM values&quot;) +
+      ggtitle(&quot;NA19239&quot;) +
+      theme(legend.position = &quot;none&quot;),
+  nrow = 1,
+  labels = LETTERS[4:6] )</code></pre>
+<p><img src="figure/cv-adjusted-summary-pois-final.Rmd/unnamed-chunk-7-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
+<p>Expressed cells</p>
+<pre class="r"><code>plot_grid(
+  ggplot(data.frame(dm = expressed_dm_subset$NA19098,
+                    log2_mean = log2(expressed_cv_subset$NA19098$expr_mean)),
+         aes(x = log2_mean, y = dm)) +
+      geom_point(cex = .4) +
+      xlab(&quot;log2 average molecule count&quot;) +
+      ylab(&quot;DM values&quot;) +
+      ggtitle(&quot;NA19098&quot;) +
+      theme(legend.position = &quot;none&quot;),
+  ggplot(data.frame(dm = expressed_dm_subset$NA19101,
+                    log2_mean = log2(expressed_cv_subset$NA19101$expr_mean)),
+         aes(x = log2_mean, y = dm)) +
+      geom_point(cex = .4) +
+      xlab(&quot;log2 average molecule count&quot;) +
+      ylab(&quot;DM values&quot;) +
+      ggtitle(&quot;NA19101&quot;) +
+      theme(legend.position = &quot;none&quot;),
+  ggplot(data.frame(dm = expressed_dm_subset$NA19239,
+                    log2_mean = log2(expressed_cv_subset$NA19239$expr_mean)),
+         aes(x = log2_mean, y = dm)) +
+      geom_point(cex = .4) +
+      xlab(&quot;log2 average molecule count&quot;) +
+      ylab(&quot;DM values&quot;) +
+      ggtitle(&quot;NA19239&quot;) +
+      theme(legend.position = &quot;none&quot;),
+  nrow = 1,
+  labels = LETTERS[4:6] )</code></pre>
+<p><img src="figure/cv-adjusted-summary-pois-final.Rmd/unnamed-chunk-8-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
+</div>
+<div id="supp.-figure-permutation-test-results" class="section level2">
+<h2>Supp. figure: permutation test results</h2>
+<p><em>Expressed cells</em></p>
+<p>Legend: (A) Histogram of empirical p-values based on 12,192 permutations. (B) -log10 empirical p-values are plotted against average gene expression levels. Blue line displays predicted -log10 p-values using locally weighted scatterplot smooth (LOESS). (C) Median of Absolute Deviation (MAD) of genes versus average gene expression levels. LOESS was also used to depict predicted MAD values.</p>
+<pre class="r"><code># Bins average gene expression and make a boxplot of -log10 p-values
+# for each bin
+permuted_pval_subset[which(permuted_pval_subset == 0)] &lt;- 1/length(permuted_pval)
+mad_expressed &lt;- rowMedians( abs( as.matrix(expressed_dm_subset) - rowMedians(as.matrix(expressed_dm_subset)) ) )
+
+
+plot_grid(
+  ggplot( data.frame(pvals = permuted_pval_subset),
+         aes(x = pvals) ) +
+    geom_histogram() + xlim(0, 1) +
+    labs(x = &quot;Permutation-based p-values&quot;, y = &quot;Count&quot;),
+  ggplot( data.frame(pvals = permuted_pval_subset,
+                     gene_mean = rowMeans(as.matrix(molecules_final_expressed_subset),
+                                          na.rm = TRUE),
+                     bins = cut_number(rowMeans(as.matrix(molecules_final_expressed_subset),
+                                                na.rm = TRUE),
+                                       n = 10)),
+         aes(x = rowMeans(as.matrix(molecules_final_expressed_subset),
+                          na.rm = TRUE), y = -log10(pvals)) ) +
+    geom_point(alpha = .5, cex = .2) +
+    stat_smooth() +
+    theme(legend.position = &quot;none&quot;) +
+    ylab(&quot;-log10(p-value)&quot;) +
+    xlab(&quot;Average gene expression level&quot;),
+  ggplot( data.frame(mad = mad_expressed,
+                   gene_mean = rowMeans(as.matrix(molecules_final_expressed_subset),
+                                        na.rm = TRUE),
+                   bins = cut_number(rowMeans(as.matrix(molecules_final_expressed_subset),
+                                        na.rm = TRUE), n = 10)),
+         aes(x = gene_mean, y = mad) ) +
+      geom_point( alpha = .5, cex = .2) +
+      stat_smooth(col = 11) +
+      theme(legend.position = &quot;none&quot;) +
+      ylab(&quot;Median of absolute deviation (MAD)&quot;) +
+      xlab(&quot;Average gene expression level&quot;),
+  ncol = 2,
+  labels = LETTERS[1:3]
+  )</code></pre>
+<p><img src="figure/cv-adjusted-summary-pois-final.Rmd/unnamed-chunk-9-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
+<p><em>All cells</em></p>
+<p>Legend: (A) Histogram of empirical p-values based on 12,192 permutations. (B) -log10 empirical p-values are plotted against average gene expression levels. Blue line displays predicted -log10 p-values using locally weighted scatterplot smooth (LOESS). (C) Median of Absolute Deviation (MAD) of genes versus average gene expression levels. LOESS was also used to depict predicted MAD values.</p>
+<p><em>[chunk not evaluated]</em></p>
+<pre class="r"><code># Bins average gene expression and make a boxplot of -log10 p-values
+# for each bin
+gene_means &lt;- rowMeans(as.matrix(molecules_final_subset))
+
+plot_grid(
+  ggplot( data.frame(pvals = permuted_pval$mad_pval),
+         aes(x = pvals) ) +
+    geom_histogram() + xlim(0, 1) +
+    labs(x = &quot;Permutation-based p-values&quot;, y = &quot;Count&quot;),
+  ggplot( data.frame(pvals = permuted_pval$mad_pval,
+                     gene_mean = rowMeans(as.matrix(molecules_final)),
+                     bins = cut_number(gene_means, n = 10)),
+         aes(x = gene_mean, y = -log10(pvals)) ) +
+    geom_point(alpha = .5, cex = .2) +
+    stat_smooth() +
+    theme(legend.position = &quot;none&quot;) +
+    ylab(&quot;-log10(p-value)&quot;) +
+    xlab(&quot;Average gene expression level&quot;),
+  ggplot( data.frame(mad = mad,
+                   gene_mean = rowMeans(as.matrix(molecules_final)),
+                   bins = cut_number(gene_means, n = 10)),
+         aes(x = gene_mean, y = mad) ) +
+      geom_point( alpha = .5, cex = .2) +
+      stat_smooth(col = 11) +
+      theme(legend.position = &quot;none&quot;) +
+      ylab(&quot;Median of absolute deviation (MAD)&quot;) +
+      xlab(&quot;Average gene expression level&quot;),
+  ncol = 2,
+  labels = LETTERS[1:3]
+  )</code></pre>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] grid      stats     graphics  grDevices utils     datasets  methods  
+[8] base     
+
+other attached packages:
+ [1] mgcv_1.8-6         nlme_3.1-120       viridis_0.3.3     
+ [4] broman_0.59-5      scales_0.2.4       matrixStats_0.14.0
+ [7] MASS_7.3-40        cowplot_0.3.1      Humanzee_0.1.0    
+[10] ggplot2_1.0.1      edgeR_3.10.2       limma_3.24.9      
+[13] dplyr_0.4.2        data.table_1.9.4   knitr_1.10.5      
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.12.0        formatR_1.2        plyr_1.8.3        
+ [4] bitops_1.0-6       tools_3.2.0        digest_0.6.8      
+ [7] lattice_0.20-31    evaluate_0.7       gtable_0.1.2      
+[10] Matrix_1.2-1       DBI_0.3.1          yaml_2.1.13       
+[13] parallel_3.2.0     proto_0.3-10       gridExtra_2.0.0   
+[16] httr_0.6.1         stringr_1.0.0      caTools_1.17.1    
+[19] gtools_3.5.0       R6_2.1.1           rmarkdown_0.6.1   
+[22] gdata_2.16.1       reshape2_1.4.1     magrittr_1.5      
+[25] gplots_2.17.0      htmltools_0.2.6    assertthat_0.1    
+[28] colorspace_1.2-6   labeling_0.3       KernSmooth_2.23-14
+[31] stringi_0.4-1      RCurl_1.95-4.6     munsell_0.4.2     
+[34] chron_2.3-45      </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>
