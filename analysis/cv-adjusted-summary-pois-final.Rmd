@@ -262,8 +262,12 @@ query_genes_ensg <- gene_symbols[which(gene_symbols$external_gene_name %in% quer
 
 
 pdf("figure/cv-adjusted-summary-pois-final.Rmd/chosen-genes.pdf",
-    height = 8, width = 8)
-par(mfrow = c(3,3))
+    height = 8, width = 12)
+#### specify the order of the plot, making same gene appear in the same column
+layout( matrix(c(2, 5, 8, 11, 14, 
+                 1, 4, 7, 10, 13,
+                 3, 6, 9, 12, 15
+                 ), nrow = 3, byrow = TRUE))
 for (i in 1:nrow(query_genes_ensg)) {
 
   df <- do.call(cbind,
@@ -273,13 +277,14 @@ for (i in 1:nrow(query_genes_ensg)) {
   colnames(df) <- unique(anno_filter$individual)
   df <- t(t(df)/colSums(df))
   barplot(df, col = c("grey40", "grey80"),
-          ylab = "Proportion of detected cells")
+          ylab = "Proportion of detected cells",
+          cex.names = 0.7)
 
   plot_density_overlay(
     molecules = molecules_final_expressed_subset,
     annotation = anno_filter,
     which_gene = query_genes_ensg$ensembl_gene_id[i], 
-    labels = round(drop_out$all[which(rownames(molecules_final_subset) %in% query_genes_ensg$ensembl_gene_id[i])], digits = 2),
+    labels = sprintf("%.2f",round(drop_out$all[which(rownames(molecules_final_subset) %in% query_genes_ensg$ensembl_gene_id[i])], digits = 2)),
     xlims = c(4,12.5), ylims = c(0,1),
     gene_symbols = gene_symbols)
     individuals <- unique(anno_filter$individual)
@@ -291,7 +296,8 @@ for (i in 1:nrow(query_genes_ensg)) {
 
   barplot(height = abs(unlist(expressed_dm_subset[which(rownames(expressed_dm_subset) %in% query_genes_ensg$ensembl_gene_id[i]),])), col = cols,
           ylim = c(0,.7), border = "white",
-          ylab = "Absolute value of adjusted CV")
+          ylab = "Absolute value of adjusted CV",
+          cex.names = 0.7)
   abline(h = 0)
 }
 dev.off()
