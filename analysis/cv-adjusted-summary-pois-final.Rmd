@@ -288,7 +288,11 @@ hist(drop_out$all, xlim = c(0,1))
 query_genes <- c("NANOG", "TFPI", "SLC9A5", "SLC25A16", "SREK1IP1")
 query_genes_ensg <- gene_symbols[which(gene_symbols$external_gene_name %in% query_genes), ]
 
-
+## print permuted p-values of the chosen genes
+pvals_tab <- rbind(rownames(permuted_pval)[which(rownames(permuted_pval) %in% query_genes_ensg$ensembl_gene_id)],
+      gene_symbols$external_gene_name[gene_symbols$ensembl_gene_id %in% rownames(permuted_pval)[which(rownames(permuted_pval) %in% query_genes_ensg$ensembl_gene_id)]],
+      permuted_pval$mad_pval[which(rownames(permuted_pval) %in% query_genes_ensg$ensembl_gene_id)] )
+      
 pdf("figure/cv-adjusted-summary-pois-final.Rmd/chosen-genes.pdf",
     height = 8, width = 12)
 #### specify the order of the plot, making same gene appear in the same column
@@ -312,7 +316,7 @@ for (i in 1:nrow(query_genes_ensg)) {
     molecules = molecules_final_expressed_subset,
     annotation = anno_filter,
     which_gene = query_genes_ensg$ensembl_gene_id[i], 
-    labels = sprintf("%.2f",round(drop_out$all[which(rownames(molecules_final_subset) %in% query_genes_ensg$ensembl_gene_id[i])], digits = 2)),
+    labels = "",
     xlims = c(4,12.5), ylims = c(0,1),
     gene_symbols = gene_symbols)
     individuals <- unique(anno_filter$individual)
@@ -327,6 +331,26 @@ for (i in 1:nrow(query_genes_ensg)) {
           ylab = "Absolute value of adjusted CV",
           cex.names = 0.9)
   abline(h = 0)
+
+  # print MAD values  
+  mad_val <- sprintf("%.2f",round(drop_out$all[which(rownames(molecules_final_subset) %in% query_genes_ensg$ensembl_gene_id[i])], digits = 2))
+  if (as.numeric(mad_val) < .01) {
+  mtext(text = paste0("MAD<.01"),
+        side=3, line = 2)
+  } else {
+  mtext(text = paste0("MAD=", mad_val),
+        side=3, line = 2)
+  }
+  
+  # print permuted p-value for the adjusted coefficient of variation
+  if (i !=2) {
+  mtext(text = expression(paste(italic("p"),"<",10^"-5")), side=3)
+  }
+  if (i == 2) {
+  mtext(text = expression(paste(italic("p"),"=.80")), side = 3)
+  }
+abline(h = 0)
+
 }
 dev.off()
 ```
@@ -732,7 +756,6 @@ lines(lowess( expressed_cv_subset$all$expr_cv ~ drop_out$all),
       col = "red")
 title(main = "Expressed cells, three individuals", outer = TRUE, line = -1)
 ```
-
 
 
 
