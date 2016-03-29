@@ -1,0 +1,421 @@
+---
+title: "Cluster samples using transcript compatibility counts from kallisto"
+date: 2016-03-26
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+```
+
+```{r packages, message=FALSE}
+library("ggplot2")
+library("cowplot")
+theme_set(theme_bw(base_size = 12))
+theme_update(panel.grid.minor.x = element_blank(),
+             panel.grid.minor.y = element_blank(),
+             panel.grid.major.x = element_blank(),
+             panel.grid.major.y = element_blank())
+```
+
+## Installing kallisto from source
+
+kallisto has also been used for fast clustering of single cell samples, described in a pre-print by Ntranos et al.
+They provide a GitHub repo with their code.
+Critically, because they modified kallisto, I cannot use the pre-built binary that I downloaded from the kallisto website (previous post).
+They provide the modified source code, but not pre-built binaries. Since our data is single end, I built the version modified for use with single end reads.
+
+```bash
+# Not executed here
+git clone git@github.com:govinda-kamath/clustering_on_transcript_compatibility_counts.git
+cd clustering_on_transcript_compatibility_counts/modified-kallisto-source/kallisto_pseudo_single
+cmake -DCMAKE_CXX_COMPILER=/mnt/gluster/data/tools/gcc50/bin/g++ -DCMAKE_C_COMPILER=/mnt/gluster/data/tools/gcc50/bin/gcc -DCMAKE_INSTALL_PREFIX:PATH=/mnt/gluster/home/jdblischak/src ..
+make
+make install
+```
+
+## Indexing transcriptome
+
+I indexed human transcriptome h
+
+## Obtaining transcript compatibility counts
+
+For each sample, I ran the command `kallisto pseudoalign` using the script [run-kallisto.sh][].
+The input was the 3 trimmed fastq files per sample.
+The output was one file with the transcript compatibility counts.
+The file extension is `.class` because it is later required by one of their processing scripts.
+
+[run-kallisto.sh]: https://github.com/jdblischak/singleCellSeq/blob/master/code/run-kallisto.sh
+
+## Calculating a distance matrix
+
+Combined the 864 TCC files into one large matrix is non-trivial.
+This is because each sample can have unique TCCs.
+Luckily they have provided all their processing scripts.
+I followed the steps below in accordance with the file [Zeisel_wrapper.py][].
+
+[Zeisel_wrapper.py]: https://github.com/govinda-kamath/clustering_on_transcript_compatibility_counts/blob/fb3328daffcec215549d7efef081468cd8005dd7/Zeisel_pipeline/Zeisel_wrapper.py
+
+They did not specify, but based on how `print` is [used][py-version], they are using Python3.
+
+[py-version]: https://github.com/govinda-kamath/clustering_on_transcript_compatibility_counts/search?utf8=%E2%9C%93&q=print
+
+To create the TCC matrix, I ran [get_tcc_dist.py][].
+It is invoked on [line 95][l95] of [Zeisel_wrapper.py][].
+As input, it requires the number of equivalence classes, which can be obtained with `kallisto metadata`.
+
+[get_tcc_dist.py]: https://github.com/govinda-kamath/clustering_on_transcript_compatibility_counts/blob/fb3328daffcec215549d7efef081468cd8005dd7/Zeisel_pipeline/get_tcc_dist.py
+[l95]: https://github.com/govinda-kamath/clustering_on_transcript_compatibility_counts/blob/fb3328daffcec215549d7efef081468cd8005dd7/Zeisel_pipeline/Zeisel_wrapper.py#L95
+
+```bash
+# Not executed here
+kallisto metadata kallisto/combined.idx
+```
+```bash
+[index] k-mer length: 31
+[index] number of targets: 173,351
+[index] number of k-mers: 104,422,494
+[index] number of equivalence classes: 695,304
+[metadata] output transcript names in kallisto/combined.idx_tr_id_names.txt
+[metadata] output equiv.class map in kallisto/combined.idx_ecmap.txt 
+```
+
+Downloading the script.
+
+```bash
+# Not executed here
+wget --no-check-certificate https://raw.githubusercontent.com/govinda-kamath/clustering_on_transcript_compatibility_counts/fb3328daffcec215549d7efef081468cd8005dd7/Zeisel_pipeline/get_tcc_dist.py
+```
+
+Running it with no arguments outputs the usage information:
+
+```bash
+# Not executed here
+python get_tcc_dist.py
+```
+```bash
+usage is :
+ python get_tcc_dist.py -i input_tcc_dir -m number-of-eq-classes -t path-to-output-TCC-file -d path-to-output-TCC-dist-file
+```
+
+And running it from the data directory. Some notes:
+
+*  The output files are binary, produced by the Python package `pickle`. Therefore I use the `.dat` file extension to follow their example.
+*  The input files must have the extension `.class`.
+*  The directory must contain the trailing forward slash.
+*  Here `dist` is short for distribution.
+*  This requires a lot of memory (> 12g).
+
+```bash
+# Not executed in this file
+python get_tcc_dist.py -i kallisto/ -m 695304 -t kallisto/tcc.dat -d kallisto/tcc-dist.dat
+```
+
+The next step is to obtain pairwise distance matrices with [get_pairwise_distances.py][], which is invoked on [line ][l103].
+
+[get_pairwise_distances.py]: https://github.com/govinda-kamath/clustering_on_transcript_compatibility_counts/blob/fb3328daffcec215549d7efef081468cd8005dd7/Zeisel_pipeline/get_pairwise_distances.py
+[l103]: https://github.com/govinda-kamath/clustering_on_transcript_compatibility_counts/blob/fb3328daffcec215549d7efef081468cd8005dd7/Zeisel_pipeline/Zeisel_wrapper.py#L103
+
+Downloading the script.
+
+```bash
+# Not executed here
+wget --no-check-certificate https://raw.githubusercontent.com/govinda-kamath/clustering_on_transcript_compatibility_counts/fb3328daffcec215549d7efef081468cd8005dd7/Zeisel_pipeline/get_pairwise_distances.py
+```
+
+Checking its usage.
+
+```bash
+# Not executed here
+python get_pairwise_distances.py
+```
+```bash
+1
+usage is
+ python get_pairwise_distances.py ip-file op-file num-processes
+```
+
+The input file is the output from the previous step from the `-d` flag, in my case tcc-dist.dat.
+The output file contains the distance measurements, so to use a similar name to what they use, I'll call it tcc-distance.dat.
+This took a long time, so I submitted it to the cluster.
+I tried to use multiple cores with `-pe simple_pe 8`, but the job just sat in the queue.
+So I switched to just using 1 process.
+
+```bash
+# Not executed here
+echo "python get_pairwise_distances.py kallisto/tcc-dist.dat kallisto/tcc-distance.dat 1" | qsub -l h_vmem=32g -N get_pairwise_distances -cwd-j y -V -o pairwise-log.txt
+```
+
+This matrix of pairwise distances is the input for the clustering steps.
+To interact with it from this file, I copy it to the main directory.
+
+```bash
+# Not executed here
+cp kallisto/tcc-distance.dat $ssc/data
+```
+
+## Clustering all cells
+
+The code for clustering the cells is in the file [Zeisel_Analysis.ipynb][].
+Below is their code, with minimal edits from me.
+It performs the following steps:
+
+*  Import matrix of pairwise distances (864x864)
+*  Reduce to two dimensions using t-SNE
+*  Cluster using affinity propagtion for two sets of [input parameters][AffinityPropagation]
+
+The changes I made were:
+
+*  Change the path to the data file
+*  Change the size of the input parameter, `preference`, to 864, corresponding to the number of samples I have
+*  Save the t-SNE coordinates and cluster labels to plain text files
+
+[Zeisel_Analysis.ipynb]: https://github.com/govinda-kamath/clustering_on_transcript_compatibility_counts/blob/fb3328daffcec215549d7efef081468cd8005dd7/Zeisel_pipeline/Zeisel_Analysis.ipynb
+[AffinityPropagation]: http://scikit-learn.org/stable/modules/generated/sklearn.cluster.AffinityPropagation.html
+
+```{r cluster-cells, engine='python'}
+import pickle
+import scipy.sparse
+import numpy as np
+import itertools
+
+
+filepath='../data/'
+
+with open(filepath+'tcc-distance.dat','rb') as infile:
+    D = pickle.load(infile)
+
+# Sanity check
+assert np.all(np.isclose(D,D.T))
+assert np.all(np.isclose(np.diag(D),np.zeros(np.diag(D).shape)))
+
+from sklearn import manifold
+def tSNE_pairwise(D):
+    tsne = manifold.TSNE(n_components=2, random_state=0, metric='precomputed', n_iter=2000, verbose=1);
+    X_tsne = tsne.fit_transform(D);
+    return X_tsne
+X_tsne = tSNE_pairwise(D)
+
+# [t-SNE] Computed conditional probabilities for sample 864 / 864
+# [t-SNE] Mean sigma: 0.074415
+# [t-SNE] Error after 100 iterations with early exaggeration: 23.493585
+# [t-SNE] Error after 172 iterations: 2.055106
+
+# Save the reduced dimensions
+np.savetxt(filepath + "tcc-tsne.txt", X_tsne, delimiter = "\t")
+
+from sklearn import cluster
+
+# obtain labels via affinity propagation
+def AffinityProp(D,pref,damp):
+    aff= cluster.AffinityPropagation(affinity='precomputed',preference=pref,damping=damp, verbose=True)
+    labels=aff.fit_predict(D)
+    return labels
+
+pref = -np.median(D.flatten())*np.ones(864)
+tcc_affinity_labels1 = AffinityProp(-D,pref,0.5)
+tcc_affinity_labels2 = AffinityProp(-D,2*pref,0.7)
+
+# Save the labels
+np.savetxt(filepath + "tcc-labels-01.txt", tcc_affinity_labels1,
+           delimiter = "\t", fmt = "%d")
+np.savetxt(filepath + "tcc-labels-02.txt", tcc_affinity_labels2,
+           delimiter = "\t", fmt = "%d")
+```
+
+Importing the data into R.
+
+```{r cluster-all-input}
+tsne <- read.table("../data/tcc-tsne.txt")
+stopifnot(dim(tsne) == c(864, 2))
+colnames(tsne) <- c("dim1", "dim2")
+labels_01 <- scan("../data/tcc-labels-01.txt", what = "character")
+length(unique(labels_01))
+labels_02 <- scan("../data/tcc-labels-02.txt", what = "character")
+length(unique(labels_02))
+```
+
+Importing our annotation.
+
+```{r anno}
+quality_cells <- scan("../data/quality-single-cells.txt", what = "character")
+anno <- read.table("../data/annotation.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno)
+```
+
+Combine data.
+
+```{r combine-data}
+d_all <- data.frame(tsne, labels_01, labels_02, anno, stringsAsFactors = FALSE)
+d_all$quality <- ifelse(d_all$sample_id %in% quality_cells, "high", "low")
+```
+
+
+```{r plot-tsne, fig.width = 8}
+plot_tsne <- ggplot(d_all, aes(x = dim1, y = dim2)) +
+  geom_point() +
+  labs(x = "t-SNE dimension 1", y = "t-SNE dimension 2",
+       title = "t-SNE representation") +
+  theme(legend.position = "none")
+plot_labels_01 <- plot_tsne %+% aes(color = labels_01) +
+  labs(title = "Affinity propogation 1")
+plot_labels_02 <- plot_tsne %+% aes(color = labels_02) +
+  labs(title = "Affinity propogation 2")
+plot_batch <- plot_tsne %+% aes(color = batch) +
+  labs(title = "Nine batches")
+plot_individual <- plot_tsne %+% aes(color = individual) +
+  labs(title = "Three individuals") +
+  theme(legend.position = "bottom",
+        legend.title = element_blank())
+plot_quality <- plot_tsne %+% aes(color = quality) +
+  labs(title = "Quality filter") +
+  theme(legend.position = "bottom",
+        legend.title = element_blank())
+plot_grid(plot_tsne, plot_labels_01, plot_labels_02,
+          plot_batch, plot_individual, plot_quality,
+          nrow = 2, labels = LETTERS[1:6])
+```
+
+## Clustering high quality cells
+
+The main split is between high and low quality cells.
+It would be more interesting to see the clustering and affinity propagation labels for only the cells we label as high quality.
+
+Converting the pickle pairwise matrix to plain text for import into R.
+
+```{r pickle2text, engine='python'}
+import pickle
+import numpy as np
+
+filepath='../data/'
+
+with open(filepath+'tcc-distance.dat','rb') as infile:
+    D = pickle.load(infile)
+
+np.savetxt(filepath + "tcc-distance.txt", D, delimiter = "\t")
+```
+
+Now read into R for filtering.
+
+```{r filter-distance}
+distance <- read.table("../data/tcc-distance.txt")
+stopifnot(dim(distance) == 864)
+quality_index <- anno$sample_id %in% quality_cells
+distance_qual <- distance[quality_index, quality_index]
+stopifnot(dim(distance_qual) == length(quality_cells))
+write.table(distance_qual, file = "../data/tcc-distance-qual.txt", sep = "\t",
+            row.names = FALSE, col.names = FALSE, quote = FALSE)
+```
+
+Now back to Python for t-SNE and affinity propagation.
+
+```{r cluster-cells-qual, engine='python'}
+import scipy.sparse
+import numpy as np
+import itertools
+
+filepath='../data/'
+
+D = np.loadtxt(filepath + 'tcc-distance-qual.txt', delimiter = "\t")
+
+# Sanity check
+assert np.all(np.isclose(D,D.T))
+assert np.all(np.isclose(np.diag(D),np.zeros(np.diag(D).shape)))
+
+from sklearn import manifold
+def tSNE_pairwise(D):
+    tsne = manifold.TSNE(n_components=2, random_state=0, metric='precomputed', n_iter=2000, verbose=1);
+    X_tsne = tsne.fit_transform(D);
+    return X_tsne
+X_tsne = tSNE_pairwise(D)
+
+# [t-SNE] Computed conditional probabilities for sample 564 / 564
+# [t-SNE] Mean sigma: 0.055751
+# [t-SNE] Error after 65 iterations with early exaggeration: 23.330084
+# [t-SNE] Error after 136 iterations: 1.791264
+# Converged after 21 iterations.
+# Converged after 26 iterations.
+
+# Save the reduced dimensions
+np.savetxt(filepath + "tcc-tsne-qual.txt", X_tsne, delimiter = "\t")
+
+from sklearn import cluster
+
+# obtain labels via affinity propagation
+def AffinityProp(D,pref,damp):
+    aff= cluster.AffinityPropagation(affinity='precomputed',preference=pref,damping=damp, verbose=True)
+    labels=aff.fit_predict(D)
+    return labels
+
+pref = -np.median(D.flatten())*np.ones(564)
+tcc_affinity_labels1 = AffinityProp(-D,pref,0.5)
+tcc_affinity_labels2 = AffinityProp(-D,2*pref,0.7)
+
+# Save the labels
+np.savetxt(filepath + "tcc-labels-01-qual.txt", tcc_affinity_labels1,
+           delimiter = "\t", fmt = "%d")
+np.savetxt(filepath + "tcc-labels-02-qual.txt", tcc_affinity_labels2,
+           delimiter = "\t", fmt = "%d")
+```
+
+Importing the data into R.
+
+```{r cluster-all-input-qual}
+tsne_qual <- read.table("../data/tcc-tsne-qual.txt")
+stopifnot(dim(tsne_qual) == c(564, 2))
+colnames(tsne_qual) <- c("dim1", "dim2")
+labels_01_qual <- scan("../data/tcc-labels-01-qual.txt", what = "character")
+length(unique(labels_01_qual))
+labels_02_qual <- scan("../data/tcc-labels-02-qual.txt", what = "character")
+length(unique(labels_02_qual))
+```
+
+Filtering our annotation.
+
+```{r anno-qual}
+anno_qual <- anno[quality_index, ]
+```
+
+Combine data.
+
+```{r combine-data-qual}
+d_qual <- data.frame(tsne_qual, labels_01_qual, labels_02_qual, anno_qual,
+                     stringsAsFactors = FALSE)
+```
+
+
+```{r plot-tsne-qual, fig.width = 8}
+plot_tsne_qual <- ggplot(d_qual, aes(x = dim1, y = dim2)) +
+  geom_point() +
+  labs(x = "t-SNE dimension 1", y = "t-SNE dimension 2",
+       title = "t-SNE representation") +
+  theme(legend.position = "none")
+plot_labels_01_qual <- plot_tsne_qual %+% aes(color = labels_01_qual) +
+  labs(title = "Affinity propogation 1")
+plot_labels_02_qual <- plot_tsne_qual %+% aes(color = labels_02_qual) +
+  labs(title = "Affinity propogation 2")
+plot_batch_qual <- plot_tsne_qual %+% aes(color = batch) +
+  labs(title = "Nine batches")
+plot_individual_qual <- plot_tsne_qual %+% aes(color = individual) +
+  labs(title = "Three individuals")
+plot_grid(plot_labels_01_qual, plot_labels_02_qual,
+          plot_batch_qual, plot_individual_qual,
+          nrow = 2, labels = LETTERS[1:4])
+```
+
+Overlap with known variables.
+
+```{r afffinty-propagation overlap}
+table(d_qual$batch, d_qual$labels_01_qual)
+table(d_qual$individual, d_qual$labels_02_qual)
+```
+
+## Session information
+
+```{r info}
+sessionInfo()
+```

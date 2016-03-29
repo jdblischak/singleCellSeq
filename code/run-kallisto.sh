@@ -30,7 +30,7 @@ do
 	do
 	  echo "Processing sample $IND.$REP.$ROW$COL"
 	  CMD="kallisto pseudoalign -i kallisto/combined.idx \
-                               -o kallisto/NA$IND.r$REP.$ROW$COL.txt \
+                               -o kallisto/NA$IND.r$REP.$ROW$COL.class \
                                 trim/$IND.$REP.$ROW$COL*fastq.gz"
           echo $CMD | qsub -l h_vmem=4g -cwd -V -N kallisto.$IND.$REP.$ROW$COL -j y -o ~/log/run-kallisto.sh -l 'hostname=spudling07'
 	done
