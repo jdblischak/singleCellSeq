@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+<meta name="author" content="John Blischak" />
+
+<meta name="date" content="2016-03-30" />
+
+<title>Tracking down bug in reads to molecules conversion - Attempt 04</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Tracking down bug in reads to molecules conversion - Attempt 04</h1>
+<h4 class="author"><em>John Blischak</em></h4>
+<h4 class="date"><em>2016-03-30</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#input">Input</a></li>
+<li><a href="#identifying-problem-genes">Identifying problem genes</a></li>
+<li><a href="#searching-for-where-the-reads-are-lost-during-the-processing-pipeline">Searching for where the reads are lost during the processing pipeline</a></li>
+<li><a href="#tracking-down-the-one-saved-molecule">Tracking down the one saved molecule</a></li>
+<li><a href="#creating-reproducible-example-for-subread-forum">Creating reproducible example for Subread forum</a></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2016-04-01</p>
+<p><strong>Code version:</strong> 34345c9c3889d9b3b288f2e4f80ff6b3e0d7a5e7</p>
+<p>Since my <a href="bug-conversion-03.html">last attempt</a> at debugging, I re-mapped all the reads using Subjunc to avoid problems arising from the large amount of soft-clipping Subread does. Very unfortunately there are still some problems. This analysis continues the search for bugs lurking in the <a href="process-samples.html">sequence processsing pipeline</a>.</p>
+<div id="input" class="section level2">
+<h2>Input</h2>
+<p>Input annotation.</p>
+<pre class="r"><code>anno &lt;- read.table(&quot;../data/annotation.txt&quot;, header = TRUE,
+                   stringsAsFactors = FALSE)</code></pre>
+<p>Input read counts.</p>
+<pre class="r"><code>reads &lt;- read.table(&quot;../data/reads.txt&quot;, header = TRUE,
+                    stringsAsFactors = FALSE)
+stopifnot(ncol(reads) == nrow(anno),
+          colnames(reads) == anno$sample_id)</code></pre>
+<p>Input molecule counts.</p>
+<pre class="r"><code>molecules &lt;- read.table(&quot;../data/molecules.txt&quot;, header = TRUE,
+                    stringsAsFactors = FALSE)
+stopifnot(ncol(molecules) == nrow(anno),
+          colnames(molecules) == anno$sample_id)</code></pre>
+<p>Input list of quality single cells.</p>
+<pre class="r"><code>quality_single_cells &lt;- scan(&quot;../data/quality-single-cells.txt&quot;,
+                             what = &quot;character&quot;)</code></pre>
+</div>
+<div id="identifying-problem-genes" class="section level2">
+<h2>Identifying problem genes</h2>
+<p>How often is this a problem? How many genes does it affect? For affected genes, how many samples are affected?</p>
+<pre class="r"><code>discordant_zeros &lt;- (reads == 0) != (molecules == 0)
+all_genes &lt;- rowSums(discordant_zeros)
+names(all_genes) &lt;- rownames(reads)
+problem_genes &lt;- all_genes[all_genes &gt; 0]
+length(problem_genes)</code></pre>
+<pre><code>[1] 727</code></pre>
+<pre class="r"><code>length(problem_genes) / length(all_genes)</code></pre>
+<pre><code>[1] 0.03820886</code></pre>
+<pre class="r"><code>summary(problem_genes)</code></pre>
+<pre><code>   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+  1.000   1.000   1.000   1.461   1.000  28.000 </code></pre>
+<p>This problem affects 727 out of the 19027 total genes (3.82%). For these problem genes, the median number of affected samples is 1 and the max number of affected samples is 28.</p>
+<p>Next I identify the problem gene that affects the most samples.</p>
+<pre class="r"><code>(x &lt;- names(problem_genes)[problem_genes == max(problem_genes)])</code></pre>
+<pre><code>[1] &quot;ENSG00000205544&quot;</code></pre>
+<pre class="r"><code>plot(as.numeric(reads[x, ]), as.numeric(molecules[x, ]))</code></pre>
+<p><img src="figure/bug-conversion-04.Rmd/problem-1-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>problem_sample &lt;- colnames(reads)[discordant_zeros[x, ] == TRUE]
+reads[x, problem_sample]</code></pre>
+<pre><code>                NA19098.r1.A03 NA19098.r1.G03 NA19098.r2.B05
+ENSG00000205544             13              9              4
+                NA19098.r2.B06 NA19098.r2.C01 NA19098.r2.D06
+ENSG00000205544              2              2              3
+                NA19098.r3.B06 NA19098.r3.B07 NA19098.r3.C11
+ENSG00000205544              5              5              2
+                NA19098.r3.E12 NA19101.r1.A08 NA19101.r1.B08
+ENSG00000205544              5             10             13
+                NA19101.r1.B09 NA19101.r1.E07 NA19101.r1.F11
+ENSG00000205544             15             24              4
+                NA19101.r1.H12 NA19101.r2.C04 NA19101.r2.C06
+ENSG00000205544              7             11              7
+                NA19101.r2.C07 NA19101.r2.G03 NA19101.r3.A12
+ENSG00000205544              2              2             10
+                NA19101.r3.B06 NA19101.r3.F07 NA19101.r3.F08
+ENSG00000205544              1              9              5
+                NA19101.r3.G01 NA19101.r3.H07 NA19239.r1.G10
+ENSG00000205544              2              4              3
+                NA19239.r2.D08
+ENSG00000205544              4</code></pre>
+<pre class="r"><code>molecules[x, problem_sample]</code></pre>
+<pre><code>                NA19098.r1.A03 NA19098.r1.G03 NA19098.r2.B05
+ENSG00000205544              0              0              0
+                NA19098.r2.B06 NA19098.r2.C01 NA19098.r2.D06
+ENSG00000205544              0              0              0
+                NA19098.r3.B06 NA19098.r3.B07 NA19098.r3.C11
+ENSG00000205544              0              0              0
+                NA19098.r3.E12 NA19101.r1.A08 NA19101.r1.B08
+ENSG00000205544              0              0              0
+                NA19101.r1.B09 NA19101.r1.E07 NA19101.r1.F11
+ENSG00000205544              0              0              0
+                NA19101.r1.H12 NA19101.r2.C04 NA19101.r2.C06
+ENSG00000205544              0              0              0
+                NA19101.r2.C07 NA19101.r2.G03 NA19101.r3.A12
+ENSG00000205544              0              0              0
+                NA19101.r3.B06 NA19101.r3.F07 NA19101.r3.F08
+ENSG00000205544              0              0              0
+                NA19101.r3.G01 NA19101.r3.H07 NA19239.r1.G10
+ENSG00000205544              0              0              0
+                NA19239.r2.D08
+ENSG00000205544              0</code></pre>
+<p>Note that this problem genes affects both high and low quality single cells.</p>
+<pre class="r"><code>table(problem_sample %in% quality_single_cells)</code></pre>
+<pre><code>
+FALSE  TRUE 
+    7    21 </code></pre>
+</div>
+<div id="searching-for-where-the-reads-are-lost-during-the-processing-pipeline" class="section level2">
+<h2>Searching for where the reads are lost during the processing pipeline</h2>
+<p>Now I am going to search for the bug by inspecting the intermediate data files from the <a href="process-samples.html">sequence processsing pipeline</a>.</p>
+<p>The following chunks are all Bash commands run from the data directory.</p>
+<pre class="r"><code>opts_chunk$set(engine = &quot;bash&quot;)
+opts_knit$set(root.dir = &quot;/mnt/gluster/home/jdblischak/ssd&quot;)</code></pre>
+<p>First I confirm that this difference is observed at the <a href="process-samples.html#count-reads-per-gene">featureCounts step</a>:</p>
+<pre class="bash"><code># reads per lane
+grep ENSG00000205544 counts/19098.1.G03*trim.sickle.sorted.genecounts.txt | cut -f1,7</code></pre>
+<pre><code>counts/19098.1.G03.AGGGAAGC.L002.R1.C6WYKACXX.trim.sickle.sorted.genecounts.txt:ENSG00000205544 3
+counts/19098.1.G03.AGGGAAGC.L003.R1.C6WURACXX.trim.sickle.sorted.genecounts.txt:ENSG00000205544 4
+counts/19098.1.G03.AGGGAAGC.L006.R1.C723YACXX.trim.sickle.sorted.genecounts.txt:ENSG00000205544 2</code></pre>
+<pre class="bash"><code># molecules per lane
+grep ENSG00000205544 counts/19098.1.G03*trim.sickle.sorted.rmdup.genecounts.txt | cut -f1,7</code></pre>
+<pre><code>counts/19098.1.G03.AGGGAAGC.L002.R1.C6WYKACXX.trim.sickle.sorted.rmdup.genecounts.txt:ENSG00000205544   0
+counts/19098.1.G03.AGGGAAGC.L003.R1.C6WURACXX.trim.sickle.sorted.rmdup.genecounts.txt:ENSG00000205544   0
+counts/19098.1.G03.AGGGAAGC.L006.R1.C723YACXX.trim.sickle.sorted.rmdup.genecounts.txt:ENSG00000205544   0</code></pre>
+<pre class="bash"><code># molecules per sample
+grep ENSG00000205544 counts/19098.1.G03.trim.sickle.sorted.combined.rmdup.genecounts.txt | cut -f1,7</code></pre>
+<pre><code>ENSG00000205544 0</code></pre>
+<p>All three lanes have reads but zero molecules.</p>
+<p>Next I use the featureCounts assignments per read to obtain the read name.</p>
+<pre class="bash"><code>grep ENSG00000205544 counts/19098.1.G03.AGGGAAGC.L002.R1.C6WYKACXX.trim.sickle.sorted.bam.featureCounts</code></pre>
+<pre><code>HWI-700819F:303:C6WYKACXX:2:2314:4761:64177:UMI_AAAAGGGG    Assigned    ENSG00000205544 *
+HWI-700819F:303:C6WYKACXX:2:1108:14915:63494:UMI_AAAAGGGG   Assigned    ENSG00000205544 *
+HWI-700819F:303:C6WYKACXX:2:2307:18871:68709:UMI_AAAAGGGG   Assigned    ENSG00000205544 *</code></pre>
+<p>And just to confirm that it is not in the corresponding molecules file.</p>
+<pre class="bash"><code>grep ENSG00000205544 counts/19098.1.G03.AGGGAAGC.L002.R1.C6WYKACXX.trim.sickle.sorted.rmdup.bam.featureCounts
+exit 0</code></pre>
+<p>Is it in the rmdup bam file? Presumably not since it was not passed to featureCounts.</p>
+<pre class="bash"><code>read=`grep ENSG00000205544 counts/19098.1.G03.AGGGAAGC.L002.R1.C6WYKACXX.trim.sickle.sorted.bam.featureCounts | cut -f1 | head -n 1`
+echo &quot;The read is $read&quot;
+echo &quot;Checking rmdup bam per lane:&quot;
+samtools view bam-rmdup-umi/19098.1.G03.AGGGAAGC.L002.R1.C6WYKACXX.trim.sickle.sorted.rmdup.bam | grep $read
+echo &quot;Checking rmdup bam per sample:&quot;
+samtools view bam-rmdup-umi/19098.1.G03.trim.sickle.sorted.combined.rmdup.bam | grep $read
+echo &quot;Checking combined bam:&quot;
+samtools view bam-combined/19098.1.G03.trim.sickle.sorted.combined.bam | grep $read
+echo &quot;Checking reads per lane bam:&quot;
+samtools view bam-processed/19098.1.G03.AGGGAAGC.L002.R1.C6WYKACXX.trim.sickle.sorted.bam | grep $read
+exit 0</code></pre>
+<pre><code>The read is HWI-700819F:303:C6WYKACXX:2:2314:4761:64177:UMI_AAAAGGGG
+Checking rmdup bam per lane:
+Checking rmdup bam per sample:
+Checking combined bam:
+HWI-700819F:303:C6WYKACXX:2:2314:4761:64177:UMI_AAAAGGGG    16  chr17   7307333 58  85M *   0   0   GAAGCGAAGCCTAAGGCCGCAGCTCCGGACAAGGCGCCCAAGCGGCGGAAAGCTGCAGCTGGCCCGGCCATAGCTGTAGAACAGC   BB7&lt;7B&lt;&lt;BB&lt;&lt;00&lt;B&lt;7&lt;BB&lt;&lt;7BBB&lt;&lt;&lt;&lt;BBB70&lt;&lt;BBBBBBFFBBFBBB&lt;BB&lt;0B&lt;FB&lt;FFFFFFFBFIIFFFFFB7&lt;FBFF   HI:i:1  NH:i:1  NM:i:1
+Checking reads per lane bam:
+HWI-700819F:303:C6WYKACXX:2:2314:4761:64177:UMI_AAAAGGGG    16  chr17   7307333 58  85M *   0   0   GAAGCGAAGCCTAAGGCCGCAGCTCCGGACAAGGCGCCCAAGCGGCGGAAAGCTGCAGCTGGCCCGGCCATAGCTGTAGAACAGC   BB7&lt;7B&lt;&lt;BB&lt;&lt;00&lt;B&lt;7&lt;BB&lt;&lt;7BBB&lt;&lt;&lt;&lt;BBB70&lt;&lt;BBBBBBFFBBFBBB&lt;BB&lt;0B&lt;FB&lt;FFFFFFFBFIIFFFFFB7&lt;FBFF   HI:i:1  NH:i:1  NM:i:1</code></pre>
+<p>OK. So this read is lost during the remove duplicate step. But why? Are there other reads that map to this position? I’ll focus on the lane file since it is smaller and displays the same problem.</p>
+<pre class="bash"><code>samtools view bam-processed/19098.1.G03.AGGGAAGC.L002.R1.C6WYKACXX.trim.sickle.sorted.bam chr17:7307332-7307334 | wc -l</code></pre>
+<pre><code>193</code></pre>
+<p>There are many reads that map to this area.</p>
+<pre class="bash"><code>samtools view bam-processed/19098.1.G03.AGGGAAGC.L002.R1.C6WYKACXX.trim.sickle.sorted.bam chr17:7307332-7307334 | grep UMI_AAAAGGGG | wc -l</code></pre>
+<pre><code>56</code></pre>
+<p>They don’t all have the same UMI, but many do.</p>
+<pre class="bash"><code>samtools view bam-processed/19098.1.G03.AGGGAAGC.L002.R1.C6WYKACXX.trim.sickle.sorted.bam chr17:7307332-7307334 | grep UMI_AAAAGGGG | tail</code></pre>
+<pre><code>HWI-700819F:303:C6WYKACXX:2:2307:1536:39555:UMI_AAAAGGGG    16  chr17   7307326 59  91M1S   *   0   0   CCCGTAGGAAGCGAAGCCTAAGGCCGCAGCTCCGGACAAGGCGCCCAAGCGGCGGAAAGCTGCAGCTGGCCCGGCCATAGCTGTAGAACAGC    BBBBBFFBBFFFBFFFFFBFBBBB&lt;BFFFB&lt;BFBBBFFBBBBBBFFFBFFFFFFFFIFIIIFFFIFIFIFFIFFFIFIIIFIIIFFFBFFFB    HI:i:1  NH:i:1  NM:i:0
+HWI-700819F:303:C6WYKACXX:2:2307:15612:77400:UMI_AAAAGGGG   16  chr17   7307326 59  91M1S   *   0   0   CCCGTAGGAAGCGAAGCCTAAGGCCGCAGCTCCGGACAAGGCGCCCAAGCGGCGGAAAGCTGCAGCTGGCCCGGCCATAGCTGTAGAACAGC    FFFFFBFFFBFFFFFFFFFFFBBFFBFBFFFFFFFFFFFFFFFFFFFFBFFFFFFFIIFIIIIIIIIFFIIIIIIIIIIIIIIIIIIFFFFF    HI:i:1  NH:i:1  NM:i:0
+HWI-700819F:303:C6WYKACXX:2:2308:20743:29162:UMI_AAAAGGGG   16  chr17   7307326 59  91M1S   *   0   0   CCCGTAGGAAGCGAAGCCTAAGGCCGCAGCTCCGGACAAGGCGCCCAAGCGGCGGAAAGCTGCAGCTGGCCCGGCCATAGCTGTAGAACAGC    BBFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFBFFFFFFFFBFFFFFFFFFFFFFFIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIFFFFF    HI:i:1  NH:i:1  NM:i:0
+HWI-700819F:303:C6WYKACXX:2:2310:3944:88550:UMI_AAAAGGGG    16  chr17   7307326 59  91M1S   *   0   0   CCCGTAGGAAGCGAAGCCTAAGGCCGCAGCTCCGGACAAGGCGCCCAAGCGGCGGAAAGCTGCAGCTGGCCCGGCCATAGCTGTAGAACAGC    BBBFBBFFFFFFFFFFFFFFBFBFFFFFBFBFFFFBBBFFFFFFFFFFFFFFFFFFIIIIIIIIIIFIIIIIFFIFIIIIIIIFFIIFFFFF    HI:i:1  NH:i:1  NM:i:0
+HWI-700819F:303:C6WYKACXX:2:2314:12432:71417:UMI_AAAAGGGG   16  chr17   7307326 59  91M1S   *   0   0   CCCGTAGGAAGCGAAGCCTAAGGCCGCAGCTCCGGACAAGGCGCCCAAGCGGCGGAAAGCTGCAGCTGGCCCGGCCATAGCTGTAGAACAGC    BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBFBFFFFFIIIIIIIIIFIIFBFFIIFIIIIIIIFFFF&lt;FFFF    HI:i:1  NH:i:1  NM:i:0
+HWI-700819F:303:C6WYKACXX:2:2111:9439:56111:UMI_AAAAGGGG    16  chr17   7307327 59  1S90M1S *   0   0   GCCGTAGGAAGCGAAGCCTAAGGCCGCAGCTCCGGACAAGGCGCCCAAGCGGCGGAAAGCTGCAGCTGGCCCGGCCATAGCTGTAGAACAGC    FBFFFFFFFFFFFFFFFFFFBFFFBFFFBB&lt;FFFFFFFFFFFFFFFFFFFFFFFFFIIIIIIIIIIFIIIIIIIIIIFIIIIIIIIIFFFFF    HI:i:1  NH:i:1  NM:i:0
+HWI-700819F:303:C6WYKACXX:2:1313:9195:48439:UMI_AAAAGGGG    16  chr17   7307328 59  2S89M1S *   0   0   AGCGTAGGAAGCGAAGCCTAAGGCCGCAGCTCCGGACAAGGCGCCCAAGCGGCGGAAAGCTGCAGCTGGCCCGGCCATAGCTGTAGAACAGC    ###BBBBFBBBBFBBBBBBBBB&lt;7&#39;BBBB7FBB&lt;&lt;&lt;BBFB&lt;7&lt;70&lt;BBB&lt;&lt;BBBFFBBFFFB7&#39;70FB&lt;F&lt;FFBBBFFFBFFFFFFBFFFFF    HI:i:1  NH:i:1  NM:i:0
+HWI-700819F:303:C6WYKACXX:2:1211:19965:46812:UMI_AAAAGGGG   16  chr17   7307329 59  3S88M1S *   0   0   CAGGTAGGAAGCGAAGCCTAAGGCCGCAGCTCCGGACAAGGCGCCCAAGCGGCGGAAAGCTGCAGCTGGCCCGGCCATAGCTGTAGAACAGC    FFFBFFFBBBFFFBBBBBBBBB&lt;&lt;0BBB&lt;B&lt;BFFBBFFBFBFFFFFFBBFFFFFFFIIFIIIIIIIFIIIIFIIIIIIIIIIIIIIIFFFFF    HI:i:1  NH:i:1  NM:i:0
+HWI-700819F:303:C6WYKACXX:2:1306:17557:72191:UMI_AAAAGGGG   16  chr17   7307329 59  3S88M1S *   0   0   CAGGTAGGAAGCGAAGCCTAAGGCCGCAGCTCCGGACAAGGCGCCCAAGCGGCGGAAAGCTGCAGCTGGCCCGGCCATAGCTGTAGAACAGC    BBFBBBB&lt;B7BFBFBFFFBB7BB&lt;&lt;BBBB&lt;B&lt;BFFFFF&lt;BFFFFFFFFFFFFFFFFIFIIIFFFFFFIIFIFFIFFIIFIIIIFFIFFFFFF    HI:i:1  NH:i:1  NM:i:0
+HWI-700819F:303:C6WYKACXX:2:2314:4761:64177:UMI_AAAAGGGG    16  chr17   7307333 58  85M *   0   0   GAAGCGAAGCCTAAGGCCGCAGCTCCGGACAAGGCGCCCAAGCGGCGGAAAGCTGCAGCTGGCCCGGCCATAGCTGTAGAACAGC   BB7&lt;7B&lt;&lt;BB&lt;&lt;00&lt;B&lt;7&lt;BB&lt;&lt;7BBB&lt;&lt;&lt;&lt;BBB70&lt;&lt;BBBBBBFFBBFBBB&lt;BB&lt;0B&lt;FB&lt;FFFFFFFBFIIFFFFFB7&lt;FBFF   HI:i:1  NH:i:1  NM:i:1</code></pre>
+<p>It looks like it is going to be another soft-clipping issue.</p>
+</div>
+<div id="tracking-down-the-one-saved-molecule" class="section level2">
+<h2>Tracking down the one saved molecule</h2>
+<p>After the deduplication, one read is kept for each UMI-start position combination. In this case it is challenging to identify. First, this region has lots of seqence coverage. Second, these reads are on the reverse strand, so the SAM format shows the reverse complement of the sequence and the start position (which would be the 3’ end of the read), so I can’t identify it easily by eye. I use pysam to identify the molecule that was kept. Specifically, I used similar code to what UMI-tools uses for reads on the reverse strand (<a href="https://github.com/jdblischak/UMI-tools/blob/e0ade5d0aad632cc95b6dfb95106e18c55ceecf9/dedup_umi.py#L527">line 527</a>). Also note that the variable <code>pos</code>, not <code>start</code>, is what is used for counting UMIs. <a href="https://github.com/jdblischak/UMI-tools/blob/e0ade5d0aad632cc95b6dfb95106e18c55ceecf9/dedup_umi.py#L531">Line 531</a> is confusing, but they have a <a href="https://github.com/CGATOxford/UMI-tools/issues/11">reason for doing it that way</a>.</p>
+<p>The coordinates are confusing. The coordinates in the SAM file are 1-based. The pysam coordinates are 0-based, but sometimes the final base is inclusive and sometimes it is exclusive. To understand the code below, the most important to understand is <a href="http://pysam.readthedocs.org/en/latest/api.html#pysam.AlignedSegment.reference_end">reference_end</a> (aka <a href="http://pysam.readthedocs.org/en/latest/api.html#pysam.AlignedSegment.aend">aend</a>).</p>
+<blockquote>
+<p>reference_end</p>
+<p>aligned reference position of the read on the reference genome.</p>
+<p>reference_end points to one past the last aligned residue. Returns None if not available (read is unmapped or no cigar alignment present).</p>
+</blockquote>
+<pre class="python"><code>import pysam
+import shutil
+import os
+
+fname = &quot;bam-rmdup-umi/19098.1.G03.AGGGAAGC.L002.R1.C6WYKACXX.trim.sickle.sorted.rmdup.bam&quot;
+
+shutil.copyfile(fname, &quot;problem.bam&quot;)
+pysam.sort(&quot;problem.bam&quot;, &quot;problem.sort&quot;)
+pysam.index(&quot;problem.sort.bam&quot;)
+samfile = pysam.AlignmentFile(&quot;problem.sort.bam&quot;, &quot;rb&quot;)
+
+for read in samfile.fetch(&quot;chr17&quot;, 7307332, 7307334):
+    if &quot;UMI_AAAAGGGG&quot; not in read.query_name:
+        continue
+    # Using the UMI-tools code to include soft-clipped bases
+    # https://github.com/jdblischak/UMI-tools/blob/e0ade5d0aad632cc95b6dfb95106e18c55ceecf9/dedup_umi.py#L527
+    if read.is_reverse:
+        pos = read.aend - 1 # equivalent to read.reference_end, I subtract one so that it is the same number in the BAM file
+        if read.cigar[-1][0] == 4:
+            pos = pos + read.cigar[-1][1]
+
+    if pos == 7307416:
+        print read.tostring(samfile)
+
+samfile.close()
+os.remove(&quot;problem.bam&quot;)
+os.remove(&quot;problem.sort.bam&quot;)
+os.remove(&quot;problem.sort.bam.bai&quot;)</code></pre>
+<pre><code>HWI-700819F:303:C6WYKACXX:2:2113:9364:95721:UMI_AAAAGGGG    16  chr17   7307326 59  91M1S   *   0   0   CCCGTAGGAAGCGAAGCCTAAGGCCGCAGCTCCGGACAAGGCGCCCAAGCGGCGGAAAGCTGCAGCTGGCCCGGCCATAGCTGTAGAACAGC    BFFFFFFFFFFFFFFFFFBFFFFFBFFFFFBFFFBBBBBFBFFFBFFFFFFFFFFFIIIIIIIIIIIIIIIIIIIIIIIIIFIIIIIFFFFF    HI:i:1  NH:i:1  NM:i:0</code></pre>
+<p>Why doesn’t this one saved molecule map to ENSG00000205544 like the other reads?</p>
+<pre class="bash"><code>grep HWI-700819F:303:C6WYKACXX:2:2113:9364:95721:UMI_AAAAGGGG counts/19098.1.G03.AGGGAAGC.L002.R1.C6WYKACXX.trim.sickle.sorted.rmdup.bam.featureCounts</code></pre>
+<pre><code>HWI-700819F:303:C6WYKACXX:2:2113:9364:95721:UMI_AAAAGGGG    Unassigned_Ambiguity    *   Number_Of_Overlapped_Genes=3</code></pre>
+<p>What? It has the same 5’ start position. How could this one be marked as amibigous while a few of others were able to be assigned?</p>
+<p>I checked on UCSC, and this region is very crowded, with 3 separate genes. I am skeptical how likely they are all to be “protein-coding”, but I went back and confirmed that is how they are defined in the Ensembl Biomart.</p>
+</div>
+<div id="creating-reproducible-example-for-subread-forum" class="section level2">
+<h2>Creating reproducible example for Subread forum</h2>
+<p>I created a reproducible example to post to the Subread forum. I created a fastq file that contained the one saved molecule and one of the reads that was successfully assigned. All the data files are in my Public Dropbox folder. I won’t reproduce the example here since it is well documented in my <a href="https://groups.google.com/forum/#!topic/subread/Kq12rvPpUf4">post</a>.</p>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] knitr_1.10.5
+
+loaded via a namespace (and not attached):
+ [1] httr_0.6.1       magrittr_1.5     formatR_1.2      htmltools_0.2.6 
+ [5] tools_3.2.0      RCurl_1.95-4.6   yaml_2.1.13      codetools_0.2-11
+ [9] rmarkdown_0.6.1  stringi_0.4-1    digest_0.6.8     stringr_1.0.0   
+[13] bitops_1.0-6     evaluate_0.7    </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>
