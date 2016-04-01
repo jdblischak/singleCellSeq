@@ -182,9 +182,10 @@ summary(drop_out$all)
 
 *[Chunk not evaluted]*
 ```{r venn, eval = F}
-## Venn diagrams
-genes <- rownames(expressed_cv_subset[[1]])
+# Venn diagrams
+# only expressed cells
 library(gplots)
+genes <- rownames(expressed_cv_subset[[1]])
 venn_mean_rank <- gplots::venn( 
   list(NA19098 = genes[ which(rank(expressed_cv_subset[[1]]$expr_mean) > length(genes) - 1000 ) ],
        NA19101 = genes[ which(rank(expressed_cv_subset[[2]]$expr_mean) > length(genes) - 1000 ) ],
@@ -241,6 +242,33 @@ text(labels = rev( levels(cut(drop_out$NA19098, breaks = seq(0, 1, by = .1),
 title(main = "drop-out rate")
 ```
 
+```{r venn-plots, fig.width=8, fig.height=4}
+library(VennDiagram)
+library(gridExtra)
+## venn diagrams of expressed cells
+genes <- rownames(expressed_cv_subset[[1]])
+
+## create list of top 1000 mean
+venn_mean_expressed <- list(
+   NA19098 = genes[ which(rank(expressed_cv_subset[[1]]$expr_mean) > length(genes) - 1000 ) ],
+   NA19101 = genes[ which(rank(expressed_cv_subset[[2]]$expr_mean) > length(genes) - 1000 ) ],
+   NA19239 = genes[ which(rank(expressed_cv_subset[[3]]$expr_mean) > length(genes) - 1000 ) ] )  
+
+## create list of top 1000 CV
+venn_cv_expressed <- list( 
+   NA19098 = genes[ which(rank(expressed_cv_subset[[1]]$expr_cv) > length(genes) - 1000 ) ],
+   NA19101 = genes[ which(rank(expressed_cv_subset[[2]]$expr_cv) > length(genes) - 1000 ) ],
+   NA19239 = genes[ which(rank(expressed_cv_subset[[3]]$expr_cv) > length(genes) - 1000 ) ] ) 
+
+## put the two venn diagrams together
+grid.arrange(gTree(children = venn.diagram(venn_mean_expressed,filename = NULL,
+                          category.names = names(venn_mean_expressed),
+                          name = "Top 1000 mean")),
+             gTree(children = venn.diagram(venn_cv_expressed,filename = NULL,
+                          category.names = names(venn_cv_expressed),
+                          name = "Top 1000 CV")),
+             ncol = 2)
+```
 
 
 
@@ -260,10 +288,18 @@ hist(drop_out$all, xlim = c(0,1))
 query_genes <- c("NANOG", "TFPI", "SLC9A5", "SLC25A16", "SREK1IP1")
 query_genes_ensg <- gene_symbols[which(gene_symbols$external_gene_name %in% query_genes), ]
 
-
+## print permuted p-values of the chosen genes
+pvals_tab <- rbind(rownames(permuted_pval)[which(rownames(permuted_pval) %in% query_genes_ensg$ensembl_gene_id)],
+      gene_symbols$external_gene_name[gene_symbols$ensembl_gene_id %in% rownames(permuted_pval)[which(rownames(permuted_pval) %in% query_genes_ensg$ensembl_gene_id)]],
+      permuted_pval$mad_pval[which(rownames(permuted_pval) %in% query_genes_ensg$ensembl_gene_id)] )
+      
 pdf("figure/cv-adjusted-summary-pois-final.Rmd/chosen-genes.pdf",
-    height = 8, width = 8)
-par(mfrow = c(3,3))
+    height = 8, width = 12)
+#### specify the order of the plot, making same gene appear in the same column
+layout( matrix(c(2, 5, 8, 11, 14, 
+                 1, 4, 7, 10, 13,
+                 3, 6, 9, 12, 15
+                 ), nrow = 3, byrow = TRUE))
 for (i in 1:nrow(query_genes_ensg)) {
 
   df <- do.call(cbind,
@@ -273,13 +309,14 @@ for (i in 1:nrow(query_genes_ensg)) {
   colnames(df) <- unique(anno_filter$individual)
   df <- t(t(df)/colSums(df))
   barplot(df, col = c("grey40", "grey80"),
-          ylab = "Proportion of detected cells")
+          ylab = "Proportion of detected cells",
+          cex.names = 0.9)
 
   plot_density_overlay(
     molecules = molecules_final_expressed_subset,
     annotation = anno_filter,
     which_gene = query_genes_ensg$ensembl_gene_id[i], 
-    labels = round(drop_out$all[which(rownames(molecules_final_subset) %in% query_genes_ensg$ensembl_gene_id[i])], digits = 2),
+    labels = "",
     xlims = c(4,12.5), ylims = c(0,1),
     gene_symbols = gene_symbols)
     individuals <- unique(anno_filter$individual)
@@ -291,8 +328,29 @@ for (i in 1:nrow(query_genes_ensg)) {
 
   barplot(height = abs(unlist(expressed_dm_subset[which(rownames(expressed_dm_subset) %in% query_genes_ensg$ensembl_gene_id[i]),])), col = cols,
           ylim = c(0,.7), border = "white",
-          ylab = "Absolute value of adjusted CV")
+          ylab = "Absolute value of adjusted CV",
+          cex.names = 0.9)
   abline(h = 0)
+
+  # print MAD values  
+  mad_val <- sprintf("%.2f",round(drop_out$all[which(rownames(molecules_final_subset) %in% query_genes_ensg$ensembl_gene_id[i])], digits = 2))
+  if (as.numeric(mad_val) < .01) {
+  mtext(text = paste0("MAD<.01"),
+        side=3, line = 2)
+  } else {
+  mtext(text = paste0("MAD=", mad_val),
+        side=3, line = 2)
+  }
+  
+  # print permuted p-value for the adjusted coefficient of variation
+  if (i !=2) {
+  mtext(text = expression(paste(italic("p"),"<",10^"-5")), side=3)
+  }
+  if (i == 2) {
+  mtext(text = expression(paste(italic("p"),"=.80")), side = 3)
+  }
+abline(h = 0)
+
 }
 dev.off()
 ```
@@ -461,7 +519,7 @@ for (i in 1:nrow(pluri_results)) {
 Legend: Coefficients of variation plotted against average molecule counts across cells of each individual cell line. Grey dots represent endogeneous genes, and blue dots indicate ERCC spike-in control genes. Red curve depicts the expected coefficients of variation assuming the endogeneous genes follow a poisson distribution. Likewise, blue curve depicts the expected CVs of the ERCC spike-in control genes. Yellow curve predicts the expected CVs assuming standard deviation is 3 times the ERCC spike-in genes. 
 
 
-```{r, fig.width=10, fig.height=4}
+```{r, fig.width=12, fig.height=6}
 theme_set(theme_bw(base_size = 12))
 theme_update(panel.grid.minor.x = element_blank(),
              panel.grid.minor.y = element_blank(),
@@ -566,6 +624,8 @@ plot_grid(
   labels = LETTERS[4:6] )
 ```
 
+
+
 ## Supp. figure: permutation test results
 
 
@@ -652,6 +712,49 @@ plot_grid(
   ncol = 2,
   labels = LETTERS[1:3]
   )
+```
+
+
+
+
+## Supp. figure: % undetected cell per gene versus gene abundance, variance, and coefficient of variation
+
+All individuals, expressed cells
+
+```{r, fig.height=4, fig.width=12}
+par(mfrow = c(1,3))
+
+# abundance
+plot(y = log10(expressed_cv_subset$all$expr_mean),
+     x = drop_out$all,
+     xlab = "Proportion of undetected cells",
+     ylab = "log10 mean expression",
+     pch = 16, cex =.3, 
+     cex.axis = 1.5, 
+     cex.lab = 1.5)
+lines(lowess( log10(expressed_cv_subset$all$expr_mean) ~ drop_out$all),
+      col = "red")
+# variance
+plot(y = log10(expressed_cv_subset$all$expr_var),
+     x = drop_out$all,
+     xlab = "Proportion of undetected cells",
+     ylab = "log10 variance of expression",
+     pch = 16, cex =.3, 
+     cex.axis = 1.5, 
+     cex.lab = 1.5)
+lines(lowess( log10(expressed_cv_subset$all$expr_var) ~ drop_out$all),
+      col = "red")
+# CV
+plot(y = expressed_cv_subset$all$expr_cv,
+     x = drop_out$all,
+     xlab = "Proportion of undetected cells",
+     ylab = "CV",
+     pch = 16, cex =.3, 
+     cex.axis = 1.5, 
+     cex.lab = 1.5)
+lines(lowess( expressed_cv_subset$all$expr_cv ~ drop_out$all),
+      col = "red")
+title(main = "Expressed cells, three individuals", outer = TRUE, line = -1)
 ```
 
 
