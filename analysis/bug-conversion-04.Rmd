@@ -1,0 +1,254 @@
+---
+title: "Tracking down bug in reads to molecules conversion - Attempt 04"
+author: "John Blischak"
+date: 2016-03-30
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+opts_chunk$set(cache = TRUE)
+```
+
+Since my [last attempt][attempt-03] at debugging, I re-mapped all the reads using Subjunc to avoid problems arising from the large amount of soft-clipping Subread does.
+Very unfortunately there are still some problems.
+This analysis continues the search for bugs lurking in the [sequence processsing pipeline][pipeline].
+
+[attempt-03]: bug-conversion-03.html
+[pipeline]: process-samples.html
+
+## Input
+
+Input annotation.
+
+```{r input-annotation}
+anno <- read.table("../data/annotation.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+```
+
+Input read counts.
+
+```{r input-read-counts}
+reads <- read.table("../data/reads.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+stopifnot(ncol(reads) == nrow(anno),
+          colnames(reads) == anno$sample_id)
+```
+
+Input molecule counts.
+
+```{r input-molecule-counts}
+molecules <- read.table("../data/molecules.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+stopifnot(ncol(molecules) == nrow(anno),
+          colnames(molecules) == anno$sample_id)
+```
+
+Input list of quality single cells.
+
+```{r input-quality-single-cells}
+quality_single_cells <- scan("../data/quality-single-cells.txt",
+                             what = "character")
+```
+
+## Identifying problem genes
+
+How often is this a problem? How many genes does it affect? For affected genes, how many samples are affected?
+
+```{r problem-genes}
+discordant_zeros <- (reads == 0) != (molecules == 0)
+all_genes <- rowSums(discordant_zeros)
+names(all_genes) <- rownames(reads)
+problem_genes <- all_genes[all_genes > 0]
+length(problem_genes)
+length(problem_genes) / length(all_genes)
+summary(problem_genes)
+```
+
+This problem affects `r length(problem_genes)`
+out of the `r length(all_genes)` total genes
+(`r round(length(problem_genes) / length(all_genes) * 100, digits = 2)`%).
+For these problem genes, the median number of affected samples is `r median(problem_genes)`
+and the max number of affected samples is `r max(problem_genes)`.
+
+Next I identify the problem gene that affects the most samples.
+
+```{r problem-1}
+(x <- names(problem_genes)[problem_genes == max(problem_genes)])
+plot(as.numeric(reads[x, ]), as.numeric(molecules[x, ]))
+problem_sample <- colnames(reads)[discordant_zeros[x, ] == TRUE]
+reads[x, problem_sample]
+molecules[x, problem_sample]
+```
+
+Note that this problem genes affects both high and low quality single cells.
+
+```{r check-sample-quality}
+table(problem_sample %in% quality_single_cells)
+```
+
+## Searching for where the reads are lost during the processing pipeline
+
+Now I am going to search for the bug by inspecting the intermediate data files from the [sequence processsing pipeline][pipeline].
+
+The following chunks are all Bash commands run from the data directory.
+
+```{r change-chunk-opts, cache=FALSE}
+opts_chunk$set(engine = "bash")
+opts_knit$set(root.dir = "/mnt/gluster/home/jdblischak/ssd")
+```
+
+First I confirm that this difference is observed at the [featureCounts step][featureCounts]:
+
+[featureCounts]: process-samples.html#count-reads-per-gene
+
+```{r featureCounts-reads-per-lane}
+# reads per lane
+grep ENSG00000205544 counts/19098.1.G03*trim.sickle.sorted.genecounts.txt | cut -f1,7
+```
+
+```{r featureCounts-molecules-per-lane}
+# molecules per lane
+grep ENSG00000205544 counts/19098.1.G03*trim.sickle.sorted.rmdup.genecounts.txt | cut -f1,7
+```
+
+```{r featureCounts-molecules-per-sample}
+# molecules per sample
+grep ENSG00000205544 counts/19098.1.G03.trim.sickle.sorted.combined.rmdup.genecounts.txt | cut -f1,7
+```
+
+All three lanes have reads but zero molecules.
+
+Next I use the featureCounts assignments per read to obtain the read name.
+
+```{r assignments-reads-lane-1}
+grep ENSG00000205544 counts/19098.1.G03.AGGGAAGC.L002.R1.C6WYKACXX.trim.sickle.sorted.bam.featureCounts
+```
+
+And just to confirm that it is not in the corresponding molecules file.
+
+```{r assignments-molecules-lane-1}
+grep ENSG00000205544 counts/19098.1.G03.AGGGAAGC.L002.R1.C6WYKACXX.trim.sickle.sorted.rmdup.bam.featureCounts
+exit 0
+```
+
+Is it in the rmdup bam file?
+Presumably not since it was not passed to featureCounts.
+
+```{r checking-bam-files}
+read=`grep ENSG00000205544 counts/19098.1.G03.AGGGAAGC.L002.R1.C6WYKACXX.trim.sickle.sorted.bam.featureCounts | cut -f1 | head -n 1`
+echo "The read is $read"
+echo "Checking rmdup bam per lane:"
+samtools view bam-rmdup-umi/19098.1.G03.AGGGAAGC.L002.R1.C6WYKACXX.trim.sickle.sorted.rmdup.bam | grep $read
+echo "Checking rmdup bam per sample:"
+samtools view bam-rmdup-umi/19098.1.G03.trim.sickle.sorted.combined.rmdup.bam | grep $read
+echo "Checking combined bam:"
+samtools view bam-combined/19098.1.G03.trim.sickle.sorted.combined.bam | grep $read
+echo "Checking reads per lane bam:"
+samtools view bam-processed/19098.1.G03.AGGGAAGC.L002.R1.C6WYKACXX.trim.sickle.sorted.bam | grep $read
+exit 0
+```
+
+OK. So this read is lost during the remove duplicate step.
+But why?
+Are there other reads that map to this position?
+I'll focus on the lane file since it is smaller and displays the same problem.
+
+```{r reads-by-position}
+samtools view bam-processed/19098.1.G03.AGGGAAGC.L002.R1.C6WYKACXX.trim.sickle.sorted.bam chr17:7307332-7307334 | wc -l
+```
+
+There are many reads that map to this area.
+
+```{r reads-by-position-umi}
+samtools view bam-processed/19098.1.G03.AGGGAAGC.L002.R1.C6WYKACXX.trim.sickle.sorted.bam chr17:7307332-7307334 | grep UMI_AAAAGGGG | wc -l
+```
+
+They don't all have the same UMI, but many do.
+
+```{r reads-by-position-umi-tail}
+samtools view bam-processed/19098.1.G03.AGGGAAGC.L002.R1.C6WYKACXX.trim.sickle.sorted.bam chr17:7307332-7307334 | grep UMI_AAAAGGGG | tail
+```
+
+It looks like it is going to be another soft-clipping issue.
+
+## Tracking down the one saved molecule
+
+After the deduplication, one read is kept for each UMI-start position combination.
+In this case it is challenging to identify.
+First, this region has lots of seqence coverage.
+Second, these reads are on the reverse strand, so the SAM format shows the reverse complement of the sequence and the start position (which would be the 3' end of the read), so I can't identify it easily by eye.
+I use pysam to identify the molecule that was kept.
+Specifically, I used similar code to what UMI-tools uses for reads on the reverse strand ([line 527](https://github.com/jdblischak/UMI-tools/blob/e0ade5d0aad632cc95b6dfb95106e18c55ceecf9/dedup_umi.py#L527)).
+Also note that the variable `pos`, not `start`, is what is used for counting UMIs.
+[Line 531](https://github.com/jdblischak/UMI-tools/blob/e0ade5d0aad632cc95b6dfb95106e18c55ceecf9/dedup_umi.py#L531) is confusing, but they have a [reason for doing it that way](https://github.com/CGATOxford/UMI-tools/issues/11).
+
+The coordinates are confusing.
+The coordinates in the SAM file are 1-based.
+The pysam coordinates are 0-based, but sometimes the final base is inclusive and sometimes it is exclusive.
+To understand the code below, the most important to understand is [reference_end](http://pysam.readthedocs.org/en/latest/api.html#pysam.AlignedSegment.reference_end) (aka [aend](http://pysam.readthedocs.org/en/latest/api.html#pysam.AlignedSegment.aend)).
+
+> reference_end
+>
+>    aligned reference position of the read on the reference genome.
+>
+>    reference_end points to one past the last aligned residue. Returns None if not available (read is unmapped or no cigar alignment present).
+
+```{r pysam-cigar, engine='python'}
+import pysam
+import shutil
+import os
+
+fname = "bam-rmdup-umi/19098.1.G03.AGGGAAGC.L002.R1.C6WYKACXX.trim.sickle.sorted.rmdup.bam"
+
+shutil.copyfile(fname, "problem.bam")
+pysam.sort("problem.bam", "problem.sort")
+pysam.index("problem.sort.bam")
+samfile = pysam.AlignmentFile("problem.sort.bam", "rb")
+
+for read in samfile.fetch("chr17", 7307332, 7307334):
+    if "UMI_AAAAGGGG" not in read.query_name:
+        continue
+    # Using the UMI-tools code to include soft-clipped bases
+    # https://github.com/jdblischak/UMI-tools/blob/e0ade5d0aad632cc95b6dfb95106e18c55ceecf9/dedup_umi.py#L527
+    if read.is_reverse:
+        pos = read.aend - 1 # equivalent to read.reference_end, I subtract one so that it is the same number in the BAM file
+        if read.cigar[-1][0] == 4:
+            pos = pos + read.cigar[-1][1]
+
+    if pos == 7307416:
+        print read.tostring(samfile)
+
+samfile.close()
+os.remove("problem.bam")
+os.remove("problem.sort.bam")
+os.remove("problem.sort.bam.bai")
+```
+
+Why doesn't this one saved molecule map to ENSG00000205544 like the other reads?
+
+```{r lost-molecule-featureCounts}
+grep HWI-700819F:303:C6WYKACXX:2:2113:9364:95721:UMI_AAAAGGGG counts/19098.1.G03.AGGGAAGC.L002.R1.C6WYKACXX.trim.sickle.sorted.rmdup.bam.featureCounts
+```
+
+What? It has the same 5' start position.
+How could this one be marked as amibigous while a few of others were able to be assigned?
+
+I checked on UCSC, and this region is very crowded, with 3 separate genes.
+I am skeptical how likely they are all to be "protein-coding", but I went back and confirmed that is how they are defined in the Ensembl Biomart.
+
+## Creating reproducible example for Subread forum
+
+I created a reproducible example to post to the Subread forum.
+I created a fastq file that contained the one saved molecule and one of the reads that was successfully assigned.
+All the data files are in my Public Dropbox folder.
+I won't reproduce the example here since it is well documented in my [post](https://groups.google.com/forum/#!topic/subread/Kq12rvPpUf4).
+
+## Session information
+
+```{r info, engine='R'}
+sessionInfo()
+```
