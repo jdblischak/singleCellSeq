@@ -162,7 +162,7 @@ prepare_counts <- function(x, individual = NULL, replicate = NULL,
     assert("There are quality cells to perform the analysis.",
            ncol(x) > 0)
   }
-  assert("Output is a data frame", class(x) == "matrix")
+  assert("Output is a matrix", class(x) == "matrix")
   return(x)
 }
 
