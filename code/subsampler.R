@@ -118,7 +118,8 @@ main <- function(num_cells, seed, single_sub_fname, single_full_fname,
 
   # Subsample number of single cells
   if (results$available_cells < num_cells) {
-    write.table(results, file = outfile, quote = FALSE, row.names = FALSE)
+    write.table(results, file = outfile, quote = FALSE, row.names = FALSE,
+                sep = "\t")
     return(invisible())
   }
   set.seed(seed)
@@ -146,7 +147,8 @@ main <- function(num_cells, seed, single_sub_fname, single_full_fname,
   results$mean_cor_ercc <- calc_mean_cor(single_cells_cpm_mean_ercc, bulk_cells_cpm_mean_ercc,
                                          diagnose = diagnose)
 
-  write.table(results, file = outfile, quote = FALSE, row.names = FALSE)
+  write.table(results, file = outfile, quote = FALSE, row.names = FALSE,
+              sep = "\t")
 }
 
 # Data import functions --------------------------------------------------------
