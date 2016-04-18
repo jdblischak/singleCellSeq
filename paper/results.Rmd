@@ -38,7 +38,7 @@ depth_stats <- total_counts %>%
 We obtained an average of `r format(depth_stats$mean / 10^6, digits = 3)` +/-
 `r format(depth_stats$sd / 10^6, digits = 3)` million sequencing reads per sample
 (range `r format(depth_stats$min / 10^6, digits = 3)`-`r format(depth_stats$max / 10^6, digits = 3)` million reads).
-We initially processed the sequencing reads using a standard alignment approach (see Methods). 
+We processed the sequencing reads using a standard alignment approach (see Methods). 
 Given the low abundance of mRNA content and the high vulnerability of single cells and the low amount of starting material, scRNA-seq can be highly affected by various technical artifacts arising from cell isolation, mRNA capture efficiency, library preparation, and sequencing procedures. 
 We thus performed multiple quality control analyses.
 
@@ -59,7 +59,7 @@ At the conclusion of these quality control analyses and exclusion steps, we reta
 
 Our final quality check focused on the different properties of sequencing read and molecule count data.
 We considered data from the 564 high quality samples and compared gene specific counts of sequencing read and molecules.
-We found that while gene-specific read and molecule counts are exceptionally highly correlated when we considered the ERCC spike-in data (r = 0.99; Figure. 1G), these counts are somewhat less correlated when data from the endogenous genes are considered (r = 0.92; Figure 1F). 
+We found that while gene-specific read and molecule counts are exceptionally highly correlated when we considered the ERCC spike-in data (r = 0.99; Figure. 1G), these counts are somewhat less correlated when data from the endogenous genes are considered (r = 0.92). 
 Moreover, the gene-specific read and molecule counts correlation is noticeably lower for genes that are expressed at lower levels. These observations concur with previous studies [@Brennecke2013] as they underscore the importance of using UMIs in single cell gene expression studies.
 
 Beyond quality control of the samples, we also estimated the number of molecule counts required for representing the bulk samples and also for capturing the cell-to-cell variation in gene expression. 
@@ -79,13 +79,17 @@ We then considered the association between cell cycle phase and total molecule-c
 It is expected that cells that are in G2 and G2/M phases would have higher total molecule-counts [@Vallejos2015], which is indeed our general observation. 
 However, variation in this pattern can clearly be seen across single cell collections from different individuals, as well as across different C1 collection replicates from the same individual (Sup. Figure Y). 
 
+Our study design allows us to carefully examine the difference of molecule-counts across C1 replicates and also individuals by analyzing the molecule counts of ERCC spike-in controls.
+In the absence of technical noise, the total ERCC molecule-counts per sample is the same, not affected by the total endogenous gene molecule-counts or the percentage of ERCC molecules among all molecules.
+However, we observed a clear differences across the three individuals (Sup Figure. 7), yet not across C1 replicates of the same individuls, suggesting that some unidentified factors inherent from the individual difference to the distribution of gene expression in the single cells is consistently affecting the molecule-counts.
+
 Whether or not molecule-counts can be used as an absolute estimate of a given gene in a cell is dependent on one critical factor: the sequencing saturation point, at which all the molecules are sequenced at least once. 
 In any given cell, if the sequencing depth is far from being saturated, the possibility that a "new" molecule will be picked up would be significantly higher compared to the sequencing depth that is closer to the saturation point.
 As a result, the total number of molecule counts would elevated as the sequencing depth increases, which is in fact what we observed in our data (Figure. 3A and 3C).
 With the attempt to search for a sequencing saturation point of the protocol, we collected scRNA-seq data from four individual cells using all the available library materials (Sup Figure. 4).
 At the sequencing depth of 50 million reads per cell, the numbers of endogenous genes started to plateau (Sup Figure. 4A and B), whereas the total molecule counts were still increasing (Sup Figure. 4D and F), suggesting that we have not yet reach the saturation point.
 
-Taken together, we concluded that molecule-counts cannot be used as an absolute number of mRNA, and more importantly, standardization of molecule-counts is required to eliminate not only the effect of sequencing depth but also the cell-to-cell difference arose from biological heterogeneity such as cell-cycle phase. 
+Taken together, we concluded that molecule-counts cannot be used as an absolute number of mRNA, and more importantly, standardization of molecule-counts is required to eliminate the effect of sequencing depth, the cell-to-cell difference arose from biological heterogeneity such as cell-cycle phase, and also the difference of total molecule-counts across individuals.   
 
 
 ### Is there a batch effect associated with single cell data using C1 platform?
@@ -97,7 +101,7 @@ As a first step in exploring noise in single cell RNA-seq data collected from C1
 We found that single cell samples were separated by individuals, despite that individual 19239 might be dissimilar from the other two individuals.
 Not surprisingly, the separation of different replicates from the same individual was also substantial (Figure. 4A).
 
-As described previously, we also explored batch effect of total molecule-counts per sample.
+As described previously, we also explored batch effect of total molecule-counts per single cell sample.
 The analyses of the total molecule-counts showed that its relationships with sample concentration (Sup. Figure. X), as well as with the cell cycle pattern (Sup. Figure. Y), are different across individuals and also across C1 replicates of the same individual, providing the indication that technical effects significantly impact the results of single cell gene expression data.
 
 To explore this further, we asked if the conversion of read counts to molecule counts is inconsistent across single cell samples, and may therefore play a role in generating technical variation of total molecule-counts.
@@ -105,21 +109,20 @@ For quantification purpose, we defined read-to-molecule conversion efficiency as
 Against the common intuition, we observed a batch effect arising from the difference of read-to-molecule conversion efficiency across C1 replicates (Figure. 3B and 3D). 
 In addition, the difference of read-to-molecule conversion efficiency across the three individuals was significant not only in endogenous genes but also in the ERCC spike-ins (p<0.001, Figure. 2B and D), suggesting that differences in certain unknown factors across these individuals are affecting the molecule counts of both ERCC spike-ins and endogenous genes in single cells.
 
-To more rigorously investigate the difference of molecule counts across replicates and also across individuals, we focused on the ERCC spike-in control due to the fact that the molecule count   
 
+### A novel normalization method for UMI-based scRNA-seq data analysis 
+To remove the technical variability arose from the factors mentioned above, here, we developed a pipeline that is applicable for studying cell-to-cell variation of gene expression from multiple biological conditions with multiple C1 collections (Figure. 4). 
 
-### A novel normalization method for scRNA-seq data analysis 
-To remove the technical variability arose from all the factors mentioned above without explicitly estimating the technical variability of ERCC spike-in molecule counts, here, we developed a pipeline that is applicable for studying cell-to-cell variation of gene expression from multiple biological conditions with multiple C1 collections (Figure. 4). 
-
-Due to the stochasticity of the UMI labeling process, not all molecules will be tagged with an unique UMI and sequenced.
+Using the UMI approach, we are able to more accurately estimate relative molecule counts of each genes within a single cell sample (Sup Figure. X).  
+However, due to the stochasticity of the UMI labeling process, not all molecules will be tagged with an unique UMI and sequenced.
 To account for the effect of random counting statistics termed collision probability, we first computed the raw molecule number of each endogenous gene by applying a mathematical correction [@Fu2011]. 
 Essentially, we are correcting for the fact that we did not observe all the molecules of any given gene originally in the cell.
 This step also filtered the genes with molecule counts larger than 1024, which in our case were all mitochondrial genes (data not shown). 
 
-As described above, there is a need to standardize the molecule-counts of endogenous genes to remove the effect of different sequencing depth.
+As described previously, there is a need to standardize the molecule-counts of endogenous genes to remove the effect of different sequencing depth, as well as the difference in total mRNA content because of cell-cell variation.  
 We thus incorporated a standardization step by computing log transformed counts-per-million (cpm) of molecule counts.
-This method takes the total molecule-counts per sample into account and makes them equal, a total of one million counts, across all samples.  
-After the removal of the variance caused by sequencing depth, the difference between C1 replicates, or the batch effect, became dominant (Figure. 4A and 4B).
+This method takes the total molecule-counts per sample into account and makes them equal, a total of one million counts, across all samples. 
+After the removal of the variance caused by total molecule-counts, the difference between C1 replicates, or the batch effect, became dominant (Figure. 4A and 4B).
 
 To carefully account for the cell-to-cell technical variability arising from the differences of mRNA capture efficiency across samples within the C1 collection, we next performed Poisson GLM (generalized linear model) normalization using the observed and the expected molecule counts of ERCC spike-ins, without correction for collision probability and also without standardization, in each sample.
 The PCA of gene expression after normalization showed that PC1 and PC2 separated not only the three individuals but also the three C1 replicates of each individual, suggesting that the batch effects from the C1 replicates were yet to be removed (Figure. 4C).
@@ -129,6 +132,8 @@ We assumed that C1 plates share similar technical variation due to gene expressi
 The results of PCA on the corrected data showed that the samples from different C1 replicates of the same individual largely overlapped (Figure. 4D), indicating that we have successfully removed large proportion of the unwanted technical variation across C1 replicates. 
 
 ### Quantitatively measure the cell-to-cell variation of gene expression
+The term “gene expression noise or stochasticity” is typically used to describe variation in protein expression levels caused by the intrinsically stochastic nature of molecular interactions that underlie transcription, translation and post-translational regulation within isogenic cell populations [@Raj2008; @Lestas2010]. 
+In a more general sense, expression noise also refers to cell-to-cell variation in the abundance of mRNAs, given that variability in protein content is generally a consequence of infrequent transitions between active and inactive promoter states [@Blake2003; @Raser2004].
 Once we removed the unwanted technical variability from scRNA-seq data as described above, we next focused on analyzing cell-to-cell variation of gene expression.
 We first investigated the biological gene expression variability, or gene expression noise, across single cell samples of each individual, and then we identified the genes that present differential expression noise across the three individuals.
 
