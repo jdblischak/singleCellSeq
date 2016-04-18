@@ -8,13 +8,13 @@ source("chunk-options-paper.R")
 
 ## Results
 ### Study design and quality control
-We collected single cell RNA-seq (scRNA-seq) data from three YRI iPSC lines using the Fluidigm C1 microfluidic system followed by sequencing on the Illumina HiSeq system (see methods). 
+We collected single cell RNA-seq (scRNA-seq) data from three YRI iPSC lines using the Fluidigm C1 microfluidic system followed by sequencing on the Illumina HiSeq system (see Methods). 
 We added ERCC spike-in controls to each sample, and used 5-bp random sequence UMIs to allow for the direct quantification of mRNA molecule numbers. 
 For each of the YRI lines, we performed three independent C1 collections.
 This study design (Figure 1A) allows us to estimate error and noise associated with the technical processing of the samples, independently from the biological variation between individuals.  
 
 The three C1 replicates of each individual were collected on different dates using cell cultures of different passage numbers (Sup Table 1A). 
-In that sense, the term ‘technical replicates’ is somewhat misleading, because we used biological replicates of the same cell line.
+Thus these technical replicates additionally measure the variation from growing the cells.
 Each replicate of C1 collection was accompanied by a collection of matching bulk sample using the same reagents. 
 This property allowed us to globally characterize the regulatory variation between replicates of the same cell culture, as well as to estimate how well scRNA-seq data can recapitulate the RNA-seq results from population bulk samples. 
 
@@ -38,7 +38,7 @@ depth_stats <- total_counts %>%
 We obtained an average of `r format(depth_stats$mean / 10^6, digits = 3)` +/-
 `r format(depth_stats$sd / 10^6, digits = 3)` million sequencing reads per sample
 (range `r format(depth_stats$min / 10^6, digits = 3)`-`r format(depth_stats$max / 10^6, digits = 3)` million reads).
-We initially processed the sequencing reads using a standard alignment approach (see methods). 
+We initially processed the sequencing reads using a standard alignment approach (see Methods). 
 Given the low abundance of mRNA content and the high vulnerability of single cells and the low amount of starting material, scRNA-seq can be highly affected by various technical artifacts arising from cell isolation, mRNA capture efficiency, library preparation, and sequencing procedures. 
 We thus performed multiple quality control analyses.
 
@@ -48,10 +48,10 @@ We concluded that a pipetting error led to excess ERCC content in this replicate
 
 With the exception of the excluded samples, data from all other replicates seem to have similar global properties (using general metrics; Sup figure 2X). 
 We therefore proceeded by focusing on the assumption that data from each sample correspond to data from an individual cell. 
-Before the processing of the individual cell samples, we performed visual inspection on the C1 microfluidic plates (see methods). 
+Before the processing of the individual cell samples, we performed visual inspection on the C1 microfluidic plates (see Methods). 
 Based on that visual inspection, we have excluded sequencing data from 21 samples that did not contain any cell, and 54 samples that contained more than one cell (across all replicates). 
 We then filtered data from the remaining samples based on the the number of total mapped reads, the percentage of unmapped reads, the percentage of ERCC spike-in reads, and the number of genes detected (Sup Figure 2).
-We used arbitrary inclusion cutoffs for each metric, based on the 95th percentile of the distribution for the 21 libraries that were amplified from samples that did not include a cell based on visual inspection (Figure. 1B-E and Sup Figure. 2C-F). 
+We used data-driven inclusion cutoffs for each metric, based on the 95th percentile of the distribution for the 21 libraries that were amplified from samples that did not include a cell based on visual inspection (Figure. 1B-E and Sup Figure. 2C-F). 
 
 Visual inspection of the C1 microfluidic plate is an important quality control step, but it is not infallible.
 We thus identified and removed data from 15 additional samples that were classified as originating from a single cell based on visual inspection, but whose data were more consistent with a multiple-cell origin based on the number of total molecules, the concentration of cDNA amplicons, and the read-to-molecule conversion efficiency (defined as the number of total molecules divided by the number of total reads; Sup Figure 3). 
@@ -90,8 +90,8 @@ Taken together, we concluded that molecule-counts cannot be used as an absolute 
 
 ### Is there a batch effect associated with single cell data using C1 platform?
 It is reasonable to assume that batch effects impact single cell gene expression data. 
-In the context of the C1 system, however, the typical approach to collect data from each biological condition by using a single C1 plate, making it nearly impossible to explicitly model and estimate the effect associated with independent capturing and sequencing of each C1 batch. 
-In contrast, our study design allows us to directly and explicitly estimate the batch effect associated with independent C1 preparations.
+In the context of the C1 system, if a study measures single cell gene expression with one C1 plate per biological condition, it would be impossible to differentiate between the true biological conditions and any technical effects associated with the independent capturing and sequencing of each C1 batch. 
+We designed our study with multiple technical replicates per biological condition in order to directly and explicitly estimate the batch effect associated with independent C1 preparations.
 
 As a first step in exploring noise in single cell RNA-seq data collected from C1 system, we examined the gene expression across all quality single cells using raw molecule counts (Figure. 4A).
 We found that single cell samples were separated by individuals, despite that individual 19239 might be dissimilar from the other two individuals.
@@ -122,14 +122,14 @@ This method takes the total molecule-counts per sample into account and makes th
 After the removal of the variance caused by sequencing depth, the difference between C1 replicates, or the batch effect, became dominant (Figure. 4A and 4B).
 
 To carefully account for the cell-to-cell technical variability arising from the differences of mRNA capture efficiency across samples within the C1 collection, we next performed Poisson GLM (generalized linear model) normalization using the observed and the expected molecule counts of ERCC spike-ins, without correction for collision probability and also without standardization, in each sample.
-The PCA of gene expression after normalization showed that PC1 and PC2 separated not only the three individuals but also the three C1 replicates of each individual, suggesting that the batch effect from the C1 replicates were yet to be removed (Figure. 4C).
+The PCA of gene expression after normalization showed that PC1 and PC2 separated not only the three individuals but also the three C1 replicates of each individual, suggesting that the batch effects from the C1 replicates were yet to be removed (Figure. 4C).
 
 To directly remove unwanted technical variation across C1 replicates, we modeled between well correlation in gene expression within C1 replicate. 
 We assumed that C1 plates share similar technical variation due to gene expression similarity between cells on the same plate. 
 The results of PCA on the corrected data showed that the samples from different C1 replicates of the same individual largely overlapped (Figure. 4D), indicating that we have successfully removed large proportion of the unwanted technical variation across C1 replicates. 
 
 ### Quantitatively measure the cell-to-cell variation of gene expression
-Once we removed the unwanted technical variability from scRNA-seq data as described above, we next focused on analyzing cell-to-cell variation of gene expression at the transcriptional level.
+Once we removed the unwanted technical variability from scRNA-seq data as described above, we next focused on analyzing cell-to-cell variation of gene expression.
 We first investigated the biological gene expression variability, or gene expression noise, across single cell samples of each individual, and then we identified the genes that present differential expression noise across the three individuals.
 
 #### Using adjusted CV value as the measure of expression noise
@@ -151,7 +151,7 @@ While only the expressed cells were included for computing individual CVs adjust
 Enrichment analysis suggested that these genes were enriched for genes involved in protein translation, protein disassembly, and various biosynthetic processes (Sup Table. X). 
 We found two highly expressed pluripotency genes *DNMT3B* and *NR6A1* among the differential noisy genes, both of which were detected in all single cells (Sup. Figure. 10), whereas the majority of the pluripotency genes were not detected in all the cells and exhibited no differential noisy pattern, including key pluripotency genes *Nanog* and *ZFP42* (Sup. Figure. 11), suggesting that the pluripotent state was tightly regulated.
 Furthermore, the transcriptional noise variation exhibited a few interesting patterns across individuals, such as proportion and expression variability of the expressed cells, and also the proportion of undetected cells (dropout rate, Figure. 6).
-For instance, *TFPI* and *Nanog* in individual 19101 exhibited a higher number of expressed cells and also a wider range of expression among the expressed cells compared to the other two individuals, yet the difference of adjusted CV of *Nanog* was not significant across individuals (*p* = 0.80).
+For instance, *TFPI* and *Nanog* in individual NA19101 exhibited a higher number of expressed cells and also a wider range of expression among the expressed cells compared to the other two individuals, yet the difference of adjusted CV of *Nanog* was not significant across individuals (*p* = 0.80).
 On the other hand, *SLC25A16* exhibited a similar range of variation in the expressed cells across the three individuals, but the number of expressed cells was different, and the difference of adjusted CV was significant. 
 Most importantly, despite the association between gene abundance and proportion of undetected genes (Figure. 5D), we found no associations between the individual differences, and similarly for individual differences in expression noise and proportion of undetected genes (Figure. 6).
 
