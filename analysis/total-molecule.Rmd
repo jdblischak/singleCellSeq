@@ -1,0 +1,273 @@
+---
+title: "Total molecule counts"
+author: "Po-Yuan Tung"
+date: 2016-04-18
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+opts_chunk$set(fig.width = 12)
+```
+
+Recreate the [Sequencing depth and cellular RNA content](depth.html) using updated data files to make figures for the paper.
+
+## Setup
+
+```{r packages, message=FALSE}
+library("dplyr")
+library("tidyr")
+library("edgeR")
+library("ggplot2")
+library("cowplot")
+theme_set(theme_bw(base_size = 12))
+theme_update(panel.grid.minor.x = element_blank(),
+             panel.grid.minor.y = element_blank(),
+             panel.grid.major.x = element_blank(),
+             panel.grid.major.y = element_blank())
+source("functions.R")
+```
+
+Input annotation 
+
+```{r input-annotation}
+anno_single <- read.table("../data/annotation.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno_single)
+```
+
+Input single cell observational quality control data.
+
+```{r input-qc}
+qc <- read.table("../data/qc-ipsc.txt", header = TRUE,
+                 stringsAsFactors = FALSE)
+qc <- qc %>% arrange(individual, replicate, well)
+stopifnot(qc$individual == anno_single$individual,
+          qc$replicate == anno_single$replicate,
+          qc$well == anno_single$well)
+head(qc)
+```
+
+Incorporate informatin on cell number, concentration, and TRA1-60 status.
+
+```{r add-qc}
+anno_single$cell_number <- qc$cell_number
+anno_single$concentration <- qc$concentration
+anno_single$tra1.60 <- qc$tra1.60
+```
+
+Keep only quality single cell
+
+```{r quality-cell}
+quality_single_cells <- scan("../data/quality-single-cells.txt",
+                             what = "character")
+anno_single <- anno_single[anno_single$sample_id %in% quality_single_cells,]
+```
+
+Input molecule counts after filtering
+
+```{r input-molecule-counts}
+molecules <- read.table("../data/molecules-filter.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+stopifnot(colnames(molecules) == anno_single$sample_id)
+ercc_index <- grepl("ERCC", rownames(molecules))
+anno_single$total_molecules_gene = colSums(molecules[!ercc_index, ])
+anno_single$total_molecules_ercc = colSums(molecules[ercc_index, ])
+anno_single$total_molecules = colSums(molecules)
+anno_single$num_genes = apply(molecules[!ercc_index, ], 2, function(x) sum(x > 0))
+```
+
+## The total molecule-counts
+For wells with a single cell observed, the total molecule-counts range from
+`r format(min(anno_single$total_molecules_gene[anno_single$cell_number == 1]))`
+to
+`r format(max(anno_single$total_molecules_gene[anno_single$cell_number == 1]))`,
+the first quartile for the total number of gene molecules is
+`r format(quantile(anno_single$total_molecules_gene[anno_single$cell_number == 1], probs = 0.25), scientific = FALSE)`,
+and the third quartile is
+`r format(quantile(anno_single$total_molecules_gene[anno_single$cell_number == 1], probs = 0.75), scientific = FALSE)`.
+
+```{r total_molecules, fig.width=12, fig.height=6}
+## create a color palette with one color per individual and different shades for repplicates
+great_color_8 <- c("#CC3300", "#FF9966", "#006633", "#009900", "#99FF99", "#3366FF", "#6699FF", "#66CCFF")
+
+plot_total_molecules_gene <- ggplot(anno_single,
+                       aes(x = as.factor(batch), y = total_molecules_gene / 10^3, fill = as.factor(batch))) + 
+                       geom_boxplot(alpha = .01, width = .2) +
+                       geom_violin(alpha = .5) + 
+                       scale_fill_manual(values = great_color_8) +
+                       labs(x = "Batch", y = "Total gene molecule-counts (10^3)") +
+                       theme(axis.text.x = element_text(hjust=1, angle = 45))
+
+plot_total_molecules_ercc <-  plot_total_molecules_gene %+%
+                                   aes(y = total_molecules_ercc / 10^3) +
+                                   labs(y = "Total ERCC molecule-counts (10^3)")
+
+summary(aov(total_molecules_gene ~ individual, data = anno_single))
+
+plot_grid(plot_total_molecules_gene + theme(legend.position = "none"),
+          plot_total_molecules_ercc + theme(legend.position = "none"),
+          labels = LETTERS[1:2])
+```
+
+## The relationship between concentration and total molecule-counts
+
+As we try to understand the general relationships between sequencing results and cellular mRNA content, we remove outlier batches.
+The quantification of the concentration of the single cells in replicate 1 of NA19098 failed.
+There are only 7 batches.
+
+```{r filter-outliers}
+anno_single_7 <- anno_single %>% filter(batch != "NA19098.r1")
+```
+
+```{r molecules-num-cells-batch, fig.width=12, fig.height=8}
+## look at endogenous genes
+plot_conc_molecules_gene_individual <- ggplot(anno_single_7,
+                                         aes(x = concentration, y = total_molecules_gene / 10^3, color = individual)) +
+                                         geom_point(alpha = 0.8) +
+                                         geom_smooth(method = "lm", se = FALSE) +
+                                         labs(x = "Concentration", y = "Total gene molecule-counts (10^3)")
+
+## look at ERCC spike-ins
+plot_conc_molecules_ercc_individual <-  plot_conc_molecules_gene_individual %+%
+                                   aes(y = total_molecules_ercc / 10^3) +
+                                   labs(y = "Total ERCC molecule-counts (10^3)")
+
+## plots
+plot_grid(plot_conc_molecules_gene_individual + theme(legend.position = "none"), 
+          plot_conc_molecules_ercc_individual + theme(legend.position = "none"),
+          labels = LETTERS[1:2])
+
+## Is there a difference across the three individuals
+table(anno_single_7$individual, anno_single_7$replicate)
+fit0 <- lm(total_molecules_gene ~ concentration, 
+   data = anno_single_7)
+fit1 <- lm(total_molecules_gene ~ concentration + as.factor(individual), 
+   data = anno_single_7)
+anova(fit0, fit1)
+summary(fit1)
+
+## Is there a difference across replicates of 19101
+fit0 <- lm(total_molecules_gene ~ concentration, 
+   data = anno_single_7, subset = individual == "NA19101")
+fit1 <- lm(total_molecules_gene ~ concentration + as.factor(replicate), 
+   data = anno_single_7, subset = individual == "NA19101")
+anova(fit0, fit1)
+
+## Is there a difference across replicates of 19239
+fit0 <- lm(total_molecules_gene ~ concentration, 
+   data = anno_single_7, subset = individual == "NA19239")
+fit1 <- lm(total_molecules_gene ~ concentration + as.factor(replicate), 
+   data = anno_single_7, subset = individual == "NA19239")
+anova(fit0, fit1)
+summary(fit1)
+```
+
+Calculate correlation of concentration and molecule counts
+
+```{r cor}
+## for each individual
+for (i in 1:length(unique(anno_single_7$individual))) {
+    print(unique(anno_single_7$individual)[i])
+    select_individual <- with(anno_single_7, individual == unique(individual)[i])
+    print(cor(anno_single_7[select_individual,7],anno_single_7[select_individual,9]))
+}
+
+## for each batch
+for (i in 1:length(unique(anno_single_7$batch))) {
+    print(unique(anno_single_7$batch)[i])
+    select_replicate <- with(anno_single_7, batch == unique(batch)[i])
+    print(cor(anno_single_7[select_replicate,7],anno_single_7[select_replicate,9]))
+}
+```
+
+## ERCC counts and total molecule counts
+```{r ercc-total-counts}
+## calulate ERCC percentage
+anno_single <- anno_single %>%
+  mutate(perc_ercc_molecules = total_molecules_ercc / total_molecules * 100)
+
+## ERCC molecule versus total molecule
+plot_gene_mol_ercc_mol <- ggplot(anno_single,
+                                 aes(x = total_molecules_gene,
+                                     y = total_molecules_ercc)) +
+                         geom_point(aes(color = individual, shape = replicate, alpha = 0.8))+
+                         labs(x = "Total gene molecules", y = "Total ERCC molecules") 
+
+plot_gene_mol_perc_ercc <- plot_gene_mol_ercc_mol %+%
+                           aes(x = perc_ercc_molecules)+
+                           labs(x = "Percent ERCC molecules")
+
+plot_grid(plot_gene_mol_ercc_mol + theme(legend.position = "none"),
+          plot_gene_mol_perc_ercc + theme(legend.position= "none"),
+          labels = LETTERS[1:2])
+
+## Is there a difference across the three individuals
+table(anno_single$individual, anno_single$replicate)
+fit0 <- lm(total_molecules_ercc ~ 1,  data = anno_single)
+fit1 <- lm(total_molecules_ercc ~ 1 + as.factor(individual), data = anno_single)
+anova(fit0, fit1)
+
+fit0 <- lm(total_molecules_ercc ~ perc_ercc_molecules, 
+   data = anno_single)
+fit1 <- lm(total_molecules_ercc ~ perc_ercc_molecules + as.factor(individual), 
+   data = anno_single)
+anova(fit0, fit1)
+
+## Is there a difference across replicates of 19098
+fit0 <- lm(total_molecules_ercc ~ total_molecules_gene, 
+   data = anno_single, subset = individual == "NA19098")
+fit1 <- lm(total_molecules_ercc ~ total_molecules_gene + as.factor(replicate), 
+   data = anno_single, subset = individual == "NA19098")
+anova(fit0, fit1)
+
+fit0 <- lm(total_molecules_ercc ~ perc_ercc_molecules, 
+   data = anno_single, subset = individual == "NA19098")
+fit1 <- lm(total_molecules_ercc ~ perc_ercc_molecules + as.factor(replicate), 
+   data = anno_single, subset = individual == "NA19098")
+anova(fit0, fit1)
+
+## Is there a difference across replicates of 19101
+fit0 <- lm(total_molecules_ercc ~ total_molecules_gene, 
+   data = anno_single, subset = individual == "NA19101")
+fit1 <- lm(total_molecules_ercc ~ total_molecules_gene + as.factor(replicate), 
+   data = anno_single, subset = individual == "NA19101")
+anova(fit0, fit1)
+
+fit0 <- lm(total_molecules_ercc ~ perc_ercc_molecules, 
+   data = anno_single, subset = individual == "NA19101")
+fit1 <- lm(total_molecules_ercc ~ perc_ercc_molecules + as.factor(replicate), 
+   data = anno_single, subset = individual == "NA19101")
+anova(fit0, fit1)
+
+## Is there a difference across replicates of 19239
+fit0 <- lm(total_molecules_ercc ~ total_molecules_gene, 
+   data = anno_single, subset = individual == "NA19239")
+fit1 <- lm(total_molecules_ercc ~ total_molecules_gene + as.factor(replicate), 
+   data = anno_single, subset = individual == "NA19239")
+anova(fit0, fit1)
+
+fit0 <- lm(total_molecules_ercc ~ perc_ercc_molecules, 
+   data = anno_single, subset = individual == "NA19239")
+fit1 <- lm(total_molecules_ercc ~ perc_ercc_molecules + as.factor(replicate), 
+   data = anno_single, subset = individual == "NA19239")
+anova(fit0, fit1)
+```
+
+## Plots for paper
+```{r plot,fig.width=12, fig.height=12}
+plot_grid(plot_total_molecules_gene + theme(legend.position = "none"),
+          plot_conc_molecules_gene_individual + theme(legend.position= "none"),
+          plot_gene_mol_ercc_mol + theme(legend.position = "none"),
+          plot_gene_mol_perc_ercc + theme(legend.position= "none"),
+          labels = LETTERS[1:4])
+```
+
+## Session information
+
+```{r info}
+sessionInfo()
+```
