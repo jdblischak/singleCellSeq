@@ -136,12 +136,13 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2016-02-27</p>
-<p><strong>Code version:</strong> e913fc0a3f954acf436955c670b4cdf1d052c075</p>
+<p><strong>Last updated:</strong> 2016-04-24</p>
+<p><strong>Code version:</strong> 74f30e4e4b6c6fea3667336da91b01fb5603564f</p>
 <pre class="r"><code>library(&quot;ggplot2&quot;)
 library(&quot;cowplot&quot;)
 theme_set(theme_bw(base_size = 12))
 source(&quot;functions.R&quot;)</code></pre>
+<p>This file performs principal components analysis (PCA) and displays the results for the data at each stage of our data transformation pipeline. Furthermore, it quantifies and tests the PCA results using <a href="https://github.com/geekysuavo/pca-utils">pca-utils</a> (commit <a href="https://github.com/geekysuavo/pca-utils/tree/8540ff2c6769031b0505af78f2dcb5703ae09294">8540ff2</a>). The methodology is described in <a href="http://www.ncbi.nlm.nih.gov/pubmed/23079505">Worley et al., 2013</a>. Briefly, the differences between samples are calculated using the squared Mahalanobis distance. The distances are then scaled so that the hypothesis test that the samples from two groups come from separate distributions can be computed with an F-test.</p>
 <div id="input" class="section level2">
 <h2>Input</h2>
 <p>Input filtered annotation.</p>
@@ -186,6 +187,39 @@ pca_molecules_filter_plot &lt;- plot_pca(pca_molecules_filter$PCs,
          metadata = anno_filter, color = &quot;individual&quot;,
          shape = &quot;replicate&quot;, alpha = 0.5, size = 2.2) +
   labs(title = &quot;Counts&quot;)</code></pre>
+<pre class="r"><code>pca_molecules_filter_out &lt;- data.frame(Obs.id = 1:nrow(anno_filter),
+                                       Obs.batch = anno_filter$batch,
+                                       pca_molecules_filter$PCs[, 1:2])
+write.table(pca_molecules_filter_out,
+            file = &quot;../data/pca-molecules-filter.txt&quot;,
+            quote = FALSE, sep = &quot;\t&quot;, row.names = FALSE)</code></pre>
+<pre class="bash"><code>pca-distances -i ../data/pca-molecules-filter.txt</code></pre>
+<pre><code>            NA19098.r3    NA19101.r1    NA19101.r2    NA19101.r3    NA19239.r1    NA19239.r2    NA19239.r3    
+NA19098.r1  3.533561e+01  2.795329e+01  3.108176e+01  3.685457e+01  3.662411e+01  3.119577e+01  4.383286e+01
+NA19098.r3                6.325114e+01  6.619283e+01  7.215802e+01  6.176294e+01  6.277506e+01  6.288494e+01
+NA19101.r1                              7.570174e+00  8.906888e+00  3.210637e+01  1.794815e+01  4.380363e+01
+NA19101.r2                                            9.531213e+00  3.967157e+01  2.543646e+01  5.137277e+01
+NA19101.r3                                                          3.581286e+01  2.135155e+01  4.770952e+01
+NA19239.r1                                                                        1.452473e+01  1.189914e+01
+NA19239.r2                                                                                      2.641617e+01</code></pre>
+<pre class="bash"><code>pca-dendrogram -i ../data/pca-molecules-filter.txt</code></pre>
+<pre><code>                                                                                                                
+                                                               +-----NA19101.r1                                 
+                                        +----------------------|3.5e-03                                         
+                                        |                      +-------NA19101.r3                               
+ +--------------------------------------|0                                                                      
+ |                                      |              +--------------------NA19098.r3                          
+ |                                      |              |0                                                       
+ |                                      +--------------|         +-------NA19098.r1                             
+ |0                                                    +---------|6.9e-07                                       
+ |                                                               +--------NA19101.r2                            
+ |                                                                                                              
+ |                                                           +--------------------------------------NA19239.r2  
+ |                                                           |0                                                 
+ +-----------------------------------------------------------|                 +-------------------NA19239.r1   
+                                                             +-----------------|0                               
+                                                                               +------------------NA19239.r3    
+                                                                                                                </code></pre>
 </div>
 <div id="pca-of-standardized-data" class="section level3">
 <h3>PCA of standardized data</h3>
@@ -195,6 +229,39 @@ pca_molecules_cpm_plot &lt;- plot_pca(pca_molecules_cpm$PCs,
          metadata = anno_filter, color = &quot;individual&quot;,
          shape = &quot;replicate&quot;, alpha = 0.5, size = 2.2) +
   labs(title = &quot;Counts per million (log)&quot;)</code></pre>
+<pre class="r"><code>pca_molecules_cpm_out &lt;- data.frame(Obs.id = 1:nrow(anno_filter),
+                                       Obs.batch = anno_filter$batch,
+                                       pca_molecules_cpm$PCs[, 1:2])
+write.table(pca_molecules_cpm_out,
+            file = &quot;../data/pca-molecules-cpm.txt&quot;,
+            quote = FALSE, sep = &quot;\t&quot;, row.names = FALSE)</code></pre>
+<pre class="bash"><code>pca-distances -i ../data/pca-molecules-cpm.txt</code></pre>
+<pre><code>            NA19098.r3    NA19101.r1    NA19101.r2    NA19101.r3    NA19239.r1    NA19239.r2    NA19239.r3    
+NA19098.r1  2.283127e+01  1.934100e+01  5.296175e+01  2.764144e+01  4.969837e+01  3.699837e+01  4.594807e+01
+NA19098.r3                5.978405e+00  3.026961e+01  8.082123e+00  3.866189e+01  2.588141e+01  4.246380e+01
+NA19101.r1                              3.508682e+01  8.325224e+00  3.575672e+01  2.257645e+01  3.777460e+01
+NA19101.r2                                            2.848375e+01  4.631674e+01  3.973253e+01  5.806423e+01
+NA19101.r3                                                          3.087511e+01  1.850056e+01  3.614705e+01
+NA19239.r1                                                                        1.323738e+01  1.539228e+01
+NA19239.r2                                                                                      1.869540e+01</code></pre>
+<pre class="bash"><code>pca-dendrogram -i ../data/pca-molecules-cpm.txt</code></pre>
+<pre><code>                                                                                                               
+                                                             +-------------------------------NA19239.r1        
+ +-----------------------------------------------------------|0                                                
+ |                                                           |                +-------------------NA19239.r2   
+ |                                                           +----------------|0                               
+ |0                                                                           +-----------------NA19239.r3     
+ |                                                                                                             
+ |                                      +--------------------------------------------------NA19098.r1          
+ |                                      |0                                                                     
+ +--------------------------------------|                 +----------------------------------------NA19101.r2  
+                                        +-----------------|0                                                   
+                                                          |                +-------------------NA19101.r3      
+                                                          +----------------|0                                  
+                                                                           |        +------NA19098.r3          
+                                                                           +--------|7.2e-10                   
+                                                                                    +-----NA19101.r1           
+                                                                                                               </code></pre>
 </div>
 <div id="pca-of-poisson-glm-transformed-molecule-counts-per-million" class="section level3">
 <h3>PCA of Poisson GLM transformed molecule counts per million</h3>
@@ -204,6 +271,39 @@ pca_molecules_cpm_trans_plot &lt;- plot_pca(pca_molecules_cpm_trans$PCs,
          metadata = anno_filter, color = &quot;individual&quot;,
          shape = &quot;replicate&quot;,  alpha = 0.5, size = 2.2) +
   labs(title = &quot;Poisson transformation&quot;)</code></pre>
+<pre class="r"><code>pca_molecules_cpm_trans_out &lt;- data.frame(Obs.id = 1:nrow(anno_filter),
+                                       Obs.batch = anno_filter$batch,
+                                       pca_molecules_cpm_trans$PCs[, 1:2])
+write.table(pca_molecules_cpm_trans_out,
+            file = &quot;../data/pca-molecules-cpm-trans.txt&quot;,
+            quote = FALSE, sep = &quot;\t&quot;, row.names = FALSE)</code></pre>
+<pre class="bash"><code>pca-distances -i ../data/pca-molecules-cpm-trans.txt</code></pre>
+<pre><code>            NA19098.r3    NA19101.r1    NA19101.r2    NA19101.r3    NA19239.r1    NA19239.r2    NA19239.r3    
+NA19098.r1  1.656283e+01  6.146432e+01  1.321773e+01  4.332598e+01  4.827787e+01  4.750276e+01  4.949364e+01
+NA19098.r3                7.802604e+01  2.497308e+01  5.987233e+01  6.155863e+01  6.265747e+01  6.149072e+01
+NA19101.r1                              5.731654e+01  1.845042e+01  4.202117e+01  2.987954e+01  4.863510e+01
+NA19101.r2                                            4.062958e+01  5.399017e+01  5.019805e+01  5.661237e+01
+NA19101.r3                                                          3.109027e+01  1.973393e+01  3.732732e+01
+NA19239.r1                                                                        1.225009e+01  6.618308e+00
+NA19239.r2                                                                                      1.885694e+01</code></pre>
+<pre class="bash"><code>pca-dendrogram -i ../data/pca-molecules-cpm-trans.txt</code></pre>
+<pre><code>                                                                                                          
+                                                            +---------------------------------NA19239.r2  
+                                                            |0                                            
+ +----------------------------------------------------------|             +--------NA19239.r1             
+ |                                                          +-------------|0                              
+ |                                                                        +-------NA19239.r3              
+ |0                                                                                                       
+ |                                                                         +------NA19101.r1              
+ |                                    +------------------------------------|0                             
+ |                                    |                                    +-----------NA19101.r3         
+ +------------------------------------|0                                                                  
+                                      |                     +------------------NA19101.r2                 
+                                      |                     |0                                            
+                                      +---------------------|       +-----NA19098.r1                      
+                                                            +-------|0                                    
+                                                                    +---------NA19098.r3                  
+                                                                                                          </code></pre>
 </div>
 <div id="pca-of-final-batch-corrected-data" class="section level3">
 <h3>PCA of final batch-corrected data</h3>
@@ -212,6 +312,39 @@ pca_final_plot &lt;- plot_pca(pca_final$PCs, explained = pca_final$explained,
          metadata = anno_filter, color = &quot;individual&quot;,
          shape = &quot;replicate&quot;, alpha = 0.5, size = 2.2) +
   labs(title = &quot;Batch corrected&quot;)</code></pre>
+<pre class="r"><code>pca_final_out &lt;- data.frame(Obs.id = 1:nrow(anno_filter),
+                            Obs.batch = anno_filter$batch,
+                            pca_final$PCs[, 1:2])
+write.table(pca_final_out,
+            file = &quot;../data/pca-final.txt&quot;,
+            quote = FALSE, sep = &quot;\t&quot;, row.names = FALSE)</code></pre>
+<pre class="bash"><code>pca-distances -i ../data/pca-final.txt</code></pre>
+<pre><code>            NA19098.r3    NA19101.r1    NA19101.r2    NA19101.r3    NA19239.r1    NA19239.r2    NA19239.r3    
+NA19098.r1  5.080952e+00  5.435574e+01  3.835040e+01  4.975047e+01  5.613992e+01  5.478609e+01  5.546367e+01
+NA19098.r3                5.926557e+01  4.294858e+01  5.468422e+01  6.085990e+01  5.961170e+01  6.014592e+01
+NA19101.r1                              1.830388e+01  4.708103e+00  3.624496e+01  3.249704e+01  3.706498e+01
+NA19101.r2                                            1.472089e+01  4.267492e+01  3.927972e+01  4.297114e+01
+NA19101.r3                                                          3.429283e+01  3.056554e+01  3.498175e+01
+NA19239.r1                                                                        3.748794e+00  1.333070e+00
+NA19239.r2                                                                                      4.658342e+00</code></pre>
+<pre class="bash"><code>pca-dendrogram -i ../data/pca-final.txt</code></pre>
+<pre><code>                                                                                                    
+                                                             +------------NA19239.r2                
+                                                             |2.4e-08                               
+ +-----------------------------------------------------------|       +-----NA19239.r1               
+ |                                                           +-------|0.32                          
+ |                                                                   +-----NA19239.r3               
+ |0                                                                                                 
+ |                                                                             +------NA19098.r1    
+ |                                       +-------------------------------------|0.02                
+ |                                       |                                     +-------NA19098.r3   
+ +---------------------------------------|0                                                         
+                                         |                           +--------------NA19101.r2      
+                                         |                           |4.3e-11                       
+                                         +---------------------------|         +------NA19101.r1    
+                                                                     +---------|7.7e-03             
+                                                                               +--------NA19101.r3  
+                                                                                                    </code></pre>
 </div>
 </div>
 <div id="data-transformation-figure" class="section level2">

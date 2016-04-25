@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+<meta name="author" content="Po-Yuan Tung" />
+
+<meta name="date" content="2016-04-18" />
+
+<title>Total molecule counts</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Total molecule counts</h1>
+<h4 class="author"><em>Po-Yuan Tung</em></h4>
+<h4 class="date"><em>2016-04-18</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#setup">Setup</a></li>
+<li><a href="#the-total-molecule-counts">The total molecule-counts</a></li>
+<li><a href="#the-relationship-between-concentration-and-total-molecule-counts">The relationship between concentration and total molecule-counts</a></li>
+<li><a href="#ercc-counts-and-total-molecule-counts">ERCC counts and total molecule counts</a></li>
+<li><a href="#plots-for-paper">Plots for paper</a></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2016-04-24</p>
+<p><strong>Code version:</strong> 74f30e4e4b6c6fea3667336da91b01fb5603564f</p>
+<p>Recreate the <a href="depth.html">Sequencing depth and cellular RNA content</a> using updated data files to make figures for the paper.</p>
+<div id="setup" class="section level2">
+<h2>Setup</h2>
+<pre class="r"><code>library(&quot;dplyr&quot;)
+library(&quot;tidyr&quot;)
+library(&quot;edgeR&quot;)
+library(&quot;ggplot2&quot;)
+library(&quot;cowplot&quot;)
+theme_set(theme_bw(base_size = 12))
+theme_update(panel.grid.minor.x = element_blank(),
+             panel.grid.minor.y = element_blank(),
+             panel.grid.major.x = element_blank(),
+             panel.grid.major.y = element_blank())
+source(&quot;functions.R&quot;)</code></pre>
+<p>Input annotation</p>
+<pre class="r"><code>anno_single &lt;- read.table(&quot;../data/annotation.txt&quot;, header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno_single)</code></pre>
+<pre><code>  individual replicate well      batch      sample_id
+1    NA19098        r1  A01 NA19098.r1 NA19098.r1.A01
+2    NA19098        r1  A02 NA19098.r1 NA19098.r1.A02
+3    NA19098        r1  A03 NA19098.r1 NA19098.r1.A03
+4    NA19098        r1  A04 NA19098.r1 NA19098.r1.A04
+5    NA19098        r1  A05 NA19098.r1 NA19098.r1.A05
+6    NA19098        r1  A06 NA19098.r1 NA19098.r1.A06</code></pre>
+<p>Input single cell observational quality control data.</p>
+<pre class="r"><code>qc &lt;- read.table(&quot;../data/qc-ipsc.txt&quot;, header = TRUE,
+                 stringsAsFactors = FALSE)
+qc &lt;- qc %&gt;% arrange(individual, replicate, well)
+stopifnot(qc$individual == anno_single$individual,
+          qc$replicate == anno_single$replicate,
+          qc$well == anno_single$well)
+head(qc)</code></pre>
+<pre><code>  individual replicate well cell_number concentration tra1.60
+1    NA19098        r1  A01           1      1.734785       1
+2    NA19098        r1  A02           1      1.723038       1
+3    NA19098        r1  A03           1      1.512786       1
+4    NA19098        r1  A04           1      1.347492       1
+5    NA19098        r1  A05           1      2.313047       1
+6    NA19098        r1  A06           1      2.056803       1</code></pre>
+<p>Incorporate informatin on cell number, concentration, and TRA1-60 status.</p>
+<pre class="r"><code>anno_single$cell_number &lt;- qc$cell_number
+anno_single$concentration &lt;- qc$concentration
+anno_single$tra1.60 &lt;- qc$tra1.60</code></pre>
+<p>Keep only quality single cell</p>
+<pre class="r"><code>quality_single_cells &lt;- scan(&quot;../data/quality-single-cells.txt&quot;,
+                             what = &quot;character&quot;)
+anno_single &lt;- anno_single[anno_single$sample_id %in% quality_single_cells,]</code></pre>
+<p>Input molecule counts after filtering</p>
+<pre class="r"><code>molecules &lt;- read.table(&quot;../data/molecules-filter.txt&quot;, header = TRUE,
+                    stringsAsFactors = FALSE)
+stopifnot(colnames(molecules) == anno_single$sample_id)
+ercc_index &lt;- grepl(&quot;ERCC&quot;, rownames(molecules))
+anno_single$total_molecules_gene = colSums(molecules[!ercc_index, ])
+anno_single$total_molecules_ercc = colSums(molecules[ercc_index, ])
+anno_single$total_molecules = colSums(molecules)
+anno_single$num_genes = apply(molecules[!ercc_index, ], 2, function(x) sum(x &gt; 0))</code></pre>
+</div>
+<div id="the-total-molecule-counts" class="section level2">
+<h2>The total molecule-counts</h2>
+<p>For wells with a single cell observed, the total molecule-counts range from 30408 to 113832, the first quartile for the total number of gene molecules is 55561.25, and the third quartile is 78173.25.</p>
+<pre class="r"><code>## create a color palette with one color per individual and different shades for repplicates
+great_color_8 &lt;- c(&quot;#CC3300&quot;, &quot;#FF9966&quot;, &quot;#006633&quot;, &quot;#009900&quot;, &quot;#99FF99&quot;, &quot;#3366FF&quot;, &quot;#6699FF&quot;, &quot;#66CCFF&quot;)
+
+plot_total_molecules_gene &lt;- ggplot(anno_single,
+                       aes(x = as.factor(batch), y = total_molecules_gene / 10^3, fill = as.factor(batch))) + 
+                       geom_boxplot(alpha = .01, width = .2) +
+                       geom_violin(alpha = .5) + 
+                       scale_fill_manual(values = great_color_8) +
+                       labs(x = &quot;Batch&quot;, y = &quot;Total gene molecule-counts (10^3)&quot;) +
+                       theme(axis.text.x = element_text(hjust=1, angle = 45))
+
+plot_total_molecules_ercc &lt;-  plot_total_molecules_gene %+%
+                                   aes(y = total_molecules_ercc / 10^3) +
+                                   labs(y = &quot;Total ERCC molecule-counts (10^3)&quot;)
+
+summary(aov(total_molecules_gene ~ individual, data = anno_single))</code></pre>
+<pre><code>             Df    Sum Sq   Mean Sq F value Pr(&gt;F)    
+individual    2 2.571e+10 1.286e+10   70.39 &lt;2e-16 ***
+Residuals   561 1.025e+11 1.827e+08                   
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
+<pre class="r"><code>plot_grid(plot_total_molecules_gene + theme(legend.position = &quot;none&quot;),
+          plot_total_molecules_ercc + theme(legend.position = &quot;none&quot;),
+          labels = LETTERS[1:2])</code></pre>
+<p><img src="figure/total-molecule.Rmd/total_molecules-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
+</div>
+<div id="the-relationship-between-concentration-and-total-molecule-counts" class="section level2">
+<h2>The relationship between concentration and total molecule-counts</h2>
+<p>As we try to understand the general relationships between sequencing results and cellular mRNA content, we remove outlier batches. The quantification of the concentration of the single cells in replicate 1 of NA19098 failed. There are only 7 batches.</p>
+<pre class="r"><code>anno_single_7 &lt;- anno_single %&gt;% filter(batch != &quot;NA19098.r1&quot;)</code></pre>
+<pre class="r"><code>## look at endogenous genes
+plot_conc_molecules_gene_individual &lt;- ggplot(anno_single_7,
+                                         aes(x = concentration, y = total_molecules_gene / 10^3, color = individual)) +
+                                         geom_point(alpha = 0.8) +
+                                         geom_smooth(method = &quot;lm&quot;, se = FALSE) +
+                                         labs(x = &quot;Concentration&quot;, y = &quot;Total gene molecule-counts (10^3)&quot;)
+
+## look at ERCC spike-ins
+plot_conc_molecules_ercc_individual &lt;-  plot_conc_molecules_gene_individual %+%
+                                   aes(y = total_molecules_ercc / 10^3) +
+                                   labs(y = &quot;Total ERCC molecule-counts (10^3)&quot;)
+
+## plots
+plot_grid(plot_conc_molecules_gene_individual + theme(legend.position = &quot;none&quot;), 
+          plot_conc_molecules_ercc_individual + theme(legend.position = &quot;none&quot;),
+          labels = LETTERS[1:2])</code></pre>
+<p><img src="figure/total-molecule.Rmd/molecules-num-cells-batch-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>## Is there a difference across the three individuals
+table(anno_single_7$individual, anno_single_7$replicate)</code></pre>
+<pre><code>         
+          r1 r2 r3
+  NA19098  0  0 57
+  NA19101 80 70 51
+  NA19239 74 68 79</code></pre>
+<pre class="r"><code>fit0 &lt;- lm(total_molecules_gene ~ concentration, 
+   data = anno_single_7)
+fit1 &lt;- lm(total_molecules_gene ~ concentration + as.factor(individual), 
+   data = anno_single_7)
+anova(fit0, fit1)</code></pre>
+<pre><code>Analysis of Variance Table
+
+Model 1: total_molecules_gene ~ concentration
+Model 2: total_molecules_gene ~ concentration + as.factor(individual)
+  Res.Df        RSS Df  Sum of Sq      F    Pr(&gt;F)    
+1    477 9.0266e+10                                   
+2    475 6.5497e+10  2 2.4769e+10 89.816 &lt; 2.2e-16 ***
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
+<pre class="r"><code>summary(fit1)</code></pre>
+<pre><code>
+Call:
+lm(formula = total_molecules_gene ~ concentration + as.factor(individual), 
+    data = anno_single_7)
+
+Residuals:
+   Min     1Q Median     3Q    Max 
+-29879  -7979  -1314   7540  46676 
+
+Coefficients:
+                             Estimate Std. Error t value Pr(&gt;|t|)    
+(Intercept)                     55422       2844  19.486   &lt;2e-16 ***
+concentration                   14652       1281  11.437   &lt;2e-16 ***
+as.factor(individual)NA19101   -23234       1762 -13.182   &lt;2e-16 ***
+as.factor(individual)NA19239   -15484       1744  -8.876   &lt;2e-16 ***
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
+
+Residual standard error: 11740 on 475 degrees of freedom
+Multiple R-squared:  0.4019,    Adjusted R-squared:  0.3981 
+F-statistic: 106.4 on 3 and 475 DF,  p-value: &lt; 2.2e-16</code></pre>
+<pre class="r"><code>## Is there a difference across replicates of 19101
+fit0 &lt;- lm(total_molecules_gene ~ concentration, 
+   data = anno_single_7, subset = individual == &quot;NA19101&quot;)
+fit1 &lt;- lm(total_molecules_gene ~ concentration + as.factor(replicate), 
+   data = anno_single_7, subset = individual == &quot;NA19101&quot;)
+anova(fit0, fit1)</code></pre>
+<pre><code>Analysis of Variance Table
+
+Model 1: total_molecules_gene ~ concentration
+Model 2: total_molecules_gene ~ concentration + as.factor(replicate)
+  Res.Df        RSS Df Sum of Sq      F Pr(&gt;F)
+1    199 3.1245e+10                           
+2    197 3.1148e+10  2  96817204 0.3062 0.7366</code></pre>
+<pre class="r"><code>## Is there a difference across replicates of 19239
+fit0 &lt;- lm(total_molecules_gene ~ concentration, 
+   data = anno_single_7, subset = individual == &quot;NA19239&quot;)
+fit1 &lt;- lm(total_molecules_gene ~ concentration + as.factor(replicate), 
+   data = anno_single_7, subset = individual == &quot;NA19239&quot;)
+anova(fit0, fit1)</code></pre>
+<pre><code>Analysis of Variance Table
+
+Model 1: total_molecules_gene ~ concentration
+Model 2: total_molecules_gene ~ concentration + as.factor(replicate)
+  Res.Df       RSS Df  Sum of Sq      F    Pr(&gt;F)    
+1    219 2.552e+10                                   
+2    217 2.262e+10  2 2900340454 13.912 2.066e-06 ***
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
+<pre class="r"><code>summary(fit1)</code></pre>
+<pre><code>
+Call:
+lm(formula = total_molecules_gene ~ concentration + as.factor(replicate), 
+    data = anno_single_7, subset = individual == &quot;NA19239&quot;)
+
+Residuals:
+     Min       1Q   Median       3Q      Max 
+-22927.2  -7461.0   -756.5   5310.1  28275.3 
+
+Coefficients:
+                       Estimate Std. Error t value Pr(&gt;|t|)    
+(Intercept)               32536       3733   8.716 7.53e-16 ***
+concentration             19259       1962   9.817  &lt; 2e-16 ***
+as.factor(replicate)r2    -6440       1726  -3.731 0.000243 ***
+as.factor(replicate)r3     2237       1659   1.348 0.179028    
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
+
+Residual standard error: 10210 on 217 degrees of freedom
+Multiple R-squared:  0.3576,    Adjusted R-squared:  0.3487 
+F-statistic: 40.27 on 3 and 217 DF,  p-value: &lt; 2.2e-16</code></pre>
+<p>Calculate correlation of concentration and molecule counts</p>
+<pre class="r"><code>## for each individual
+for (i in 1:length(unique(anno_single_7$individual))) {
+    print(unique(anno_single_7$individual)[i])
+    select_individual &lt;- with(anno_single_7, individual == unique(individual)[i])
+    print(cor(anno_single_7[select_individual,7],anno_single_7[select_individual,9]))
+}</code></pre>
+<pre><code>[1] &quot;NA19098&quot;
+[1] 0.8160622
+[1] &quot;NA19101&quot;
+[1] 0.2767428
+[1] &quot;NA19239&quot;
+[1] 0.524656</code></pre>
+<pre class="r"><code>## for each batch
+for (i in 1:length(unique(anno_single_7$batch))) {
+    print(unique(anno_single_7$batch)[i])
+    select_replicate &lt;- with(anno_single_7, batch == unique(batch)[i])
+    print(cor(anno_single_7[select_replicate,7],anno_single_7[select_replicate,9]))
+}</code></pre>
+<pre><code>[1] &quot;NA19098.r3&quot;
+[1] 0.8160622
+[1] &quot;NA19101.r1&quot;
+[1] 0.3607414
+[1] &quot;NA19101.r2&quot;
+[1] 0.5084765
+[1] &quot;NA19101.r3&quot;
+[1] -0.0631127
+[1] &quot;NA19239.r1&quot;
+[1] 0.7466212
+[1] &quot;NA19239.r2&quot;
+[1] 0.7784135
+[1] &quot;NA19239.r3&quot;
+[1] -0.03799184</code></pre>
+</div>
+<div id="ercc-counts-and-total-molecule-counts" class="section level2">
+<h2>ERCC counts and total molecule counts</h2>
+<pre class="r"><code>## calulate ERCC percentage
+anno_single &lt;- anno_single %&gt;%
+  mutate(perc_ercc_molecules = total_molecules_ercc / total_molecules * 100)
+
+## ERCC molecule versus total molecule
+plot_gene_mol_ercc_mol &lt;- ggplot(anno_single,
+                                 aes(x = total_molecules_gene,
+                                     y = total_molecules_ercc)) +
+                         geom_point(aes(color = individual, shape = replicate, alpha = 0.8))+
+                         labs(x = &quot;Total gene molecules&quot;, y = &quot;Total ERCC molecules&quot;) 
+
+plot_gene_mol_perc_ercc &lt;- plot_gene_mol_ercc_mol %+%
+                           aes(x = perc_ercc_molecules)+
+                           labs(x = &quot;Percent ERCC molecules&quot;)
+
+plot_grid(plot_gene_mol_ercc_mol + theme(legend.position = &quot;none&quot;),
+          plot_gene_mol_perc_ercc + theme(legend.position= &quot;none&quot;),
+          labels = LETTERS[1:2])</code></pre>
+<p><img src="figure/total-molecule.Rmd/ercc-total-counts-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>## Is there a difference across the three individuals
+table(anno_single$individual, anno_single$replicate)</code></pre>
+<pre><code>         
+          r1 r2 r3
+  NA19098 85  0 57
+  NA19101 80 70 51
+  NA19239 74 68 79</code></pre>
+<pre class="r"><code>fit0 &lt;- lm(total_molecules_ercc ~ 1,  data = anno_single)
+fit1 &lt;- lm(total_molecules_ercc ~ 1 + as.factor(individual), data = anno_single)
+anova(fit0, fit1)</code></pre>
+<pre><code>Analysis of Variance Table
+
+Model 1: total_molecules_ercc ~ 1
+Model 2: total_molecules_ercc ~ 1 + as.factor(individual)
+  Res.Df      RSS Df Sum of Sq      F    Pr(&gt;F)    
+1    563 34614165                                  
+2    561 17394891  2  17219274 277.67 &lt; 2.2e-16 ***
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
+<pre class="r"><code>fit0 &lt;- lm(total_molecules_ercc ~ perc_ercc_molecules, 
+   data = anno_single)
+fit1 &lt;- lm(total_molecules_ercc ~ perc_ercc_molecules + as.factor(individual), 
+   data = anno_single)
+anova(fit0, fit1)</code></pre>
+<pre><code>Analysis of Variance Table
+
+Model 1: total_molecules_ercc ~ perc_ercc_molecules
+Model 2: total_molecules_ercc ~ perc_ercc_molecules + as.factor(individual)
+  Res.Df      RSS Df Sum of Sq      F    Pr(&gt;F)    
+1    562 28653110                                  
+2    560 15176354  2  13476756 248.64 &lt; 2.2e-16 ***
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
+<pre class="r"><code>## Is there a difference across replicates of 19098
+fit0 &lt;- lm(total_molecules_ercc ~ total_molecules_gene, 
+   data = anno_single, subset = individual == &quot;NA19098&quot;)
+fit1 &lt;- lm(total_molecules_ercc ~ total_molecules_gene + as.factor(replicate), 
+   data = anno_single, subset = individual == &quot;NA19098&quot;)
+anova(fit0, fit1)</code></pre>
+<pre><code>Analysis of Variance Table
+
+Model 1: total_molecules_ercc ~ total_molecules_gene
+Model 2: total_molecules_ercc ~ total_molecules_gene + as.factor(replicate)
+  Res.Df     RSS Df Sum of Sq      F    Pr(&gt;F)    
+1    140 2367755                                  
+2    139 1498871  1    868884 80.577 1.743e-15 ***
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
+<pre class="r"><code>fit0 &lt;- lm(total_molecules_ercc ~ perc_ercc_molecules, 
+   data = anno_single, subset = individual == &quot;NA19098&quot;)
+fit1 &lt;- lm(total_molecules_ercc ~ perc_ercc_molecules + as.factor(replicate), 
+   data = anno_single, subset = individual == &quot;NA19098&quot;)
+anova(fit0, fit1)</code></pre>
+<pre><code>Analysis of Variance Table
+
+Model 1: total_molecules_ercc ~ perc_ercc_molecules
+Model 2: total_molecules_ercc ~ perc_ercc_molecules + as.factor(replicate)
+  Res.Df     RSS Df Sum of Sq      F    Pr(&gt;F)    
+1    140 4560015                                  
+2    139 2523326  1   2036689 112.19 &lt; 2.2e-16 ***
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
+<pre class="r"><code>## Is there a difference across replicates of 19101
+fit0 &lt;- lm(total_molecules_ercc ~ total_molecules_gene, 
+   data = anno_single, subset = individual == &quot;NA19101&quot;)
+fit1 &lt;- lm(total_molecules_ercc ~ total_molecules_gene + as.factor(replicate), 
+   data = anno_single, subset = individual == &quot;NA19101&quot;)
+anova(fit0, fit1)</code></pre>
+<pre><code>Analysis of Variance Table
+
+Model 1: total_molecules_ercc ~ total_molecules_gene
+Model 2: total_molecules_ercc ~ total_molecules_gene + as.factor(replicate)
+  Res.Df      RSS Df Sum of Sq      F    Pr(&gt;F)    
+1    199 10356705                                  
+2    197  2541394  2   7815311 302.91 &lt; 2.2e-16 ***
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
+<pre class="r"><code>fit0 &lt;- lm(total_molecules_ercc ~ perc_ercc_molecules, 
+   data = anno_single, subset = individual == &quot;NA19101&quot;)
+fit1 &lt;- lm(total_molecules_ercc ~ perc_ercc_molecules + as.factor(replicate), 
+   data = anno_single, subset = individual == &quot;NA19101&quot;)
+anova(fit0, fit1)</code></pre>
+<pre><code>Analysis of Variance Table
+
+Model 1: total_molecules_ercc ~ perc_ercc_molecules
+Model 2: total_molecules_ercc ~ perc_ercc_molecules + as.factor(replicate)
+  Res.Df     RSS Df Sum of Sq      F    Pr(&gt;F)    
+1    199 6833679                                  
+2    197 3039216  2   3794462 122.98 &lt; 2.2e-16 ***
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
+<pre class="r"><code>## Is there a difference across replicates of 19239
+fit0 &lt;- lm(total_molecules_ercc ~ total_molecules_gene, 
+   data = anno_single, subset = individual == &quot;NA19239&quot;)
+fit1 &lt;- lm(total_molecules_ercc ~ total_molecules_gene + as.factor(replicate), 
+   data = anno_single, subset = individual == &quot;NA19239&quot;)
+anova(fit0, fit1)</code></pre>
+<pre><code>Analysis of Variance Table
+
+Model 1: total_molecules_ercc ~ total_molecules_gene
+Model 2: total_molecules_ercc ~ total_molecules_gene + as.factor(replicate)
+  Res.Df     RSS Df Sum of Sq      F Pr(&gt;F)
+1    219 1701164                           
+2    217 1690969  2     10194 0.6541 0.5209</code></pre>
+<pre class="r"><code>fit0 &lt;- lm(total_molecules_ercc ~ perc_ercc_molecules, 
+   data = anno_single, subset = individual == &quot;NA19239&quot;)
+fit1 &lt;- lm(total_molecules_ercc ~ perc_ercc_molecules + as.factor(replicate), 
+   data = anno_single, subset = individual == &quot;NA19239&quot;)
+anova(fit0, fit1)</code></pre>
+<pre><code>Analysis of Variance Table
+
+Model 1: total_molecules_ercc ~ perc_ercc_molecules
+Model 2: total_molecules_ercc ~ perc_ercc_molecules + as.factor(replicate)
+  Res.Df     RSS Df Sum of Sq      F  Pr(&gt;F)  
+1    219 2099625                              
+2    217 2026492  2     73133 3.9156 0.02135 *
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
+</div>
+<div id="plots-for-paper" class="section level2">
+<h2>Plots for paper</h2>
+<pre class="r"><code>plot_grid(plot_total_molecules_gene + theme(legend.position = &quot;none&quot;),
+          plot_conc_molecules_gene_individual + theme(legend.position= &quot;none&quot;),
+          plot_gene_mol_ercc_mol + theme(legend.position = &quot;none&quot;),
+          plot_gene_mol_perc_ercc + theme(legend.position= &quot;none&quot;),
+          labels = LETTERS[1:4])</code></pre>
+<p><img src="figure/total-molecule.Rmd/plot-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] cowplot_0.3.1 ggplot2_1.0.1 edgeR_3.10.2  limma_3.24.9  tidyr_0.2.0  
+[6] dplyr_0.4.2   knitr_1.10.5 
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.12.0      magrittr_1.5     MASS_7.3-40      munsell_0.4.2   
+ [5] colorspace_1.2-6 R6_2.1.1         stringr_1.0.0    httr_0.6.1      
+ [9] plyr_1.8.3       tools_3.2.0      parallel_3.2.0   grid_3.2.0      
+[13] gtable_0.1.2     DBI_0.3.1        htmltools_0.2.6  lazyeval_0.1.10 
+[17] yaml_2.1.13      assertthat_0.1   digest_0.6.8     reshape2_1.4.1  
+[21] formatR_1.2      bitops_1.0-6     RCurl_1.95-4.6   evaluate_0.7    
+[25] rmarkdown_0.6.1  labeling_0.3     stringi_0.4-1    scales_0.2.4    
+[29] proto_0.3-10    </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>

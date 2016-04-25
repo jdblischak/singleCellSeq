@@ -126,108 +126,279 @@ img {
 
 <div id="TOC">
 <ul>
-<li><a href="#analyzing-total-counts">Analyzing total counts</a></li>
-<li><a href="#variation-in-counts">Variation in counts</a></li>
+<li><a href="#setup">Setup</a></li>
+<li><a href="#read-counts-per-lane">Read counts per lane</a></li>
+<li><a href="#read-counts-per-sample">Read counts per sample</a></li>
+<li><a href="#molecule-counts-per-lane">Molecule counts per lane</a></li>
+<li><a href="#molecule-counts-per-sample">Molecule counts per sample</a></li>
+<li><a href="#summary-for-single-cells">Summary for single cells</a></li>
 <li><a href="#session-information">Session information</a></li>
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-05-29</p>
-<p><strong>Code version:</strong> bd50ee78f288e4be408987c8211ab0183400a853</p>
+<p><strong>Last updated:</strong> 2016-04-24</p>
+<p><strong>Code version:</strong> 74f30e4e4b6c6fea3667336da91b01fb5603564f</p>
 <p>During the <a href="process-samples.html">processing pipeline</a>, the number of reads in a file are counted and saved in a separate text files. The script <a href="https://github.com/jdblischak/singleCellSeq/blob/master/code/gather-total-counts.py">gather-total-counts.py</a> compiles all these counts and extracts the relevant variables from the filename.</p>
-<div id="analyzing-total-counts" class="section level2">
-<h2>Analyzing total counts</h2>
-<pre class="r"><code>library(&quot;ggplot2&quot;)
-theme_set(theme_bw(base_size = 16))</code></pre>
-<pre class="r"><code>counts &lt;- read.table(&quot;../data/total-counts.txt&quot;, header = TRUE,
-                     stringsAsFactors = FALSE)</code></pre>
+<div id="setup" class="section level2">
+<h2>Setup</h2>
+<pre class="r"><code>library(&quot;dplyr&quot;)
+library(&quot;ggplot2&quot;)
+theme_set(theme_bw(base_size = 16))
+theme_update(panel.grid.minor.x = element_blank(),
+             panel.grid.minor.y = element_blank(),
+             panel.grid.major.x = element_blank(),
+             panel.grid.major.y = element_blank())</code></pre>
+<pre class="r"><code>counts &lt;- read.table(&quot;../data/total-counts.txt&quot;, header = TRUE, sep = &quot;\t&quot;,
+                     stringsAsFactors = TRUE)</code></pre>
 <pre class="r"><code>head(counts)</code></pre>
-<pre><code>  stage              sickle individual batch well    index lane flow_cell
-1 fastq not-quality-trimmed      19098     1  H03 GGGAATAT L002 C6WYKACXX
-2 fastq not-quality-trimmed      19098     2  B05 CTTGAAGG L005 C72JMACXX
-3 fastq not-quality-trimmed      19098     2  G10 AGCAAGCG L003 C723YACXX
-4 fastq not-quality-trimmed      19098     1  H11 TTCTCTGC L002 C6WYKACXX
-5 fastq not-quality-trimmed      19098     2  E07 TGCCCAGA L003 C723YACXX
-6 fastq not-quality-trimmed      19098     2  F12 AACCCATG L001 C6WURACXX
-   counts
-1 2114841
-2 2394493
-3  753351
-4 3126886
-5 1589238
-6 2504377</code></pre>
+<pre><code>  stage sequences combined individual replicate well    index lane
+1   raw     reads       NA    NA19098        r1  A01 ATTAGACG L002
+2   raw     reads       NA    NA19098        r1  A01 ATTAGACG L003
+3   raw     reads       NA    NA19098        r1  A01 ATTAGACG L006
+4   raw     reads       NA    NA19098        r1  A02 ACGAGTCT L002
+5   raw     reads       NA    NA19098        r1  A02 ACGAGTCT L003
+6   raw     reads       NA    NA19098        r1  A02 ACGAGTCT L006
+  flow_cell  counts
+1 C6WYKACXX 1986825
+2 C6WURACXX 1785837
+3 C723YACXX 1739622
+4 C6WYKACXX 2019671
+5 C6WURACXX 1809239
+6 C723YACXX 1762255</code></pre>
 <pre class="r"><code>str(counts)</code></pre>
-<pre><code>&#39;data.frame&#39;:   29304 obs. of  9 variables:
- $ stage     : chr  &quot;fastq&quot; &quot;fastq&quot; &quot;fastq&quot; &quot;fastq&quot; ...
- $ sickle    : chr  &quot;not-quality-trimmed&quot; &quot;not-quality-trimmed&quot; &quot;not-quality-trimmed&quot; &quot;not-quality-trimmed&quot; ...
- $ individual: int  19098 19098 19098 19098 19098 19098 19098 19098 19098 19098 ...
- $ batch     : int  1 2 2 1 2 2 2 2 2 2 ...
- $ well      : chr  &quot;H03&quot; &quot;B05&quot; &quot;G10&quot; &quot;H11&quot; ...
- $ index     : chr  &quot;GGGAATAT&quot; &quot;CTTGAAGG&quot; &quot;AGCAAGCG&quot; &quot;TTCTCTGC&quot; ...
- $ lane      : chr  &quot;L002&quot; &quot;L005&quot; &quot;L003&quot; &quot;L002&quot; ...
- $ flow_cell : chr  &quot;C6WYKACXX&quot; &quot;C72JMACXX&quot; &quot;C723YACXX&quot; &quot;C6WYKACXX&quot; ...
- $ counts    : int  2114841 2394493 753351 3126886 1589238 2504377 2118488 2214717 1673986 1864989 ...</code></pre>
+<pre><code>&#39;data.frame&#39;:   20232 obs. of  10 variables:
+ $ stage     : Factor w/ 5 levels &quot;mapped to exons&quot;,..: 4 4 4 4 4 4 4 4 4 4 ...
+ $ sequences : Factor w/ 2 levels &quot;molecules&quot;,&quot;reads&quot;: 2 2 2 2 2 2 2 2 2 2 ...
+ $ combined  : logi  NA NA NA NA NA NA ...
+ $ individual: Factor w/ 3 levels &quot;NA19098&quot;,&quot;NA19101&quot;,..: 1 1 1 1 1 1 1 1 1 1 ...
+ $ replicate : Factor w/ 3 levels &quot;r1&quot;,&quot;r2&quot;,&quot;r3&quot;: 1 1 1 1 1 1 1 1 1 1 ...
+ $ well      : Factor w/ 97 levels &quot;A01&quot;,&quot;A02&quot;,&quot;A03&quot;,..: 1 1 1 2 2 2 3 3 3 4 ...
+ $ index     : Factor w/ 96 levels &quot;AAAGGTCC&quot;,&quot;AACCCATG&quot;,..: 23 23 23 13 13 13 85 85 85 68 ...
+ $ lane      : Factor w/ 8 levels &quot;L001&quot;,&quot;L002&quot;,..: 2 3 6 2 3 6 2 3 6 2 ...
+ $ flow_cell : Factor w/ 4 levels &quot;C6WURACXX&quot;,&quot;C6WYKACXX&quot;,..: 2 1 3 2 1 3 2 1 3 2 ...
+ $ counts    : int  1986825 1785837 1739622 2019671 1809239 1762255 1191181 1056347 989324 1601993 ...</code></pre>
 <pre class="r"><code># Order the processing steps
 counts$stage &lt;- factor(counts$stage,
-                       levels = c(&quot;fastq&quot;, &quot;trim&quot;, &quot;bam-processed&quot;,
-                                  &quot;bam-rmdup-umi&quot;, &quot;counts&quot;, &quot;counts-rmdup&quot;))
+                       levels = c(&quot;raw&quot;, &quot;valid UMI&quot;, &quot;quality trimmed&quot;,
+                                  &quot;mapped to genome&quot;, &quot;mapped to exons&quot;))
 # Make new variable to separate bulk and single cell samples
 counts$type &lt;- ifelse(counts$well == &quot;bulk&quot;, &quot;bulk&quot;, &quot;single&quot;)
-# Scale to millions of counts
+counts$type &lt;- factor(counts$type, levels = c(&quot;bulk&quot;, &quot;single&quot;))
+# Scale to thousands and millions of counts
+counts$counts_thousands &lt;- counts$counts / 10^3
 counts$counts_mil &lt;- counts$counts / 10^6
-# Convert numeric categorical variables to factors
-counts$individual &lt;- factor(counts$individual)
-counts$batch &lt;- factor(counts$batch)</code></pre>
-<p>Plot the number of reads at each processing stage faceted by bulk versus single cell sequencing.</p>
-<pre class="r"><code>ggplot(counts, aes(x = stage, y = counts_mil)) +
-  geom_boxplot() +
-  # facet_wrap(type ~ sickle, nrow = 1) +
-  facet_grid(sickle ~ type) +
-  scale_y_continuous(breaks = seq(0, 16, 2)) +
-  labs(x = &quot;Processing stage&quot;, y = &quot;Number of reads (millions)&quot;) +
-  theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))</code></pre>
-<p><img src="figure/total-counts.Rmd/counts-by-processing-stage-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>counts_sum &lt;- tapply(counts$counts, list(counts$stage, counts$type, counts$sickle), mean)
-counts_sum</code></pre>
-<pre><code>, , not-quality-trimmed
-
-                 bulk     single
-fastq         9705088 2092200.84
-trim          6536956 1478098.76
-bam-processed 5265894 1051763.77
-bam-rmdup-umi 3370583   92219.13
-counts        3840849  699017.58
-counts-rmdup  2571847   56229.42
-
-, , quality-trimmed
-
-                 bulk     single
-fastq              NA         NA
-trim          6436990 1460819.87
-bam-processed 5186264 1040234.15
-bam-rmdup-umi 3338797   92514.04
-counts        3786297  692108.05
-counts-rmdup  2546592   56208.94</code></pre>
-<p>The bulk samples have an average of 2.546591810^{6} molecules that map to protein-coding exons (2.571846910^{6} before quality trimming). The single cell samples have an average of 5.620894110^{4} molecules that map to protein-coding exons (5.622941610^{4} before quality trimming). Since each sample is sequenced three times, the average total number of molecules will be 7.639775410^{6} and 1.686268210^{5} molecules for the bulk and single cell samples, respectively.</p>
+summary(counts)</code></pre>
+<pre><code>              stage          sequences      combined         individual  
+ raw             :2664   molecules: 6912   Mode :logical   NA19098:6744  
+ valid UMI       :2664   reads    :13320   FALSE:7848      NA19101:6744  
+ quality trimmed :2664                     TRUE :1728      NA19239:6744  
+ mapped to genome:6120                     NA&#39;s :10656                   
+ mapped to exons :6120                                                   
+                                                                         
+                                                                         
+ replicate      well            index            lane     
+ r1:6744   bulk   :  360   AAGTCTTC:  209   L002   :2688  
+ r2:6744   A01    :  207   ACACAACT:  209   L003   :2688  
+ r3:6744   A02    :  207   ACAGCGAA:  209   L004   :2688  
+           A03    :  207   AGTCCACC:  209   L006   :2688  
+           A04    :  207   CACGGTGT:  209   L001   :2106  
+           A05    :  207   (Other) :17459   (Other):5646  
+           (Other):18837   NA&#39;s    : 1728   NA&#39;s   :1728  
+     flow_cell        counts             type       counts_thousands   
+ C6WURACXX:4794   Min.   :    2495   bulk  :  360   Min.   :    2.495  
+ C6WYKACXX:4794   1st Qu.:   84396   single:19872   1st Qu.:   84.396  
+ C723YACXX:4794   Median :  822508                  Median :  822.509  
+ C72JMACXX:4122   Mean   : 1002821                  Mean   : 1002.821  
+ NA&#39;s     :1728   3rd Qu.: 1578909                  3rd Qu.: 1578.909  
+                  Max.   :15126607                  Max.   :15126.607  
+                                                                       
+   counts_mil       
+ Min.   : 0.002495  
+ 1st Qu.: 0.084396  
+ Median : 0.822508  
+ Mean   : 1.002821  
+ 3rd Qu.: 1.578909  
+ Max.   :15.126607  
+                    </code></pre>
 </div>
-<div id="variation-in-counts" class="section level2">
-<h2>Variation in counts</h2>
-<pre class="r"><code>variables &lt;- c(&quot;individual&quot;, &quot;batch&quot;, &quot;index&quot;, &quot;lane&quot;, &quot;flow_cell&quot;)
-for (v in variables) {
-  p &lt;- ggplot(counts, aes_string(x = v, y = &quot;counts_mil&quot;)) +
+<div id="read-counts-per-lane" class="section level2">
+<h2>Read counts per lane</h2>
+<pre class="r"><code>counts_per_lane &lt;- counts %&gt;% filter(!combined | is.na(combined),
+                                     sequences == &quot;reads&quot;)
+stopifnot(table(counts_per_lane$stage) == 2664)</code></pre>
+<p>Plot the number of reads per lane at each processing stage faceted by bulk versus single cell sequencing.</p>
+<pre class="r"><code>ggplot(counts_per_lane,
+       aes(x = stage, y = counts_mil)) +
   geom_boxplot() +
-  facet_grid(sickle ~ type) +
+  facet_wrap(~type) +
   scale_y_continuous(breaks = seq(0, 16, 2)) +
-  labs(x = v, y = &quot;Number of reads (millions)&quot;) +
-  theme(axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.5))
-  print(p)
-}</code></pre>
-<p><img src="figure/total-counts.Rmd/counts-by-variables-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/total-counts.Rmd/counts-by-variables-2.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/total-counts.Rmd/counts-by-variables-3.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/total-counts.Rmd/counts-by-variables-4.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/total-counts.Rmd/counts-by-variables-5.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+  labs(x = &quot;Processing stage&quot;, y = &quot;Number of reads (millions)&quot;,
+       title = &quot;Total number of reads per lane at each stage&quot;) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 0.9, vjust = 0.75))</code></pre>
+<p><img src="figure/total-counts.Rmd/counts-per-lane-by-processing-stage-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p>Plot the number of raw reads per lane for each replicate of each individual faceted by bulk versus single cell sequencing.</p>
+<pre class="r"><code>ggplot(counts_per_lane[counts$stage == &quot;raw&quot;, ],
+       aes(x = individual, y = counts_mil, fill = replicate)) +
+  geom_boxplot() +
+  facet_wrap(~type) +
+  scale_y_continuous(breaks = seq(0, 16, 2)) +
+  labs(x = &quot;Individual&quot;, y = &quot;Number of raw reads (millions)&quot;,
+       title = &quot;Total number of raw reads per lane for each replicate&quot;) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 0.9, vjust = 0.75))</code></pre>
+<p><img src="figure/total-counts.Rmd/counts-per-lane-per-replicate-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p>Plot the number of raw reads per lane for each lane of each flow cell faceted by bulk versus single cell sequencing.</p>
+<pre class="r"><code>ggplot(counts_per_lane[counts$stage == &quot;raw&quot;, ],
+       aes(x = flow_cell, y = counts_mil, fill = lane)) +
+  geom_boxplot() +
+  facet_wrap(~type) +
+  scale_y_continuous(breaks = seq(0, 16, 2)) +
+  labs(x = &quot;Flow cell&quot;, y = &quot;Number of raw reads (millions)&quot;,
+       title = &quot;Total number of raw reads per lane for each lane&quot;) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 0.9, vjust = 0.75))</code></pre>
+<p><img src="figure/total-counts.Rmd/counts-per-lane-per-lane-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p>Plot the number of raw reads per lane for each index faceted by bulk versus single cell sequencing.</p>
+<pre class="r"><code>ggplot(counts_per_lane[counts$stage == &quot;raw&quot;, ],
+       aes(x = index, y = counts_mil)) +
+  geom_boxplot() +
+  facet_wrap(~type) +
+  scale_y_continuous(breaks = seq(0, 16, 2)) +
+  labs(x = &quot;Index&quot;, y = &quot;Number of raw reads (millions)&quot;,
+       title = &quot;Total number of raw reads per lane for each index&quot;) +
+  theme(axis.text.x = element_blank())</code></pre>
+<p><img src="figure/total-counts.Rmd/counts-per-lane-per-index-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
+<div id="read-counts-per-sample" class="section level2">
+<h2>Read counts per sample</h2>
+<pre class="r"><code>counts_per_sample &lt;- counts_per_lane %&gt;%
+  group_by(stage, individual, replicate, well, type) %&gt;%
+  summarize(counts_mil = sum(counts) / 10^6)
+stopifnot(table(counts_per_sample$stage) == 864 + 9)</code></pre>
+<p>Plot the number of reads per sample at each processing stage faceted by bulk versus single cell sequencing.</p>
+<pre class="r"><code>ggplot(counts_per_sample,
+       aes(x = stage, y = counts_mil)) +
+  geom_boxplot() +
+  facet_wrap(~type) +
+  scale_y_continuous(breaks = seq(0, 100, 10)) +
+  labs(x = &quot;Processing stage&quot;, y = &quot;Number of reads (millions)&quot;,
+       title = &quot;Total number of reads per sample at each stage&quot;) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 0.9, vjust = 0.75))</code></pre>
+<p><img src="figure/total-counts.Rmd/counts-per-sample-by-processing-stage-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p>Plot the number of raw reads per sample for each replicate of each individual faceted by bulk versus single cell sequencing.</p>
+<pre class="r"><code>ggplot(counts_per_sample[counts$stage == &quot;raw&quot;, ],
+       aes(x = individual, y = counts_mil, fill = replicate)) +
+  geom_boxplot() +
+  facet_wrap(~type) +
+  scale_y_continuous(breaks = seq(0, 100, 10)) +
+  labs(x = &quot;Individual&quot;, y = &quot;Number of raw reads (millions)&quot;,
+       title = &quot;Total number of raw reads per sample for each replicate&quot;) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 0.9, vjust = 0.75))</code></pre>
+<p><img src="figure/total-counts.Rmd/counts-per-sample-per-replicate-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
+<div id="molecule-counts-per-lane" class="section level2">
+<h2>Molecule counts per lane</h2>
+<pre class="r"><code>molecules_per_lane &lt;- counts %&gt;% filter(!combined | is.na(combined),
+                                        sequences == &quot;molecules&quot;,
+                                        stage %in% c(&quot;mapped to genome&quot;,
+                                                     &quot;mapped to exons&quot;))
+molecules_per_lane &lt;- droplevels(molecules_per_lane)
+stopifnot(table(molecules_per_lane$stage) == 96 * 3 * 3 * 3)</code></pre>
+<p>Plot the number of molecules per lane at each processing stage.</p>
+<pre class="r"><code>ggplot(molecules_per_lane,
+       aes(x = stage, y = counts_thousands)) +
+  geom_boxplot() +
+  scale_y_continuous(breaks = seq(0, 300, 50)) +
+  labs(x = &quot;Processing stage&quot;, y = &quot;Number of molecules (thousands)&quot;,
+       title = &quot;Total number of molecules per lane at each stage&quot;) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 0.9, vjust = 0.75))</code></pre>
+<p><img src="figure/total-counts.Rmd/molecules-per-lane-by-processing-stage-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p>Plot the number of mapped molecules per lane for each replicate of each individual.</p>
+<pre class="r"><code>ggplot(molecules_per_lane[molecules_per_lane$stage == &quot;mapped to genome&quot;, ],
+       aes(x = individual, y = counts_thousands, fill = replicate)) +
+  geom_boxplot() +
+  scale_y_continuous(breaks = seq(0, 300, 50)) +
+  labs(x = &quot;Individual&quot;, y = &quot;Number of mapped molecules (thousands)&quot;,
+       title = &quot;Total number of mapped molecules per lane for each replicate&quot;) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 0.9, vjust = 0.75))</code></pre>
+<p><img src="figure/total-counts.Rmd/molecules-per-lane-per-replicate-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p>Plot the number of mapped molecules per lane for each lane of each flow cell faceted by bulk versus single cell sequencing.</p>
+<pre class="r"><code>ggplot(molecules_per_lane[molecules_per_lane$stage == &quot;mapped to genome&quot;, ],
+       aes(x = flow_cell, y = counts_thousands, fill = lane)) +
+  geom_boxplot() +
+  scale_y_continuous(breaks = seq(0, 300, 50)) +
+  labs(x = &quot;Flow cell&quot;, y = &quot;Number of mapped molecules (thousands)&quot;,
+       title = &quot;Total number of mapped molecules per lane for each lane&quot;) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 0.9, vjust = 0.75))</code></pre>
+<p><img src="figure/total-counts.Rmd/molecules-per-lane-per-lane-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p>Plot the number of mapped molecules per lane for each index faceted by bulk versus single cell sequencing.</p>
+<pre class="r"><code>ggplot(molecules_per_lane[molecules_per_lane$stage == &quot;mapped to genome&quot;, ],
+       aes(x = index, y = counts_thousands)) +
+  geom_boxplot() +
+  scale_y_continuous(breaks = seq(0, 500, 50)) +
+  labs(x = &quot;Index&quot;, y = &quot;Number of mapped molecules (thousands)&quot;,
+       title = &quot;Total number of mapped molecules per lane for each index&quot;) +
+  theme(axis.text.x = element_blank())</code></pre>
+<p><img src="figure/total-counts.Rmd/molecules-per-lane-per-index-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
+<div id="molecule-counts-per-sample" class="section level2">
+<h2>Molecule counts per sample</h2>
+<pre class="r"><code>molecules_per_sample &lt;- counts %&gt;% filter(combined == TRUE,
+                                          stage %in% c(&quot;mapped to genome&quot;,
+                                                       &quot;mapped to exons&quot;))
+molecules_per_sample &lt;- droplevels(molecules_per_sample)
+stopifnot(molecules_per_sample$sequences == &quot;molecules&quot;,
+          table(molecules_per_sample$stage) == 864)</code></pre>
+<p>Plot the number of molecules per sample at each processing stage.</p>
+<pre class="r"><code>ggplot(molecules_per_sample,
+       aes(x = stage, y = counts_thousands)) +
+  geom_boxplot() +
+  scale_y_continuous(breaks = seq(0, 400, 50)) +
+  labs(x = &quot;Processing stage&quot;, y = &quot;Number of molecules (thousands)&quot;,
+       title = &quot;Total number of molecules per sample at each stage&quot;) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 0.9, vjust = 0.75))</code></pre>
+<p><img src="figure/total-counts.Rmd/molecules-per-sample-by-processing-stage-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p>Plot the number of mapped molecules per sample for each replicate of each individual.</p>
+<pre class="r"><code>ggplot(molecules_per_sample[molecules_per_sample$stage == &quot;mapped to genome&quot;, ],
+       aes(x = individual, y = counts_thousands, fill = replicate)) +
+  geom_boxplot() +
+  scale_y_continuous(breaks = seq(0, 400, 50)) +
+  labs(x = &quot;Individual&quot;, y = &quot;Number of mapped molecules (thousands)&quot;,
+       title = &quot;Total number of mapped molecules per sample for each replicate&quot;) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 0.9, vjust = 0.75))</code></pre>
+<p><img src="figure/total-counts.Rmd/molecules-per-sample-per-replicate-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
+<div id="summary-for-single-cells" class="section level2">
+<h2>Summary for single cells</h2>
+<p>These summary statistics include low quality cells that are removed before downstream analyses.</p>
+<pre class="r"><code>depth_stats &lt;- counts %&gt;%
+  filter(stage == &quot;raw&quot;, well != &quot;bulk&quot;) %&gt;%
+  group_by(individual, replicate, well) %&gt;%
+  summarize(counts_per_sample = sum(counts)) %&gt;%
+  ungroup() %&gt;%
+  summarize(mean = mean(counts_per_sample), sd = sd(counts_per_sample),
+            min = min(counts_per_sample), max = max(counts_per_sample))</code></pre>
+<p>We obtained an average of 6.28 +/- 2.11 million raw sequencing reads per sample (range 0.361-11.2 million reads).</p>
+<pre class="r"><code>exons_reads_stats &lt;- counts %&gt;%
+  filter(stage == &quot;mapped to exons&quot;, well != &quot;bulk&quot;, sequences == &quot;reads&quot;) %&gt;%
+  group_by(individual, replicate, well) %&gt;%
+  summarize(counts_per_sample = sum(counts)) %&gt;%
+  ungroup() %&gt;%
+  summarize(mean = mean(counts_per_sample), sd = sd(counts_per_sample),
+            min = min(counts_per_sample), max = max(counts_per_sample))</code></pre>
+<p>We obtained an average of 2.1 +/- 0.879 million sequencing reads per sample that mapped to protein-coding exons (range 0.0552-4.33 million reads).</p>
+<pre class="r"><code>exons_molecules_stats &lt;- counts %&gt;%
+  filter(stage == &quot;mapped to exons&quot;, well != &quot;bulk&quot;, sequences == &quot;molecules&quot;,
+         combined) %&gt;%
+  group_by(individual, replicate, well) %&gt;%
+  summarize(counts_per_sample = sum(counts)) %&gt;%
+  ungroup() %&gt;%
+  summarize(mean = mean(counts_per_sample), sd = sd(counts_per_sample),
+            min = min(counts_per_sample), max = max(counts_per_sample))</code></pre>
+<p>We obtained an average of 68.1 +/- 28.2 thousand molecules per sample that mapped to protein-coding exons (range 6.03-235 thousand molecules).</p>
 </div>
 <div id="session-information" class="section level2">
 <h2>Session information</h2>
 <pre class="r"><code>sessionInfo()</code></pre>
-<pre><code>R version 3.1.1 (2014-07-10)
+<pre><code>R version 3.2.0 (2015-04-16)
 Platform: x86_64-unknown-linux-gnu (64-bit)
 
 locale:
@@ -242,14 +413,16 @@ attached base packages:
 [1] stats     graphics  grDevices utils     datasets  methods   base     
 
 other attached packages:
-[1] ggplot2_1.0.0 knitr_1.10.5 
+[1] ggplot2_1.0.1 dplyr_0.4.2   knitr_1.10.5 
 
 loaded via a namespace (and not attached):
- [1] colorspace_1.2-4 digest_0.6.4     evaluate_0.7     formatR_0.10    
- [5] grid_3.1.1       gtable_0.1.2     htmltools_0.2.6  MASS_7.3-33     
- [9] munsell_0.4.2    plyr_1.8.1       proto_0.3-10     Rcpp_0.11.6     
-[13] reshape2_1.4     rmarkdown_0.5.1  scales_0.2.4     stringr_0.6.2   
-[17] tools_3.1.1      yaml_2.1.13     </code></pre>
+ [1] Rcpp_0.12.0      magrittr_1.5     MASS_7.3-40      munsell_0.4.2   
+ [5] colorspace_1.2-6 R6_2.1.1         stringr_1.0.0    httr_0.6.1      
+ [9] plyr_1.8.3       tools_3.2.0      parallel_3.2.0   grid_3.2.0      
+[13] gtable_0.1.2     DBI_0.3.1        htmltools_0.2.6  lazyeval_0.1.10 
+[17] yaml_2.1.13      assertthat_0.1   digest_0.6.8     reshape2_1.4.1  
+[21] formatR_1.2      bitops_1.0-6     RCurl_1.95-4.6   evaluate_0.7    
+[25] rmarkdown_0.6.1  stringi_0.4-1    scales_0.2.4     proto_0.3-10    </code></pre>
 </div>
 
 
@@ -289,6 +462,15 @@ $(document).ready(function () {
 
 </script>
 
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
 
 </body>
 </html>

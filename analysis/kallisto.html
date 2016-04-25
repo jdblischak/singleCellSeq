@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+
+<meta name="date" content="2016-03-26" />
+
+<title>Cluster samples using transcript compatibility counts from kallisto</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Cluster samples using transcript compatibility counts from kallisto</h1>
+<h4 class="date"><em>2016-03-26</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#installing-kallisto-from-source">Installing kallisto from source</a></li>
+<li><a href="#indexing-transcriptome">Indexing transcriptome</a></li>
+<li><a href="#obtaining-transcript-compatibility-counts">Obtaining transcript compatibility counts</a></li>
+<li><a href="#calculating-a-distance-matrix">Calculating a distance matrix</a></li>
+<li><a href="#clustering-all-cells">Clustering all cells</a></li>
+<li><a href="#clustering-high-quality-cells">Clustering high quality cells</a></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2016-04-24</p>
+<p><strong>Code version:</strong> 74f30e4e4b6c6fea3667336da91b01fb5603564f</p>
+<pre class="r"><code>library(&quot;ggplot2&quot;)
+library(&quot;cowplot&quot;)
+theme_set(theme_bw(base_size = 12))
+theme_update(panel.grid.minor.x = element_blank(),
+             panel.grid.minor.y = element_blank(),
+             panel.grid.major.x = element_blank(),
+             panel.grid.major.y = element_blank())</code></pre>
+<div id="installing-kallisto-from-source" class="section level2">
+<h2>Installing kallisto from source</h2>
+<p>kallisto has also been used for fast clustering of single cell samples, described in a pre-print by Ntranos et al. They provide a GitHub repo with their code. Critically, because they modified kallisto, I cannot use the pre-built binary that I downloaded from the kallisto website (previous post). They provide the modified source code, but not pre-built binaries. Since our data is single end, I built the version modified for use with single end reads.</p>
+<pre class="bash"><code># Not executed here
+git clone git@github.com:govinda-kamath/clustering_on_transcript_compatibility_counts.git
+cd clustering_on_transcript_compatibility_counts/modified-kallisto-source/kallisto_pseudo_single
+cmake -DCMAKE_CXX_COMPILER=/mnt/gluster/data/tools/gcc50/bin/g++ -DCMAKE_C_COMPILER=/mnt/gluster/data/tools/gcc50/bin/gcc -DCMAKE_INSTALL_PREFIX:PATH=/mnt/gluster/home/jdblischak/src ..
+make
+make install</code></pre>
+</div>
+<div id="indexing-transcriptome" class="section level2">
+<h2>Indexing transcriptome</h2>
+<p>I indexed human transcriptome h</p>
+</div>
+<div id="obtaining-transcript-compatibility-counts" class="section level2">
+<h2>Obtaining transcript compatibility counts</h2>
+<p>For each sample, I ran the command <code>kallisto pseudoalign</code> using the script <a href="https://github.com/jdblischak/singleCellSeq/blob/master/code/run-kallisto.sh">run-kallisto.sh</a>. The input was the 3 trimmed fastq files per sample. The output was one file with the transcript compatibility counts. The file extension is <code>.class</code> because it is later required by one of their processing scripts.</p>
+</div>
+<div id="calculating-a-distance-matrix" class="section level2">
+<h2>Calculating a distance matrix</h2>
+<p>Combined the 864 TCC files into one large matrix is non-trivial. This is because each sample can have unique TCCs. Luckily they have provided all their processing scripts. I followed the steps below in accordance with the file <a href="https://github.com/govinda-kamath/clustering_on_transcript_compatibility_counts/blob/fb3328daffcec215549d7efef081468cd8005dd7/Zeisel_pipeline/Zeisel_wrapper.py">Zeisel_wrapper.py</a>.</p>
+<p>They did not specify, but based on how <code>print</code> is <a href="https://github.com/govinda-kamath/clustering_on_transcript_compatibility_counts/search?utf8=%E2%9C%93&amp;q=print">used</a>, they are using Python3.</p>
+<p>To create the TCC matrix, I ran <a href="https://github.com/govinda-kamath/clustering_on_transcript_compatibility_counts/blob/fb3328daffcec215549d7efef081468cd8005dd7/Zeisel_pipeline/get_tcc_dist.py">get_tcc_dist.py</a>. It is invoked on <a href="https://github.com/govinda-kamath/clustering_on_transcript_compatibility_counts/blob/fb3328daffcec215549d7efef081468cd8005dd7/Zeisel_pipeline/Zeisel_wrapper.py#L95">line 95</a> of <a href="https://github.com/govinda-kamath/clustering_on_transcript_compatibility_counts/blob/fb3328daffcec215549d7efef081468cd8005dd7/Zeisel_pipeline/Zeisel_wrapper.py">Zeisel_wrapper.py</a>. As input, it requires the number of equivalence classes, which can be obtained with <code>kallisto metadata</code>.</p>
+<pre class="bash"><code># Not executed here
+kallisto metadata kallisto/combined.idx</code></pre>
+<pre class="bash"><code>[index] k-mer length: 31
+[index] number of targets: 173,351
+[index] number of k-mers: 104,422,494
+[index] number of equivalence classes: 695,304
+[metadata] output transcript names in kallisto/combined.idx_tr_id_names.txt
+[metadata] output equiv.class map in kallisto/combined.idx_ecmap.txt </code></pre>
+<p>Downloading the script.</p>
+<pre class="bash"><code># Not executed here
+wget --no-check-certificate https://raw.githubusercontent.com/govinda-kamath/clustering_on_transcript_compatibility_counts/fb3328daffcec215549d7efef081468cd8005dd7/Zeisel_pipeline/get_tcc_dist.py</code></pre>
+<p>Running it with no arguments outputs the usage information:</p>
+<pre class="bash"><code># Not executed here
+python get_tcc_dist.py</code></pre>
+<pre class="bash"><code>usage is :
+ python get_tcc_dist.py -i input_tcc_dir -m number-of-eq-classes -t path-to-output-TCC-file -d path-to-output-TCC-dist-file</code></pre>
+<p>And running it from the data directory. Some notes:</p>
+<ul>
+<li>The output files are binary, produced by the Python package <code>pickle</code>. Therefore I use the <code>.dat</code> file extension to follow their example.</li>
+<li>The input files must have the extension <code>.class</code>.</li>
+<li>The directory must contain the trailing forward slash.</li>
+<li>Here <code>dist</code> is short for distribution.</li>
+<li>This requires a lot of memory (&gt; 12g).</li>
+</ul>
+<pre class="bash"><code># Not executed in this file
+python get_tcc_dist.py -i kallisto/ -m 695304 -t kallisto/tcc.dat -d kallisto/tcc-dist.dat</code></pre>
+<p>The next step is to obtain pairwise distance matrices with <a href="https://github.com/govinda-kamath/clustering_on_transcript_compatibility_counts/blob/fb3328daffcec215549d7efef081468cd8005dd7/Zeisel_pipeline/get_pairwise_distances.py">get_pairwise_distances.py</a>, which is invoked on <a href="https://github.com/govinda-kamath/clustering_on_transcript_compatibility_counts/blob/fb3328daffcec215549d7efef081468cd8005dd7/Zeisel_pipeline/Zeisel_wrapper.py#L103">line</a>.</p>
+<p>Downloading the script.</p>
+<pre class="bash"><code># Not executed here
+wget --no-check-certificate https://raw.githubusercontent.com/govinda-kamath/clustering_on_transcript_compatibility_counts/fb3328daffcec215549d7efef081468cd8005dd7/Zeisel_pipeline/get_pairwise_distances.py</code></pre>
+<p>Checking its usage.</p>
+<pre class="bash"><code># Not executed here
+python get_pairwise_distances.py</code></pre>
+<pre class="bash"><code>1
+usage is
+ python get_pairwise_distances.py ip-file op-file num-processes</code></pre>
+<p>The input file is the output from the previous step from the <code>-d</code> flag, in my case tcc-dist.dat. The output file contains the distance measurements, so to use a similar name to what they use, I’ll call it tcc-distance.dat. This took a long time, so I submitted it to the cluster. I tried to use multiple cores with <code>-pe simple_pe 8</code>, but the job just sat in the queue. So I switched to just using 1 process.</p>
+<pre class="bash"><code># Not executed here
+echo &quot;python get_pairwise_distances.py kallisto/tcc-dist.dat kallisto/tcc-distance.dat 1&quot; | qsub -l h_vmem=32g -N get_pairwise_distances -cwd-j y -V -o pairwise-log.txt</code></pre>
+<p>This matrix of pairwise distances is the input for the clustering steps. To interact with it from this file, I copy it to the main directory.</p>
+<pre class="bash"><code># Not executed here
+cp kallisto/tcc-distance.dat $ssc/data</code></pre>
+</div>
+<div id="clustering-all-cells" class="section level2">
+<h2>Clustering all cells</h2>
+<p>The code for clustering the cells is in the file <a href="https://github.com/govinda-kamath/clustering_on_transcript_compatibility_counts/blob/fb3328daffcec215549d7efef081468cd8005dd7/Zeisel_pipeline/Zeisel_Analysis.ipynb">Zeisel_Analysis.ipynb</a>. Below is their code, with minimal edits from me. It performs the following steps:</p>
+<ul>
+<li>Import matrix of pairwise distances (864x864)</li>
+<li>Reduce to two dimensions using t-SNE</li>
+<li>Cluster using affinity propagtion for two sets of <a href="http://scikit-learn.org/stable/modules/generated/sklearn.cluster.AffinityPropagation.html">input parameters</a></li>
+</ul>
+<p>The changes I made were:</p>
+<ul>
+<li>Change the path to the data file</li>
+<li>Change the size of the input parameter, <code>preference</code>, to 864, corresponding to the number of samples I have</li>
+<li>Save the t-SNE coordinates and cluster labels to plain text files</li>
+</ul>
+<pre class="python"><code>import pickle
+import scipy.sparse
+import numpy as np
+import itertools
+
+
+filepath=&#39;../data/&#39;
+
+with open(filepath+&#39;tcc-distance.dat&#39;,&#39;rb&#39;) as infile:
+    D = pickle.load(infile)
+
+# Sanity check
+assert np.all(np.isclose(D,D.T))
+assert np.all(np.isclose(np.diag(D),np.zeros(np.diag(D).shape)))
+
+from sklearn import manifold
+def tSNE_pairwise(D):
+    tsne = manifold.TSNE(n_components=2, random_state=0, metric=&#39;precomputed&#39;, n_iter=2000, verbose=1);
+    X_tsne = tsne.fit_transform(D);
+    return X_tsne
+X_tsne = tSNE_pairwise(D)
+
+# [t-SNE] Computed conditional probabilities for sample 864 / 864
+# [t-SNE] Mean sigma: 0.074415
+# [t-SNE] Error after 100 iterations with early exaggeration: 23.493585
+# [t-SNE] Error after 172 iterations: 2.055106
+
+# Save the reduced dimensions
+np.savetxt(filepath + &quot;tcc-tsne.txt&quot;, X_tsne, delimiter = &quot;\t&quot;)
+
+from sklearn import cluster
+
+# obtain labels via affinity propagation
+def AffinityProp(D,pref,damp):
+    aff= cluster.AffinityPropagation(affinity=&#39;precomputed&#39;,preference=pref,damping=damp, verbose=True)
+    labels=aff.fit_predict(D)
+    return labels
+
+pref = -np.median(D.flatten())*np.ones(864)
+tcc_affinity_labels1 = AffinityProp(-D,pref,0.5)
+tcc_affinity_labels2 = AffinityProp(-D,2*pref,0.7)
+
+# Save the labels
+np.savetxt(filepath + &quot;tcc-labels-01.txt&quot;, tcc_affinity_labels1,
+           delimiter = &quot;\t&quot;, fmt = &quot;%d&quot;)
+np.savetxt(filepath + &quot;tcc-labels-02.txt&quot;, tcc_affinity_labels2,
+           delimiter = &quot;\t&quot;, fmt = &quot;%d&quot;)</code></pre>
+<pre><code>[t-SNE] Computed conditional probabilities for sample 864 / 864
+[t-SNE] Mean sigma: 0.074415
+[t-SNE] Error after 100 iterations with early exaggeration: 23.493585
+[t-SNE] Error after 172 iterations: 2.055106
+Converged after 36 iterations.
+Converged after 36 iterations.</code></pre>
+<p>Importing the data into R.</p>
+<pre class="r"><code>tsne &lt;- read.table(&quot;../data/tcc-tsne.txt&quot;)
+stopifnot(dim(tsne) == c(864, 2))
+colnames(tsne) &lt;- c(&quot;dim1&quot;, &quot;dim2&quot;)
+labels_01 &lt;- scan(&quot;../data/tcc-labels-01.txt&quot;, what = &quot;character&quot;)
+length(unique(labels_01))</code></pre>
+<pre><code>[1] 96</code></pre>
+<pre class="r"><code>labels_02 &lt;- scan(&quot;../data/tcc-labels-02.txt&quot;, what = &quot;character&quot;)
+length(unique(labels_02))</code></pre>
+<pre><code>[1] 7</code></pre>
+<p>Importing our annotation.</p>
+<pre class="r"><code>quality_cells &lt;- scan(&quot;../data/quality-single-cells.txt&quot;, what = &quot;character&quot;)
+anno &lt;- read.table(&quot;../data/annotation.txt&quot;, header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno)</code></pre>
+<pre><code>  individual replicate well      batch      sample_id
+1    NA19098        r1  A01 NA19098.r1 NA19098.r1.A01
+2    NA19098        r1  A02 NA19098.r1 NA19098.r1.A02
+3    NA19098        r1  A03 NA19098.r1 NA19098.r1.A03
+4    NA19098        r1  A04 NA19098.r1 NA19098.r1.A04
+5    NA19098        r1  A05 NA19098.r1 NA19098.r1.A05
+6    NA19098        r1  A06 NA19098.r1 NA19098.r1.A06</code></pre>
+<p>Combine data.</p>
+<pre class="r"><code>d_all &lt;- data.frame(tsne, labels_01, labels_02, anno, stringsAsFactors = FALSE)
+d_all$quality &lt;- ifelse(d_all$sample_id %in% quality_cells, &quot;high&quot;, &quot;low&quot;)</code></pre>
+<pre class="r"><code>plot_tsne &lt;- ggplot(d_all, aes(x = dim1, y = dim2)) +
+  geom_point() +
+  labs(x = &quot;t-SNE dimension 1&quot;, y = &quot;t-SNE dimension 2&quot;,
+       title = &quot;t-SNE representation&quot;) +
+  theme(legend.position = &quot;none&quot;)
+plot_labels_01 &lt;- plot_tsne %+% aes(color = labels_01) +
+  labs(title = &quot;Affinity propogation 1&quot;)
+plot_labels_02 &lt;- plot_tsne %+% aes(color = labels_02) +
+  labs(title = &quot;Affinity propogation 2&quot;)
+plot_batch &lt;- plot_tsne %+% aes(color = batch) +
+  labs(title = &quot;Nine batches&quot;)
+plot_individual &lt;- plot_tsne %+% aes(color = individual) +
+  labs(title = &quot;Three individuals&quot;) +
+  theme(legend.position = &quot;bottom&quot;,
+        legend.title = element_blank())
+plot_quality &lt;- plot_tsne %+% aes(color = quality) +
+  labs(title = &quot;Quality filter&quot;) +
+  theme(legend.position = &quot;bottom&quot;,
+        legend.title = element_blank())
+plot_grid(plot_tsne, plot_labels_01, plot_labels_02,
+          plot_batch, plot_individual, plot_quality,
+          nrow = 2, labels = LETTERS[1:6])</code></pre>
+<p><img src="figure/kallisto.Rmd/plot-tsne-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
+<div id="clustering-high-quality-cells" class="section level2">
+<h2>Clustering high quality cells</h2>
+<p>The main split is between high and low quality cells. It would be more interesting to see the clustering and affinity propagation labels for only the cells we label as high quality.</p>
+<p>Converting the pickle pairwise matrix to plain text for import into R.</p>
+<pre class="python"><code>import pickle
+import numpy as np
+
+filepath=&#39;../data/&#39;
+
+with open(filepath+&#39;tcc-distance.dat&#39;,&#39;rb&#39;) as infile:
+    D = pickle.load(infile)
+
+np.savetxt(filepath + &quot;tcc-distance.txt&quot;, D, delimiter = &quot;\t&quot;)</code></pre>
+<p>Now read into R for filtering.</p>
+<pre class="r"><code>distance &lt;- read.table(&quot;../data/tcc-distance.txt&quot;)
+stopifnot(dim(distance) == 864)
+quality_index &lt;- anno$sample_id %in% quality_cells
+distance_qual &lt;- distance[quality_index, quality_index]
+stopifnot(dim(distance_qual) == length(quality_cells))
+write.table(distance_qual, file = &quot;../data/tcc-distance-qual.txt&quot;, sep = &quot;\t&quot;,
+            row.names = FALSE, col.names = FALSE, quote = FALSE)</code></pre>
+<p>Now back to Python for t-SNE and affinity propagation.</p>
+<pre class="python"><code>import scipy.sparse
+import numpy as np
+import itertools
+
+filepath=&#39;../data/&#39;
+
+D = np.loadtxt(filepath + &#39;tcc-distance-qual.txt&#39;, delimiter = &quot;\t&quot;)
+
+# Sanity check
+assert np.all(np.isclose(D,D.T))
+assert np.all(np.isclose(np.diag(D),np.zeros(np.diag(D).shape)))
+
+from sklearn import manifold
+def tSNE_pairwise(D):
+    tsne = manifold.TSNE(n_components=2, random_state=0, metric=&#39;precomputed&#39;, n_iter=2000, verbose=1);
+    X_tsne = tsne.fit_transform(D);
+    return X_tsne
+X_tsne = tSNE_pairwise(D)
+
+# [t-SNE] Computed conditional probabilities for sample 564 / 564
+# [t-SNE] Mean sigma: 0.055751
+# [t-SNE] Error after 65 iterations with early exaggeration: 23.330084
+# [t-SNE] Error after 136 iterations: 1.791264
+# Converged after 21 iterations.
+# Converged after 26 iterations.
+
+# Save the reduced dimensions
+np.savetxt(filepath + &quot;tcc-tsne-qual.txt&quot;, X_tsne, delimiter = &quot;\t&quot;)
+
+from sklearn import cluster
+
+# obtain labels via affinity propagation
+def AffinityProp(D,pref,damp):
+    aff= cluster.AffinityPropagation(affinity=&#39;precomputed&#39;,preference=pref,damping=damp, verbose=True)
+    labels=aff.fit_predict(D)
+    return labels
+
+pref = -np.median(D.flatten())*np.ones(564)
+tcc_affinity_labels1 = AffinityProp(-D,pref,0.5)
+tcc_affinity_labels2 = AffinityProp(-D,2*pref,0.7)
+
+# Save the labels
+np.savetxt(filepath + &quot;tcc-labels-01-qual.txt&quot;, tcc_affinity_labels1,
+           delimiter = &quot;\t&quot;, fmt = &quot;%d&quot;)
+np.savetxt(filepath + &quot;tcc-labels-02-qual.txt&quot;, tcc_affinity_labels2,
+           delimiter = &quot;\t&quot;, fmt = &quot;%d&quot;)</code></pre>
+<pre><code>[t-SNE] Computed conditional probabilities for sample 564 / 564
+[t-SNE] Mean sigma: 0.055751
+[t-SNE] Error after 65 iterations with early exaggeration: 23.330084
+[t-SNE] Error after 136 iterations: 1.791264
+Converged after 21 iterations.
+Converged after 26 iterations.</code></pre>
+<p>Importing the data into R.</p>
+<pre class="r"><code>tsne_qual &lt;- read.table(&quot;../data/tcc-tsne-qual.txt&quot;)
+stopifnot(dim(tsne_qual) == c(564, 2))
+colnames(tsne_qual) &lt;- c(&quot;dim1&quot;, &quot;dim2&quot;)
+labels_01_qual &lt;- scan(&quot;../data/tcc-labels-01-qual.txt&quot;, what = &quot;character&quot;)
+length(unique(labels_01_qual))</code></pre>
+<pre><code>[1] 54</code></pre>
+<pre class="r"><code>labels_02_qual &lt;- scan(&quot;../data/tcc-labels-02-qual.txt&quot;, what = &quot;character&quot;)
+length(unique(labels_02_qual))</code></pre>
+<pre><code>[1] 5</code></pre>
+<p>Filtering our annotation.</p>
+<pre class="r"><code>anno_qual &lt;- anno[quality_index, ]</code></pre>
+<p>Combine data.</p>
+<pre class="r"><code>d_qual &lt;- data.frame(tsne_qual, labels_01_qual, labels_02_qual, anno_qual,
+                     stringsAsFactors = FALSE)</code></pre>
+<pre class="r"><code>plot_tsne_qual &lt;- ggplot(d_qual, aes(x = dim1, y = dim2)) +
+  geom_point() +
+  labs(x = &quot;t-SNE dimension 1&quot;, y = &quot;t-SNE dimension 2&quot;,
+       title = &quot;t-SNE representation&quot;) +
+  theme(legend.position = &quot;none&quot;)
+plot_labels_01_qual &lt;- plot_tsne_qual %+% aes(color = labels_01_qual) +
+  labs(title = &quot;Affinity propogation 1&quot;)
+plot_labels_02_qual &lt;- plot_tsne_qual %+% aes(color = labels_02_qual) +
+  labs(title = &quot;Affinity propogation 2&quot;)
+plot_batch_qual &lt;- plot_tsne_qual %+% aes(color = batch) +
+  labs(title = &quot;Nine batches&quot;)
+plot_individual_qual &lt;- plot_tsne_qual %+% aes(color = individual) +
+  labs(title = &quot;Three individuals&quot;)
+plot_grid(plot_labels_01_qual, plot_labels_02_qual,
+          plot_batch_qual, plot_individual_qual,
+          nrow = 2, labels = LETTERS[1:4])</code></pre>
+<p><img src="figure/kallisto.Rmd/plot-tsne-qual-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p>Overlap with known variables.</p>
+<pre class="r"><code>table(d_qual$batch, d_qual$labels_01_qual)</code></pre>
+<pre><code>            
+              0  1 10 11 12 13 14 15 16 17 18 19  2 20 21 22 23 24 25 26
+  NA19098.r1  1 58  0  3  0  0  0  0  0  0  0  0  0  0  0  0  0  1  0  0
+  NA19098.r3  0  8  1  5  0  0  0  0  0  0  0  0  1  0  0  0  0  1  0  0
+  NA19101.r1  0 21  0  2  1  1  1  1  0  0  0  0  0  0  0  0  0  1  0  0
+  NA19101.r2  0  1  0  0  0  0  0  0  1  1  1  1  0  5  1  1  1 51  1  1
+  NA19101.r3  0  2  0  1  0  0  0  0  0  0  0  0  0  0  0  0  0  0  0  0
+  NA19239.r1  0  5  0  2  0  0  0  0  0  0  0  0  0  0  0  0  0  1  0  0
+  NA19239.r2  0  1  0  2  0  0  0  0  0  0  0  0  0  0  0  0  0  0  0  0
+  NA19239.r3  0  1  0  1  0  0  0  0  0  0  0  0  0  0  0  0  0  0  0  0
+            
+             27 28 29  3 30 31 32 33 34 35 36 37 38 39  4 40 41 42 43 44
+  NA19098.r1  0  0  0  0  0 19  0  0  0  0  0  0  0  0  0  0  0  0  0  0
+  NA19098.r3  0  0  0  1  0 10  0  0  0  0  0  0  0  0  1  0  0  0  0  0
+  NA19101.r1  0  0  0  0  0 51  0  0  0  0  0  0  0  0  0  0  0  0  0  0
+  NA19101.r2  1  1  1  0  0  1  0  0  0  0  0  0  0  0  0  0  0  0  0  0
+  NA19101.r3  0  0  0  0  1 47  0  0  0  0  0  0  0  0  0  0  0  0  0  0
+  NA19239.r1  0  0  0  0  0  1  1  1  1  1 48  1  1  1  0  1  0  0  0  0
+  NA19239.r2  0  0  0  0  0 16  0  0  0  0  0  0  0  0  0  0  1  1  1  1
+  NA19239.r3  0  0  0  0  0  0  0  0  0  0  0  0  0  0  0  0  0  0  0  0
+            
+             45 46 47 48 49  5 50 51 52 53  6  7  8  9
+  NA19098.r1  0  0  0  0  0  0  0  0  0  0  0  0  3  0
+  NA19098.r3  0  0  0  0  0  1  0  0  0  0  1  1 25  1
+  NA19101.r1  0  0  0  0  0  0  0  0  0  0  0  0  1  0
+  NA19101.r2  0  0  0  0  0  0  0  0  0  0  0  0  0  0
+  NA19101.r3  0  0  0  0  0  0  0  0  0  0  0  0  0  0
+  NA19239.r1  0  0  0  0  0  0  0  0  0  7  0  0  2  0
+  NA19239.r2  1  1  1  1  3  0  1  0  0 33  0  0  4  0
+  NA19239.r3  0  0  0  0  0  0  0  1  1 75  0  0  0  0</code></pre>
+<pre class="r"><code>table(d_qual$individual, d_qual$labels_02_qual)</code></pre>
+<pre><code>         
+            0   1   2   3   4
+  NA19098  72  14   3  53   0
+  NA19101  30  14  58  99   0
+  NA19239  16  11   8  25 161</code></pre>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] cowplot_0.3.1 ggplot2_1.0.1 knitr_1.10.5 
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.12.0      magrittr_1.5     MASS_7.3-40      munsell_0.4.2   
+ [5] colorspace_1.2-6 stringr_1.0.0    httr_0.6.1       plyr_1.8.3      
+ [9] tools_3.2.0      grid_3.2.0       gtable_0.1.2     htmltools_0.2.6 
+[13] yaml_2.1.13      digest_0.6.8     reshape2_1.4.1   formatR_1.2     
+[17] bitops_1.0-6     RCurl_1.95-4.6   evaluate_0.7     rmarkdown_0.6.1 
+[21] labeling_0.3     stringi_0.4-1    scales_0.2.4     proto_0.3-10    </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>
