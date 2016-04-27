@@ -1,0 +1,160 @@
+---
+title: "Checking on cell-cycle genes"
+author: "Joyce Hsiao"
+date: 2016-04-26
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+```
+
+
+## Objective 
+
+Examine the cell-cycle gene set that went into the cell-cycle score calculation. 
+
+
+## Setup
+
+```{r}
+source("functions.R")
+require("limma")
+require("edgeR")
+require(ggplot2)
+require(dplyr)
+require(data.table)
+library("cowplot")
+```
+
+
+## Import data
+
+```{r input}
+## Annotation of the filtered data
+anno_filter <- read.table("../data/annotation-filter.txt",
+                         header = TRUE,
+                         stringsAsFactors = FALSE)
+
+## Molecule counts of the filtered data
+molecules_filter <- read.table("../data/molecules-filter.txt",
+                               header = TRUE,
+                               stringsAsFactors = FALSE)
+
+## Read counts of filtered data
+reads_filter <- read.table("../data/reads-filter.txt",
+                               header = TRUE,
+                               stringsAsFactors = FALSE)
+
+## Molecule counts after all corrections
+molecules_final <- read.table("../data/molecules-final.txt",
+                              header = TRUE,
+                              stringsAsFactors = FALSE)
+```
+
+
+Import cell-cycle information
+
+```{r cell-phase}
+cell_cycle_genes <- read.table("../data/cellcyclegenes.txt",
+                               header = TRUE, sep = "\t",
+                               stringsAsFactors = FALSE)
+colnames(cell_cycle_genes) <- c("G1.S","S","G2","G2.M","M.G1")
+```
+
+
+## Investigate cell-cycle gene set
+
+```{r cell-phase-helper}
+cell_phase_genes_filter <- lapply(cell_cycle_genes, function(xx){
+
+  ## create table of each phase
+  molecules_phase <- molecules_final[rownames(molecules_final) %in% unlist(xx), ]
+  
+  ## add average count of all genes in the phase
+  combined_matrix <- rbind(molecules_phase, 
+                           average = apply(molecules_phase,2,mean) )
+    
+  ## use transpose to compute cor matrix
+  cor_matrix <- cor(t(combined_matrix))
+    
+  ## take the numbers
+  cor_vector <- cor_matrix[,dim(cor_matrix)[1]]
+    
+  ## restrict to correlation >= 0.3 
+  molecules_phase_restricted <- molecules_phase[rownames(molecules_phase) %in% names(cor_vector[cor_vector >= 0.3]),]
+  
+  return(list(ngene_set = sum(rownames(molecules_final) %in% unlist(xx)),
+              ngene_set_filter = NROW(molecules_phase_restricted),
+              cor_matrix_filter = cor(t(molecules_phase_restricted)) ) )    
+  })
+```
+
+
+Number of genes before versus after filtering
+
+```{r}
+do.call(cbind, lapply(cell_phase_genes_filter, function(xx) {
+  c(xx[-3])
+}) )
+```
+
+
+Get gene symbol
+
+```{r get-symbol}
+gene_symbols <- read.table(file = "../data/gene-info.txt", sep = "\t",
+                           header = TRUE, stringsAsFactors = FALSE, quote = "")
+```
+
+G1.S
+
+```{r}
+names_ensg <- rownames(cell_phase_genes_filter[[1]][[3]])
+gene_symbols$external_gene_name[which(gene_symbols$ensembl_gene_id %in% names_ensg)]
+```
+
+
+G1.S
+
+```{r}
+names_ensg <- rownames(cell_phase_genes_filter[[1]][[3]])
+gene_symbols$external_gene_name[which(gene_symbols$ensembl_gene_id %in% names_ensg)]
+```
+
+S
+
+```{r}
+names_ensg <- rownames(cell_phase_genes_filter[[2]][[3]])
+gene_symbols$external_gene_name[which(gene_symbols$ensembl_gene_id %in% names_ensg)]
+```
+
+G2
+
+```{r}
+names_ensg <- rownames(cell_phase_genes_filter[[3]][[3]])
+gene_symbols$external_gene_name[which(gene_symbols$ensembl_gene_id %in% names_ensg)]
+```
+
+G2.M
+
+```{r}
+names_ensg <- rownames(cell_phase_genes_filter[[4]][[3]])
+gene_symbols$external_gene_name[which(gene_symbols$ensembl_gene_id %in% names_ensg)]
+```
+
+M.G1
+
+```{r}
+names_ensg <- rownames(cell_phase_genes_filter[[5]][[3]])
+gene_symbols$external_gene_name[which(gene_symbols$ensembl_gene_id %in% names_ensg)]
+```
+
+## Session information
+
+```{r info}
+sessionInfo()
+```
