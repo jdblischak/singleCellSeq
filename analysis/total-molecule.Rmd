@@ -23,6 +23,7 @@ library("tidyr")
 library("edgeR")
 library("ggplot2")
 library("cowplot")
+library("lmtest") 
 theme_set(theme_bw(base_size = 12))
 theme_update(panel.grid.minor.x = element_blank(),
              panel.grid.minor.y = element_blank(),
@@ -150,20 +151,15 @@ fit1 <- lm(total_molecules_gene ~ concentration + as.factor(individual),
 anova(fit0, fit1)
 summary(fit1)
 
-## Is there a difference across replicates of 19101
-fit0 <- lm(total_molecules_gene ~ concentration, 
-   data = anno_single_7, subset = individual == "NA19101")
-fit1 <- lm(total_molecules_gene ~ concentration + as.factor(replicate), 
-   data = anno_single_7, subset = individual == "NA19101")
-anova(fit0, fit1)
+## Is there a difference across replicates for all individuals
+table(anno_single_7$batch,anno_single_7$individual)
+fit2 <- lm(total_molecules_gene ~ concentration + as.factor(individual) + batch, 
+   data = anno_single_7)
 
-## Is there a difference across replicates of 19239
-fit0 <- lm(total_molecules_gene ~ concentration, 
-   data = anno_single_7, subset = individual == "NA19239")
-fit1 <- lm(total_molecules_gene ~ concentration + as.factor(replicate), 
-   data = anno_single_7, subset = individual == "NA19239")
-anova(fit0, fit1)
-summary(fit1)
+summary(fit2)$coef
+
+lrtest(fit1,fit2)
+
 ```
 
 Calculate correlation of concentration and molecule counts
@@ -211,53 +207,18 @@ fit0 <- lm(total_molecules_ercc ~ 1,  data = anno_single)
 fit1 <- lm(total_molecules_ercc ~ 1 + as.factor(individual), data = anno_single)
 anova(fit0, fit1)
 
-fit0 <- lm(total_molecules_ercc ~ perc_ercc_molecules, 
+## Is there a difference across replicates for all individuals
+table(anno_single$batch, anno_single$individual)
+fit2 <- lm(total_molecules_gene ~ concentration + as.factor(individual) + batch, 
    data = anno_single)
-fit1 <- lm(total_molecules_ercc ~ perc_ercc_molecules + as.factor(individual), 
-   data = anno_single)
-anova(fit0, fit1)
 
-## Is there a difference across replicates of 19098
-fit0 <- lm(total_molecules_ercc ~ total_molecules_gene, 
-   data = anno_single, subset = individual == "NA19098")
-fit1 <- lm(total_molecules_ercc ~ total_molecules_gene + as.factor(replicate), 
-   data = anno_single, subset = individual == "NA19098")
-anova(fit0, fit1)
+summary(fit2)$coef
 
-fit0 <- lm(total_molecules_ercc ~ perc_ercc_molecules, 
-   data = anno_single, subset = individual == "NA19098")
-fit1 <- lm(total_molecules_ercc ~ perc_ercc_molecules + as.factor(replicate), 
-   data = anno_single, subset = individual == "NA19098")
-anova(fit0, fit1)
+lrtest(fit1,fit2)
 
-## Is there a difference across replicates of 19101
-fit0 <- lm(total_molecules_ercc ~ total_molecules_gene, 
-   data = anno_single, subset = individual == "NA19101")
-fit1 <- lm(total_molecules_ercc ~ total_molecules_gene + as.factor(replicate), 
-   data = anno_single, subset = individual == "NA19101")
-anova(fit0, fit1)
-
-fit0 <- lm(total_molecules_ercc ~ perc_ercc_molecules, 
-   data = anno_single, subset = individual == "NA19101")
-fit1 <- lm(total_molecules_ercc ~ perc_ercc_molecules + as.factor(replicate), 
-   data = anno_single, subset = individual == "NA19101")
-anova(fit0, fit1)
-
-## Is there a difference across replicates of 19239
-fit0 <- lm(total_molecules_ercc ~ total_molecules_gene, 
-   data = anno_single, subset = individual == "NA19239")
-fit1 <- lm(total_molecules_ercc ~ total_molecules_gene + as.factor(replicate), 
-   data = anno_single, subset = individual == "NA19239")
-anova(fit0, fit1)
-
-fit0 <- lm(total_molecules_ercc ~ perc_ercc_molecules, 
-   data = anno_single, subset = individual == "NA19239")
-fit1 <- lm(total_molecules_ercc ~ perc_ercc_molecules + as.factor(replicate), 
-   data = anno_single, subset = individual == "NA19239")
-anova(fit0, fit1)
 ```
 
-## Plots for paper
+## Plots for paper 
 ```{r plot,fig.width=12, fig.height=12}
 plot_grid(plot_total_molecules_gene + theme(legend.position = "none"),
           plot_conc_molecules_gene_individual + theme(legend.position= "none"),
