@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+<meta name="author" content="Joyce Hsiao" />
+
+<meta name="date" content="2016-04-06" />
+
+<title>GATA4</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">GATA4</h1>
+<h4 class="author"><em>Joyce Hsiao</em></h4>
+<h4 class="date"><em>2016-04-06</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#objective">Objective</a></li>
+<li><a href="#set-up">Set up</a></li>
+<li><a href="#preparing-data">Preparing data</a></li>
+<li><a href="#filtered-molecule-count-data">Filtered molecule count data</a></li>
+<li><a href="#pre-filtered-count-data">Pre-filtered count data</a></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2016-04-28</p>
+<p><strong>Code version:</strong> 75e23ae09f8128081e5241c204064c50b6625372</p>
+<div id="objective" class="section level2">
+<h2>Objective</h2>
+<p>Checking on GATA4</p>
+</div>
+<div id="set-up" class="section level2">
+<h2>Set up</h2>
+<pre class="r"><code>library(&quot;data.table&quot;)
+library(&quot;dplyr&quot;)
+library(&quot;limma&quot;)
+library(&quot;edgeR&quot;)
+library(&quot;ggplot2&quot;)
+library(&quot;grid&quot;)
+theme_set(theme_bw(base_size = 12))
+source(&quot;functions.R&quot;)
+library(&quot;Humanzee&quot;)
+library(&quot;cowplot&quot;)
+library(&quot;MASS&quot;)
+library(&quot;matrixStats&quot;)
+source(&quot;../code/plotting-functions.R&quot;)</code></pre>
+</div>
+<div id="preparing-data" class="section level2">
+<h2>Preparing data</h2>
+<pre class="r"><code># Import molecule counts before filtering
+anno &lt;- read.table(&quot;../data/annotation.txt&quot;, header = TRUE,
+                   stringsAsFactors = FALSE)
+
+molecules &lt;- read.table(&quot;../data/molecules.txt&quot;, header = TRUE,
+                    stringsAsFactors = FALSE)
+
+# Import filtered annotations
+anno_filter &lt;- read.table(&quot;../data/annotation-filter.txt&quot;, 
+                      header = TRUE,
+                      stringsAsFactors = FALSE)
+
+# Import filtered molecule counts
+molecules_filter &lt;- read.table(&quot;../data/molecules-filter.txt&quot;,
+                               header = TRUE, stringsAsFactors = FALSE)
+stopifnot(NROW(anno_filter) == NCOL(molecules_filter))
+
+# Import final processed molecule counts of endogeneous genes
+molecules_final &lt;- read.table(&quot;../data/molecules-final.txt&quot;, 
+                             header = TRUE, stringsAsFactors = FALSE)
+stopifnot(NROW(anno_filter) == NCOL(molecules_final))
+
+# Import gene symbols
+gene_symbols &lt;- read.table(file = &quot;../data/gene-info.txt&quot;, sep = &quot;\t&quot;,
+                           header = TRUE, stringsAsFactors = FALSE, quote = &quot;&quot;)
+
+# Import cell-cycle gene list
+cell_cycle_genes &lt;- read.table(&quot;../data/cellcyclegenes.txt&quot;,
+                               header = TRUE, sep = &quot;\t&quot;,
+                               stringsAsFactors = FALSE)
+
+# Import pluripotency gene list
+
+pluripotency_genes &lt;- read.table(&quot;../data/pluripotency-genes.txt&quot;,
+                               header = TRUE, sep = &quot;\t&quot;,
+                               stringsAsFactors = FALSE)$To</code></pre>
+</div>
+<div id="filtered-molecule-count-data" class="section level2">
+<h2>Filtered molecule count data</h2>
+<p>Gata4 is not in the filtered molecule count data.</p>
+<pre class="r"><code>which(rownames(molecules_filter) %in% &quot;ENSG00000136574&quot;)</code></pre>
+<pre><code>integer(0)</code></pre>
+</div>
+<div id="pre-filtered-count-data" class="section level2">
+<h2>Pre-filtered count data</h2>
+<pre class="r"><code>which(rownames(molecules) %in% &quot;ENSG00000136574&quot;)</code></pre>
+<pre><code>[1] 16796</code></pre>
+<pre class="r"><code>table(unlist(molecules[16796, ]), anno$batch)</code></pre>
+<pre><code>   
+    NA19098.r1 NA19098.r2 NA19098.r3 NA19101.r1 NA19101.r2 NA19101.r3
+  0         96         96         96         94         96         92
+  1          0          0          0          2          0          4
+   
+    NA19239.r1 NA19239.r2 NA19239.r3
+  0         95         94         96
+  1          1          2          0</code></pre>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] grid      stats     graphics  grDevices utils     datasets  methods  
+[8] base     
+
+other attached packages:
+ [1] matrixStats_0.14.0 MASS_7.3-40        cowplot_0.3.1     
+ [4] Humanzee_0.1.0     ggplot2_1.0.1      edgeR_3.10.2      
+ [7] limma_3.24.9       dplyr_0.4.2        data.table_1.9.4  
+[10] knitr_1.10.5      
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.12.0      magrittr_1.5     munsell_0.4.2    colorspace_1.2-6
+ [5] R6_2.1.1         stringr_1.0.0    httr_0.6.1       plyr_1.8.3      
+ [9] tools_3.2.0      parallel_3.2.0   gtable_0.1.2     DBI_0.3.1       
+[13] htmltools_0.2.6  yaml_2.1.13      digest_0.6.8     assertthat_0.1  
+[17] reshape2_1.4.1   formatR_1.2      bitops_1.0-6     RCurl_1.95-4.6  
+[21] evaluate_0.7     rmarkdown_0.6.1  stringi_0.4-1    scales_0.2.4    
+[25] chron_2.3-45     proto_0.3-10    </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>

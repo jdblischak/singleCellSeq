@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+<meta name="author" content="Joyce Hsiao" />
+
+<meta name="date" content="2016-04-26" />
+
+<title>Checking on cell-cycle genes</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Checking on cell-cycle genes</h1>
+<h4 class="author"><em>Joyce Hsiao</em></h4>
+<h4 class="date"><em>2016-04-26</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#objective">Objective</a></li>
+<li><a href="#setup">Setup</a></li>
+<li><a href="#import-data">Import data</a></li>
+<li><a href="#investigate-cell-cycle-gene-set">Investigate cell-cycle gene set</a></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2016-04-28</p>
+<p><strong>Code version:</strong> 75e23ae09f8128081e5241c204064c50b6625372</p>
+<div id="objective" class="section level2">
+<h2>Objective</h2>
+<p>Examine the cell-cycle gene set that went into the cell-cycle score calculation.</p>
+</div>
+<div id="setup" class="section level2">
+<h2>Setup</h2>
+<pre class="r"><code>source(&quot;functions.R&quot;)
+require(&quot;limma&quot;)</code></pre>
+<pre><code>Loading required package: limma</code></pre>
+<pre class="r"><code>require(&quot;edgeR&quot;)</code></pre>
+<pre><code>Loading required package: edgeR</code></pre>
+<pre class="r"><code>require(ggplot2)</code></pre>
+<pre><code>Loading required package: ggplot2</code></pre>
+<pre class="r"><code>require(dplyr)</code></pre>
+<pre><code>Loading required package: dplyr
+
+Attaching package: &#39;dplyr&#39;
+
+The following objects are masked from &#39;package:stats&#39;:
+
+    filter, lag
+
+The following objects are masked from &#39;package:base&#39;:
+
+    intersect, setdiff, setequal, union</code></pre>
+<pre class="r"><code>require(data.table)</code></pre>
+<pre><code>Loading required package: data.table
+
+Attaching package: &#39;data.table&#39;
+
+The following objects are masked from &#39;package:dplyr&#39;:
+
+    between, last</code></pre>
+<pre class="r"><code>library(&quot;cowplot&quot;)</code></pre>
+<pre><code>
+Attaching package: &#39;cowplot&#39;
+
+The following object is masked from &#39;package:ggplot2&#39;:
+
+    ggsave</code></pre>
+</div>
+<div id="import-data" class="section level2">
+<h2>Import data</h2>
+<pre class="r"><code>## Annotation of the filtered data
+anno_filter &lt;- read.table(&quot;../data/annotation-filter.txt&quot;,
+                         header = TRUE,
+                         stringsAsFactors = FALSE)
+
+## Molecule counts of the filtered data
+molecules_filter &lt;- read.table(&quot;../data/molecules-filter.txt&quot;,
+                               header = TRUE,
+                               stringsAsFactors = FALSE)
+
+## Read counts of filtered data
+reads_filter &lt;- read.table(&quot;../data/reads-filter.txt&quot;,
+                               header = TRUE,
+                               stringsAsFactors = FALSE)
+
+## Molecule counts after all corrections
+molecules_final &lt;- read.table(&quot;../data/molecules-final.txt&quot;,
+                              header = TRUE,
+                              stringsAsFactors = FALSE)</code></pre>
+<p>Import cell-cycle information</p>
+<pre class="r"><code>cell_cycle_genes &lt;- read.table(&quot;../data/cellcyclegenes.txt&quot;,
+                               header = TRUE, sep = &quot;\t&quot;,
+                               stringsAsFactors = FALSE)
+colnames(cell_cycle_genes) &lt;- c(&quot;G1.S&quot;,&quot;S&quot;,&quot;G2&quot;,&quot;G2.M&quot;,&quot;M.G1&quot;)</code></pre>
+</div>
+<div id="investigate-cell-cycle-gene-set" class="section level2">
+<h2>Investigate cell-cycle gene set</h2>
+<pre class="r"><code>cell_phase_genes_filter &lt;- lapply(cell_cycle_genes, function(xx){
+
+  ## create table of each phase
+  molecules_phase &lt;- molecules_final[rownames(molecules_final) %in% unlist(xx), ]
+  
+  ## add average count of all genes in the phase
+  combined_matrix &lt;- rbind(molecules_phase, 
+                           average = apply(molecules_phase,2,mean) )
+    
+  ## use transpose to compute cor matrix
+  cor_matrix &lt;- cor(t(combined_matrix))
+    
+  ## take the numbers
+  cor_vector &lt;- cor_matrix[,dim(cor_matrix)[1]]
+    
+  ## restrict to correlation &gt;= 0.3 
+  molecules_phase_restricted &lt;- molecules_phase[rownames(molecules_phase) %in% names(cor_vector[cor_vector &gt;= 0.3]),]
+  
+  return(list(ngene_set = sum(rownames(molecules_final) %in% unlist(xx)),
+              ngene_set_filter = NROW(molecules_phase_restricted),
+              cor_matrix_filter = cor(t(molecules_phase_restricted)) ) )    
+  })</code></pre>
+<p>Number of genes before versus after filtering</p>
+<pre class="r"><code>do.call(cbind, lapply(cell_phase_genes_filter, function(xx) {
+  c(xx[-3])
+}) )</code></pre>
+<pre><code>                 G1.S S   G2  G2.M M.G1
+ngene_set        94   108 129 149  102 
+ngene_set_filter 30   21  37  45   39  </code></pre>
+<p>Get gene symbol</p>
+<pre class="r"><code>gene_symbols &lt;- read.table(file = &quot;../data/gene-info.txt&quot;, sep = &quot;\t&quot;,
+                           header = TRUE, stringsAsFactors = FALSE, quote = &quot;&quot;)</code></pre>
+<p>G1.S</p>
+<pre class="r"><code>names_ensg &lt;- rownames(cell_phase_genes_filter[[1]][[3]])
+gene_symbols$external_gene_name[which(gene_symbols$ensembl_gene_id %in% names_ensg)]</code></pre>
+<pre><code> [1] &quot;SEC62&quot;  &quot;HSF2&quot;   &quot;PMS1&quot;   &quot;MCM2&quot;   &quot;MCM6&quot;   &quot;UNG&quot;    &quot;POLD3&quot; 
+ [8] &quot;CLSPN&quot;  &quot;CDC6&quot;   &quot;MSH2&quot;   &quot;MCM5&quot;   &quot;PNN&quot;    &quot;MCM4&quot;   &quot;CCNE1&quot; 
+[15] &quot;GMNN&quot;   &quot;SSR3&quot;   &quot;NKTR&quot;   &quot;SRSF7&quot;  &quot;CTSD&quot;   &quot;GINS2&quot;  &quot;ZRANB2&quot;
+[22] &quot;PCNA&quot;   &quot;NASP&quot;   &quot;ARGLU1&quot; &quot;CDCA7&quot;  &quot;EIF2A&quot;  &quot;ATAD2&quot;  &quot;DONSON&quot;
+[29] &quot;TRA2A&quot;  &quot;CHAF1A&quot;</code></pre>
+<p>G1.S</p>
+<pre class="r"><code>names_ensg &lt;- rownames(cell_phase_genes_filter[[1]][[3]])
+gene_symbols$external_gene_name[which(gene_symbols$ensembl_gene_id %in% names_ensg)]</code></pre>
+<pre><code> [1] &quot;SEC62&quot;  &quot;HSF2&quot;   &quot;PMS1&quot;   &quot;MCM2&quot;   &quot;MCM6&quot;   &quot;UNG&quot;    &quot;POLD3&quot; 
+ [8] &quot;CLSPN&quot;  &quot;CDC6&quot;   &quot;MSH2&quot;   &quot;MCM5&quot;   &quot;PNN&quot;    &quot;MCM4&quot;   &quot;CCNE1&quot; 
+[15] &quot;GMNN&quot;   &quot;SSR3&quot;   &quot;NKTR&quot;   &quot;SRSF7&quot;  &quot;CTSD&quot;   &quot;GINS2&quot;  &quot;ZRANB2&quot;
+[22] &quot;PCNA&quot;   &quot;NASP&quot;   &quot;ARGLU1&quot; &quot;CDCA7&quot;  &quot;EIF2A&quot;  &quot;ATAD2&quot;  &quot;DONSON&quot;
+[29] &quot;TRA2A&quot;  &quot;CHAF1A&quot;</code></pre>
+<p>S</p>
+<pre class="r"><code>names_ensg &lt;- rownames(cell_phase_genes_filter[[2]][[3]])
+gene_symbols$external_gene_name[which(gene_symbols$ensembl_gene_id %in% names_ensg)]</code></pre>
+<pre><code> [1] &quot;NUP160&quot;   &quot;RFC2&quot;     &quot;RAD51&quot;    &quot;UBE2T&quot;    &quot;CDC7&quot;     &quot;SRSF5&quot;   
+ [7] &quot;RAD51AP1&quot; &quot;RPA2&quot;     &quot;CALD1&quot;    &quot;ZWINT&quot;    &quot;DYNC1LI2&quot; &quot;CALM2&quot;   
+[13] &quot;CDCA5&quot;    &quot;CENPU&quot;    &quot;ATAD2&quot;    &quot;RHOBTB3&quot;  &quot;C11orf82&quot; &quot;RRM1&quot;    
+[19] &quot;FEN1&quot;     &quot;RRM2&quot;     &quot;C5orf42&quot; </code></pre>
+<p>G2</p>
+<pre class="r"><code>names_ensg &lt;- rownames(cell_phase_genes_filter[[3]][[3]])
+gene_symbols$external_gene_name[which(gene_symbols$ensembl_gene_id %in% names_ensg)]</code></pre>
+<pre><code> [1] &quot;VTA1&quot;     &quot;BCLAF1&quot;   &quot;HIPK2&quot;    &quot;KLF6&quot;     &quot;RDH11&quot;    &quot;KIF22&quot;   
+ [7] &quot;RANGAP1&quot;  &quot;TNPO2&quot;    &quot;PSMD11&quot;   &quot;LMNB1&quot;    &quot;TMPO&quot;     &quot;NCAPH&quot;   
+[13] &quot;HJURP&quot;    &quot;HP1BP3&quot;   &quot;MIS18BP1&quot; &quot;VPS25&quot;    &quot;TOP2A&quot;    &quot;HRSP12&quot;  
+[19] &quot;CKAP2&quot;    &quot;NUSAP1&quot;   &quot;KIF23&quot;    &quot;CCNA2&quot;    &quot;LIX1L&quot;    &quot;BUB3&quot;    
+[25] &quot;HMGB2&quot;    &quot;MAD2L1&quot;   &quot;TUBA1A&quot;   &quot;CKAP2L&quot;   &quot;CDK1&quot;     &quot;KIF5B&quot;   
+[31] &quot;UBE2C&quot;    &quot;AURKB&quot;    &quot;KPNA2&quot;    &quot;TUBB4B&quot;   &quot;HN1&quot;      &quot;TUBB&quot;    
+[37] &quot;TRIM59&quot;  </code></pre>
+<p>G2.M</p>
+<pre class="r"><code>names_ensg &lt;- rownames(cell_phase_genes_filter[[4]][[3]])
+gene_symbols$external_gene_name[which(gene_symbols$ensembl_gene_id %in% names_ensg)]</code></pre>
+<pre><code> [1] &quot;ZNF207&quot;   &quot;HMGB3&quot;    &quot;DEPDC1B&quot;  &quot;THRAP3&quot;   &quot;SMARCD1&quot;  &quot;PRR11&quot;   
+ [7] &quot;HMMR&quot;     &quot;TNPO1&quot;    &quot;DNAJA1&quot;   &quot;AURKA&quot;    &quot;TPX2&quot;     &quot;SMARCB1&quot; 
+[13] &quot;RANGAP1&quot;  &quot;CTCF&quot;     &quot;MCM4&quot;     &quot;UBE2D3&quot;   &quot;HSPA8&quot;    &quot;SRSF3&quot;   
+[19] &quot;ECT2&quot;     &quot;CCDC88A&quot;  &quot;TXNDC9&quot;   &quot;SFPQ&quot;     &quot;CDC20&quot;    &quot;CKS2&quot;    
+[25] &quot;DLGAP5&quot;   &quot;HP1BP3&quot;   &quot;MIS18BP1&quot; &quot;PWP1&quot;     &quot;CKAP2&quot;    &quot;NUSAP1&quot;  
+[31] &quot;KIF20B&quot;   &quot;CCNA2&quot;    &quot;MKI67&quot;    &quot;CCNB2&quot;    &quot;PSMG3&quot;    &quot;PLK1&quot;    
+[37] &quot;BUB1&quot;     &quot;ARL6IP1&quot;  &quot;KIF5B&quot;    &quot;CKAP5&quot;    &quot;TUBB4B&quot;   &quot;HN1&quot;     
+[43] &quot;TXNRD1&quot;   &quot;RNPS1&quot;    &quot;TSN&quot;     </code></pre>
+<p>M.G1</p>
+<pre class="r"><code>names_ensg &lt;- rownames(cell_phase_genes_filter[[5]][[3]])
+gene_symbols$external_gene_name[which(gene_symbols$ensembl_gene_id %in% names_ensg)]</code></pre>
+<pre><code> [1] &quot;VCL&quot;     &quot;CDC42&quot;   &quot;GNB1&quot;    &quot;TAF9&quot;    &quot;DYNLL1&quot;  &quot;YY1&quot;     &quot;TSC22D1&quot;
+ [8] &quot;GSPT1&quot;   &quot;MTPN&quot;    &quot;DNAJB6&quot;  &quot;KPNB1&quot;   &quot;UBE2D3&quot;  &quot;GRPEL1&quot;  &quot;HSPA8&quot;  
+[15] &quot;PAK1IP1&quot; &quot;SRSF3&quot;   &quot;HMGCR&quot;   &quot;PPP2CA&quot;  &quot;FXR1&quot;    &quot;CBX3&quot;    &quot;MORF4L2&quot;
+[22] &quot;DKC1&quot;    &quot;RAN&quot;     &quot;KRAS&quot;    &quot;SYNCRIP&quot; &quot;TROAP&quot;   &quot;FAM60A&quot;  &quot;RPL13A&quot; 
+[29] &quot;ILF2&quot;    &quot;LYAR&quot;    &quot;G3BP1&quot;   &quot;ZCCHC10&quot; &quot;LARP1&quot;   &quot;PTMS&quot;    &quot;PTTG1&quot;  
+[36] &quot;RAD21&quot;   &quot;KIF5B&quot;   &quot;TOB2&quot;    &quot;TOP1&quot;   </code></pre>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] cowplot_0.3.1    data.table_1.9.4 dplyr_0.4.2      ggplot2_1.0.1   
+[5] edgeR_3.10.2     limma_3.24.9     knitr_1.10.5    
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.12.0      magrittr_1.5     MASS_7.3-40      munsell_0.4.2   
+ [5] colorspace_1.2-6 R6_2.1.1         stringr_1.0.0    httr_0.6.1      
+ [9] plyr_1.8.3       tools_3.2.0      parallel_3.2.0   grid_3.2.0      
+[13] gtable_0.1.2     DBI_0.3.1        htmltools_0.2.6  assertthat_0.1  
+[17] yaml_2.1.13      digest_0.6.8     reshape2_1.4.1   formatR_1.2     
+[21] bitops_1.0-6     RCurl_1.95-4.6   evaluate_0.7     rmarkdown_0.6.1 
+[25] stringi_0.4-1    scales_0.2.4     chron_2.3-45     proto_0.3-10    </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>

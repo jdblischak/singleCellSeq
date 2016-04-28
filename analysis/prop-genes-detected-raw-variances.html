@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+
+<meta name="date" content="2016-02-12" />
+
+<title>Proportion of gene detected without scaling variances</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Proportion of gene detected without scaling variances</h1>
+<h4 class="date"><em>2016-02-12</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#background-and-objectives">Background and objectives</a></li>
+<li><a href="#conclusions">Conclusions</a></li>
+<li><a href="#input">Input</a></li>
+<li><a href="#prepare-data">Prepare data</a></li>
+<li><a href="#calculate-pgd">Calculate PGD</a></li>
+<li><a href="#pca-under-different-scenarios">PCA under different scenarios</a></li>
+<li><a href="#results">Results</a></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2016-04-28</p>
+<p><strong>Code version:</strong> 75e23ae09f8128081e5241c204064c50b6625372</p>
+<pre class="r"><code>source(&quot;functions.R&quot;)
+library(&quot;edgeR&quot;)
+library(&quot;tidyr&quot;)
+library(&quot;ggplot2&quot;)
+library(&quot;cowplot&quot;)
+library(&quot;gmodels&quot;)
+theme_set(theme_bw(base_size = 16))
+theme_update(panel.grid.minor.x = element_blank(),
+             panel.grid.minor.y = element_blank(),
+             panel.grid.major.x = element_blank(),
+             panel.grid.major.y = element_blank())</code></pre>
+<div id="background-and-objectives" class="section level2">
+<h2>Background and objectives</h2>
+<p>Previously, we investigated proportion of genes detected in the cells under different scenarios of pseudocounts (<a href="http://jdblischak.github.io/singleCellSeq/analysis/prop-genes-detected.html">link</a>). Hicks et al. <a href="http://jdblischak.github.io/singleCellSeq/analysis/prop-genes-detected.html">link</a> computed principal components using mean-centered data with raw variances, while we used mean-centered data with unit variances. Here we will repeat the analyses in <a href="http://jdblischak.github.io/singleCellSeq/analysis/prop-genes-detected.html">link</a> using mean-centered data with raw variances.</p>
+</div>
+<div id="conclusions" class="section level2">
+<h2>Conclusions</h2>
+<p>Little to no correlation between PC1 loadings and proportion of genes detected, as when PCA analysis was done on <a href="http://jdblischak.github.io/singleCellSeq/analysis/prop-genes-detected.html">unit-variance transformed data</a></p>
+</div>
+<div id="input" class="section level2">
+<h2>Input</h2>
+<p>Input annotation</p>
+<pre class="r"><code>anno &lt;- read.table(&quot;../data/annotation.txt&quot;, header = TRUE,
+                   stringsAsFactors = FALSE)
+
+anno_filter &lt;- read.table(&quot;../data/annotation-filter.txt&quot;, header = TRUE,
+                   stringsAsFactors = FALSE)</code></pre>
+<p>Input molecule counts</p>
+<pre class="r"><code>molecules &lt;- read.table(&quot;../data/molecules.txt&quot;, header = TRUE,
+           stringsAsFactors = FALSE)
+
+molecules_filter &lt;- read.table(&quot;../data/molecules-filter.txt&quot;, header = TRUE,
+           stringsAsFactors = FALSE)
+
+molecules_final &lt;- read.table(&quot;../data/molecules-final.txt&quot;, header = TRUE,
+           stringsAsFactors = FALSE)</code></pre>
+</div>
+<div id="prepare-data" class="section level2">
+<h2>Prepare data</h2>
+<pre class="r"><code>molecules_qc &lt;- molecules[, which(colnames(molecules) %in% colnames(molecules_filter) )]
+dim(molecules_qc)</code></pre>
+<pre><code>[1] 19027   564</code></pre>
+<p>However, some genes have zero counts across only the quality single cells. Thus we remove these.</p>
+<pre class="r"><code>zero_genes &lt;- rowSums(molecules_qc) == 0
+molecules_qc &lt;- molecules_qc[!zero_genes, ]</code></pre>
+<p>Lastly, we include a subset of ubiquitous genes which were detected in every cell, i.e. the PGD will be 1 for all samples.</p>
+<pre class="r"><code>ubiquitous_genes &lt;- rowSums(molecules_qc &gt; 0) == ncol(molecules_qc)
+molecules_ubiq &lt;- molecules_qc[ubiquitous_genes, ]</code></pre>
+</div>
+<div id="calculate-pgd" class="section level2">
+<h2>Calculate PGD</h2>
+<p>Define a function to calculate PGD.</p>
+<pre class="r"><code>calc_pgd &lt;- function(x) {
+  # Calculate the proportion of genes detected (PGD) per sample/column
+  #
+  # x - gene expression counts
+  #
+  # Returns a numeric vector
+  stopifnot(!is.null(dim(x)),
+            x == as.integer(as.matrix(x)))
+  num_genes_detected &lt;- colSums(x &gt; 0)
+  num_total_genes &lt;- nrow(x)
+  prop_genes_detected &lt;- num_genes_detected / num_total_genes
+  stopifnot(is.numeric(prop_genes_detected),
+            length(prop_genes_detected) == ncol(x),
+            prop_genes_detected &lt;= 1,
+            prop_genes_detected &gt;= 0)
+  return(prop_genes_detected)
+}</code></pre>
+<p>Calculate the PGD using all genes with at least one read detected in at least one single cell.</p>
+<pre class="r"><code>pgd_all &lt;- calc_pgd(molecules_qc)
+summary(pgd_all)</code></pre>
+<pre><code>   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+ 0.3721  0.4459  0.4717  0.4684  0.4926  0.5431 </code></pre>
+</div>
+<div id="pca-under-different-scenarios" class="section level2">
+<h2>PCA under different scenarios</h2>
+<p>Molecule log2 counts per million (edgeR) from all genes with at least one observed read.</p>
+<pre class="r"><code>pca &lt;- run_pca(cpm(molecules_qc, log = TRUE), scale = FALSE)
+d &lt;- data.frame(id = rownames(pca$PCs), pca$PCs[, 1:2],
+                explained = pca$explained, pgd = pgd_all,
+                type = &quot;molecules&quot;, genes = &quot;all&quot;, processing = &quot;log2cpm-edgeR&quot;)
+d_full &lt;- d</code></pre>
+<p>Molecule log2 counts per million (edgeR) from set of filtered genes.</p>
+<pre class="r"><code>pca &lt;- run_pca(cpm(molecules_filter, log = TRUE), scale = FALSE)
+d &lt;- data.frame(id = rownames(pca$PCs), pca$PCs[, 1:2],
+                explained = pca$explained, pgd = pgd_all,
+                type = &quot;molecules&quot;, genes = &quot;filter&quot;, 
+                processing = &quot;log2cpm-edgeR&quot;)
+d_full &lt;- rbind(d_full, d)</code></pre>
+<p>Molecule log2 counts per million (edgeR) from set of ubiquitous genes.</p>
+<pre class="r"><code>pca &lt;- run_pca(cpm(molecules_ubiq, log = TRUE), scale = FALSE)
+d &lt;- data.frame(id = rownames(pca$PCs), pca$PCs[, 1:2],
+                explained = pca$explained, pgd = pgd_all,
+                type = &quot;molecules&quot;, genes = &quot;ubiq&quot;, 
+                processing = &quot;log2cpm-edgeR&quot;)
+d_full &lt;- rbind(d_full, d)</code></pre>
+<p>Molecule counts per million (Rafa) from all genes with at least one observed read.</p>
+<pre class="r"><code>pca &lt;- run_pca(log2(cpm(molecules_qc) + 1), scale = FALSE)
+d &lt;- data.frame(id = rownames(pca$PCs), pca$PCs[, 1:2],
+                explained = pca$explained, pgd = pgd_all,
+                type = &quot;molecules&quot;, genes = &quot;all&quot;, 
+                processing = &quot;log2cpm-Rafa&quot;)
+d_full &lt;- rbind(d_full, d)</code></pre>
+<p>Molecule counts per million (Rafa) from set of filtered genes.</p>
+<pre class="r"><code>pca &lt;- run_pca(log2(cpm(molecules_filter) + 1), scale = FALSE)
+d &lt;- data.frame(id = rownames(pca$PCs), pca$PCs[, 1:2],
+                explained = pca$explained, pgd = pgd_all,
+                type = &quot;molecules&quot;, genes = &quot;filter&quot;, 
+                processing = &quot;log2cpm-Rafa&quot;)
+d_full &lt;- rbind(d_full, d)</code></pre>
+<p>Molecule counts per million (Rafa) from set of ubiquitous genes.</p>
+<pre class="r"><code>pca &lt;- run_pca(log2(cpm(molecules_ubiq) + 1), scale = FALSE)
+d &lt;- data.frame(id = rownames(pca$PCs), pca$PCs[, 1:2],
+                explained = pca$explained, pgd = pgd_all,
+                type = &quot;molecules&quot;, genes = &quot;ubiq&quot;, 
+                processing = &quot;log2cpm-Rafa&quot;)
+d_full &lt;- rbind(d_full, d)</code></pre>
+</div>
+<div id="results" class="section level2">
+<h2>Results</h2>
+<pre class="r"><code>require(dplyr)</code></pre>
+<pre><code>Loading required package: dplyr
+
+Attaching package: &#39;dplyr&#39;
+
+The following objects are masked from &#39;package:stats&#39;:
+
+    filter, lag
+
+The following objects are masked from &#39;package:base&#39;:
+
+    intersect, setdiff, setequal, union</code></pre>
+<pre class="r"><code>summarise(group_by(d_full, type, genes, processing),
+          corr = cor(PC1, pgd, method = &quot;spearman&quot;))</code></pre>
+<pre><code>Source: local data frame [6 x 4]
+Groups: type, genes
+
+       type  genes    processing        corr
+1 molecules    all log2cpm-edgeR -0.07957672
+2 molecules    all  log2cpm-Rafa  0.13880621
+3 molecules filter log2cpm-edgeR -0.10870053
+4 molecules filter  log2cpm-Rafa  0.18689294
+5 molecules   ubiq log2cpm-edgeR  0.02149516
+6 molecules   ubiq  log2cpm-Rafa  0.01973237</code></pre>
+<pre class="r"><code>d_full &lt;- separate(d_full, col = id, into = c(&quot;individual&quot;, &quot;replicate&quot;, &quot;well&quot;),
+                   sep = &quot;\\.&quot;)</code></pre>
+<p>Effect of processing on reads using all genes:</p>
+<pre class="r"><code>p_molecules_all &lt;- ggplot(d_full[d_full$type == &quot;molecules&quot; &amp; d_full$genes == &quot;all&quot;, ],
+                      aes(x = pgd, y = PC1)) +
+  geom_point(aes(color = individual), alpha = 0.5) +
+  geom_smooth(method = &quot;lm&quot;) +
+  facet_wrap(~processing) +
+  theme(legend.position = &quot;none&quot;)
+p_molecules_all</code></pre>
+<p><img src="figure/prop-genes-detected-raw-variances.Rmd/pgd-pc1-reads-all-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p>Effect of processing on molecules using filtered genes:</p>
+<pre class="r"><code>p_molecules_filter &lt;- p_molecules_all %+% d_full[d_full$type == &quot;molecules&quot; &amp; d_full$genes == &quot;filter&quot;, ]
+p_molecules_filter</code></pre>
+<p><img src="figure/prop-genes-detected-raw-variances.Rmd/pgd-pc1-molecules-filter-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p>Effect of processing on molecules using ubiquitous genes:</p>
+<pre class="r"><code>p_molecules_filter &lt;- p_molecules_all %+% d_full[d_full$type == &quot;molecules&quot; &amp; d_full$genes == &quot;ubiq&quot;, ]
+p_molecules_filter</code></pre>
+<p><img src="figure/prop-genes-detected-raw-variances.Rmd/pgd-pc1-molecules-ubiq-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] dplyr_0.4.2    testit_0.4     gmodels_2.16.2 cowplot_0.3.1 
+[5] ggplot2_1.0.1  tidyr_0.2.0    edgeR_3.10.2   limma_3.24.9  
+[9] knitr_1.10.5  
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.12.0      magrittr_1.5     MASS_7.3-40      munsell_0.4.2   
+ [5] colorspace_1.2-6 R6_2.1.1         stringr_1.0.0    httr_0.6.1      
+ [9] plyr_1.8.3       tools_3.2.0      parallel_3.2.0   grid_3.2.0      
+[13] gtable_0.1.2     DBI_0.3.1        gtools_3.5.0     htmltools_0.2.6 
+[17] lazyeval_0.1.10  assertthat_0.1   yaml_2.1.13      digest_0.6.8    
+[21] reshape2_1.4.1   formatR_1.2      codetools_0.2-11 bitops_1.0-6    
+[25] RCurl_1.95-4.6   evaluate_0.7     rmarkdown_0.6.1  labeling_0.3    
+[29] gdata_2.16.1     stringi_0.4-1    scales_0.2.4     proto_0.3-10    </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>

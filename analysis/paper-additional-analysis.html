@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+
+<meta name="date" content="2016-04-27" />
+
+<title>Additional analysis for the manuscript</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Additional analysis for the manuscript</h1>
+<h4 class="date"><em>2016-04-27</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#input">Input</a></li>
+<li><a href="#pca">PCA</a></li>
+<li><a href="#estimate-sources-of-variation">Estimate sources of variation</a></li>
+<li><a href="#compute-cell-cell-correlations">Compute cell-cell correlations</a></li>
+<li><a href="#total-molecules-variance-differences">total molecules variance differences</a></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2016-04-28</p>
+<p><strong>Code version:</strong> 75e23ae09f8128081e5241c204064c50b6625372</p>
+<pre class="r"><code>library(&quot;ggplot2&quot;)
+library(&quot;cowplot&quot;)
+library(&quot;lmtest&quot;)
+source(&quot;functions.R&quot;)</code></pre>
+<div id="input" class="section level2">
+<h2>Input</h2>
+<p>Input filtered annotation.</p>
+<pre class="r"><code>anno_filter &lt;- read.table(&quot;../data/annotation-filter.txt&quot;, header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno_filter)</code></pre>
+<pre><code>  individual replicate well      batch      sample_id
+1    NA19098        r1  A01 NA19098.r1 NA19098.r1.A01
+2    NA19098        r1  A02 NA19098.r1 NA19098.r1.A02
+3    NA19098        r1  A04 NA19098.r1 NA19098.r1.A04
+4    NA19098        r1  A05 NA19098.r1 NA19098.r1.A05
+5    NA19098        r1  A06 NA19098.r1 NA19098.r1.A06
+6    NA19098        r1  A07 NA19098.r1 NA19098.r1.A07</code></pre>
+<p>Input filtered molecule counts.</p>
+<pre class="r"><code>molecules_filter &lt;- read.table(&quot;../data/molecules-filter.txt&quot;, header = TRUE,
+                               stringsAsFactors = FALSE)
+molecules_filter_ENSG &lt;- molecules_filter[grep(&quot;ERCC&quot;, rownames(molecules_filter), invert = TRUE), ]
+  
+stopifnot(ncol(molecules_filter) == nrow(anno_filter),
+          colnames(molecules_filter) == anno_filter$sample_id)</code></pre>
+<p>Input quality control file. Filter cells to match cells in molecules_filter.</p>
+<pre class="r"><code>qc &lt;- read.table(&quot;../data/qc-ipsc.txt&quot;, header = TRUE,
+                 stringsAsFactors = FALSE)
+qc$sample_id &lt;- with(qc, paste0(individual, &quot;.&quot;, replicate, &quot;.&quot;, well))
+
+qc_filter &lt;- qc[match(anno_filter$sample_id, qc$sample_id), ]
+
+stopifnot(all.equal(qc_filter$sample_id, anno_filter$sample_id))</code></pre>
+<p>Input standardized molecule counts.</p>
+<pre class="r"><code>molecules_cpm &lt;- read.table(&quot;../data/molecules-cpm.txt&quot;, header = TRUE,
+                            stringsAsFactors = FALSE)
+stopifnot(ncol(molecules_cpm) == nrow(anno_filter),
+          colnames(molecules_cpm) == anno_filter$sample_id)</code></pre>
+<p>Input Poisson GLM transformed molecule counts per million.</p>
+<pre class="r"><code>molecules_cpm_trans &lt;- read.table(&quot;../data/molecules-cpm-trans.txt&quot;, header = TRUE,
+                               stringsAsFactors = FALSE)
+stopifnot(ncol(molecules_cpm_trans) == nrow(anno_filter),
+          colnames(molecules_cpm_trans) == anno_filter$sample_id)</code></pre>
+<p>Input final batch-corrected molecule counts per million.</p>
+<pre class="r"><code>molecules_final &lt;- read.table(&quot;../data/molecules-final.txt&quot;, header = TRUE,
+                              stringsAsFactors = FALSE)
+stopifnot(ncol(molecules_final) == nrow(anno_filter),
+          colnames(molecules_final) == anno_filter$sample_id)</code></pre>
+</div>
+<div id="pca" class="section level2">
+<h2>PCA</h2>
+<pre class="r"><code>pca_molecules_filter &lt;- run_pca(molecules_filter_ENSG)
+pca_molecules_cpm &lt;- run_pca(molecules_cpm)
+pca_molecules_cpm_trans &lt;- run_pca(molecules_cpm_trans)
+pca_final &lt;- run_pca(molecules_final)</code></pre>
+</div>
+<div id="estimate-sources-of-variation" class="section level2">
+<h2>Estimate sources of variation</h2>
+<p>We consider the overall transcriptional profile of each cell and estimate percent of variation in expression profiles that comes from individuals and also that comes from replicates.</p>
+<p>Multivariate analysis of variance is used on the first five principal components.</p>
+<p>*filtered data</p>
+<pre class="r"><code>par(mfrow = c(2,3))
+for (i in 1:5) { hist(pca_molecules_filter$PCs[,i]) }
+
+fit &lt;- manova((pca_molecules_filter$PCs[,1:2]) ~ as.factor(anno_filter$individual) +
+            as.factor(anno_filter$replicate) )
+summary(fit, test = &quot;Wilks&quot;)</code></pre>
+<pre><code>                                   Df   Wilks approx F num Df den Df
+as.factor(anno_filter$individual)   2 0.09226   639.56      4   1116
+as.factor(anno_filter$replicate)    2 0.61299    77.35      4   1116
+Residuals                         559                               
+                                     Pr(&gt;F)    
+as.factor(anno_filter$individual) &lt; 2.2e-16 ***
+as.factor(anno_filter$replicate)  &lt; 2.2e-16 ***
+Residuals                                      
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
+<pre class="r"><code>fit2 &lt;- lm((pca_molecules_filter$PCs[,1]) ~ as.factor(anno_filter$individual) +
+            as.factor(anno_filter$replicate))
+fit2_1 &lt;- lm((pca_molecules_filter$PCs[,1]) ~ as.factor(anno_filter$individual))
+fit2_2 &lt;- lm((pca_molecules_filter$PCs[,1]) ~ as.factor(anno_filter$replicate))
+anova(fit2, fit2_1)</code></pre>
+<pre><code>Analysis of Variance Table
+
+Model 1: (pca_molecules_filter$PCs[, 1]) ~ as.factor(anno_filter$individual) + 
+    as.factor(anno_filter$replicate)
+Model 2: (pca_molecules_filter$PCs[, 1]) ~ as.factor(anno_filter$individual)
+  Res.Df    RSS Df Sum of Sq      F    Pr(&gt;F)    
+1    559 614582                                  
+2    561 634780 -2    -20198 9.1857 0.0001188 ***
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
+<pre class="r"><code>anova(fit2, fit2_2)</code></pre>
+<pre><code>Analysis of Variance Table
+
+Model 1: (pca_molecules_filter$PCs[, 1]) ~ as.factor(anno_filter$individual) + 
+    as.factor(anno_filter$replicate)
+Model 2: (pca_molecules_filter$PCs[, 1]) ~ as.factor(anno_filter$replicate)
+  Res.Df    RSS Df Sum of Sq      F    Pr(&gt;F)    
+1    559 614582                                  
+2    561 746932 -2   -132351 60.191 &lt; 2.2e-16 ***
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
+<p><img src="figure/paper-additional-analysis.Rmd/unnamed-chunk-2-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p>*CPM</p>
+<pre class="r"><code>fit &lt;- manova((pca_molecules_cpm$PCs[,1:2]) ~ as.factor(anno_filter$individual) +
+            as.factor(anno_filter$replicate)  )
+summary(fit, test = &quot;Wilks&quot;)</code></pre>
+<pre><code>                                   Df   Wilks approx F num Df den Df
+as.factor(anno_filter$individual)   2 0.04299  1066.67      4   1116
+as.factor(anno_filter$replicate)    2 0.44661   138.48      4   1116
+Residuals                         559                               
+                                     Pr(&gt;F)    
+as.factor(anno_filter$individual) &lt; 2.2e-16 ***
+as.factor(anno_filter$replicate)  &lt; 2.2e-16 ***
+Residuals                                      
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
+<pre class="r"><code>fit2 &lt;- lm((pca_molecules_cpm$PCs[,1]) ~ as.factor(anno_filter$individual) +
+            as.factor(anno_filter$replicate))
+fit2_1 &lt;- lm((pca_molecules_cpm$PCs[,1]) ~ as.factor(anno_filter$individual))
+fit2_2 &lt;- lm((pca_molecules_cpm$PCs[,1]) ~ as.factor(anno_filter$replicate))
+anova(fit2, fit2_1)</code></pre>
+<pre><code>Analysis of Variance Table
+
+Model 1: (pca_molecules_cpm$PCs[, 1]) ~ as.factor(anno_filter$individual) + 
+    as.factor(anno_filter$replicate)
+Model 2: (pca_molecules_cpm$PCs[, 1]) ~ as.factor(anno_filter$individual)
+  Res.Df   RSS Df Sum of Sq      F    Pr(&gt;F)    
+1    559 22445                                  
+2    561 43740 -2    -21295 265.17 &lt; 2.2e-16 ***
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
+<pre class="r"><code>anova(fit2, fit2_2)</code></pre>
+<pre><code>Analysis of Variance Table
+
+Model 1: (pca_molecules_cpm$PCs[, 1]) ~ as.factor(anno_filter$individual) + 
+    as.factor(anno_filter$replicate)
+Model 2: (pca_molecules_cpm$PCs[, 1]) ~ as.factor(anno_filter$replicate)
+  Res.Df    RSS Df Sum of Sq      F    Pr(&gt;F)    
+1    559  22445                                  
+2    561 177989 -2   -155543 1936.9 &lt; 2.2e-16 ***
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
+<p>*CPM, poisson transformed</p>
+<pre class="r"><code>fit &lt;- manova((pca_molecules_cpm_trans$PCs[,1:2]) ~ 
+                  as.factor(anno_filter$individual) +
+                  as.factor(anno_filter$replicate)  )
+summary(fit, test = &quot;Wilks&quot;)</code></pre>
+<pre><code>                                   Df   Wilks approx F num Df den Df
+as.factor(anno_filter$individual)   2 0.03477  1217.21      4   1116
+as.factor(anno_filter$replicate)    2 0.35533   189.04      4   1116
+Residuals                         559                               
+                                     Pr(&gt;F)    
+as.factor(anno_filter$individual) &lt; 2.2e-16 ***
+as.factor(anno_filter$replicate)  &lt; 2.2e-16 ***
+Residuals                                      
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
+<pre class="r"><code>fit2 &lt;- lm((pca_molecules_cpm_trans$PCs[,1]) ~ as.factor(anno_filter$individual) +
+            as.factor(anno_filter$replicate))
+fit2_1 &lt;- lm((pca_molecules_cpm_trans$PCs[,1]) ~ as.factor(anno_filter$individual))
+fit2_2 &lt;- lm((pca_molecules_cpm_trans$PCs[,1]) ~ as.factor(anno_filter$replicate))
+anova(fit2, fit2_1)</code></pre>
+<pre><code>Analysis of Variance Table
+
+Model 1: (pca_molecules_cpm_trans$PCs[, 1]) ~ as.factor(anno_filter$individual) + 
+    as.factor(anno_filter$replicate)
+Model 2: (pca_molecules_cpm_trans$PCs[, 1]) ~ as.factor(anno_filter$individual)
+  Res.Df    RSS Df Sum of Sq      F    Pr(&gt;F)    
+1    559 136026                                  
+2    561 200844 -2    -64818 133.18 &lt; 2.2e-16 ***
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
+<pre class="r"><code>anova(fit2, fit2_2)</code></pre>
+<pre><code>Analysis of Variance Table
+
+Model 1: (pca_molecules_cpm_trans$PCs[, 1]) ~ as.factor(anno_filter$individual) + 
+    as.factor(anno_filter$replicate)
+Model 2: (pca_molecules_cpm_trans$PCs[, 1]) ~ as.factor(anno_filter$replicate)
+  Res.Df    RSS Df Sum of Sq      F    Pr(&gt;F)    
+1    559 136026                                  
+2    561 425361 -2   -289335 594.51 &lt; 2.2e-16 ***
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
+<p>*CPM, batch corrected</p>
+<pre class="r"><code>fit &lt;- manova((pca_final$PCs[,1:2]) ~ as.factor(anno_filter$individual) +
+            as.factor(anno_filter$replicate)  )
+summary(fit, test = &quot;Wilks&quot;)</code></pre>
+<pre><code>                                   Df   Wilks approx F num Df den Df
+as.factor(anno_filter$individual)   2 0.02091  1650.58      4   1116
+as.factor(anno_filter$replicate)    2 0.82847    27.52      4   1116
+Residuals                         559                               
+                                     Pr(&gt;F)    
+as.factor(anno_filter$individual) &lt; 2.2e-16 ***
+as.factor(anno_filter$replicate)  &lt; 2.2e-16 ***
+Residuals                                      
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
+<pre class="r"><code>fit2 &lt;- lm((pca_final$PCs[,1]) ~ as.factor(anno_filter$individual) +
+            as.factor(anno_filter$replicate))
+fit2_1 &lt;- lm((pca_final$PCs[,1]) ~ as.factor(anno_filter$individual))
+fit2_2 &lt;- lm((pca_final$PCs[,1]) ~ as.factor(anno_filter$replicate))
+anova(fit2, fit2_1)</code></pre>
+<pre><code>Analysis of Variance Table
+
+Model 1: (pca_final$PCs[, 1]) ~ as.factor(anno_filter$individual) + as.factor(anno_filter$replicate)
+Model 2: (pca_final$PCs[, 1]) ~ as.factor(anno_filter$individual)
+  Res.Df   RSS Df Sum of Sq     F    Pr(&gt;F)    
+1    559 84382                                 
+2    561 92286 -2   -7903.9 26.18 1.354e-11 ***
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
+<pre class="r"><code>anova(fit2, fit2_2)</code></pre>
+<pre><code>Analysis of Variance Table
+
+Model 1: (pca_final$PCs[, 1]) ~ as.factor(anno_filter$individual) + as.factor(anno_filter$replicate)
+Model 2: (pca_final$PCs[, 1]) ~ as.factor(anno_filter$replicate)
+  Res.Df    RSS Df Sum of Sq      F    Pr(&gt;F)    
+1    559  84382                                  
+2    561 370314 -2   -285931 947.09 &lt; 2.2e-16 ***
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
+</div>
+<div id="compute-cell-cell-correlations" class="section level2">
+<h2>Compute cell-cell correlations</h2>
+<p>Code for computing correlation between cells within batches and between batches.</p>
+<pre class="r"><code>compute_corr_batch &lt;- function(molecules_input, annotation) {
+  
+  cor_mat &lt;- cor(molecules_input, method = &quot;spearman&quot;)
+  batch &lt;- unique(annotation$batch)
+  individual &lt;- unique(annotation$individual)
+  
+  # same individual, within batch
+  corr_same_ind_within_batch &lt;- 
+    lapply(1:length(individual), function(i) {
+        batch &lt;- 
+          unique(annotation$batch[annotation$individual == individual[i]])
+        
+        corr_batch &lt;- lapply(1:length(batch), function(i) {
+          df &lt;- cor_mat[annotation$batch == batch[i], 
+                        annotation$batch == batch[i]]
+          df[upper.tri(df, diag = FALSE)]
+        })
+        unlist(corr_batch)
+  })
+    
+  # same individual, between replicates
+  corr_same_ind_between_batch &lt;- 
+    lapply(1:length(individual), function(i) {
+        batch &lt;- 
+          unique(annotation$batch[annotation$individual == individual[i]])
+        submat &lt;- lapply(1:(length(batch)-1), function(i) {
+          submat0 &lt;- lapply(2:length(batch), function(j) {
+            df &lt;- cor_mat[annotation$batch == batch[i], 
+                          annotation$batch == batch[j]]
+            df[upper.tri(df, diag = FALSE)]
+        }) 
+        unlist(submat0)
+        })
+        unlist(submat)
+  })
+  
+  # different individual
+  corr_diff_ind_between_batch &lt;- 
+    lapply(1:(length(individual)-1), function(i) {
+        if (i == 1) {
+        batch &lt;- 
+          unique(annotation$batch[annotation$individual == individual[i]])
+        batch_other &lt;- 
+          unique(annotation$batch[annotation$individual != individual[i+1]])
+        }
+        if (i == 2) {
+        batch &lt;- 
+          unique(annotation$batch[annotation$individual == individual[i]])
+        batch_other &lt;- 
+          unique(annotation$batch[annotation$individual == individual[i+1]])
+        }
+      
+        submat &lt;- lapply(1:length(batch), function(i) {
+          submat0 &lt;- lapply(1:length(batch_other), function(j) {
+            df &lt;- cor_mat[annotation$batch == batch[i], 
+                          annotation$batch == batch_other[j]]
+            df[upper.tri(df, diag = FALSE)]
+          }) 
+          unlist(submat0)
+        })
+        unlist(submat)
+  })
+
+  return( data.frame(
+      corrs = c(unlist(corr_same_ind_within_batch), 
+                unlist(corr_same_ind_between_batch),
+                unlist(corr_diff_ind_between_batch)),
+         labels = c(rep(&quot;same_ind_within&quot;, length(corr_same_ind_within_batch)),
+                    rep(&quot;between&quot;, length(corr_same_ind_between_batch)),
+                    rep(&quot;diff_ind&quot;, length(corr_diff_ind_between_batch)) ) )
+      ) }</code></pre>
+<p>Compute spearman correlations for data after each transformation step.</p>
+<pre class="r"><code>corr_filter &lt;- compute_corr_batch(molecules_filter_ENSG, anno_filter)
+corr_cpm &lt;- compute_corr_batch(molecules_cpm, anno_filter)
+corr_cpm_trans &lt;- compute_corr_batch(molecules_cpm_trans, anno_filter)
+corr_final &lt;- compute_corr_batch(molecules_final, anno_filter)
+
+par(mfrow = c(2,2))
+with(corr_filter, 
+     boxplot(corrs ~ labels, 
+             names.arg = c(&quot;within-batch&quot;, &quot;between-batch&quot;),
+             main = &quot;Counts&quot;) )
+with(corr_cpm, 
+     boxplot(corrs ~ labels, names.arg = c(&quot;within-batch&quot;, &quot;between-batch&quot;),
+             main = &quot;Counts per million&quot;) )
+with(corr_cpm_trans, 
+     boxplot(corrs ~ labels, names.arg = c(&quot;within-batch&quot;, &quot;between-batch&quot;),
+             main = &quot;Poisson transformation&quot;) )
+with(corr_final, 
+     boxplot(corrs ~ labels, names.arg = c(&quot;within-batch&quot;, &quot;between-batch&quot;),
+             main = &quot;Batch corrected&quot;) )</code></pre>
+</div>
+<div id="total-molecules-variance-differences" class="section level2">
+<h2>total molecules variance differences</h2>
+<p>Consider total molecule-count differences between individuals and batches in ERCC genes. We transformed the total molecule-count of each cell to log scale and fit simple linear regression to test individual effect. R-squared was computed to quantify the percent of variation due to individual and replicate factor.</p>
+<pre class="r"><code>molecules &lt;- read.table(&quot;../data/molecules-filter.txt&quot;, header = TRUE,
+                    stringsAsFactors = FALSE)
+stopifnot(colnames(molecules) == anno_filter$sample_id)
+
+ercc_index &lt;- grepl(&quot;ERCC&quot;, rownames(molecules))
+anno_filter$total_molecules_gene = colSums(molecules[!ercc_index, ])
+anno_filter$total_molecules_ercc = colSums(molecules[ercc_index, ])
+anno_filter$total_molecules = colSums(molecules)
+anno_filter$num_genes = apply(molecules[!ercc_index, ], 2, function(x) sum(x &gt; 0))</code></pre>
+<pre class="r"><code>hist(log2(anno_filter$total_molecules_ercc))</code></pre>
+<p><img src="figure/paper-additional-analysis.Rmd/unnamed-chunk-8-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code># differences in total molecule-counts of ercc genes
+fit0 &lt;- lm(log2(total_molecules_ercc) ~ 1,
+             data = anno_filter)
+fit1 &lt;- lm(log2(total_molecules_ercc) ~ as.factor(individual),
+             data = anno_filter)
+lrtest(fit1, fit0)</code></pre>
+<pre><code>Likelihood ratio test
+
+Model 1: log2(total_molecules_ercc) ~ as.factor(individual)
+Model 2: log2(total_molecules_ercc) ~ 1
+  #Df   LogLik Df Chisq Pr(&gt;Chisq)    
+1   4   47.485                        
+2   2 -138.114 -2 371.2  &lt; 2.2e-16 ***
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
+<pre class="r"><code>tapply(anno_filter$total_molecules_ercc,
+       anno_filter$individual,
+       FUN = mean)</code></pre>
+<pre><code>  NA19098   NA19101   NA19239 
+1401.0704 1024.7910  979.4299 </code></pre>
+<pre class="r"><code># # differences in total molecule-counts of ENSG genes
+# fit0 &lt;- lm(log2(total_molecules_gene) ~ 1,
+#              data = anno_filter)
+# fit1 &lt;- lm(log2(total_molecules_gene) ~ as.factor(individual),
+#              data = anno_filter)
+# lrtest(fit1, fit0)
+# tapply(anno_filter$total_molecules_gene,
+#        anno_filter$individual,
+#        FUN = mean)
+
+# # compute percent of variance explained 
+# fit1_2 &lt;- lm(log2(total_molecules_ercc) ~ as.factor(individual) +
+#                as.factor(replicate),
+#              data = anno_filter)
+# fit1_3 &lt;- lm(log2(total_molecules_ercc) ~ as.factor(replicate),
+#              data = anno_filter)
+# anova(fit1_2, fit1)
+# anova(fit1_2, fit1_3)
+
+# within each individual
+fit1 &lt;- lm(log2(total_molecules_ercc) ~ as.factor(replicate),
+             data = anno_filter[anno_filter$individual == &quot;NA19098&quot;,])
+lrtest(fit1)</code></pre>
+<pre><code>Likelihood ratio test
+
+Model 1: log2(total_molecules_ercc) ~ as.factor(replicate)
+Model 2: log2(total_molecules_ercc) ~ 1
+  #Df LogLik Df  Chisq Pr(&gt;Chisq)    
+1   3 74.419                         
+2   2 38.615 -1 71.607  &lt; 2.2e-16 ***
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
+<pre class="r"><code>fit2 &lt;- lm(log2(total_molecules_ercc) ~ as.factor(replicate),
+             data = anno_filter[anno_filter$individual == &quot;NA19101&quot;,])
+lrtest(fit2)</code></pre>
+<pre><code>Likelihood ratio test
+
+Model 1: log2(total_molecules_ercc) ~ as.factor(replicate)
+Model 2: log2(total_molecules_ercc) ~ 1
+  #Df  LogLik Df  Chisq Pr(&gt;Chisq)    
+1   4  84.059                         
+2   2 -47.021 -2 262.16  &lt; 2.2e-16 ***
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
+<pre class="r"><code>fit3 &lt;- lm(log2(total_molecules_ercc) ~ as.factor(replicate),
+             data = anno_filter[anno_filter$individual == &quot;NA19239&quot;,])
+lrtest(fit3)</code></pre>
+<pre><code>Likelihood ratio test
+
+Model 1: log2(total_molecules_ercc) ~ as.factor(replicate)
+Model 2: log2(total_molecules_ercc) ~ 1
+  #Df LogLik Df  Chisq Pr(&gt;Chisq)  
+1   4 126.58                       
+2   2 122.02 -2 9.1294    0.01041 *
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
+<pre class="r"><code>tapply(anno_filter$total_molecules_gene,
+       anno_filter$batch,
+       FUN = mean)</code></pre>
+<pre><code>NA19098.r1 NA19098.r3 NA19101.r1 NA19101.r2 NA19101.r3 NA19239.r1 
+  72402.71   82656.51   60962.14   57738.86   57595.88   67279.72 
+NA19239.r2 NA19239.r3 
+  62731.68   71082.08 </code></pre>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] testit_0.4    lmtest_0.9-34 zoo_1.7-12    cowplot_0.3.1 ggplot2_1.0.1
+[6] knitr_1.10.5 
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.12.0      magrittr_1.5     MASS_7.3-40      munsell_0.4.2   
+ [5] lattice_0.20-31  colorspace_1.2-6 stringr_1.0.0    httr_0.6.1      
+ [9] plyr_1.8.3       tools_3.2.0      grid_3.2.0       gtable_0.1.2    
+[13] htmltools_0.2.6  yaml_2.1.13      digest_0.6.8     reshape2_1.4.1  
+[17] formatR_1.2      bitops_1.0-6     RCurl_1.95-4.6   evaluate_0.7    
+[21] rmarkdown_0.6.1  stringi_0.4-1    scales_0.2.4     proto_0.3-10    </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>
