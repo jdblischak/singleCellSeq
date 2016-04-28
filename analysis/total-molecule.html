@@ -127,7 +127,7 @@ img {
 <div id="TOC">
 <ul>
 <li><a href="#setup">Setup</a></li>
-<li><a href="#the-total-molecule-counts">The total molecule-counts</a></li>
+<li><a href="#the-total-molecule-counts-not-including-na19098">The total molecule-counts (not including NA19098)</a></li>
 <li><a href="#the-relationship-between-concentration-and-total-molecule-counts">The relationship between concentration and total molecule-counts</a></li>
 <li><a href="#ercc-counts-and-total-molecule-counts">ERCC counts and total molecule counts</a></li>
 <li><a href="#plots-for-paper">Plots for paper</a></li>
@@ -135,14 +135,15 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2016-04-24</p>
-<p><strong>Code version:</strong> 74f30e4e4b6c6fea3667336da91b01fb5603564f</p>
+<p><strong>Last updated:</strong> 2016-04-28</p>
+<p><strong>Code version:</strong> 619e90fd099bbed4c78929c937abbdbdaad65b88</p>
 <p>Recreate the <a href="depth.html">Sequencing depth and cellular RNA content</a> using updated data files to make figures for the paper.</p>
 <div id="setup" class="section level2">
 <h2>Setup</h2>
 <pre class="r"><code>library(&quot;dplyr&quot;)
 library(&quot;tidyr&quot;)
 library(&quot;edgeR&quot;)
+library(&quot;lmtest&quot;)
 library(&quot;ggplot2&quot;)
 library(&quot;cowplot&quot;)
 theme_set(theme_bw(base_size = 12))
@@ -195,9 +196,9 @@ anno_single$total_molecules_ercc = colSums(molecules[ercc_index, ])
 anno_single$total_molecules = colSums(molecules)
 anno_single$num_genes = apply(molecules[!ercc_index, ], 2, function(x) sum(x &gt; 0))</code></pre>
 </div>
-<div id="the-total-molecule-counts" class="section level2">
-<h2>The total molecule-counts</h2>
-<p>For wells with a single cell observed, the total molecule-counts range from 30408 to 113832, the first quartile for the total number of gene molecules is 55561.25, and the third quartile is 78173.25.</p>
+<div id="the-total-molecule-counts-not-including-na19098" class="section level2">
+<h2>The total molecule-counts (not including NA19098)</h2>
+<p>For wells with a single cell observed, the total molecule-counts range from 30408 to 96315, the first quartile for the total number of gene molecules is 55561.25, and the third quartile is 78173.25.</p>
 <pre class="r"><code>## create a color palette with one color per individual and different shades for repplicates
 great_color_8 &lt;- c(&quot;#CC3300&quot;, &quot;#FF9966&quot;, &quot;#006633&quot;, &quot;#009900&quot;, &quot;#99FF99&quot;, &quot;#3366FF&quot;, &quot;#6699FF&quot;, &quot;#66CCFF&quot;)
 
@@ -226,19 +227,22 @@ Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&
 </div>
 <div id="the-relationship-between-concentration-and-total-molecule-counts" class="section level2">
 <h2>The relationship between concentration and total molecule-counts</h2>
-<p>As we try to understand the general relationships between sequencing results and cellular mRNA content, we remove outlier batches. The quantification of the concentration of the single cells in replicate 1 of NA19098 failed. There are only 7 batches.</p>
-<pre class="r"><code>anno_single_7 &lt;- anno_single %&gt;% filter(batch != &quot;NA19098.r1&quot;)</code></pre>
+<p>As we try to understand the general relationships between sequencing results and cellular mRNA content, we remove outlier batches. NA19098 replicate 1 failed the quantification of the concentration of the single cells and was hence removed. Because NA19098 concentration is only quantified in one replicate, we removed NA19098 from analysis involving batch differences and concentration.</p>
+<pre class="r"><code>anno_single_6 &lt;- anno_single %&gt;% filter(individual != &quot;NA19098&quot;)</code></pre>
 <pre class="r"><code>## look at endogenous genes
-plot_conc_molecules_gene_individual &lt;- ggplot(anno_single_7,
-                                         aes(x = concentration, y = total_molecules_gene / 10^3, color = individual)) +
-                                         geom_point(alpha = 0.8) +
-                                         geom_smooth(method = &quot;lm&quot;, se = FALSE) +
-                                         labs(x = &quot;Concentration&quot;, y = &quot;Total gene molecule-counts (10^3)&quot;)
+plot_conc_molecules_gene_individual &lt;- 
+  ggplot(anno_single_6,
+         aes(x = concentration, 
+             y = total_molecules_gene / 10^3, color = individual)) +
+     geom_point(alpha = 0.8) +
+     geom_smooth(method = &quot;lm&quot;, se = FALSE) +
+     labs(x = &quot;Concentration&quot;, y = &quot;Total gene molecule-counts (10^3)&quot;)
 
 ## look at ERCC spike-ins
-plot_conc_molecules_ercc_individual &lt;-  plot_conc_molecules_gene_individual %+%
-                                   aes(y = total_molecules_ercc / 10^3) +
-                                   labs(y = &quot;Total ERCC molecule-counts (10^3)&quot;)
+plot_conc_molecules_ercc_individual &lt;-
+  plot_conc_molecules_gene_individual %+%
+     aes(y = total_molecules_ercc / 10^3) +
+     labs(y = &quot;Total ERCC molecule-counts (10^3)&quot;)
 
 ## plots
 plot_grid(plot_conc_molecules_gene_individual + theme(legend.position = &quot;none&quot;), 
@@ -246,120 +250,92 @@ plot_grid(plot_conc_molecules_gene_individual + theme(legend.position = &quot;no
           labels = LETTERS[1:2])</code></pre>
 <p><img src="figure/total-molecule.Rmd/molecules-num-cells-batch-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>## Is there a difference across the three individuals
-table(anno_single_7$individual, anno_single_7$replicate)</code></pre>
+table(anno_single_6$individual, anno_single_6$replicate)</code></pre>
 <pre><code>         
           r1 r2 r3
-  NA19098  0  0 57
   NA19101 80 70 51
   NA19239 74 68 79</code></pre>
 <pre class="r"><code>fit0 &lt;- lm(total_molecules_gene ~ concentration, 
-   data = anno_single_7)
+   data = anno_single_6)
 fit1 &lt;- lm(total_molecules_gene ~ concentration + as.factor(individual), 
-   data = anno_single_7)
-anova(fit0, fit1)</code></pre>
-<pre><code>Analysis of Variance Table
+   data = anno_single_6)
+# use likelihood ratio test to detect individual differences
+lrtest(fit1, fit0)</code></pre>
+<pre><code>Likelihood ratio test
 
-Model 1: total_molecules_gene ~ concentration
-Model 2: total_molecules_gene ~ concentration + as.factor(individual)
-  Res.Df        RSS Df  Sum of Sq      F    Pr(&gt;F)    
-1    477 9.0266e+10                                   
-2    475 6.5497e+10  2 2.4769e+10 89.816 &lt; 2.2e-16 ***
+Model 1: total_molecules_gene ~ concentration + as.factor(individual)
+Model 2: total_molecules_gene ~ concentration
+  #Df  LogLik Df  Chisq Pr(&gt;Chisq)    
+1   4 -4555.1                         
+2   3 -4577.1 -1 43.956  3.358e-11 ***
 ---
 Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
-<pre class="r"><code>summary(fit1)</code></pre>
-<pre><code>
-Call:
-lm(formula = total_molecules_gene ~ concentration + as.factor(individual), 
-    data = anno_single_7)
-
-Residuals:
-   Min     1Q Median     3Q    Max 
--29879  -7979  -1314   7540  46676 
-
-Coefficients:
-                             Estimate Std. Error t value Pr(&gt;|t|)    
-(Intercept)                     55422       2844  19.486   &lt;2e-16 ***
-concentration                   14652       1281  11.437   &lt;2e-16 ***
-as.factor(individual)NA19101   -23234       1762 -13.182   &lt;2e-16 ***
-as.factor(individual)NA19239   -15484       1744  -8.876   &lt;2e-16 ***
----
-Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
-
-Residual standard error: 11740 on 475 degrees of freedom
-Multiple R-squared:  0.4019,    Adjusted R-squared:  0.3981 
-F-statistic: 106.4 on 3 and 475 DF,  p-value: &lt; 2.2e-16</code></pre>
 <pre class="r"><code>## Is there a difference across replicates of 19101
 fit0 &lt;- lm(total_molecules_gene ~ concentration, 
-   data = anno_single_7, subset = individual == &quot;NA19101&quot;)
+   data = anno_single_6, subset = individual == &quot;NA19101&quot;)
 fit1 &lt;- lm(total_molecules_gene ~ concentration + as.factor(replicate), 
-   data = anno_single_7, subset = individual == &quot;NA19101&quot;)
-anova(fit0, fit1)</code></pre>
-<pre><code>Analysis of Variance Table
+   data = anno_single_6, subset = individual == &quot;NA19101&quot;)
+# use likelihood ratio test to detect individual differences
+lrtest(fit1, fit0)</code></pre>
+<pre><code>Likelihood ratio test
 
-Model 1: total_molecules_gene ~ concentration
-Model 2: total_molecules_gene ~ concentration + as.factor(replicate)
-  Res.Df        RSS Df Sum of Sq      F Pr(&gt;F)
-1    199 3.1245e+10                           
-2    197 3.1148e+10  2  96817204 0.3062 0.7366</code></pre>
+Model 1: total_molecules_gene ~ concentration + as.factor(replicate)
+Model 2: total_molecules_gene ~ concentration
+  #Df  LogLik Df  Chisq Pr(&gt;Chisq)
+1   5 -2180.5                     
+2   3 -2180.8 -2 0.6238     0.7321</code></pre>
+<pre class="r"><code># quick line plot
+ggplot(anno_single_6[anno_single_6$individual == &quot;NA19101&quot;, ],
+       aes(x = concentration, 
+           y = total_molecules_gene / 10^3, color = replicate)) +
+   geom_point(alpha = 0.8) +
+   geom_smooth(method = &quot;lm&quot;, se = FALSE) +
+   labs(x = &quot;Concentration&quot;, 
+        y = &quot;Total gene molecule-counts (10^3)&quot;)</code></pre>
+<p><img src="figure/total-molecule.Rmd/molecules-num-cells-batch-2.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>## Is there a difference across replicates of 19239
 fit0 &lt;- lm(total_molecules_gene ~ concentration, 
-   data = anno_single_7, subset = individual == &quot;NA19239&quot;)
+   data = anno_single_6, subset = individual == &quot;NA19239&quot;)
 fit1 &lt;- lm(total_molecules_gene ~ concentration + as.factor(replicate), 
-   data = anno_single_7, subset = individual == &quot;NA19239&quot;)
-anova(fit0, fit1)</code></pre>
-<pre><code>Analysis of Variance Table
+   data = anno_single_6, subset = individual == &quot;NA19239&quot;)
+ggplot(anno_single_6[anno_single_6$individual == &quot;NA19239&quot;, ],
+       aes(x = concentration, 
+           y = total_molecules_gene / 10^3, color = replicate)) +
+   geom_point(alpha = 0.8) +
+   geom_smooth(method = &quot;lm&quot;, se = FALSE) +
+   labs(x = &quot;Concentration&quot;, 
+        y = &quot;Total gene molecule-counts (10^3)&quot;)</code></pre>
+<p><img src="figure/total-molecule.Rmd/molecules-num-cells-batch-3.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
+<pre class="r"><code># use likelihood ratio test to detect individual differences
+lrtest(fit1, fit0)</code></pre>
+<pre><code>Likelihood ratio test
 
-Model 1: total_molecules_gene ~ concentration
-Model 2: total_molecules_gene ~ concentration + as.factor(replicate)
-  Res.Df       RSS Df  Sum of Sq      F    Pr(&gt;F)    
-1    219 2.552e+10                                   
-2    217 2.262e+10  2 2900340454 13.912 2.066e-06 ***
+Model 1: total_molecules_gene ~ concentration + as.factor(replicate)
+Model 2: total_molecules_gene ~ concentration
+  #Df  LogLik Df  Chisq Pr(&gt;Chisq)    
+1   5 -2351.6                         
+2   3 -2365.0 -2 26.662  1.623e-06 ***
 ---
 Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
-<pre class="r"><code>summary(fit1)</code></pre>
-<pre><code>
-Call:
-lm(formula = total_molecules_gene ~ concentration + as.factor(replicate), 
-    data = anno_single_7, subset = individual == &quot;NA19239&quot;)
-
-Residuals:
-     Min       1Q   Median       3Q      Max 
--22927.2  -7461.0   -756.5   5310.1  28275.3 
-
-Coefficients:
-                       Estimate Std. Error t value Pr(&gt;|t|)    
-(Intercept)               32536       3733   8.716 7.53e-16 ***
-concentration             19259       1962   9.817  &lt; 2e-16 ***
-as.factor(replicate)r2    -6440       1726  -3.731 0.000243 ***
-as.factor(replicate)r3     2237       1659   1.348 0.179028    
----
-Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
-
-Residual standard error: 10210 on 217 degrees of freedom
-Multiple R-squared:  0.3576,    Adjusted R-squared:  0.3487 
-F-statistic: 40.27 on 3 and 217 DF,  p-value: &lt; 2.2e-16</code></pre>
 <p>Calculate correlation of concentration and molecule counts</p>
 <pre class="r"><code>## for each individual
-for (i in 1:length(unique(anno_single_7$individual))) {
-    print(unique(anno_single_7$individual)[i])
-    select_individual &lt;- with(anno_single_7, individual == unique(individual)[i])
-    print(cor(anno_single_7[select_individual,7],anno_single_7[select_individual,9]))
+for (i in 1:length(unique(anno_single_6$individual))) {
+    print(unique(anno_single_6$individual)[i])
+    select_individual &lt;- with(anno_single_6, individual == unique(individual)[i])
+    print(cor(anno_single_6[select_individual,7],anno_single_6[select_individual,9]))
 }</code></pre>
-<pre><code>[1] &quot;NA19098&quot;
-[1] 0.8160622
-[1] &quot;NA19101&quot;
+<pre><code>[1] &quot;NA19101&quot;
 [1] 0.2767428
 [1] &quot;NA19239&quot;
 [1] 0.524656</code></pre>
 <pre class="r"><code>## for each batch
-for (i in 1:length(unique(anno_single_7$batch))) {
-    print(unique(anno_single_7$batch)[i])
-    select_replicate &lt;- with(anno_single_7, batch == unique(batch)[i])
-    print(cor(anno_single_7[select_replicate,7],anno_single_7[select_replicate,9]))
+for (i in 1:length(unique(anno_single_6$batch))) {
+    print(unique(anno_single_6$batch)[i])
+    select_replicate &lt;- with(anno_single_6, batch == unique(batch)[i])
+    print(cor(anno_single_6[select_replicate,7],
+              anno_single_6[select_replicate,9]))
 }</code></pre>
-<pre><code>[1] &quot;NA19098.r3&quot;
-[1] 0.8160622
-[1] &quot;NA19101.r1&quot;
+<pre><code>[1] &quot;NA19101.r1&quot;
 [1] 0.3607414
 [1] &quot;NA19101.r2&quot;
 [1] 0.5084765
@@ -412,103 +388,51 @@ Model 2: total_molecules_ercc ~ 1 + as.factor(individual)
 2    561 17394891  2  17219274 277.67 &lt; 2.2e-16 ***
 ---
 Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
-<pre class="r"><code>fit0 &lt;- lm(total_molecules_ercc ~ perc_ercc_molecules, 
+<pre class="r"><code>## Is there a difference across replicates for all individuals
+table(anno_single$batch, anno_single$individual)</code></pre>
+<pre><code>            
+             NA19098 NA19101 NA19239
+  NA19098.r1      85       0       0
+  NA19098.r3      57       0       0
+  NA19101.r1       0      80       0
+  NA19101.r2       0      70       0
+  NA19101.r3       0      51       0
+  NA19239.r1       0       0      74
+  NA19239.r2       0       0      68
+  NA19239.r3       0       0      79</code></pre>
+<pre class="r"><code>fit2 &lt;- lm(total_molecules_gene ~ concentration + as.factor(individual) + batch, 
    data = anno_single)
-fit1 &lt;- lm(total_molecules_ercc ~ perc_ercc_molecules + as.factor(individual), 
-   data = anno_single)
-anova(fit0, fit1)</code></pre>
-<pre><code>Analysis of Variance Table
 
-Model 1: total_molecules_ercc ~ perc_ercc_molecules
-Model 2: total_molecules_ercc ~ perc_ercc_molecules + as.factor(individual)
-  Res.Df      RSS Df Sum of Sq      F    Pr(&gt;F)    
-1    562 28653110                                  
-2    560 15176354  2  13476756 248.64 &lt; 2.2e-16 ***
----
-Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
-<pre class="r"><code>## Is there a difference across replicates of 19098
-fit0 &lt;- lm(total_molecules_ercc ~ total_molecules_gene, 
-   data = anno_single, subset = individual == &quot;NA19098&quot;)
-fit1 &lt;- lm(total_molecules_ercc ~ total_molecules_gene + as.factor(replicate), 
-   data = anno_single, subset = individual == &quot;NA19098&quot;)
-anova(fit0, fit1)</code></pre>
-<pre><code>Analysis of Variance Table
+summary(fit2)$coef</code></pre>
+<pre><code>                               Estimate Std. Error    t value
+(Intercept)                   59887.763   2024.402 29.5829414
+concentration                  8493.346   1026.977  8.2702406
+as.factor(individual)NA19101 -17606.151   2221.855 -7.9240756
+as.factor(individual)NA19239  -4818.372   1983.119 -2.4296936
+batchNA19098.r3                6981.848   2159.017  3.2338089
+batchNA19101.r1                1385.609   2234.378  0.6201319
+batchNA19101.r2                1776.442   2290.976  0.7754085
+batchNA19239.r1               -3112.020   2007.401 -1.5502736
+batchNA19239.r2               -8494.326   2050.918 -4.1417193
+                                  Pr(&gt;|t|)
+(Intercept)                  3.619347e-116
+concentration                 9.941901e-16
+as.factor(individual)NA19101  1.265325e-14
+as.factor(individual)NA19239  1.542774e-02
+batchNA19098.r3               1.294113e-03
+batchNA19101.r1               5.354255e-01
+batchNA19101.r2               4.384286e-01
+batchNA19239.r1               1.216459e-01
+batchNA19239.r2               3.984182e-05</code></pre>
+<pre class="r"><code>lrtest(fit1,fit2)</code></pre>
+<pre><code>Likelihood ratio test
 
-Model 1: total_molecules_ercc ~ total_molecules_gene
-Model 2: total_molecules_ercc ~ total_molecules_gene + as.factor(replicate)
-  Res.Df     RSS Df Sum of Sq      F    Pr(&gt;F)    
-1    140 2367755                                  
-2    139 1498871  1    868884 80.577 1.743e-15 ***
----
-Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
-<pre class="r"><code>fit0 &lt;- lm(total_molecules_ercc ~ perc_ercc_molecules, 
-   data = anno_single, subset = individual == &quot;NA19098&quot;)
-fit1 &lt;- lm(total_molecules_ercc ~ perc_ercc_molecules + as.factor(replicate), 
-   data = anno_single, subset = individual == &quot;NA19098&quot;)
-anova(fit0, fit1)</code></pre>
-<pre><code>Analysis of Variance Table
-
-Model 1: total_molecules_ercc ~ perc_ercc_molecules
-Model 2: total_molecules_ercc ~ perc_ercc_molecules + as.factor(replicate)
-  Res.Df     RSS Df Sum of Sq      F    Pr(&gt;F)    
-1    140 4560015                                  
-2    139 2523326  1   2036689 112.19 &lt; 2.2e-16 ***
----
-Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
-<pre class="r"><code>## Is there a difference across replicates of 19101
-fit0 &lt;- lm(total_molecules_ercc ~ total_molecules_gene, 
-   data = anno_single, subset = individual == &quot;NA19101&quot;)
-fit1 &lt;- lm(total_molecules_ercc ~ total_molecules_gene + as.factor(replicate), 
-   data = anno_single, subset = individual == &quot;NA19101&quot;)
-anova(fit0, fit1)</code></pre>
-<pre><code>Analysis of Variance Table
-
-Model 1: total_molecules_ercc ~ total_molecules_gene
-Model 2: total_molecules_ercc ~ total_molecules_gene + as.factor(replicate)
-  Res.Df      RSS Df Sum of Sq      F    Pr(&gt;F)    
-1    199 10356705                                  
-2    197  2541394  2   7815311 302.91 &lt; 2.2e-16 ***
----
-Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
-<pre class="r"><code>fit0 &lt;- lm(total_molecules_ercc ~ perc_ercc_molecules, 
-   data = anno_single, subset = individual == &quot;NA19101&quot;)
-fit1 &lt;- lm(total_molecules_ercc ~ perc_ercc_molecules + as.factor(replicate), 
-   data = anno_single, subset = individual == &quot;NA19101&quot;)
-anova(fit0, fit1)</code></pre>
-<pre><code>Analysis of Variance Table
-
-Model 1: total_molecules_ercc ~ perc_ercc_molecules
-Model 2: total_molecules_ercc ~ perc_ercc_molecules + as.factor(replicate)
-  Res.Df     RSS Df Sum of Sq      F    Pr(&gt;F)    
-1    199 6833679                                  
-2    197 3039216  2   3794462 122.98 &lt; 2.2e-16 ***
----
-Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
-<pre class="r"><code>## Is there a difference across replicates of 19239
-fit0 &lt;- lm(total_molecules_ercc ~ total_molecules_gene, 
-   data = anno_single, subset = individual == &quot;NA19239&quot;)
-fit1 &lt;- lm(total_molecules_ercc ~ total_molecules_gene + as.factor(replicate), 
-   data = anno_single, subset = individual == &quot;NA19239&quot;)
-anova(fit0, fit1)</code></pre>
-<pre><code>Analysis of Variance Table
-
-Model 1: total_molecules_ercc ~ total_molecules_gene
-Model 2: total_molecules_ercc ~ total_molecules_gene + as.factor(replicate)
-  Res.Df     RSS Df Sum of Sq      F Pr(&gt;F)
-1    219 1701164                           
-2    217 1690969  2     10194 0.6541 0.5209</code></pre>
-<pre class="r"><code>fit0 &lt;- lm(total_molecules_ercc ~ perc_ercc_molecules, 
-   data = anno_single, subset = individual == &quot;NA19239&quot;)
-fit1 &lt;- lm(total_molecules_ercc ~ perc_ercc_molecules + as.factor(replicate), 
-   data = anno_single, subset = individual == &quot;NA19239&quot;)
-anova(fit0, fit1)</code></pre>
-<pre><code>Analysis of Variance Table
-
-Model 1: total_molecules_ercc ~ perc_ercc_molecules
-Model 2: total_molecules_ercc ~ perc_ercc_molecules + as.factor(replicate)
-  Res.Df     RSS Df Sum of Sq      F  Pr(&gt;F)  
-1    219 2099625                              
-2    217 2026492  2     73133 3.9156 0.02135 *
+Model 1: total_molecules_ercc ~ 1 + as.factor(individual)
+Model 2: total_molecules_gene ~ concentration + as.factor(individual) + 
+    batch
+  #Df  LogLik Df  Chisq Pr(&gt;Chisq)    
+1   4 -3715.2                         
+2  10 -6111.6  6 4792.8  &lt; 2.2e-16 ***
 ---
 Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
 </div>
@@ -539,18 +463,18 @@ attached base packages:
 [1] stats     graphics  grDevices utils     datasets  methods   base     
 
 other attached packages:
-[1] cowplot_0.3.1 ggplot2_1.0.1 edgeR_3.10.2  limma_3.24.9  tidyr_0.2.0  
-[6] dplyr_0.4.2   knitr_1.10.5 
+[1] cowplot_0.3.1 ggplot2_1.0.1 lmtest_0.9-34 zoo_1.7-12    edgeR_3.10.2 
+[6] limma_3.24.9  tidyr_0.2.0   dplyr_0.4.2   knitr_1.10.5 
 
 loaded via a namespace (and not attached):
  [1] Rcpp_0.12.0      magrittr_1.5     MASS_7.3-40      munsell_0.4.2   
- [5] colorspace_1.2-6 R6_2.1.1         stringr_1.0.0    httr_0.6.1      
- [9] plyr_1.8.3       tools_3.2.0      parallel_3.2.0   grid_3.2.0      
-[13] gtable_0.1.2     DBI_0.3.1        htmltools_0.2.6  lazyeval_0.1.10 
-[17] yaml_2.1.13      assertthat_0.1   digest_0.6.8     reshape2_1.4.1  
-[21] formatR_1.2      bitops_1.0-6     RCurl_1.95-4.6   evaluate_0.7    
-[25] rmarkdown_0.6.1  labeling_0.3     stringi_0.4-1    scales_0.2.4    
-[29] proto_0.3-10    </code></pre>
+ [5] colorspace_1.2-6 lattice_0.20-31  R6_2.1.1         plyr_1.8.3      
+ [9] stringr_1.0.0    httr_0.6.1       tools_3.2.0      parallel_3.2.0  
+[13] grid_3.2.0       gtable_0.1.2     DBI_0.3.1        htmltools_0.2.6 
+[17] lazyeval_0.1.10  yaml_2.1.13      assertthat_0.1   digest_0.6.8    
+[21] reshape2_1.4.1   formatR_1.2      bitops_1.0-6     RCurl_1.95-4.6  
+[25] evaluate_0.7     rmarkdown_0.6.1  labeling_0.3     stringi_0.4-1   
+[29] scales_0.2.4     proto_0.3-10    </code></pre>
 </div>
 
 
