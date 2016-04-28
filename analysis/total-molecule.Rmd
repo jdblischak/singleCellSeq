@@ -23,6 +23,7 @@ library("tidyr")
 library("edgeR")
 library("ggplot2")
 library("cowplot")
+library("lmtest")
 theme_set(theme_bw(base_size = 12))
 theme_update(panel.grid.minor.x = element_blank(),
              panel.grid.minor.y = element_blank(),
@@ -80,11 +81,13 @@ anno_single$total_molecules = colSums(molecules)
 anno_single$num_genes = apply(molecules[!ercc_index, ], 2, function(x) sum(x > 0))
 ```
 
-## The total molecule-counts
+
+## The total molecule-counts (not including NA19098)
+
 For wells with a single cell observed, the total molecule-counts range from
-`r format(min(anno_single$total_molecules_gene[anno_single$cell_number == 1]))`
+`r format(min(anno_single$total_molecules_gene[anno_single$cell_number == 1 & anno_single$individual != "NA19098"]))`
 to
-`r format(max(anno_single$total_molecules_gene[anno_single$cell_number == 1]))`,
+`r format(max(anno_single$total_molecules_gene[anno_single$cell_number == 1 & anno_single$individual != "NA19098"]))`,
 the first quartile for the total number of gene molecules is
 `r format(quantile(anno_single$total_molecules_gene[anno_single$cell_number == 1], probs = 0.25), scientific = FALSE)`,
 and the third quartile is
@@ -116,25 +119,27 @@ plot_grid(plot_total_molecules_gene + theme(legend.position = "none"),
 ## The relationship between concentration and total molecule-counts
 
 As we try to understand the general relationships between sequencing results and cellular mRNA content, we remove outlier batches.
-The quantification of the concentration of the single cells in replicate 1 of NA19098 failed.
-There are only 7 batches.
+NA19098 replicate 1 failed the quantification of the concentration of the single cells and was hence removed. Because NA19098 concentration is only quantified in one replicate, we removed NA19098 from analysis involving batch differences and concentration.
 
 ```{r filter-outliers}
-anno_single_7 <- anno_single %>% filter(batch != "NA19098.r1")
+anno_single_6 <- anno_single %>% filter(individual != "NA19098")
 ```
 
 ```{r molecules-num-cells-batch, fig.width=12, fig.height=8}
 ## look at endogenous genes
-plot_conc_molecules_gene_individual <- ggplot(anno_single_7,
-                                         aes(x = concentration, y = total_molecules_gene / 10^3, color = individual)) +
-                                         geom_point(alpha = 0.8) +
-                                         geom_smooth(method = "lm", se = FALSE) +
-                                         labs(x = "Concentration", y = "Total gene molecule-counts (10^3)")
+plot_conc_molecules_gene_individual <- 
+  ggplot(anno_single_6,
+         aes(x = concentration, 
+             y = total_molecules_gene / 10^3, color = individual)) +
+     geom_point(alpha = 0.8) +
+     geom_smooth(method = "lm", se = FALSE) +
+     labs(x = "Concentration", y = "Total gene molecule-counts (10^3)")
 
 ## look at ERCC spike-ins
-plot_conc_molecules_ercc_individual <-  plot_conc_molecules_gene_individual %+%
-                                   aes(y = total_molecules_ercc / 10^3) +
-                                   labs(y = "Total ERCC molecule-counts (10^3)")
+plot_conc_molecules_ercc_individual <-
+  plot_conc_molecules_gene_individual %+%
+     aes(y = total_molecules_ercc / 10^3) +
+     labs(y = "Total ERCC molecule-counts (10^3)")
 
 ## plots
 plot_grid(plot_conc_molecules_gene_individual + theme(legend.position = "none"), 
@@ -142,49 +147,71 @@ plot_grid(plot_conc_molecules_gene_individual + theme(legend.position = "none"),
           labels = LETTERS[1:2])
 
 ## Is there a difference across the three individuals
-table(anno_single_7$individual, anno_single_7$replicate)
+table(anno_single_6$individual, anno_single_6$replicate)
 fit0 <- lm(total_molecules_gene ~ concentration, 
-   data = anno_single_7)
+   data = anno_single_6)
 fit1 <- lm(total_molecules_gene ~ concentration + as.factor(individual), 
-   data = anno_single_7)
-anova(fit0, fit1)
-summary(fit1)
+   data = anno_single_6)
+# use likelihood ratio test to detect individual differences
+lrtest(fit1, fit0)
+
 
 ## Is there a difference across replicates of 19101
 fit0 <- lm(total_molecules_gene ~ concentration, 
-   data = anno_single_7, subset = individual == "NA19101")
+   data = anno_single_6, subset = individual == "NA19101")
 fit1 <- lm(total_molecules_gene ~ concentration + as.factor(replicate), 
-   data = anno_single_7, subset = individual == "NA19101")
-anova(fit0, fit1)
+   data = anno_single_6, subset = individual == "NA19101")
+# use likelihood ratio test to detect individual differences
+lrtest(fit1, fit0)
+# quick line plot
+ggplot(anno_single_6[anno_single_6$individual == "NA19101", ],
+       aes(x = concentration, 
+           y = total_molecules_gene / 10^3, color = replicate)) +
+   geom_point(alpha = 0.8) +
+   geom_smooth(method = "lm", se = FALSE) +
+   labs(x = "Concentration", 
+        y = "Total gene molecule-counts (10^3)")
+
 
 ## Is there a difference across replicates of 19239
 fit0 <- lm(total_molecules_gene ~ concentration, 
-   data = anno_single_7, subset = individual == "NA19239")
+   data = anno_single_6, subset = individual == "NA19239")
 fit1 <- lm(total_molecules_gene ~ concentration + as.factor(replicate), 
-   data = anno_single_7, subset = individual == "NA19239")
-anova(fit0, fit1)
-summary(fit1)
+   data = anno_single_6, subset = individual == "NA19239")
+ggplot(anno_single_6[anno_single_6$individual == "NA19239", ],
+       aes(x = concentration, 
+           y = total_molecules_gene / 10^3, color = replicate)) +
+   geom_point(alpha = 0.8) +
+   geom_smooth(method = "lm", se = FALSE) +
+   labs(x = "Concentration", 
+        y = "Total gene molecule-counts (10^3)")
+# use likelihood ratio test to detect individual differences
+lrtest(fit1, fit0)
 ```
+
 
 Calculate correlation of concentration and molecule counts
 
 ```{r cor}
 ## for each individual
-for (i in 1:length(unique(anno_single_7$individual))) {
-    print(unique(anno_single_7$individual)[i])
-    select_individual <- with(anno_single_7, individual == unique(individual)[i])
-    print(cor(anno_single_7[select_individual,7],anno_single_7[select_individual,9]))
+for (i in 1:length(unique(anno_single_6$individual))) {
+    print(unique(anno_single_6$individual)[i])
+    select_individual <- with(anno_single_6, individual == unique(individual)[i])
+    print(cor(anno_single_6[select_individual,7],anno_single_6[select_individual,9]))
 }
 
 ## for each batch
-for (i in 1:length(unique(anno_single_7$batch))) {
-    print(unique(anno_single_7$batch)[i])
-    select_replicate <- with(anno_single_7, batch == unique(batch)[i])
-    print(cor(anno_single_7[select_replicate,7],anno_single_7[select_replicate,9]))
+for (i in 1:length(unique(anno_single_6$batch))) {
+    print(unique(anno_single_6$batch)[i])
+    select_replicate <- with(anno_single_6, batch == unique(batch)[i])
+    print(cor(anno_single_6[select_replicate,7],
+              anno_single_6[select_replicate,9]))
 }
 ```
 
+
 ## ERCC counts and total molecule counts
+
 ```{r ercc-total-counts}
 ## calulate ERCC percentage
 anno_single <- anno_single %>%
