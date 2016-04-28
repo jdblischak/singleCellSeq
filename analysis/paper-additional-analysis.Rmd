@@ -1,0 +1,348 @@
+---
+title: "Additional analysis for the manuscript"
+date: 2016-04-27
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+opts_chunk$set(fig.width = 8, fig.height = 8)
+```
+
+
+```{r packages, message=FALSE}
+library("ggplot2")
+library("cowplot")
+library("lmtest")
+source("functions.R")
+```
+
+
+## Input
+
+Input filtered annotation.
+
+```{r input-annotation-filter}
+anno_filter <- read.table("../data/annotation-filter.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno_filter)
+```
+
+Input filtered molecule counts.
+
+```{r input-molecule-counts-filter}
+molecules_filter <- read.table("../data/molecules-filter.txt", header = TRUE,
+                               stringsAsFactors = FALSE)
+molecules_filter_ENSG <- molecules_filter[grep("ERCC", rownames(molecules_filter), invert = TRUE), ]
+  
+stopifnot(ncol(molecules_filter) == nrow(anno_filter),
+          colnames(molecules_filter) == anno_filter$sample_id)
+```
+
+Input quality control file. Filter cells to match cells in molecules_filter.
+
+```{r}
+qc <- read.table("../data/qc-ipsc.txt", header = TRUE,
+                 stringsAsFactors = FALSE)
+qc$sample_id <- with(qc, paste0(individual, ".", replicate, ".", well))
+
+qc_filter <- qc[match(anno_filter$sample_id, qc$sample_id), ]
+
+stopifnot(all.equal(qc_filter$sample_id, anno_filter$sample_id))
+```
+
+Input standardized molecule counts.
+
+```{r input-molecule-counts-cpm}
+molecules_cpm <- read.table("../data/molecules-cpm.txt", header = TRUE,
+                            stringsAsFactors = FALSE)
+stopifnot(ncol(molecules_cpm) == nrow(anno_filter),
+          colnames(molecules_cpm) == anno_filter$sample_id)
+```
+
+Input Poisson GLM transformed molecule counts per million.
+
+```{r input-molecule-counts-trans}
+molecules_cpm_trans <- read.table("../data/molecules-cpm-trans.txt", header = TRUE,
+                               stringsAsFactors = FALSE)
+stopifnot(ncol(molecules_cpm_trans) == nrow(anno_filter),
+          colnames(molecules_cpm_trans) == anno_filter$sample_id)
+```
+
+Input final batch-corrected molecule counts per million.
+
+```{r input-molecule-counts-final}
+molecules_final <- read.table("../data/molecules-final.txt", header = TRUE,
+                              stringsAsFactors = FALSE)
+stopifnot(ncol(molecules_final) == nrow(anno_filter),
+          colnames(molecules_final) == anno_filter$sample_id)
+```
+
+
+## PCA
+
+```{r pca}
+pca_molecules_filter <- run_pca(molecules_filter_ENSG)
+pca_molecules_cpm <- run_pca(molecules_cpm)
+pca_molecules_cpm_trans <- run_pca(molecules_cpm_trans)
+pca_final <- run_pca(molecules_final)
+```
+
+
+
+## Estimate sources of variation
+
+We consider the overall transcriptional profile of each cell and estimate percent of variation in expression profiles that comes from individuals and also that comes from replicates. 
+
+Multivariate analysis of variance is used on the first five principal components. 
+
+*filtered data
+
+```{r}
+par(mfrow = c(2,3))
+for (i in 1:5) { hist(pca_molecules_filter$PCs[,i]) }
+
+fit <- manova((pca_molecules_filter$PCs[,1:2]) ~ as.factor(anno_filter$individual) +
+            as.factor(anno_filter$replicate) )
+summary(fit, test = "Wilks")
+
+fit2 <- lm((pca_molecules_filter$PCs[,1]) ~ as.factor(anno_filter$individual) +
+            as.factor(anno_filter$replicate))
+fit2_1 <- lm((pca_molecules_filter$PCs[,1]) ~ as.factor(anno_filter$individual))
+fit2_2 <- lm((pca_molecules_filter$PCs[,1]) ~ as.factor(anno_filter$replicate))
+anova(fit2, fit2_1)
+anova(fit2, fit2_2)
+```
+
+*CPM
+
+```{r}
+fit <- manova((pca_molecules_cpm$PCs[,1:2]) ~ as.factor(anno_filter$individual) +
+            as.factor(anno_filter$replicate)  )
+summary(fit, test = "Wilks")
+
+fit2 <- lm((pca_molecules_cpm$PCs[,1]) ~ as.factor(anno_filter$individual) +
+            as.factor(anno_filter$replicate))
+fit2_1 <- lm((pca_molecules_cpm$PCs[,1]) ~ as.factor(anno_filter$individual))
+fit2_2 <- lm((pca_molecules_cpm$PCs[,1]) ~ as.factor(anno_filter$replicate))
+anova(fit2, fit2_1)
+anova(fit2, fit2_2)
+```
+
+
+*CPM, poisson transformed
+
+```{r}
+fit <- manova((pca_molecules_cpm_trans$PCs[,1:2]) ~ 
+                  as.factor(anno_filter$individual) +
+                  as.factor(anno_filter$replicate)  )
+summary(fit, test = "Wilks")
+
+fit2 <- lm((pca_molecules_cpm_trans$PCs[,1]) ~ as.factor(anno_filter$individual) +
+            as.factor(anno_filter$replicate))
+fit2_1 <- lm((pca_molecules_cpm_trans$PCs[,1]) ~ as.factor(anno_filter$individual))
+fit2_2 <- lm((pca_molecules_cpm_trans$PCs[,1]) ~ as.factor(anno_filter$replicate))
+anova(fit2, fit2_1)
+anova(fit2, fit2_2)
+```
+
+*CPM, batch corrected
+
+```{r}
+fit <- manova((pca_final$PCs[,1:2]) ~ as.factor(anno_filter$individual) +
+            as.factor(anno_filter$replicate)  )
+summary(fit, test = "Wilks")
+
+fit2 <- lm((pca_final$PCs[,1]) ~ as.factor(anno_filter$individual) +
+            as.factor(anno_filter$replicate))
+fit2_1 <- lm((pca_final$PCs[,1]) ~ as.factor(anno_filter$individual))
+fit2_2 <- lm((pca_final$PCs[,1]) ~ as.factor(anno_filter$replicate))
+anova(fit2, fit2_1)
+anova(fit2, fit2_2)
+```
+
+
+## Compute cell-cell correlations
+
+Code for computing correlation between cells within batches and between batches.
+
+```{r compute-corr-batch, eval = FALSE}
+compute_corr_batch <- function(molecules_input, annotation) {
+  
+  cor_mat <- cor(molecules_input, method = "spearman")
+  batch <- unique(annotation$batch)
+  individual <- unique(annotation$individual)
+  
+  # same individual, within batch
+  corr_same_ind_within_batch <- 
+    lapply(1:length(individual), function(i) {
+        batch <- 
+          unique(annotation$batch[annotation$individual == individual[i]])
+        
+        corr_batch <- lapply(1:length(batch), function(i) {
+          df <- cor_mat[annotation$batch == batch[i], 
+                        annotation$batch == batch[i]]
+          df[upper.tri(df, diag = FALSE)]
+        })
+        unlist(corr_batch)
+  })
+    
+  # same individual, between replicates
+  corr_same_ind_between_batch <- 
+    lapply(1:length(individual), function(i) {
+        batch <- 
+          unique(annotation$batch[annotation$individual == individual[i]])
+        submat <- lapply(1:(length(batch)-1), function(i) {
+          submat0 <- lapply(2:length(batch), function(j) {
+            df <- cor_mat[annotation$batch == batch[i], 
+                          annotation$batch == batch[j]]
+            df[upper.tri(df, diag = FALSE)]
+        }) 
+        unlist(submat0)
+        })
+        unlist(submat)
+  })
+  
+  # different individual
+  corr_diff_ind_between_batch <- 
+    lapply(1:(length(individual)-1), function(i) {
+        if (i == 1) {
+        batch <- 
+          unique(annotation$batch[annotation$individual == individual[i]])
+        batch_other <- 
+          unique(annotation$batch[annotation$individual != individual[i+1]])
+        }
+        if (i == 2) {
+        batch <- 
+          unique(annotation$batch[annotation$individual == individual[i]])
+        batch_other <- 
+          unique(annotation$batch[annotation$individual == individual[i+1]])
+        }
+      
+        submat <- lapply(1:length(batch), function(i) {
+          submat0 <- lapply(1:length(batch_other), function(j) {
+            df <- cor_mat[annotation$batch == batch[i], 
+                          annotation$batch == batch_other[j]]
+            df[upper.tri(df, diag = FALSE)]
+          }) 
+          unlist(submat0)
+        })
+        unlist(submat)
+  })
+
+  return( data.frame(
+      corrs = c(unlist(corr_same_ind_within_batch), 
+                unlist(corr_same_ind_between_batch),
+                unlist(corr_diff_ind_between_batch)),
+         labels = c(rep("same_ind_within", length(corr_same_ind_within_batch)),
+                    rep("between", length(corr_same_ind_between_batch)),
+                    rep("diff_ind", length(corr_diff_ind_between_batch)) ) )
+      ) }
+```
+
+
+Compute spearman correlations for data after each transformation step. 
+
+```{r, eval = FALSE}
+corr_filter <- compute_corr_batch(molecules_filter_ENSG, anno_filter)
+corr_cpm <- compute_corr_batch(molecules_cpm, anno_filter)
+corr_cpm_trans <- compute_corr_batch(molecules_cpm_trans, anno_filter)
+corr_final <- compute_corr_batch(molecules_final, anno_filter)
+
+par(mfrow = c(2,2))
+with(corr_filter, 
+     boxplot(corrs ~ labels, 
+             names.arg = c("within-batch", "between-batch"),
+             main = "Counts") )
+with(corr_cpm, 
+     boxplot(corrs ~ labels, names.arg = c("within-batch", "between-batch"),
+             main = "Counts per million") )
+with(corr_cpm_trans, 
+     boxplot(corrs ~ labels, names.arg = c("within-batch", "between-batch"),
+             main = "Poisson transformation") )
+with(corr_final, 
+     boxplot(corrs ~ labels, names.arg = c("within-batch", "between-batch"),
+             main = "Batch corrected") )
+```
+
+
+
+
+
+## total molecules variance differences
+
+Consider total molecule-count differences between individuals and batches in ERCC genes. We transformed the total molecule-count of each cell to log scale and fit simple linear regression to test individual effect. R-squared was computed to quantify the percent of variation due to individual and replicate factor. 
+
+```{r}
+molecules <- read.table("../data/molecules-filter.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+stopifnot(colnames(molecules) == anno_filter$sample_id)
+
+ercc_index <- grepl("ERCC", rownames(molecules))
+anno_filter$total_molecules_gene = colSums(molecules[!ercc_index, ])
+anno_filter$total_molecules_ercc = colSums(molecules[ercc_index, ])
+anno_filter$total_molecules = colSums(molecules)
+anno_filter$num_genes = apply(molecules[!ercc_index, ], 2, function(x) sum(x > 0))
+```
+
+
+```{r}
+hist(log2(anno_filter$total_molecules_ercc))
+
+# differences in total molecule-counts of ercc genes
+fit0 <- lm(log2(total_molecules_ercc) ~ 1,
+             data = anno_filter)
+fit1 <- lm(log2(total_molecules_ercc) ~ as.factor(individual),
+             data = anno_filter)
+lrtest(fit1, fit0)
+tapply(anno_filter$total_molecules_ercc,
+       anno_filter$individual,
+       FUN = mean)
+
+# # differences in total molecule-counts of ENSG genes
+# fit0 <- lm(log2(total_molecules_gene) ~ 1,
+#              data = anno_filter)
+# fit1 <- lm(log2(total_molecules_gene) ~ as.factor(individual),
+#              data = anno_filter)
+# lrtest(fit1, fit0)
+# tapply(anno_filter$total_molecules_gene,
+#        anno_filter$individual,
+#        FUN = mean)
+
+# # compute percent of variance explained 
+# fit1_2 <- lm(log2(total_molecules_ercc) ~ as.factor(individual) +
+#                as.factor(replicate),
+#              data = anno_filter)
+# fit1_3 <- lm(log2(total_molecules_ercc) ~ as.factor(replicate),
+#              data = anno_filter)
+# anova(fit1_2, fit1)
+# anova(fit1_2, fit1_3)
+
+# within each individual
+fit1 <- lm(log2(total_molecules_ercc) ~ as.factor(replicate),
+             data = anno_filter[anno_filter$individual == "NA19098",])
+lrtest(fit1)
+
+fit2 <- lm(log2(total_molecules_ercc) ~ as.factor(replicate),
+             data = anno_filter[anno_filter$individual == "NA19101",])
+lrtest(fit2)
+
+fit3 <- lm(log2(total_molecules_ercc) ~ as.factor(replicate),
+             data = anno_filter[anno_filter$individual == "NA19239",])
+lrtest(fit3)
+
+tapply(anno_filter$total_molecules_gene,
+       anno_filter$batch,
+       FUN = mean)
+```
+
+## Session information
+
+```{r info}
+sessionInfo()
+```
+
+
