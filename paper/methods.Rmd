@@ -71,14 +71,6 @@ This is repeated until all nodes have been counted or removed.
 [fastqc]: http://www.bioinformatics.babraham.ac.uk/projects/fastqc
 [UMI-tools]: https://github.com/CGATOxford/UMI-tools
 
-### Calculate the input molecule quantities of ERCC spiked-ins
-
-According to the information provided by Fluidigm, each of the 96 capture chamber received 13.5 nl of lysis buffer, which contain 1:50,000 Ambion® ERCC Spike-In Mix1 (Life Tech) in our setup. 
-Therefore, our estimation of the total spiked-in molecule number was 16,831 per sample. 
-Since the relative concentration of each ERCC genes were provided by the manufacture, we were able to calculate the molecule number of each ERCC gene added to each sample. 
-We observed that the levels of ERCC spike-ins strongly correlated with the input quantities (r = 0.9914).
-The capture efficiency, defined as the fraction of total input molecules being successfully detected in each high quality cells, has the average of 6.094 % 
-
 ### Filtering cells and genes
 
 We performed multiple quality control analyses to detect and remove low quality cells.
@@ -112,6 +104,24 @@ Thus we kept
 endogenous genes and
 `r sum(grepl("ERCC", rownames(molecules_filter)))`
 ERCC spike-in genes.
+
+### Tests for the significance of individual effect and batch effect
+
+
+For the correaltion between sample concentration and total endogenous gene molecule-counts, we excluded individual 19098, because we only obtained concentration measurements from one C1 replicate. 
+We observed that the relationship between total single cell molecule-counts and concentration is significantly different across individuals (19101: r = 0.28, 19239: r = 0.53; likelihood ratio test, p < 0.001), as well as across C1 collection replicates from the same individual (19101: -0.06, .36, .51, 19239: -.04, .75, .78, F-test, p < 0.01). 
+
+### Variance component analysis for gene expression profile
+
+
+
+### Calculate the input molecule quantities of ERCC spiked-ins
+
+According to the information provided by Fluidigm, each of the 96 capture chamber received 13.5 nl of lysis buffer, which contain 1:50,000 Ambion® ERCC Spike-In Mix1 (Life Tech) in our setup. 
+Therefore, our estimation of the total spiked-in molecule number was 16,831 per sample. 
+Since the relative concentration of each ERCC genes were provided by the manufacture, we were able to calculate the molecule number of each ERCC gene added to each sample. 
+We observed that the levels of ERCC spike-ins strongly correlated with the input quantities (r = 0.9914).
+The capture efficiency, defined as the fraction of total input molecules being successfully detected in each high quality cells, has the average of 6.094 % 
 
 ### Normalization
 
@@ -148,6 +158,13 @@ $$ \widehat{y}_{g,ijk} = y_{g,ijk} - \widehat{b}_{g,ij}, $$
 
 where $\widehat{b}_{g,ij}$ are the LS estimates. The computations in this step are done with the gls.series function of the limma package [@limma].
 
+### Cell cycle phase classification
+
+Cell cycle analysis was done following the protocol from Macosko et al [@Macosko2015].
+However, instead of using G1/S, S, G2/M, M, and M/G1 as the different phases, we used G1/S, S, G2, G2/M, and M/G1 following the original classification from Whitfield et al [@Whitfield2002]. 
+To compare the results before and after applying our normalization method, we used the raw molecule counts (Sup. Figure. A, C, and E) and the corrected molecule numbers (Sup. Figure. B, D, and F) as the input data files for the classification.
+The raw molecule counts were used to calculate the total gene molecule-counts for both classifications (Sup. Figure. A and B).
+
 ### Analysis of cell-to-cell transcriptional variation: calculating the measure of noise 
 
 We computed a measure of transcriptional variability noise that is independent of RNA abundance across individuals [@Kolodziejczyk2015; @Newman2006]. First, squared coefficients of variation (CVs) for each gene were computed for each individual and also across cell lines, using molecule counts after collision correction and transformations. Then we computed the distance of individual-specific CVs to the rolling median of global CVs among genes that have similar RNA abundance levels. These transformed individual CV values are referred to our noise measure. We outline the computations as follows:
@@ -171,12 +188,6 @@ $$ \frac{1}{B} \sum_{B=1}^{12,192} \mathbb{I} \left( MAD_{g} > MAD_{g,B} \right)
 
 where $MAD_{g,B}$ is the gene $g$ MAD value in permutation $B$, and $\mathbb{I}$ equals 1 if $\left( MAD_{g} > MAD_{g,B} \right)$ and 0 otherwise.  
 
-### Cell cycle phase classification
-
-Cell cycle analysis was done following the protocol from Macosko et al [@Macosko2015].
-However, instead of using G1/S, S, G2/M, M, and M/G1 as the different phases, we used G1/S, S, G2, G2/M, and M/G1 following the original classification from Whitfield et al [@Whitfield2002]. 
-To compare the results before and after applying our normalization method, we used the raw molecule counts (Sup. Figure. A, C, and E) and the corrected molecule numbers (Sup. Figure. B, D, and F) as the input data files for the classification.
-The raw molecule counts were used to calculate the total gene molecule-counts for both classifications (Sup. Figure. A and B).
 
 ### Gene enrichment analysis
 
