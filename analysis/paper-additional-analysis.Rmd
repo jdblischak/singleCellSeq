@@ -149,15 +149,41 @@ anno_single$individual <- as.factor(anno_single$individual)
 anno_single$replicate <- as.factor(anno_single$replicate)
 ```
 
+Correlation between total molecule-count and concentration. 
 
 ```{r}
-fit <- lmer(total_molecules_gene ~ concentration + individual + 
-              (1|individual:replicate), 
+with(anno_single, 
+     cor.test(total_molecules_gene /(10^3), concentration, 
+              method = "spearman"))
+
+with(anno_single[anno_single$individual == "NA19101",], 
+     cor.test(total_molecules_gene /(10^3), concentration, 
+              method = "spearman"))
+
+with(anno_single[anno_single$individual == "NA19239",], 
+     cor.test(total_molecules_gene /(10^3), concentration, 
+              method = "spearman"))
+
+# per replicate
+sapply(unique(anno_single$batch), function(batch) {
+with(anno_single[anno_single$batch == batch,], 
+     cor(total_molecules_gene /(10^3), concentration, 
+              method = "spearman"))
+})
+```
+
+We take total molecule-count divided by 1000.
+
+```{r}
+fit <- lmer(total_molecules_gene /(10^3)~ concentration + individual + 
+                (1|individual:replicate),
+              data = anno_single)
+summary(fit)
+
+fit_1 <- lm(total_molecules_gene /(10^3) ~ concentration + individual, 
             data = anno_single)
-fit_1 <- lm(total_molecules_gene ~ concentration + individual, 
-            data = anno_single)
-fit_2 <- lmer(total_molecules_gene ~ concentration + (1|individual:replicate), 
-            data = anno_single)
+fit_2 <- lmer(total_molecules_gene /(10^3) ~ concentration +
+                (1|individual:replicate), data = anno_single)
 
 # significance of individual effect
 lrtest(fit_2, fit)
@@ -168,7 +194,7 @@ anova(fit, fit_1)
 
 
 
-## Reads to molecule conversion efficiency
+## Reads to molecule conversion efficiency in ERCC spike-ins
 
 Prepare ERCC data
 
@@ -208,34 +234,34 @@ total_counts_ENSG$replicate <- as.factor(anno_filter$replicate[match(rownames(to
 ```
 
 
-ENSG
+Concentration distribution is skewed for both ERCC and ENSG genes. Hence, we analyze the log2 concentration data (log2 base was taken so that our log transformation base is consistent throughout the paper).
 
 ```{r}
-fit <- lmer(log2(total_molecules) ~ log2(total_reads) + individual + 
-              (1|individual:replicate), 
-            data = total_counts_ENSG)
-fit_1 <- lm(log2(total_molecules) ~ log2(total_reads) + individual,
-            data = total_counts_ENSG)
-fit_2 <- lmer(log2(total_molecules) ~ log2(total_reads) + 
-              (1|individual:replicate), 
-            data = total_counts_ENSG)
-
-# significance of individual effect
-lrtest(fit_2, fit)
-
-# significance of replicate effect
-anova(fit, fit_1)
+par(mfrow = c(2,2))
+hist(total_counts_ERCC$conversion,
+     main = "ERCC spike-in",
+     xlab = "Concentration")
+hist(log2(total_counts_ERCC$conversion),
+     main = "ERCC spike-in",
+     xlab = "log2 Concentration")
+hist(total_counts_ENSG$conversion,
+     main = "Endogenous genes",
+     xlab = "Concentration")
+hist(log2(total_counts_ENSG$conversion),
+     main = "Endogenous genes",
+     xlab = "log2 Concentration")
 ```
 
-ERCC
+
+ERCC Model fitting
 
 ```{r}
-fit <- lmer(log2(total_molecules) ~ log2(total_reads) + individual + 
+fit <- lmer(log2(conversion) ~ individual + 
               (1|individual:replicate), 
             data = total_counts_ERCC)
-fit_1 <- lm(log2(total_molecules) ~ log2(total_reads) + individual,
+fit_1 <- lm(log2(conversion) ~ individual,
             data = total_counts_ERCC)
-fit_2 <- lmer(log2(total_molecules) ~ log2(total_reads) + 
+fit_2 <- lmer(log2(conversion) ~ 1 + 
               (1|individual:replicate), 
             data = total_counts_ERCC)
 
@@ -248,32 +274,17 @@ anova(fit, fit_1)
 
 
 
-## total ENSG molecule-count and total ERCC molecule-count
-
-Prepare data
+ENSG Model fitting
 
 ```{r}
-anno_temp <- anno_filter
-
-anno_temp$ensg_total_count <- 
-  colSums(molecules_filter[grep("ERCC", 
-                           rownames(molecules_filter), invert = FALSE), ])
-anno_temp$ercc_total_count <- 
-  colSums(molecules_filter[grep("ERCC", 
-                           rownames(molecules_filter), invert = TRUE), ])
-```
-
-First, we assess total ERCC molecule-count beteween individuals and replicates.
-
-```{r}
-fit <- lmer(log2(ercc_total_count) ~ individual + 
+fit <- lmer(log2(conversion) ~ individual + 
               (1|individual:replicate), 
-            data = anno_temp)
-fit_1 <- lm(log2(ercc_total_count) ~ individual,
-            data = anno_temp)
-fit_2 <- lmer(log2(ercc_total_count) ~ 1 + 
+            data = total_counts_ENSG)
+fit_1 <- lm(log2(conversion) ~ individual,
+            data = total_counts_ENSG)
+fit_2 <- lmer(log2(conversion) ~ 1 + 
               (1|individual:replicate), 
-            data = anno_temp)
+            data = total_counts_ENSG)
 
 # significance of individual effect
 lrtest(fit_2, fit)
@@ -282,48 +293,6 @@ lrtest(fit_2, fit)
 anova(fit, fit_1)
 ```
 
-
-Second, we perform the same analysis on total ENSG molecule-counts.
-
-
-```{r}
-fit <- lmer(log2(ensg_total_count) ~ individual + 
-              (1|individual:replicate), 
-            data = anno_temp)
-fit_1 <- lm(log2(ensg_total_count) ~ individual,
-            data = anno_temp)
-fit_2 <- lmer(log2(ensg_total_count) ~ 1 + 
-              (1|individual:replicate), 
-            data = anno_temp)
-
-# significance of individual effect
-lrtest(fit_2, fit)
-
-# significance of replicate effect
-anova(fit, fit_1)
-```
-
-
-Second, we include total ENSG molecule-count in the model of total ERCC molecule-count in addition to individual and replicate factors.
-
-ERCC ~ ENSG
-
-```{r}
-fit <- lmer(log2(ercc_total_count) ~ log2(ensg_total_count) + individual + 
-              (1|individual:replicate), 
-            data = anno_temp)
-fit_1 <- lm(log2(ercc_total_count) ~ log2(ensg_total_count) + individual,
-            data = anno_temp)
-fit_2 <- lmer(log2(ercc_total_count) ~ log2(ensg_total_count) + 
-              (1|individual:replicate), 
-            data = anno_temp)
-
-# significance of individual effect
-lrtest(fit_2, fit)
-
-# significance of replicate effect
-anova(fit, fit_1)
-```
 
 
 
@@ -331,6 +300,7 @@ anova(fit, fit_1)
 
 ## Percent variation per gene
 
+Model fitting
 
 ```{r, eval = FALSE}
 individual <- as.factor(anno_filter$individual)
@@ -359,12 +329,41 @@ blme_varcomp <- lapply( 1:NROW(molecules_filter_ENSG), function(i) {
 blme_varcomp <- do.call(rbind, blme_varcomp)
 rownames(blme_varcomp) <- rownames(molecules_filter_ENSG)
 colnames(blme_varcomp) <- c("individual","replicate","residual")
-save(blme_varcomp,
+
+
+molecules_filter_ERCC <- molecules_filter[
+  grep("ERCC", rownames(molecules_filter)), ]
+
+blme_ercc <- lapply( 1:NROW(molecules_filter_ERCC), function(i) {
+    
+    value <- unlist(log2(molecules_filter_ERCC[i, ]+1))
+    
+    fit_try <- tryCatch( fit <- blmer(value ~ 1|individual/replicate, 
+                                    cov.prior = wishart,
+                                    resid.prior = invgamma),
+                           condition = function(c) c)
+    if(inherits(fit_try, "condition")){
+    var_foo <- rep(NA, 3)
+    return(var_foo)
+    }
+    if(!inherits(fit_try, "condition")){
+      var_foo <- as.data.frame(VarCorr(fit_try))[,4]
+      var_foo <- var_foo[c(2,1,3)]
+      var_foo
+    }
+  })
+blme_ercc <- do.call(rbind, blme_ercc)
+rownames(blme_ercc) <- rownames(molecules_filter_ERCC)
+colnames(blme_ercc) <- c("individual","replicate","residual")
+
+save(blme_varcomp, blme_ercc,
      file = "../data/blme-variance.rda")
 ```
 
 Standardardize variance components such that for each gene the variance 
 component estimates sum up to 1. Because variance of sequencing counts depend on the dynamic range, we avoid biased comparison of variance estimates when comparing across genes, by the action of standarizing per gene variance components by the total of variance estimates.
+
+*Endogenous genes
 
 ```{r}
 load("../data/blme-variance.rda")
@@ -397,6 +396,42 @@ summary(blme_varcomp_norm)
 kruskal.test(c(blme_varcomp_norm[,1], blme_varcomp_norm[,2]) ~
                rep(c(1,2), each = NROW(blme_varcomp_norm)) )
 ```
+
+
+*ERCC spike-in genes
+
+```{r}
+load("../data/blme-variance.rda")
+blme_ercc_norm <- (blme_ercc/rowSums(blme_ercc))
+
+par(mfrow = c(2,2))
+plot(blme_ercc_norm[,1], blme_ercc_norm[,2],
+     xlab = "Individual",
+     ylab = "Replicate",
+     main = "Variance component estimate")
+plot(blme_ercc_norm[,3], blme_ercc_norm[,1],
+     xlab = "Residual",
+     ylab = "Individual",
+     main = "Variance component estimate")
+plot(blme_ercc_norm[,3], blme_ercc_norm[,2],
+     xlab = "Residual",
+     ylab = "Replicate",
+     main = "Variance component estimate")
+boxplot(blme_ercc_norm)
+```
+
+Compare individual versus replicate variance estimates.
+
+```{r}
+summary(blme_ercc_norm)
+
+# Kruskal wallis rank sum test to compare
+# proportions of variance explained due to individual
+# versus due to replicate
+kruskal.test(c(blme_ercc_norm[,1], blme_ercc_norm[,2]) ~
+               rep(c(1,2), each = NROW(blme_ercc_norm)) )
+```
+
 
 
 ## Correlation between and within batches
