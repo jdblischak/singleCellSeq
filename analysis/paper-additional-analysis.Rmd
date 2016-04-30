@@ -193,8 +193,7 @@ anova(fit, fit_1)
 ```
 
 
-
-## Reads to molecule conversion efficiency in ERCC spike-ins
+## Reads to molecule conversion efficiency 
 
 Prepare ERCC data
 
@@ -234,22 +233,22 @@ total_counts_ENSG$replicate <- as.factor(anno_filter$replicate[match(rownames(to
 ```
 
 
-Concentration distribution is skewed for both ERCC and ENSG genes. Hence, we analyze the log2 concentration data (log2 base was taken so that our log transformation base is consistent throughout the paper).
+Concentration distribution is skewed for both ERCC and ENSG genes. Hence, we analyze the log2 conversion data (log2 base was taken so that our log transformation base is consistent throughout the paper).
 
 ```{r}
 par(mfrow = c(2,2))
 hist(total_counts_ERCC$conversion,
      main = "ERCC spike-in",
-     xlab = "Concentration")
+     xlab = "Conversion")
 hist(log2(total_counts_ERCC$conversion),
      main = "ERCC spike-in",
-     xlab = "log2 Concentration")
+     xlab = "log2 Conversion")
 hist(total_counts_ENSG$conversion,
      main = "Endogenous genes",
-     xlab = "Concentration")
+     xlab = "Conversion")
 hist(log2(total_counts_ENSG$conversion),
      main = "Endogenous genes",
-     xlab = "log2 Concentration")
+     xlab = "log2 Conversion")
 ```
 
 
@@ -294,8 +293,101 @@ anova(fit, fit_1)
 ```
 
 
+## total ENSG molecule-count and total ERCC molecule-count
+
+Prepare data
+
+```{r}
+anno_temp <- anno_filter
+
+anno_temp$ensg_total_count <- 
+  colSums(molecules_filter[grep("ERCC", 
+                           rownames(molecules_filter), invert = FALSE), ])
+anno_temp$ercc_total_count <- 
+  colSums(molecules_filter[grep("ERCC", 
+                           rownames(molecules_filter), invert = TRUE), ])
+```
+
+Check if total count ERCC is normal distribution 
+
+```{r}
+par(mfrow = c(2,2))
+hist(anno_temp$ercc_total_count,
+     main = "ERCC spike-in",
+     xlab = "Total counts")
+hist(log2(anno_temp$ercc_total_count),
+     main = "ERCC spike-in",
+     xlab = "log2 Total counts")
+hist(anno_temp$ensg_total_count,
+     main = "Endogenous genes",
+     xlab = "Total counts")
+hist(log2(anno_temp$ensg_total_count),
+     main = "Endogenous genes",
+     xlab = "log2 Total counts")
+```
 
 
+First, we assess total ERCC molecule-count beteween individuals and replicates.
+
+```{r}
+fit <- lmer(log2(ercc_total_count) ~ individual + 
+              (1|individual:replicate), 
+            data = anno_temp)
+fit_1 <- lm(log2(ercc_total_count) ~ individual,
+            data = anno_temp)
+fit_2 <- lmer(log2(ercc_total_count) ~ 1 + 
+              (1|individual:replicate), 
+            data = anno_temp)
+
+# significance of individual effect
+lrtest(fit_2, fit)
+
+# significance of replicate effect
+anova(fit, fit_1)
+```
+
+
+Second, we perform the same analysis on total ENSG molecule-counts.
+
+
+```{r}
+fit <- lmer(log2(ensg_total_count) ~ individual + 
+              (1|individual:replicate), 
+            data = anno_temp)
+fit_1 <- lm(log2(ensg_total_count) ~ individual,
+            data = anno_temp)
+fit_2 <- lmer(log2(ensg_total_count) ~ 1 + 
+              (1|individual:replicate), 
+            data = anno_temp)
+
+# significance of individual effect
+lrtest(fit_2, fit)
+
+# significance of replicate effect
+anova(fit, fit_1)
+```
+
+
+Second, we include total ENSG molecule-count in the model of total ERCC molecule-count in addition to individual and replicate factors.
+
+ERCC ~ ENSG
+
+```{r}
+fit <- lmer(log2(ercc_total_count) ~ log2(ensg_total_count) + individual + 
+              (1|individual:replicate), 
+            data = anno_temp)
+fit_1 <- lm(log2(ercc_total_count) ~ log2(ensg_total_count) + individual,
+            data = anno_temp)
+fit_2 <- lmer(log2(ercc_total_count) ~ log2(ensg_total_count) + 
+              (1|individual:replicate), 
+            data = anno_temp)
+
+# significance of individual effect
+lrtest(fit_2, fit)
+
+# significance of replicate effect
+anova(fit, fit_1)
+```
 
 
 ## Percent variation per gene
