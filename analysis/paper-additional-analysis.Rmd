@@ -1,6 +1,6 @@
 ---
 title: "Additional analysis for the manuscript"
-date: 2016-04-27
+date: 2016-05-02
 ---
 
 **Last updated:** `r Sys.Date()`
@@ -149,15 +149,41 @@ anno_single$individual <- as.factor(anno_single$individual)
 anno_single$replicate <- as.factor(anno_single$replicate)
 ```
 
+Correlation between total molecule-count and concentration. 
 
 ```{r}
-fit <- lmer(total_molecules_gene ~ concentration + individual + 
-              (1|individual:replicate), 
+with(anno_single, 
+     cor.test(total_molecules_gene /(10^3), concentration, 
+              method = "spearman"))
+
+with(anno_single[anno_single$individual == "NA19101",], 
+     cor.test(total_molecules_gene /(10^3), concentration, 
+              method = "spearman"))
+
+with(anno_single[anno_single$individual == "NA19239",], 
+     cor.test(total_molecules_gene /(10^3), concentration, 
+              method = "spearman"))
+
+# per replicate
+sapply(unique(anno_single$batch), function(batch) {
+with(anno_single[anno_single$batch == batch,], 
+     cor(total_molecules_gene /(10^3), concentration, 
+              method = "spearman"))
+})
+```
+
+We take total molecule-count divided by 1000.
+
+```{r}
+fit <- lmer(total_molecules_gene /(10^3)~ concentration + individual + 
+                (1|individual:replicate),
+              data = anno_single)
+summary(fit)
+
+fit_1 <- lm(total_molecules_gene /(10^3) ~ concentration + individual, 
             data = anno_single)
-fit_1 <- lm(total_molecules_gene ~ concentration + individual, 
-            data = anno_single)
-fit_2 <- lmer(total_molecules_gene ~ concentration + (1|individual:replicate), 
-            data = anno_single)
+fit_2 <- lmer(total_molecules_gene /(10^3) ~ concentration +
+                (1|individual:replicate), data = anno_single)
 
 # significance of individual effect
 lrtest(fit_2, fit)
@@ -167,8 +193,7 @@ anova(fit, fit_1)
 ```
 
 
-
-## Reads to molecule conversion efficiency
+## Reads to molecule conversion efficiency 
 
 Prepare ERCC data
 
@@ -208,15 +233,55 @@ total_counts_ENSG$replicate <- as.factor(anno_filter$replicate[match(rownames(to
 ```
 
 
-ENSG
+Concentration distribution is skewed for both ERCC and ENSG genes. Hence, we analyze the log2 conversion data (log2 base was taken so that our log transformation base is consistent throughout the paper).
 
 ```{r}
-fit <- lmer(log2(total_molecules) ~ log2(total_reads) + individual + 
+par(mfrow = c(2,2))
+hist(total_counts_ERCC$conversion,
+     main = "ERCC spike-in",
+     xlab = "Conversion")
+hist(log2(total_counts_ERCC$conversion),
+     main = "ERCC spike-in",
+     xlab = "log2 Conversion")
+hist(total_counts_ENSG$conversion,
+     main = "Endogenous genes",
+     xlab = "Conversion")
+hist(log2(total_counts_ENSG$conversion),
+     main = "Endogenous genes",
+     xlab = "log2 Conversion")
+```
+
+
+ERCC Model fitting
+
+```{r}
+fit <- lmer(log2(conversion) ~ individual + 
+              (1|individual:replicate), 
+            data = total_counts_ERCC)
+fit_1 <- lm(log2(conversion) ~ individual,
+            data = total_counts_ERCC)
+fit_2 <- lmer(log2(conversion) ~ 1 + 
+              (1|individual:replicate), 
+            data = total_counts_ERCC)
+
+# significance of individual effect
+lrtest(fit_2, fit)
+
+# significance of replicate effect
+anova(fit, fit_1)
+```
+
+
+
+ENSG Model fitting
+
+```{r}
+fit <- lmer(log2(conversion) ~ individual + 
               (1|individual:replicate), 
             data = total_counts_ENSG)
-fit_1 <- lm(log2(total_molecules) ~ log2(total_reads) + individual,
+fit_1 <- lm(log2(conversion) ~ individual,
             data = total_counts_ENSG)
-fit_2 <- lmer(log2(total_molecules) ~ log2(total_reads) + 
+fit_2 <- lmer(log2(conversion) ~ 1 + 
               (1|individual:replicate), 
             data = total_counts_ENSG)
 
@@ -226,26 +291,6 @@ lrtest(fit_2, fit)
 # significance of replicate effect
 anova(fit, fit_1)
 ```
-
-ERCC
-
-```{r}
-fit <- lmer(log2(total_molecules) ~ log2(total_reads) + individual + 
-              (1|individual:replicate), 
-            data = total_counts_ERCC)
-fit_1 <- lm(log2(total_molecules) ~ log2(total_reads) + individual,
-            data = total_counts_ERCC)
-fit_2 <- lmer(log2(total_molecules) ~ log2(total_reads) + 
-              (1|individual:replicate), 
-            data = total_counts_ERCC)
-
-# significance of individual effect
-lrtest(fit_2, fit)
-
-# significance of replicate effect
-anova(fit, fit_1)
-```
-
 
 
 ## total ENSG molecule-count and total ERCC molecule-count
@@ -262,6 +307,25 @@ anno_temp$ercc_total_count <-
   colSums(molecules_filter[grep("ERCC", 
                            rownames(molecules_filter), invert = TRUE), ])
 ```
+
+Check if total count ERCC is normal distribution 
+
+```{r}
+par(mfrow = c(2,2))
+hist(anno_temp$ercc_total_count,
+     main = "ERCC spike-in",
+     xlab = "Total counts")
+hist(log2(anno_temp$ercc_total_count),
+     main = "ERCC spike-in",
+     xlab = "log2 Total counts")
+hist(anno_temp$ensg_total_count,
+     main = "Endogenous genes",
+     xlab = "Total counts")
+hist(log2(anno_temp$ensg_total_count),
+     main = "Endogenous genes",
+     xlab = "log2 Total counts")
+```
+
 
 First, we assess total ERCC molecule-count beteween individuals and replicates.
 
@@ -326,76 +390,282 @@ anova(fit, fit_1)
 ```
 
 
-
-
-
 ## Percent variation per gene
+
+Load model fitting code - a wrapper of the blmer function that fits a bayesian nested model for one gene at a time. 
+
+```{r percent-var-code, eval = TRUE}
+#' Per gene variance component model
+#'
+#' @param xx Matrix of expression measurements on log scale.
+#' @param annotation Meta-data matrix of each column of xx.
+
+gene_variation <- function(xx, annotation) {
+  
+  individual <- as.factor(annotation$individual)
+  replicate <- as.factor(annotation$replicate)
+  
+  ## fit bayesian GLM one gene at a time
+  
+  blme_fit <- lapply( 1:NROW(counts), function(i) {
+      
+      value <- unlist(counts[i,])
+      
+      fit_try <- tryCatch( fit <- blme::blmer(value ~ 1|individual/replicate, 
+                                      cov.prior = wishart,
+                                      resid.prior = invgamma),
+                             condition = function(c) c)
+      if(inherits(fit_try, "condition")){
+      var_foo <- rep(NA, 3)
+      return(var_foo)
+      }
+      if(!inherits(fit_try, "condition")){
+        var_foo <- as.data.frame(VarCorr(fit_try))[,4]
+        var_foo <- var_foo[c(2,1,3)]
+        var_foo
+      }
+    })
+  blme_fit <- do.call(rbind, blme_fit)
+  rownames(blme_fit) <- rownames(counts)
+  colnames(blme_fit) <- c("individual","replicate","residual")
+  blme_fit
+}
+```
 
 
 ```{r, eval = FALSE}
 individual <- as.factor(anno_filter$individual)
 replicate <- as.factor(anno_filter$replicate)
 
-library(blme)
-## blme, Wishart prior, change coding
-blme_varcomp <- lapply( 1:NROW(molecules_filter_ENSG), function(i) {
-    
-    value <- unlist(log2(molecules_filter_ENSG[i, ]+1))
-    
-    fit_try <- tryCatch( fit <- blmer(value ~ 1|individual/replicate, 
-                                    cov.prior = wishart,
-                                    resid.prior = invgamma),
-                           condition = function(c) c)
-    if(inherits(fit_try, "condition")){
-    var_foo <- rep(NA, 3)
-    return(var_foo)
-    }
-    if(!inherits(fit_try, "condition")){
-      var_foo <- as.data.frame(VarCorr(fit_try))[,4]
-      var_foo <- var_foo[c(2,1,3)]
-      var_foo
-    }
-  })
-blme_varcomp <- do.call(rbind, blme_varcomp)
-rownames(blme_varcomp) <- rownames(molecules_filter_ENSG)
-colnames(blme_varcomp) <- c("individual","replicate","residual")
-save(blme_varcomp,
+## endogenous molecule-count
+blme_raw <- gene_variation(xx = log2(molecules_filter_ENSG+1),
+                           annotation = anno_filter)
+
+## ERCC molecule-count
+blme_ercc <- gene_variation(xx = log2(molecules_filter_ERCC+1),
+                            annotation = anno_filter)
+
+## ENSG CPM
+blme_cpm <- gene_variation(xx = molecules_cpm, 
+                           annotation = anno_filter)
+
+## ENSG CPM Poisson
+blme_cpm_trans <- gene_variation(xx = molecules_cpm_trans, 
+                           annotation = anno_filter)
+
+## ENSG CPM Poisson
+blme_final <- gene_variation(xx = molecules_final, 
+                           annotation = anno_filter)
+
+save(blme_raw, blme_ercc, blme_cpm, blme_cpm_trans,
+     blme_final,
      file = "../data/blme-variance.rda")
 ```
 
 Standardardize variance components such that for each gene the variance 
 component estimates sum up to 1. Because variance of sequencing counts depend on the dynamic range, we avoid biased comparison of variance estimates when comparing across genes, by the action of standarizing per gene variance components by the total of variance estimates.
 
+*Endogenous genes*
+
 ```{r}
 load("../data/blme-variance.rda")
-blme_varcomp_norm <- (blme_varcomp/rowSums(blme_varcomp))
+blme_raw_norm <- (blme_raw/rowSums(blme_raw))
 
 par(mfrow = c(2,2))
-plot(blme_varcomp_norm[,1], blme_varcomp_norm[,2],
+plot(blme_raw_norm[,1], blme_raw_norm[,2],
      xlab = "Individual",
-     ylab = "Replicate",
-     main = "Variance component estimate")
-plot(blme_varcomp_norm[,3], blme_varcomp_norm[,1],
+     ylab = "Replicate")
+abline(0, 1, col = "red")
+plot(blme_raw_norm[,3], blme_raw_norm[,1],
      xlab = "Residual",
-     ylab = "Individual",
-     main = "Variance component estimate")
-plot(blme_varcomp_norm[,3], blme_varcomp_norm[,2],
+     ylab = "Individual")
+plot(blme_raw_norm[,3], blme_raw_norm[,2],
      xlab = "Residual",
-     ylab = "Replicate",
-     main = "Variance component estimate")
-boxplot(blme_varcomp_norm)
+     ylab = "Replicate")
+boxplot(blme_raw_norm)
+title(main = "Proportion of per-gene variance",
+      outer = TRUE, line = -1)
 ```
 
 Compare individual versus replicate variance estimates.
 
 ```{r}
-summary(blme_varcomp_norm)
+summary(blme_raw_norm)
 
 # Kruskal wallis rank sum test to compare
 # proportions of variance explained due to individual
 # versus due to replicate
-kruskal.test(c(blme_varcomp_norm[,1], blme_varcomp_norm[,2]) ~
-               rep(c(1,2), each = NROW(blme_varcomp_norm)) )
+kruskal.test(c(blme_raw_norm[,1], blme_raw_norm[,2]) ~
+               rep(c(1,2), each = NROW(blme_raw_norm)) )
+```
+
+
+*ERCC spike-in genes*
+
+```{r}
+load("../data/blme-variance.rda")
+blme_ercc_norm <- (blme_ercc/rowSums(blme_ercc))
+
+par(mfrow = c(2,2))
+plot(blme_ercc_norm[,1], blme_ercc_norm[,2],
+     xlab = "Individual",
+     ylab = "Replicate")
+abline(0, 1, col = "red")
+plot(blme_ercc_norm[,3], blme_ercc_norm[,1],
+     xlab = "Residual",
+     ylab = "Individual")
+plot(blme_ercc_norm[,3], blme_ercc_norm[,2],
+     xlab = "Residual",
+     ylab = "Replicate")
+boxplot(blme_ercc_norm)
+title(main = "Proportion of per-gene variance")
+```
+
+Compare individual versus replicate variance estimates.
+
+```{r}
+summary(blme_ercc_norm)
+
+# Kruskal wallis rank sum test to compare
+# proportions of variance explained due to individual
+# versus due to replicate
+kruskal.test(c(blme_ercc_norm[,1], blme_ercc_norm[,2]) ~
+               rep(c(1,2), each = NROW(blme_ercc_norm)) )
+```
+
+
+*Per-gene variance estimates after each normalization step*
+
+
+```{r, fig.width=9, fig.height=9}
+# compute percent variation
+blme_raw_norm <- data.frame(blme_raw/rowSums(blme_raw))
+blme_cpm_norm <- data.frame(blme_cpm/rowSums(blme_cpm))
+blme_cpm_trans_norm <- data.frame(blme_cpm_trans/rowSums(blme_cpm_trans))
+blme_final_norm <- data.frame(blme_final/rowSums(blme_final))
+
+library(ggplot2)
+cowplot::plot_grid(
+  ggplot(data.frame(
+    prop = c(blme_cpm_norm$individual/blme_raw_norm$individual,
+             blme_cpm_trans_norm$individual/blme_cpm_norm$individual,
+             blme_final_norm$individual/blme_cpm_trans_norm$individual),
+    label = factor(rep(c(1:3), 
+                each = NROW(blme_raw_norm)),
+                levels = c(1:3),
+                labels = c("CPM-Raw", "Poisson/CPM", "Final/Poisson"))),
+       aes(x = label, y = prop)) +
+    geom_violin() + geom_boxplot(width = .2, aes(colour = label)) +
+      xlab("") +
+      ylab("Individual percent-variance ratio") +
+      ggtitle("Individual percent-variance ratio (to the previous step)") +
+      theme(legend.position = "none"),
+  ggplot(data.frame(
+    prop = c(blme_cpm_norm$individual/blme_raw_norm$individual,
+             blme_cpm_trans_norm$individual/blme_raw_norm$individual,
+             blme_final_norm$individual/blme_raw_norm$individual),
+    label = factor(rep(c(1:3), 
+                each = NROW(blme_raw_norm)),
+                levels = c(1:3),
+                labels = c("CPM/Raw", "Poisson/Raw", "Final/Raw"))),
+       aes(x = label, y = prop)) +
+    geom_violin() + geom_boxplot(width = .2, aes(colour = label)) +
+      xlab("") +
+      ylab("Individual percent-variance ratio") +
+      ggtitle("Individual percent-variance ratio (to Step Raw)") +
+      theme(legend.position = "none"),
+  ggplot(data.frame(
+    prop = log(c(blme_raw_norm$individual/blme_raw_norm$replicate,
+             blme_cpm_norm$individual/blme_cpm_norm$replicate,
+             blme_cpm_trans_norm$individual/blme_cpm_trans_norm$replicate,
+             blme_final_norm$individual/blme_final_norm$replicate)),
+    label = factor(rep(c(1:4), 
+                each = NROW(blme_raw_norm)),
+                levels = c(1:4),
+                labels = c("Raw", "CPM", "Poisson", "Final"))),
+       aes(x = label, y = prop)) +
+    geom_violin() + geom_boxplot(width = .2, aes(colour = label)) +
+      xlab("") +
+      ylab("log ratio of percent variance") +
+      ggtitle("Individual to replicate log-ratio") +
+      theme(legend.position = "none"),
+  labels = LETTERS[1:4])
+```
+
+Per-gene variation estimates between steps fail to reveal changes induced in the expression profiles between steps, if any. 
+
+*Multivariate distance between C1 preparations*: Friedman-Rafsky multivariate run test.
+
+```{r distance-code}
+if (library("flowMap", quietly = TRUE, logical.return = TRUE) == FALSE) {
+  devtools::install_github("jhsiao999/flowMap")
+} else {
+  library(flowMap)
+}
+compute_fr <- function(xx, annotation) {
+  batches <- unique(annotation$batch)
+  fr_pval <- fr_run <- matrix(0, nrow = length(batches),
+                       ncol = length(batches))
+  indices <- which(upper.tri(fr_dist, diag = FALSE), arr.ind = TRUE)
+  for (i in 1:NROW(indices)) {
+    ind_row <- indices[i, 1]
+    ind_col <- indices[i, 2]
+    fr_res <- 
+          getFR(t(as.matrix(xx[,annotation$batch == batches[ind_row]])),
+            t(as.matrix(xx[,anno_filter$batch == batches[ind_col]])))
+    fr_pval[ind_row, ind_col]  <- fr_res$pNorm
+    fr_run[ind_row, ind_col]  <- fr_res$ww
+  }
+  fr_pval <- Matrix::forceSymmetric(fr_pval)
+  diag(fr_pval) <- 1
+  return(list(fr_pval = fr_pval,
+              fr_run = fr_run))
+}
+```
+
+Compute multivariate distance for matrices after each step of transformation.
+```{r, eval = F}
+fr_raw <- compute_fr(xx = molecules_filter_ENSG,
+                     annotation = anno_filter)
+fr_cpm <- compute_fr(xx = molecules_cpm,
+                     annotation = anno_filter)
+fr_cpm_trans <- compute_fr(xx = molecules_cpm_trans,
+                     annotation = anno_filter)
+fr_final <- compute_fr(xx = molecules_final,
+                     annotation = anno_filter)
+save(fr_raw, fr_cpm, fr_cpm_trans, fr_final,
+     file = "../data/fr-distance.rda")
+```
+
+Make p-value heatmaps
+
+```{r}
+load(file = "../data/fr-distance.rda")
+library(gplots)
+heatmap.2(as.matrix(fr_final$fr_pval), 
+          dendrogram = "column",
+          trace = "none", Rowv = FALSE,
+          labRow = unique(anno_filter$batch),
+          labCol = unique(anno_filter$batch),
+          key = TRUE, main = "Raw")
+heatmap.2(as.matrix(fr_cpm$fr_pval), 
+          dendrogram = "column",
+          trace = "none", Rowv = FALSE,
+          labRow = unique(anno_filter$batch),
+          labCol = unique(anno_filter$batch),
+          key = TRUE, main = "CPM")
+heatmap.2(as.matrix(fr_cpm_trans$fr_pval), 
+          dendrogram = "column",
+          trace = "none", Rowv = FALSE,
+          labRow = unique(anno_filter$batch),
+          labCol = unique(anno_filter$batch),
+          key = TRUE, main = "Poisson")
+heatmap.2(as.matrix(fr_final$fr_pval), 
+          dendrogram = "column",
+          trace = "none", Rowv = FALSE,
+          labRow = unique(anno_filter$batch),
+          labCol = unique(anno_filter$batch),
+          key = TRUE, main = "Final")
 ```
 
 
