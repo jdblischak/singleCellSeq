@@ -85,9 +85,9 @@ anno_single$num_genes = apply(molecules[!ercc_index, ], 2, function(x) sum(x > 0
 ## The total molecule-counts (not including NA19098)
 
 For wells with a single cell observed, the total molecule-counts range from
-`r format(min(anno_single$total_molecules_gene[anno_single$cell_number == 1 & anno_single$individual != "NA19098"]))`
+`r format(min(anno_single$total_molecules_gene[anno_single$cell_number == 1]))`
 to
-`r format(max(anno_single$total_molecules_gene[anno_single$cell_number == 1 & anno_single$individual != "NA19098"]))`,
+`r format(max(anno_single$total_molecules_gene[anno_single$cell_number == 1]))`,
 the first quartile for the total number of gene molecules is
 `r format(quantile(anno_single$total_molecules_gene[anno_single$cell_number == 1], probs = 0.25), scientific = FALSE)`,
 and the third quartile is
@@ -116,7 +116,7 @@ plot_grid(plot_total_molecules_gene + theme(legend.position = "none"),
           labels = LETTERS[1:2])
 ```
 
-## The relationship between concentration and total molecule-counts
+## The relationship between concentration and total molecule-counts (not including NA19098)
 
 As we try to understand the general relationships between sequencing results and cellular mRNA content, we remove outlier batches.
 NA19098 replicate 1 failed the quantification of the concentration of the single cells and was hence removed. Because NA19098 concentration is only quantified in one replicate, we removed NA19098 from analysis involving batch differences and concentration.
@@ -132,6 +132,7 @@ plot_conc_molecules_gene_individual <-
          aes(x = concentration, 
              y = total_molecules_gene / 10^3, color = individual)) +
      geom_point(alpha = 0.8) +
+     scale_colour_manual(values = c("#33CC66", "#6699FF")) +
      geom_smooth(method = "lm", se = FALSE) +
      labs(x = "Concentration", y = "Total gene molecule-counts (10^3)")
 
@@ -154,39 +155,6 @@ fit1 <- lm(total_molecules_gene ~ concentration + as.factor(individual),
    data = anno_single_6)
 # use likelihood ratio test to detect individual differences
 lrtest(fit1, fit0)
-
-## Is there a difference across replicates of 19101
-fit0 <- lm(total_molecules_gene ~ concentration, 
-   data = anno_single_6, subset = individual == "NA19101")
-fit1 <- lm(total_molecules_gene ~ concentration + as.factor(replicate), 
-   data = anno_single_6, subset = individual == "NA19101")
-# use likelihood ratio test to detect individual differences
-lrtest(fit1, fit0)
-# quick line plot
-ggplot(anno_single_6[anno_single_6$individual == "NA19101", ],
-       aes(x = concentration, 
-           y = total_molecules_gene / 10^3, color = replicate)) +
-   geom_point(alpha = 0.8) +
-   geom_smooth(method = "lm", se = FALSE) +
-   labs(x = "Concentration", 
-        y = "Total gene molecule-counts (10^3)")
-
-
-## Is there a difference across replicates of 19239
-fit0 <- lm(total_molecules_gene ~ concentration, 
-   data = anno_single_6, subset = individual == "NA19239")
-fit1 <- lm(total_molecules_gene ~ concentration + as.factor(replicate), 
-   data = anno_single_6, subset = individual == "NA19239")
-ggplot(anno_single_6[anno_single_6$individual == "NA19239", ],
-       aes(x = concentration, 
-           y = total_molecules_gene / 10^3, color = replicate)) +
-   geom_point(alpha = 0.8) +
-   geom_smooth(method = "lm", se = FALSE) +
-   labs(x = "Concentration", 
-        y = "Total gene molecule-counts (10^3)")
-# use likelihood ratio test to detect individual differences
-lrtest(fit1, fit0)
-
 ```
 
 
@@ -253,8 +221,8 @@ lrtest(fit1,fit2)
 ```{r plot,fig.width=12, fig.height=12}
 plot_grid(plot_total_molecules_gene + theme(legend.position = "none"),
           plot_conc_molecules_gene_individual + theme(legend.position= "none"),
+          plot_total_molecules_ercc + theme(legend.position = "none"),
           plot_gene_mol_ercc_mol + theme(legend.position = "none"),
-          plot_gene_mol_perc_ercc + theme(legend.position= "none"),
           labels = LETTERS[1:4])
 ```
 
