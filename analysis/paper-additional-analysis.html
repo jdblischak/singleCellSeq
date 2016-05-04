@@ -9,7 +9,7 @@
 <meta name="generator" content="pandoc" />
 
 
-<meta name="date" content="2016-04-27" />
+<meta name="date" content="2016-05-02" />
 
 <title>Additional analysis for the manuscript</title>
 
@@ -119,7 +119,7 @@ img {
 
 <div id="header">
 <h1 class="title">Additional analysis for the manuscript</h1>
-<h4 class="date"><em>2016-04-27</em></h4>
+<h4 class="date"><em>2016-05-02</em></h4>
 </div>
 
 <div id="TOC">
@@ -136,8 +136,8 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2016-04-29</p>
-<p><strong>Code version:</strong> 1e1b562e686b0c0a4bfc4c813f05de32b5077b40</p>
+<p><strong>Last updated:</strong> 2016-05-04</p>
+<p><strong>Code version:</strong> cd6b2c541439886c145c37e02be9ea4826fddff1</p>
 <pre class="r"><code>library(&quot;dplyr&quot;)
 library(&quot;ggplot2&quot;)
 library(&quot;cowplot&quot;)
@@ -236,23 +236,104 @@ anno_single$concentration &lt;- qc_filter$concentration[match(anno_single$sample
 anno_single &lt;- anno_single %&gt;% filter(individual != &quot;NA19098&quot;)
 anno_single$individual &lt;- as.factor(anno_single$individual)
 anno_single$replicate &lt;- as.factor(anno_single$replicate)</code></pre>
-<pre class="r"><code>fit &lt;- lmer(total_molecules_gene ~ concentration + individual + 
-              (1|individual:replicate), 
+<p>Correlation between total molecule-count and concentration.</p>
+<pre class="r"><code>with(anno_single, 
+     cor.test(total_molecules_gene /(10^3), concentration, 
+              method = &quot;spearman&quot;))</code></pre>
+<pre><code>Warning in cor.test.default(total_molecules_gene/(10^3), concentration, :
+Cannot compute exact p-value with ties</code></pre>
+<pre><code>
+    Spearman&#39;s rank correlation rho
+
+data:  total_molecules_gene/(10^3) and concentration
+S = 7385800, p-value &lt; 2.2e-16
+alternative hypothesis: true rho is not equal to 0
+sample estimates:
+      rho 
+0.4103248 </code></pre>
+<pre class="r"><code>with(anno_single[anno_single$individual == &quot;NA19101&quot;,], 
+     cor.test(total_molecules_gene /(10^3), concentration, 
+              method = &quot;spearman&quot;))</code></pre>
+<pre><code>Warning in cor.test.default(total_molecules_gene/(10^3), concentration, :
+Cannot compute exact p-value with ties</code></pre>
+<pre><code>
+    Spearman&#39;s rank correlation rho
+
+data:  total_molecules_gene/(10^3) and concentration
+S = 912310, p-value = 2.342e-06
+alternative hypothesis: true rho is not equal to 0
+sample estimates:
+      rho 
+0.3259157 </code></pre>
+<pre class="r"><code>with(anno_single[anno_single$individual == &quot;NA19239&quot;,], 
+     cor.test(total_molecules_gene /(10^3), concentration, 
+              method = &quot;spearman&quot;))</code></pre>
+<pre><code>Warning in cor.test.default(total_molecules_gene/(10^3), concentration, :
+Cannot compute exact p-value with ties</code></pre>
+<pre><code>
+    Spearman&#39;s rank correlation rho
+
+data:  total_molecules_gene/(10^3) and concentration
+S = 903010, p-value = 2.964e-15
+alternative hypothesis: true rho is not equal to 0
+sample estimates:
+      rho 
+0.4980306 </code></pre>
+<pre class="r"><code># per replicate
+sapply(unique(anno_single$batch), function(batch) {
+with(anno_single[anno_single$batch == batch,], 
+     cor(total_molecules_gene /(10^3), concentration, 
+              method = &quot;spearman&quot;))
+})</code></pre>
+<pre><code> NA19101.r1  NA19101.r2  NA19101.r3  NA19239.r1  NA19239.r2  NA19239.r3 
+ 0.36385586  0.52144169 -0.01728507  0.77089967  0.77088980 -0.04157741 </code></pre>
+<p>We take total molecule-count divided by 1000.</p>
+<pre class="r"><code>fit &lt;- lmer(total_molecules_gene /(10^3)~ concentration + individual + 
+                (1|individual:replicate),
+              data = anno_single)
+summary(fit)</code></pre>
+<pre><code>Linear mixed model fit by REML [&#39;lmerMod&#39;]
+Formula: total_molecules_gene/(10^3) ~ concentration + individual + (1 |  
+    individual:replicate)
+   Data: anno_single
+
+REML criterion at convergence: 3263.5
+
+Scaled residuals: 
+    Min      1Q  Median      3Q     Max 
+-2.4154 -0.7006 -0.1026  0.6488  3.9472 
+
+Random effects:
+ Groups               Name        Variance Std.Dev.
+ individual:replicate (Intercept)   8.8     2.967  
+ Residual                         134.2    11.583  
+Number of obs: 422, groups:  individual:replicate, 6
+
+Fixed effects:
+                  Estimate Std. Error t value
+(Intercept)         35.419      3.278  10.805
+concentration       12.860      1.468   8.762
+individualNA19239    7.680      2.677   2.869
+
+Correlation of Fixed Effects:
+            (Intr) cncntr
+concentratn -0.814       
+indvNA19239 -0.392 -0.025</code></pre>
+<pre class="r"><code>fit_1 &lt;- lm(total_molecules_gene /(10^3) ~ concentration + individual, 
             data = anno_single)
-fit_1 &lt;- lm(total_molecules_gene ~ concentration + individual, 
-            data = anno_single)
-fit_2 &lt;- lmer(total_molecules_gene ~ concentration + (1|individual:replicate), 
-            data = anno_single)
+fit_2 &lt;- lmer(total_molecules_gene /(10^3) ~ concentration +
+                (1|individual:replicate), data = anno_single)
 
 # significance of individual effect
 lrtest(fit_2, fit)</code></pre>
 <pre><code>Likelihood ratio test
 
-Model 1: total_molecules_gene ~ concentration + (1 | individual:replicate)
-Model 2: total_molecules_gene ~ concentration + individual + (1 | individual:replicate)
-  #Df  LogLik Df  Chisq Pr(&gt;Chisq)    
-1   4 -4537.6                         
-2   5 -4526.1  1 23.086  1.549e-06 ***
+Model 1: total_molecules_gene/(10^3) ~ concentration + (1 | individual:replicate)
+Model 2: total_molecules_gene/(10^3) ~ concentration + individual + (1 | 
+    individual:replicate)
+  #Df  LogLik Df  Chisq Pr(&gt;Chisq)   
+1   4 -1636.4                        
+2   5 -1631.7  1 9.2709   0.002328 **
 ---
 Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
 <pre class="r"><code># significance of replicate effect
@@ -260,11 +341,12 @@ anova(fit, fit_1)</code></pre>
 <pre><code>refitting model(s) with ML (instead of REML)</code></pre>
 <pre><code>Data: anno_single
 Models:
-fit_1: total_molecules_gene ~ concentration + individual
-fit: total_molecules_gene ~ concentration + individual + (1 | individual:replicate)
+fit_1: total_molecules_gene/(10^3) ~ concentration + individual
+fit: total_molecules_gene/(10^3) ~ concentration + individual + (1 | 
+fit:     individual:replicate)
       Df    AIC    BIC  logLik deviance  Chisq Chi Df Pr(&gt;Chisq)   
-fit_1  4 9118.3 9134.4 -4555.1   9110.3                            
-fit    5 9112.0 9132.2 -4551.0   9102.0 8.2633      1   0.004045 **
+fit_1  4 3288.1 3304.3 -1640.1   3280.1                            
+fit    5 3281.8 3302.1 -1635.9   3271.8 8.2633      1   0.004045 **
 ---
 Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
 </div>
@@ -298,13 +380,61 @@ total_counts_ENSG$individual &lt;- as.factor(anno_filter$individual[match(rownam
                           anno_filter$sample_id)])
 total_counts_ENSG$replicate &lt;- as.factor(anno_filter$replicate[match(rownames(total_counts_ENSG),
                           anno_filter$sample_id)])</code></pre>
-<p>ENSG</p>
-<pre class="r"><code>fit &lt;- lmer(log2(total_molecules) ~ log2(total_reads) + individual + 
+<p>Concentration distribution is skewed for both ERCC and ENSG genes. Hence, we analyze the log2 conversion data (log2 base was taken so that our log transformation base is consistent throughout the paper).</p>
+<pre class="r"><code>par(mfrow = c(2,2))
+hist(total_counts_ERCC$conversion,
+     main = &quot;ERCC spike-in&quot;,
+     xlab = &quot;Conversion&quot;)
+hist(log2(total_counts_ERCC$conversion),
+     main = &quot;ERCC spike-in&quot;,
+     xlab = &quot;log2 Conversion&quot;)
+hist(total_counts_ENSG$conversion,
+     main = &quot;Endogenous genes&quot;,
+     xlab = &quot;Conversion&quot;)
+hist(log2(total_counts_ENSG$conversion),
+     main = &quot;Endogenous genes&quot;,
+     xlab = &quot;log2 Conversion&quot;)</code></pre>
+<p><img src="figure/paper-additional-analysis.Rmd/unnamed-chunk-7-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p>ERCC Model fitting</p>
+<pre class="r"><code>fit &lt;- lmer(log2(conversion) ~ individual + 
+              (1|individual:replicate), 
+            data = total_counts_ERCC)
+fit_1 &lt;- lm(log2(conversion) ~ individual,
+            data = total_counts_ERCC)
+fit_2 &lt;- lmer(log2(conversion) ~ 1 + 
+              (1|individual:replicate), 
+            data = total_counts_ERCC)
+
+# significance of individual effect
+lrtest(fit_2, fit)</code></pre>
+<pre><code>Likelihood ratio test
+
+Model 1: log2(conversion) ~ 1 + (1 | individual:replicate)
+Model 2: log2(conversion) ~ individual + (1 | individual:replicate)
+  #Df  LogLik Df  Chisq Pr(&gt;Chisq)   
+1   3 -217.72                        
+2   5 -212.09  2 11.263   0.003584 **
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
+<pre class="r"><code># significance of replicate effect
+anova(fit, fit_1)</code></pre>
+<pre><code>refitting model(s) with ML (instead of REML)</code></pre>
+<pre><code>Data: total_counts_ERCC
+Models:
+fit_1: log2(conversion) ~ individual
+fit: log2(conversion) ~ individual + (1 | individual:replicate)
+      Df    AIC    BIC  logLik deviance Chisq Chi Df Pr(&gt;Chisq)  
+fit_1  4 425.46 442.80 -208.73   417.46                          
+fit    5 421.41 443.08 -205.70   411.41 6.052      1    0.01389 *
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
+<p>ENSG Model fitting</p>
+<pre class="r"><code>fit &lt;- lmer(log2(conversion) ~ individual + 
               (1|individual:replicate), 
             data = total_counts_ENSG)
-fit_1 &lt;- lm(log2(total_molecules) ~ log2(total_reads) + individual,
+fit_1 &lt;- lm(log2(conversion) ~ individual,
             data = total_counts_ENSG)
-fit_2 &lt;- lmer(log2(total_molecules) ~ log2(total_reads) + 
+fit_2 &lt;- lmer(log2(conversion) ~ 1 + 
               (1|individual:replicate), 
             data = total_counts_ENSG)
 
@@ -312,12 +442,11 @@ fit_2 &lt;- lmer(log2(total_molecules) ~ log2(total_reads) +
 lrtest(fit_2, fit)</code></pre>
 <pre><code>Likelihood ratio test
 
-Model 1: log2(total_molecules) ~ log2(total_reads) + (1 | individual:replicate)
-Model 2: log2(total_molecules) ~ log2(total_reads) + individual + (1 | 
-    individual:replicate)
-  #Df LogLik Df Chisq Pr(&gt;Chisq)   
-1   4 290.08                       
-2   6 295.46  2 10.76   0.004608 **
+Model 1: log2(conversion) ~ 1 + (1 | individual:replicate)
+Model 2: log2(conversion) ~ individual + (1 | individual:replicate)
+  #Df LogLik Df  Chisq Pr(&gt;Chisq)   
+1   3 127.45                        
+2   5 132.70  2 10.508   0.005226 **
 ---
 Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
 <pre class="r"><code># significance of replicate effect
@@ -325,45 +454,11 @@ anova(fit, fit_1)</code></pre>
 <pre><code>refitting model(s) with ML (instead of REML)</code></pre>
 <pre><code>Data: total_counts_ENSG
 Models:
-fit_1: log2(total_molecules) ~ log2(total_reads) + individual
-fit: log2(total_molecules) ~ log2(total_reads) + individual + (1 | 
-fit:     individual:replicate)
+fit_1: log2(conversion) ~ individual
+fit: log2(conversion) ~ individual + (1 | individual:replicate)
       Df     AIC     BIC logLik deviance  Chisq Chi Df Pr(&gt;Chisq)    
-fit_1  5 -548.13 -526.45 279.06  -558.13                             
-fit    6 -599.64 -573.63 305.82  -611.64 53.512      1   2.57e-13 ***
----
-Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
-<p>ERCC</p>
-<pre class="r"><code>fit &lt;- lmer(log2(total_molecules) ~ log2(total_reads) + individual + 
-              (1|individual:replicate), 
-            data = total_counts_ERCC)
-fit_1 &lt;- lm(log2(total_molecules) ~ log2(total_reads) + individual,
-            data = total_counts_ERCC)
-fit_2 &lt;- lmer(log2(total_molecules) ~ log2(total_reads) + 
-              (1|individual:replicate), 
-            data = total_counts_ERCC)
-
-# significance of individual effect
-lrtest(fit_2, fit)</code></pre>
-<pre><code>Likelihood ratio test
-
-Model 1: log2(total_molecules) ~ log2(total_reads) + (1 | individual:replicate)
-Model 2: log2(total_molecules) ~ log2(total_reads) + individual + (1 | 
-    individual:replicate)
-  #Df LogLik Df  Chisq Pr(&gt;Chisq)
-1   4 275.21                     
-2   6 277.14  2 3.8665     0.1447</code></pre>
-<pre class="r"><code># significance of replicate effect
-anova(fit, fit_1)</code></pre>
-<pre><code>refitting model(s) with ML (instead of REML)</code></pre>
-<pre><code>Data: total_counts_ERCC
-Models:
-fit_1: log2(total_molecules) ~ log2(total_reads) + individual
-fit: log2(total_molecules) ~ log2(total_reads) + individual + (1 | 
-fit:     individual:replicate)
-      Df     AIC     BIC logLik deviance  Chisq Chi Df Pr(&gt;Chisq)    
-fit_1  5 -223.60 -201.92 116.80  -233.60                             
-fit    6 -556.77 -530.76 284.38  -568.77 335.17      1  &lt; 2.2e-16 ***
+fit_1  4 -231.46 -214.12 119.73  -239.46                             
+fit    5 -268.48 -246.81 139.24  -278.48 39.026      1  4.182e-10 ***
 ---
 Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
 </div>
@@ -378,6 +473,21 @@ anno_temp$ensg_total_count &lt;-
 anno_temp$ercc_total_count &lt;- 
   colSums(molecules_filter[grep(&quot;ERCC&quot;, 
                            rownames(molecules_filter), invert = TRUE), ])</code></pre>
+<p>Check if total count ERCC is normal distribution</p>
+<pre class="r"><code>par(mfrow = c(2,2))
+hist(anno_temp$ercc_total_count,
+     main = &quot;ERCC spike-in&quot;,
+     xlab = &quot;Total counts&quot;)
+hist(log2(anno_temp$ercc_total_count),
+     main = &quot;ERCC spike-in&quot;,
+     xlab = &quot;log2 Total counts&quot;)
+hist(anno_temp$ensg_total_count,
+     main = &quot;Endogenous genes&quot;,
+     xlab = &quot;Total counts&quot;)
+hist(log2(anno_temp$ensg_total_count),
+     main = &quot;Endogenous genes&quot;,
+     xlab = &quot;log2 Total counts&quot;)</code></pre>
+<p><img src="figure/paper-additional-analysis.Rmd/unnamed-chunk-11-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <p>First, we assess total ERCC molecule-count beteween individuals and replicates.</p>
 <pre class="r"><code>fit &lt;- lmer(log2(ercc_total_count) ~ individual + 
               (1|individual:replicate), 
@@ -479,55 +589,90 @@ Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&
 </div>
 <div id="percent-variation-per-gene" class="section level2">
 <h2>Percent variation per gene</h2>
+<p>Load model fitting code - a wrapper of the blmer function that fits a bayesian nested model for one gene at a time.</p>
+<pre class="r"><code>#&#39; Per gene variance component model
+#&#39;
+#&#39; @param xx Matrix of expression measurements on log scale.
+#&#39; @param annotation Meta-data matrix of each column of xx.
+
+gene_variation &lt;- function(xx, annotation) {
+  
+  individual &lt;- as.factor(annotation$individual)
+  replicate &lt;- as.factor(annotation$replicate)
+  
+  ## fit bayesian GLM one gene at a time
+  
+  blme_fit &lt;- lapply( 1:NROW(counts), function(i) {
+      
+      value &lt;- unlist(counts[i,])
+      
+      fit_try &lt;- tryCatch( fit &lt;- blme::blmer(value ~ 1|individual/replicate, 
+                                      cov.prior = wishart,
+                                      resid.prior = invgamma),
+                             condition = function(c) c)
+      if(inherits(fit_try, &quot;condition&quot;)){
+      var_foo &lt;- rep(NA, 3)
+      return(var_foo)
+      }
+      if(!inherits(fit_try, &quot;condition&quot;)){
+        var_foo &lt;- as.data.frame(VarCorr(fit_try))[,4]
+        var_foo &lt;- var_foo[c(2,1,3)]
+        var_foo
+      }
+    })
+  blme_fit &lt;- do.call(rbind, blme_fit)
+  rownames(blme_fit) &lt;- rownames(counts)
+  colnames(blme_fit) &lt;- c(&quot;individual&quot;,&quot;replicate&quot;,&quot;residual&quot;)
+  blme_fit
+}</code></pre>
 <pre class="r"><code>individual &lt;- as.factor(anno_filter$individual)
 replicate &lt;- as.factor(anno_filter$replicate)
 
-library(blme)
-## blme, Wishart prior, change coding
-blme_varcomp &lt;- lapply( 1:NROW(molecules_filter_ENSG), function(i) {
-    
-    value &lt;- unlist(log2(molecules_filter_ENSG[i, ]+1))
-    
-    fit_try &lt;- tryCatch( fit &lt;- blmer(value ~ 1|individual/replicate, 
-                                    cov.prior = wishart,
-                                    resid.prior = invgamma),
-                           condition = function(c) c)
-    if(inherits(fit_try, &quot;condition&quot;)){
-    var_foo &lt;- rep(NA, 3)
-    return(var_foo)
-    }
-    if(!inherits(fit_try, &quot;condition&quot;)){
-      var_foo &lt;- as.data.frame(VarCorr(fit_try))[,4]
-      var_foo &lt;- var_foo[c(2,1,3)]
-      var_foo
-    }
-  })
-blme_varcomp &lt;- do.call(rbind, blme_varcomp)
-rownames(blme_varcomp) &lt;- rownames(molecules_filter_ENSG)
-colnames(blme_varcomp) &lt;- c(&quot;individual&quot;,&quot;replicate&quot;,&quot;residual&quot;)
-save(blme_varcomp,
+## endogenous molecule-count
+blme_raw &lt;- gene_variation(xx = log2(molecules_filter_ENSG+1),
+                           annotation = anno_filter)
+
+## ERCC molecule-count
+blme_ercc &lt;- gene_variation(xx = log2(molecules_filter_ERCC+1),
+                            annotation = anno_filter)
+
+## ENSG CPM
+blme_cpm &lt;- gene_variation(xx = molecules_cpm, 
+                           annotation = anno_filter)
+
+## ENSG CPM Poisson
+blme_cpm_trans &lt;- gene_variation(xx = molecules_cpm_trans, 
+                           annotation = anno_filter)
+
+## ENSG CPM Poisson
+blme_final &lt;- gene_variation(xx = molecules_final, 
+                           annotation = anno_filter)
+
+save(blme_raw, blme_ercc, blme_cpm, blme_cpm_trans,
+     blme_final,
      file = &quot;../data/blme-variance.rda&quot;)</code></pre>
 <p>Standardardize variance components such that for each gene the variance component estimates sum up to 1. Because variance of sequencing counts depend on the dynamic range, we avoid biased comparison of variance estimates when comparing across genes, by the action of standarizing per gene variance components by the total of variance estimates.</p>
+<p><em>Endogenous genes</em></p>
 <pre class="r"><code>load(&quot;../data/blme-variance.rda&quot;)
-blme_varcomp_norm &lt;- (blme_varcomp/rowSums(blme_varcomp))
+blme_raw_norm &lt;- (blme_raw/rowSums(blme_raw))
 
 par(mfrow = c(2,2))
-plot(blme_varcomp_norm[,1], blme_varcomp_norm[,2],
+plot(blme_raw_norm[,1], blme_raw_norm[,2],
      xlab = &quot;Individual&quot;,
-     ylab = &quot;Replicate&quot;,
-     main = &quot;Variance component estimate&quot;)
-plot(blme_varcomp_norm[,3], blme_varcomp_norm[,1],
+     ylab = &quot;Replicate&quot;)
+abline(0, 1, col = &quot;red&quot;)
+plot(blme_raw_norm[,3], blme_raw_norm[,1],
      xlab = &quot;Residual&quot;,
-     ylab = &quot;Individual&quot;,
-     main = &quot;Variance component estimate&quot;)
-plot(blme_varcomp_norm[,3], blme_varcomp_norm[,2],
+     ylab = &quot;Individual&quot;)
+plot(blme_raw_norm[,3], blme_raw_norm[,2],
      xlab = &quot;Residual&quot;,
-     ylab = &quot;Replicate&quot;,
-     main = &quot;Variance component estimate&quot;)
-boxplot(blme_varcomp_norm)</code></pre>
-<p><img src="figure/paper-additional-analysis.Rmd/unnamed-chunk-13-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+     ylab = &quot;Replicate&quot;)
+boxplot(blme_raw_norm)
+title(main = &quot;Proportion of per-gene variance&quot;,
+      outer = TRUE, line = -1)</code></pre>
+<p><img src="figure/paper-additional-analysis.Rmd/unnamed-chunk-16-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <p>Compare individual versus replicate variance estimates.</p>
-<pre class="r"><code>summary(blme_varcomp_norm)</code></pre>
+<pre class="r"><code>summary(blme_raw_norm)</code></pre>
 <pre><code>   individual        replicate          residual      
  Min.   :0.02494   Min.   :0.00552   Min.   :0.01755  
  1st Qu.:0.12481   1st Qu.:0.03089   1st Qu.:0.57745  
@@ -539,13 +684,187 @@ boxplot(blme_varcomp_norm)</code></pre>
 <pre class="r"><code># Kruskal wallis rank sum test to compare
 # proportions of variance explained due to individual
 # versus due to replicate
-kruskal.test(c(blme_varcomp_norm[,1], blme_varcomp_norm[,2]) ~
-               rep(c(1,2), each = NROW(blme_varcomp_norm)) )</code></pre>
+kruskal.test(c(blme_raw_norm[,1], blme_raw_norm[,2]) ~
+               rep(c(1,2), each = NROW(blme_raw_norm)) )</code></pre>
 <pre><code>
     Kruskal-Wallis rank sum test
 
-data:  c(blme_varcomp_norm[, 1], blme_varcomp_norm[, 2]) by rep(c(1, 2), each = NROW(blme_varcomp_norm))
+data:  c(blme_raw_norm[, 1], blme_raw_norm[, 2]) by rep(c(1, 2), each = NROW(blme_raw_norm))
 Kruskal-Wallis chi-squared = 14185, df = 1, p-value &lt; 2.2e-16</code></pre>
+<p><em>ERCC spike-in genes</em></p>
+<pre class="r"><code>load(&quot;../data/blme-variance.rda&quot;)
+blme_ercc_norm &lt;- (blme_ercc/rowSums(blme_ercc))
+
+par(mfrow = c(2,2))
+plot(blme_ercc_norm[,1], blme_ercc_norm[,2],
+     xlab = &quot;Individual&quot;,
+     ylab = &quot;Replicate&quot;)
+abline(0, 1, col = &quot;red&quot;)
+plot(blme_ercc_norm[,3], blme_ercc_norm[,1],
+     xlab = &quot;Residual&quot;,
+     ylab = &quot;Individual&quot;)
+plot(blme_ercc_norm[,3], blme_ercc_norm[,2],
+     xlab = &quot;Residual&quot;,
+     ylab = &quot;Replicate&quot;)
+boxplot(blme_ercc_norm)
+title(main = &quot;Proportion of per-gene variance&quot;)</code></pre>
+<p><img src="figure/paper-additional-analysis.Rmd/unnamed-chunk-18-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p>Compare individual versus replicate variance estimates.</p>
+<pre class="r"><code>summary(blme_ercc_norm)</code></pre>
+<pre><code>   individual        replicate           residual      
+ Min.   :0.03439   Min.   :0.006325   Min.   :0.05687  
+ 1st Qu.:0.11242   1st Qu.:0.039234   1st Qu.:0.32177  
+ Median :0.22901   Median :0.066389   Median :0.69696  
+ Mean   :0.34245   Mean   :0.068853   Mean   :0.58870  
+ 3rd Qu.:0.61512   3rd Qu.:0.098521   3rd Qu.:0.84403  
+ Max.   :0.83184   Max.   :0.148082   Max.   :0.95868  </code></pre>
+<pre class="r"><code># Kruskal wallis rank sum test to compare
+# proportions of variance explained due to individual
+# versus due to replicate
+kruskal.test(c(blme_ercc_norm[,1], blme_ercc_norm[,2]) ~
+               rep(c(1,2), each = NROW(blme_ercc_norm)) )</code></pre>
+<pre><code>
+    Kruskal-Wallis rank sum test
+
+data:  c(blme_ercc_norm[, 1], blme_ercc_norm[, 2]) by rep(c(1, 2), each = NROW(blme_ercc_norm))
+Kruskal-Wallis chi-squared = 43.299, df = 1, p-value = 4.698e-11</code></pre>
+<p><em>Per-gene variance estimates after each normalization step</em></p>
+<pre class="r"><code># compute percent variation
+blme_raw_norm &lt;- data.frame(blme_raw/rowSums(blme_raw))
+blme_cpm_norm &lt;- data.frame(blme_cpm/rowSums(blme_cpm))
+blme_cpm_trans_norm &lt;- data.frame(blme_cpm_trans/rowSums(blme_cpm_trans))
+blme_final_norm &lt;- data.frame(blme_final/rowSums(blme_final))
+
+library(ggplot2)
+cowplot::plot_grid(
+  ggplot(data.frame(
+    prop = c(blme_cpm_norm$individual/blme_raw_norm$individual,
+             blme_cpm_trans_norm$individual/blme_cpm_norm$individual,
+             blme_final_norm$individual/blme_cpm_trans_norm$individual),
+    label = factor(rep(c(1:3), 
+                each = NROW(blme_raw_norm)),
+                levels = c(1:3),
+                labels = c(&quot;CPM-Raw&quot;, &quot;Poisson/CPM&quot;, &quot;Final/Poisson&quot;))),
+       aes(x = label, y = prop)) +
+    geom_violin() + geom_boxplot(width = .2, aes(colour = label)) +
+      xlab(&quot;&quot;) +
+      ylab(&quot;Individual percent-variance ratio&quot;) +
+      ggtitle(&quot;Individual percent-variance ratio (to the previous step)&quot;) +
+      theme(legend.position = &quot;none&quot;),
+  ggplot(data.frame(
+    prop = c(blme_cpm_norm$individual/blme_raw_norm$individual,
+             blme_cpm_trans_norm$individual/blme_raw_norm$individual,
+             blme_final_norm$individual/blme_raw_norm$individual),
+    label = factor(rep(c(1:3), 
+                each = NROW(blme_raw_norm)),
+                levels = c(1:3),
+                labels = c(&quot;CPM/Raw&quot;, &quot;Poisson/Raw&quot;, &quot;Final/Raw&quot;))),
+       aes(x = label, y = prop)) +
+    geom_violin() + geom_boxplot(width = .2, aes(colour = label)) +
+      xlab(&quot;&quot;) +
+      ylab(&quot;Individual percent-variance ratio&quot;) +
+      ggtitle(&quot;Individual percent-variance ratio (to Step Raw)&quot;) +
+      theme(legend.position = &quot;none&quot;),
+  ggplot(data.frame(
+    prop = log(c(blme_raw_norm$individual/blme_raw_norm$replicate,
+             blme_cpm_norm$individual/blme_cpm_norm$replicate,
+             blme_cpm_trans_norm$individual/blme_cpm_trans_norm$replicate,
+             blme_final_norm$individual/blme_final_norm$replicate)),
+    label = factor(rep(c(1:4), 
+                each = NROW(blme_raw_norm)),
+                levels = c(1:4),
+                labels = c(&quot;Raw&quot;, &quot;CPM&quot;, &quot;Poisson&quot;, &quot;Final&quot;))),
+       aes(x = label, y = prop)) +
+    geom_violin() + geom_boxplot(width = .2, aes(colour = label)) +
+      xlab(&quot;&quot;) +
+      ylab(&quot;log ratio of percent variance&quot;) +
+      ggtitle(&quot;Individual to replicate log-ratio&quot;) +
+      theme(legend.position = &quot;none&quot;),
+  labels = LETTERS[1:4])</code></pre>
+<pre><code>Warning: Removed 863 rows containing non-finite values (stat_ydensity).</code></pre>
+<pre><code>Warning: Removed 863 rows containing non-finite values (stat_boxplot).</code></pre>
+<pre><code>Warning: Removed 913 rows containing non-finite values (stat_ydensity).</code></pre>
+<pre><code>Warning: Removed 913 rows containing non-finite values (stat_boxplot).</code></pre>
+<pre><code>Warning: Removed 712 rows containing non-finite values (stat_ydensity).</code></pre>
+<pre><code>Warning: Removed 712 rows containing non-finite values (stat_boxplot).</code></pre>
+<p><img src="figure/paper-additional-analysis.Rmd/unnamed-chunk-20-1.png" title="" alt="" width="864" style="display: block; margin: auto;" /></p>
+<p>Per-gene variation estimates between steps fail to reveal changes induced in the expression profiles between steps, if any.</p>
+<p><em>Multivariate distance between C1 preparations</em>: Friedman-Rafsky multivariate run test.</p>
+<pre class="r"><code>if (library(&quot;flowMap&quot;, quietly = TRUE, logical.return = TRUE) == FALSE) {
+  devtools::install_github(&quot;jhsiao999/flowMap&quot;)
+} else {
+  library(flowMap)
+}</code></pre>
+<pre><code>Loading required package: foreach
+Loading required package: iterators
+Loading required package: parallel</code></pre>
+<pre class="r"><code>compute_fr &lt;- function(xx, annotation) {
+  batches &lt;- unique(annotation$batch)
+  fr_pval &lt;- fr_run &lt;- matrix(0, nrow = length(batches),
+                       ncol = length(batches))
+  indices &lt;- which(upper.tri(fr_dist, diag = FALSE), arr.ind = TRUE)
+  for (i in 1:NROW(indices)) {
+    ind_row &lt;- indices[i, 1]
+    ind_col &lt;- indices[i, 2]
+    fr_res &lt;- 
+          getFR(t(as.matrix(xx[,annotation$batch == batches[ind_row]])),
+            t(as.matrix(xx[,anno_filter$batch == batches[ind_col]])))
+    fr_pval[ind_row, ind_col]  &lt;- fr_res$pNorm
+    fr_run[ind_row, ind_col]  &lt;- fr_res$ww
+  }
+  fr_pval &lt;- Matrix::forceSymmetric(fr_pval)
+  diag(fr_pval) &lt;- 1
+  return(list(fr_pval = fr_pval,
+              fr_run = fr_run))
+}</code></pre>
+<p>Compute multivariate distance for matrices after each step of transformation.</p>
+<pre class="r"><code>fr_raw &lt;- compute_fr(xx = molecules_filter_ENSG,
+                     annotation = anno_filter)
+fr_cpm &lt;- compute_fr(xx = molecules_cpm,
+                     annotation = anno_filter)
+fr_cpm_trans &lt;- compute_fr(xx = molecules_cpm_trans,
+                     annotation = anno_filter)
+fr_final &lt;- compute_fr(xx = molecules_final,
+                     annotation = anno_filter)
+save(fr_raw, fr_cpm, fr_cpm_trans, fr_final,
+     file = &quot;../data/fr-distance.rda&quot;)</code></pre>
+<p>Make p-value heatmaps</p>
+<pre class="r"><code>load(file = &quot;../data/fr-distance.rda&quot;)
+library(gplots)</code></pre>
+<pre><code>
+Attaching package: &#39;gplots&#39;
+
+The following object is masked from &#39;package:stats&#39;:
+
+    lowess</code></pre>
+<pre class="r"><code>heatmap.2(as.matrix(fr_final$fr_pval), 
+          dendrogram = &quot;column&quot;,
+          trace = &quot;none&quot;, Rowv = FALSE,
+          labRow = unique(anno_filter$batch),
+          labCol = unique(anno_filter$batch),
+          key = TRUE, main = &quot;Raw&quot;)</code></pre>
+<p><img src="figure/paper-additional-analysis.Rmd/unnamed-chunk-22-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>heatmap.2(as.matrix(fr_cpm$fr_pval), 
+          dendrogram = &quot;column&quot;,
+          trace = &quot;none&quot;, Rowv = FALSE,
+          labRow = unique(anno_filter$batch),
+          labCol = unique(anno_filter$batch),
+          key = TRUE, main = &quot;CPM&quot;)</code></pre>
+<p><img src="figure/paper-additional-analysis.Rmd/unnamed-chunk-22-2.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>heatmap.2(as.matrix(fr_cpm_trans$fr_pval), 
+          dendrogram = &quot;column&quot;,
+          trace = &quot;none&quot;, Rowv = FALSE,
+          labRow = unique(anno_filter$batch),
+          labCol = unique(anno_filter$batch),
+          key = TRUE, main = &quot;Poisson&quot;)</code></pre>
+<p><img src="figure/paper-additional-analysis.Rmd/unnamed-chunk-22-3.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>heatmap.2(as.matrix(fr_final$fr_pval), 
+          dendrogram = &quot;column&quot;,
+          trace = &quot;none&quot;, Rowv = FALSE,
+          labRow = unique(anno_filter$batch),
+          labCol = unique(anno_filter$batch),
+          key = TRUE, main = &quot;Final&quot;)</code></pre>
+<p><img src="figure/paper-additional-analysis.Rmd/unnamed-chunk-22-4.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 </div>
 <div id="correlation-between-and-within-batches" class="section level2">
 <h2>Correlation between and within batches</h2>
@@ -645,7 +964,7 @@ vector length (arg 1)</code></pre>
                       &quot;between-batch-19239&quot;,
                       &quot;across-batches&quot;))
 axis(2)</code></pre>
-<p><img src="figure/paper-additional-analysis.Rmd/unnamed-chunk-15-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p><img src="figure/paper-additional-analysis.Rmd/unnamed-chunk-23-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <p>Kruskal wallis comparing all between-batch correlations with all within-batch correlations</p>
 <pre class="r"><code>df &lt;- data.frame(corrs = c(unlist(corr_filter[[1]]),
                                 unlist(corr_filter[[2]])),
@@ -683,22 +1002,30 @@ locale:
 [11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
 
 attached base packages:
-[1] stats     graphics  grDevices utils     datasets  methods   base     
+[1] parallel  stats     graphics  grDevices utils     datasets  methods  
+[8] base     
 
 other attached packages:
-[1] lme4_1.1-10   Matrix_1.2-1  lmtest_0.9-34 zoo_1.7-12    cowplot_0.3.1
-[6] ggplot2_1.0.1 dplyr_0.4.2   knitr_1.10.5 
+ [1] gplots_2.17.0     flowMap_1.7.0     scales_0.4.0     
+ [4] reshape2_1.4.1    abind_1.4-3       doParallel_1.0.10
+ [7] iterators_1.0.8   foreach_1.4.3     ade4_1.7-4       
+[10] lme4_1.1-10       Matrix_1.2-1      lmtest_0.9-34    
+[13] zoo_1.7-12        cowplot_0.3.1     ggplot2_1.0.1    
+[16] dplyr_0.4.2       knitr_1.10.5     
 
 loaded via a namespace (and not attached):
- [1] Rcpp_0.12.0      magrittr_1.5     splines_3.2.0    MASS_7.3-40     
- [5] munsell_0.4.2    lattice_0.20-31  colorspace_1.2-6 R6_2.1.1        
- [9] minqa_1.2.4      stringr_1.0.0    httr_0.6.1       plyr_1.8.3      
-[13] tools_3.2.0      parallel_3.2.0   grid_3.2.0       nlme_3.1-120    
-[17] gtable_0.1.2     DBI_0.3.1        htmltools_0.2.6  lazyeval_0.1.10 
-[21] yaml_2.1.13      assertthat_0.1   digest_0.6.8     nloptr_1.0.4    
-[25] reshape2_1.4.1   formatR_1.2      bitops_1.0-6     RCurl_1.95-4.6  
-[29] evaluate_0.7     rmarkdown_0.6.1  stringi_0.4-1    scales_0.2.4    
-[33] proto_0.3-10    </code></pre>
+ [1] Rcpp_0.12.4        formatR_1.2        nloptr_1.0.4      
+ [4] plyr_1.8.3         bitops_1.0-6       tools_3.2.0       
+ [7] digest_0.6.8       evaluate_0.7       gtable_0.1.2      
+[10] nlme_3.1-120       lattice_0.20-31    DBI_0.3.1         
+[13] yaml_2.1.13        proto_0.3-10       httr_0.6.1        
+[16] stringr_1.0.0      caTools_1.17.1     gtools_3.5.0      
+[19] grid_3.2.0         R6_2.1.1           rmarkdown_0.6.1   
+[22] gdata_2.16.1       minqa_1.2.4        magrittr_1.5      
+[25] codetools_0.2-11   htmltools_0.2.6    MASS_7.3-40       
+[28] splines_3.2.0      assertthat_0.1     colorspace_1.2-6  
+[31] labeling_0.3       KernSmooth_2.23-14 stringi_1.0-1     
+[34] RCurl_1.95-4.6     lazyeval_0.1.10    munsell_0.4.3     </code></pre>
 </div>
 
 
