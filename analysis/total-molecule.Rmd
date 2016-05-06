@@ -82,7 +82,7 @@ anno_single$num_genes = apply(molecules[!ercc_index, ], 2, function(x) sum(x > 0
 ```
 
 
-## The total molecule-counts (not including NA19098)
+## The total molecule-counts
 
 For wells with a single cell observed, the total molecule-counts range from
 `r format(min(anno_single$total_molecules_gene[anno_single$cell_number == 1]))`
@@ -134,7 +134,7 @@ plot_conc_molecules_gene_individual <-
      geom_point(alpha = 0.8) +
      scale_colour_manual(values = c("#33CC66", "#6699FF")) +
      geom_smooth(method = "lm", se = FALSE) +
-     labs(x = "Concentration", y = "Total gene molecule-counts (10^3)")
+     labs(x = "Concentration (ng/ul)", y = "Total gene molecule-counts (10^3)")
 
 ## look at ERCC spike-ins
 plot_conc_molecules_ercc_individual <-
@@ -220,11 +220,38 @@ lrtest(fit1,fit2)
 ## Plots for paper 
 ```{r plot,fig.width=12, fig.height=12}
 plot_grid(plot_total_molecules_gene + theme(legend.position = "none"),
-          plot_conc_molecules_gene_individual + theme(legend.position= "none"),
           plot_total_molecules_ercc + theme(legend.position = "none"),
+          plot_conc_molecules_gene_individual + theme(legend.position= "none"),
           plot_gene_mol_ercc_mol + theme(legend.position = "none"),
           labels = LETTERS[1:4])
 ```
+
+## Expression profile
+```{r expression-profile,fig.width=12, fig.height=6}
+## pca of endogenous genes
+pca_molecules_profile_ENSG <- run_pca(molecules[!ercc_index, ])
+pca_molecules_ENSG_plot <- plot_pca(pca_molecules_profile_ENSG$PCs,
+         explained = pca_molecules_profile_ENSG$explained,
+         metadata = anno_single, color = "individual",
+         shape = "replicate", alpha = 0.5, size = 2.2) +
+  labs(title = "Endogenous gene expression profile")
+
+
+## pca of ERCC spike-ins
+pca_molecules_profile_ERCC <- run_pca(molecules[ercc_index, ])
+pca_molecules_ERCC_plot <- plot_pca(pca_molecules_profile_ERCC$PCs,
+         explained = pca_molecules_profile_ERCC$explained,
+         metadata = anno_single, color = "individual",
+         shape = "replicate", alpha = 0.5, size = 2.2) +
+  labs(title = "ERCC spike-in expression profile")
+
+## make plots
+plot_grid(pca_molecules_ENSG_plot + theme(legend.position = "none"),
+          pca_molecules_ERCC_plot + theme(legend.position = "none"),
+          labels = LETTERS[1:2])
+
+```
+
 
 ## Session information
 
