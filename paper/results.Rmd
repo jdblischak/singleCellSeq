@@ -119,12 +119,12 @@ We thus conclude that ERCC spike-in controls cannot be used to effectively accou
 We explored potential reasons for the observed batch effects, and in particular, the difference in ERCC counts across batches and individuals.  
 To do so, we focused on the read-to-molecule conversion rates, namely the rates at which we convert read to molecule counts based on the UMI sequences.  
 We defined read-to-molecule conversion efficiency as the total molecule-counts divided by the total reads-counts in each sample, considering separately the reads/molecules that correspond to endogenous genes or ERCC spike-ins. 
-In contrast to the common intuition, we observed a batch effect arising from the read-to-molecule conversion efficiency of both ERCC (F-test; *p* < 0.05) and endogenous genes (F-test; *p* < 0.001) across C1 replicates from the same individual (Figure. 3). 
+In contrast to the common intuition, we observed a batch effect arising from the read-to-molecule conversion efficiency of both ERCC (F-test; *p* < 0.05) and endogenous genes (F-test; *p* < 0.001) across C1 replicates from the same individual (Figure. 3).
+Moreover, the difference in read-to-molecule conversion efficiency across the three individuals was significant not only for endogenous genes (LRT; *p* < 0.01) but also in the ERCC spike-ins (LRT; *p* < 0.01, Figure. 3D).
 We reason that the difference in read to molecule conversion efficiency across C1 preparations may contribute to the observed batch effect in this platform. 
 
-### Measuring regulatory noise in single-cell gene expression
-Our analysis indicated a considerable batch effect in the single cell gene expression data. 
-We thus sought an analysis approach that will take the batch effect into account and allow us to characterize biological differences in variation of single cell gene expression levels across individuals (Figure. 4). 
+### Measuring regulatory noise in single-cell gene expression data 
+Our analysis indicated a considerable batch effect in the single cell gene expression data. We thus sought an approach that will take the batch effect into account and allow us to study biological properties of the single-cell gene expression data. 
 As a first step, we adjusted the raw molecule counts by using a Poisson approximation to account for the random use of identical UMI sequences in molecules from highly expressed genes (this was previously termed a correction for the UMI ‘collision probability’ [@Fu2011]).
 We then excluded data from genes whose inferred molecule count exceeded 1024 (the theoretical number of UMI sequences) – this step resulted in the exclusion of data from 6 genes, all mitochondrial. 
 
@@ -137,33 +137,36 @@ Our approach is similar in principle to a method that was initially developed fo
 Essentially, we assumed that samples within each C1 replicate share a component of technical variation, which is independent of biological variation across individuals. We fit a linear mixed model for each gene, which includes a fixed effect for individual and a random effect for batch. 
 The batch effect is specific to each C1 replicate, and is independent of biological variation across individuals.
 We fit a linear mixed model for each gene that includes a fixed effect of individuals and a random effect for within-batch variation attributed to cell-to-cell correlation in each C1 replicate.
-We then removed the batch effect and found from the corrected data that the samples from different C1 replicates of the same individual largely overlapped (Figure 4D).
+We use this approach to estimate and remove the batch effect associated with different C1 preparations (Figure 4D). 
 
-Once we removed the unwanted technical variability, we next focused on analyzing cell-to-cell variation in gene expression.
-The term "gene expression noise" - the measured level of variation in gene expression among single cells in isogenic populations [@Raser2005], is generally defined as the coefficient of variation (CV) of the bio-molecule levels, either protein or mRNA [@Fehrmann2013].
-In the following, we used the standardized, normalized, batch-corrected molecule count data to quantitatively measure the gene expression noise in clonal iPSCs. 
-We adjusted our CV values by gene abundance averaged across single cells (see the Methods section) and used the adjusted CV as the measurements of gene expression noise.
+Once we removed the unwanted technical variability, we focused on analyzing variation in gene expression between individual cells. 
+Our goal was to identify inter-individual differences in the amount of variation of gene expression levels across single cells. 
+In other words, we aimed to identify differences in the regulation of gene expression noise between individuals.
+Gene expression noise can be measured by estimating the level of variation in gene expression levels among single cells of an isogenic population [@Raser2005].
+It is generally defined as the coefficient of variation (CV) of the expression levels, either of protein or mRNA [@Fehrmann2013].
+In the following, we used the standardized, normalized, batch-corrected molecule count data to estimate gene expression noise in clonal iPSCs. 
+To account for heteroscedasticity, we adjusted the CV values by the average gene-specific expression level across cells of the same individual (see Methods).
+The adjusted CV is robust both to differences in gene expression levels, as well as to the proportion of gene dropouts in single cells.  
 
-An important consideration when analyzing scRNA-seq data is the problem of genes possibly being missed during sequencing (referred to as gene “dropout”) due do low mRNA abundance as well as low mRNA capture efficiency [@Brennecke2013].
-To investigate the effects of the dropouts in our analyses, we looked at the proportion of undetected cells, or the dropout rate, of each gene and its association with gene abundance and gene expression noise.
-We found that the proportion of undetected cells varied across genes, with the median ranged between 21 to 30 percent in the three individuals.
-Significant individual difference in the proportion of undetected cells were found in more than 10 percent of the endogenous genes (1,958 genes).
+Gene dropout is the term used to describe the lack of molecule representation of an expressed gene, presumably due to the relatively low RNA capturing efficiency in single cells [@Brennecke2013].
+To investigate the effects of gene dropouts, we considered the association between the proportion of cells in which a given gene is undetected (namely, the gene-specific dropout rate), the average gene expressing level, and estimates of gene expression noise. 
+The median dropout ranged between 21 to 30 percent across genes.
+We found significant differences (test; P < XX) in gene-specific dropout rates between individuals in more than 10% (1958 of `r format(sum(grepl("ENSG", rownames(molecules_filter))), big.mark = ",")`) of expressed endogenous genes.
 As expected, gene abundance and variance of the expressed cells were associated with the proportion of undetected cells (Sup. Figure. 9A and 9B, respectively). 
 However, importantly, the adjusted CV was not associated with proportion of undetected cells (Spearman's correlation = 0.04) across the three individuals (Sup. Figure. 9C), supporting the idea that our adjusted CV measurement is not confounded with the dynamic range of gene abundance.
+As expected, estimated expression levels and the estimated variation in expression levels across cells, are both associated with gene-specific dropout rates (Sup. Figure. 9A and 9B, respectively). 
+However, importantly, adjusted CVs are not associated with gene dropout rates (Spearman's correlation = 0.04; Sup. Figure. 9C), indicating that – at the resolution afforded by our RNA sequencing depth - adjusted CV measurements are not confounded by the dynamic range of single-cell gene expression levels. 
 
-We measured the expression noise and gene abundance with or without the single cell samples where a given gene was not detected/expressed (all cells in Figure. 5A and expressed cells in Figure. 5B)[@Shalek2013].
-We examined the presence of differential gene expression noise across individuals by looking at the top 1,000 genes rank by expression noise and by abundance.
-While including only the expressed cells - cells that were quantified by one or more molecule counts of the given gene, we found that 887 genes were ranked among the top 1,000 highly expressed genes in all three individuals (Figure. 5C), whereas only 103 genes were ranked among the top 1,000 noisy genes (Figure. 5D).
-Similar results were found when all single cells were included that the three individuals shared 891 highly expressed genes and only 120 highly noisy genes (data not shown).
+We thus estimated mean expression levels and regulatory noise (using adjusted cv) for each gene, by either including (Figure. 5A) or excluding (Figure. 5B) samples in which the gene was not detected/expressed [@Shalek2013].
+We first focused on general trends in the data. We ranked genes in each individual by their mean expression level as well as by their estimated level of variation across single cells. 
+When we samples in which a gene was expressed, we found that 887 of the 1,000 most highly expressed genes in each individual are common to all three individuals (Figure. 5C). 
+In contrast, only 103 of the 1,000 most highly variable (noisy) genes in each individual were common to all three individuals (Figure. 5D). 
+We found similar results when we considered data from all single cells, regardless of whether the gene was detected as expressed (data not shown).
 
-### Identification of genes with differential gene expression noise across individuals
-
-Next, we identified differential noisy genes across individuals using the median of absolute deviation (MAD) to quantify the degree of dissimilarity between individual noise measures. 
+Next, we identified genes whose estimated regulatory noise (based on the adjusted CV) is significantly different between individuals (using median of absolute deviation to quantify the degree of dissimilarity between individuals; see Methods). 
+For the purpose of this analysis we only included data from cells in which the gene was detected as expressed. 
+Based on permutation (see Methods), we classified the estimates of regulatory noise of 330 genes as significantly different across individuals (alpha-level of $10^{-5}$; see figure 6 for examples; Sup Table. 2 for gene list, Sup. Figure. 10). 
+Differential noisy genes across individuals using the median of absolute deviation (MAD) to quantify the degree of dissimilarity between individual noise measures. 
 While only the expressed cells were included for computing individual CVs adjusted by gene abundance, our permutation-based test indicated that 330 genes had statistically significant differences in gene expression noise between individuals, at an alpha-level of $10^{-5}$ (Sup Table. 2 of gene list, Sup. Figure. 10). 
-Enrichment analysis suggested that these genes were enriched for genes involved in protein translation, protein disassembly, and various biosynthetic processes (Sup Table. 2). 
-Interestingly, among the differential noisy genes that we identified, we found two highly expressed pluripotency genes *DNMT3B* and *NR6A1* among the differential noisy genes, both of which were detected in all single cells (Sup. Figure. 10), whereas the majority of the pluripotency genes were not detected in all the cells and exhibited no differential noisy pattern, including key pluripotency genes *Nanog* and *ZFP42* (Sup. Figure. 11), suggesting that the pluripotent state was tightly regulated across individuals.
-
-Furthermore, the transcriptional noise variation pattern was characterized by a few features, such as proportion and expression variability of the expressed cells, and also the proportion of undetected cells (dropout rate, Figure. 6), despite the association between gene abundance and proportion of undetected cells (Figure. 5A and 5B). 
-For instance, *TFPI* and *Nanog* in individual NA19101 exhibited a higher number of expressed cells and also a wider range of expression among the expressed cells compared to the other two individuals, yet the difference of adjusted CV of *Nanog* was not significant across individuals (*p* = 0.80).
-On the other hand, *SLC25A16* exhibited a similar range of variation in the expressed cells across the three individuals, but the number of expressed cells was different, and the difference of adjusted CV was significant (*p* < 0.001). 
-
+Enrichment analysis suggested that these 330 genes were enriched for genes involved in protein translation, protein disassembly, and various biosynthetic processes (Sup Table. 2). 
+Interestingly, among the differential noisy genes whose regulatory noise estimates differ between individualsthat we identified, we found two highly expressed pluripotency genes, *DNMT3B* and *NR6A1*, both of which were detected in all single cells (Sup. Figure. 10).
