@@ -22,10 +22,6 @@ library("lme4")
 source("functions.R")
 ```
 
-## Basic framework
-
-
-
 
 ## Questions
 
@@ -73,6 +69,8 @@ molecules_filter <- read.table("../data/molecules-filter.txt", header = TRUE,
                                stringsAsFactors = FALSE)
 molecules_filter_ENSG <- molecules_filter[grep("ERCC", rownames(molecules_filter), invert = TRUE), ]
   
+molecules_filter_ERCC <- molecules_filter[grep("ERCC", rownames(molecules_filter), invert = FALSE), ]
+
 stopifnot(ncol(molecules_filter) == nrow(anno_filter),
           colnames(molecules_filter) == anno_filter$sample_id)
 ```
@@ -390,7 +388,7 @@ anova(fit, fit_1)
 ```
 
 
-## Percent variation per gene
+## Variance components per gene
 
 Load model fitting code - a wrapper of the blmer function that fits a bayesian nested model for one gene at a time. 
 
@@ -400,7 +398,7 @@ Load model fitting code - a wrapper of the blmer function that fits a bayesian n
 #' @param xx Matrix of expression measurements on log scale.
 #' @param annotation Meta-data matrix of each column of xx.
 
-gene_variation <- function(xx, annotation) {
+gene_variation <- function(counts, annotation) {
   
   individual <- as.factor(annotation$individual)
   replicate <- as.factor(annotation$replicate)
@@ -411,9 +409,10 @@ gene_variation <- function(xx, annotation) {
       
       value <- unlist(counts[i,])
       
-      fit_try <- tryCatch( fit <- blme::blmer(value ~ 1|individual/replicate, 
-                                      cov.prior = wishart,
-                                      resid.prior = invgamma),
+      fit_try <- tryCatch( 
+        fit <- blme::blmer(value ~ 1|individual/replicate, 
+                           cov.prior = gamma(shape = 2),
+                           resid.prior = gamma(shape = 2)),
                              condition = function(c) c)
       if(inherits(fit_try, "condition")){
       var_foo <- rep(NA, 3)
@@ -438,23 +437,23 @@ individual <- as.factor(anno_filter$individual)
 replicate <- as.factor(anno_filter$replicate)
 
 ## endogenous molecule-count
-blme_raw <- gene_variation(xx = log2(molecules_filter_ENSG+1),
+blme_raw <- gene_variation(counts = log2(molecules_filter_ENSG+1),
                            annotation = anno_filter)
 
 ## ERCC molecule-count
-blme_ercc <- gene_variation(xx = log2(molecules_filter_ERCC+1),
+blme_ercc <- gene_variation(counts = log2(molecules_filter_ERCC+1),
                             annotation = anno_filter)
 
 ## ENSG CPM
-blme_cpm <- gene_variation(xx = molecules_cpm, 
+blme_cpm <- gene_variation(counts = molecules_cpm, 
                            annotation = anno_filter)
 
 ## ENSG CPM Poisson
-blme_cpm_trans <- gene_variation(xx = molecules_cpm_trans, 
+blme_cpm_trans <- gene_variation(counts = molecules_cpm_trans, 
                            annotation = anno_filter)
 
 ## ENSG CPM Poisson
-blme_final <- gene_variation(xx = molecules_final, 
+blme_final <- gene_variation(counts = molecules_final, 
                            annotation = anno_filter)
 
 save(blme_raw, blme_ercc, blme_cpm, blme_cpm_trans,
@@ -462,137 +461,72 @@ save(blme_raw, blme_ercc, blme_cpm, blme_cpm_trans,
      file = "../data/blme-variance.rda")
 ```
 
-Standardardize variance components such that for each gene the variance 
-component estimates sum up to 1. Because variance of sequencing counts depend on the dynamic range, we avoid biased comparison of variance estimates when comparing across genes, by the action of standarizing per gene variance components by the total of variance estimates.
+Compute proportion of variance explained: the above analysis produces variance component estimates (e.g., $\sigma^2_b$ for batch effect) that are based on a penalized maximum likelihood approach. We compute naive approximation of sum of squared variation for the individual effect and for the batch effect, and their proportions of variation. Specifically, to simplify the computations of degrees of freedom for each factor, we approximate a balanced nested design and compute estiamted number of levels of each factor as the average of the observed number of levels of each factor: the approximate number of batches is 2.67 (i.e., (2+3+3)/3) and and the approximate number of cell is 70.5 (i.e., average number of cell samples per batch). 
 
-*Endogenous genes*
 
 ```{r}
 load("../data/blme-variance.rda")
-blme_raw_norm <- (blme_raw/rowSums(blme_raw))
 
-par(mfrow = c(2,2))
-plot(blme_raw_norm[,1], blme_raw_norm[,2],
-     xlab = "Individual",
-     ylab = "Replicate")
-abline(0, 1, col = "red")
-plot(blme_raw_norm[,3], blme_raw_norm[,1],
-     xlab = "Residual",
-     ylab = "Individual")
-plot(blme_raw_norm[,3], blme_raw_norm[,2],
-     xlab = "Residual",
-     ylab = "Replicate")
-boxplot(blme_raw_norm)
-title(main = "Proportion of per-gene variance",
+labels <- c("Endogenous raw", "ERCC raw",
+            "Endogenous CPM", "Endogenous Poisson",
+            "Endogenous final")
+blme_list <- list(blme_raw, blme_ercc, blme_cpm, 
+                  blme_cpm_trans, blme_final)
+prop_list <- vector("list", length(blme_list))
+names(prop_list) <- c("raw", "ercc", "cpm", "cpm_trans", "final")
+par(mfrow = c(2,3))
+for (i in c(1:length(blme_list))) {
+  res <- blme_list[[i]]  
+  ms_ind <- (res[,1]*2.67*70.5) + (res[,2]*70.5) + res[,3]
+  ms_batch <- (res[,2]*70.5) + res[,3]
+  ms_resid <- res[,3]
+  ss_ind <- ms_ind*(3-1)
+  ss_batch <- ms_batch*3*(2.67-1)
+  ss_resid <- ms_resid*3*2.67*(70.5-1)
+  prop_ind <- ss_ind/(ss_ind + ss_batch + ss_resid)
+  prop_batch <- ss_batch/(ss_ind + ss_batch + ss_resid)
+  prop_list[[i]] <- data.frame(prop_ind = prop_ind,
+                               prop_batch = prop_batch)
+  plot(prop_ind, prop_batch,
+       xlab = paste("Individual", 
+                    100*round(median(prop_ind, na.rm = TRUE), 2), "%"),
+       ylab = paste("Batch", 
+                    100*round(median(prop_batch, na.rm = TRUE), 2), "%"),
+       main = labels[i])
+  abline(0, 1, col = "red")
+}
+title(main = "Proportion of individual-level variance",
       outer = TRUE, line = -1)
 ```
 
-Compare individual versus replicate variance estimates.
+
+Kruskal-wallis test to compare estimated proportion of variance
 
 ```{r}
-summary(blme_raw_norm)
-
 # Kruskal wallis rank sum test to compare
 # proportions of variance explained due to individual
 # versus due to replicate
-kruskal.test(c(blme_raw_norm[,1], blme_raw_norm[,2]) ~
-               rep(c(1,2), each = NROW(blme_raw_norm)) )
+
+# endogenous raw
+kruskal.test(c(prop_list$raw[,1], prop_list$raw[,2]) ~
+               rep(c(1,2), each = NROW(blme_raw)) )
+
+# ercc raw
+kruskal.test(c(prop_list$ercc[,1], prop_list$ercc[,2]) ~
+               rep(c(1,2), each = NROW(prop_list$ercc)) )
+
+# endogenous cpm
+kruskal.test(c(prop_list$cpm[,1], prop_list$cpm[,2]) ~
+               rep(c(1,2), each = NROW(blme_raw)) )
+
+# endogenous cpm transformed (poisson transformed)
+kruskal.test(c(prop_list$cpm_trans[,1], prop_list$cpm_trans[,2]) ~
+               rep(c(1,2), each = NROW(blme_raw)) )
+
+# endogenous final
+kruskal.test(c(prop_list$final[,1], prop_list$final[,2]) ~
+               rep(c(1,2), each = NROW(blme_raw)) )
 ```
-
-
-*ERCC spike-in genes*
-
-```{r}
-load("../data/blme-variance.rda")
-blme_ercc_norm <- (blme_ercc/rowSums(blme_ercc))
-
-par(mfrow = c(2,2))
-plot(blme_ercc_norm[,1], blme_ercc_norm[,2],
-     xlab = "Individual",
-     ylab = "Replicate")
-abline(0, 1, col = "red")
-plot(blme_ercc_norm[,3], blme_ercc_norm[,1],
-     xlab = "Residual",
-     ylab = "Individual")
-plot(blme_ercc_norm[,3], blme_ercc_norm[,2],
-     xlab = "Residual",
-     ylab = "Replicate")
-boxplot(blme_ercc_norm)
-title(main = "Proportion of per-gene variance")
-```
-
-Compare individual versus replicate variance estimates.
-
-```{r}
-summary(blme_ercc_norm)
-
-# Kruskal wallis rank sum test to compare
-# proportions of variance explained due to individual
-# versus due to replicate
-kruskal.test(c(blme_ercc_norm[,1], blme_ercc_norm[,2]) ~
-               rep(c(1,2), each = NROW(blme_ercc_norm)) )
-```
-
-
-*Per-gene variance estimates after each normalization step*
-
-
-```{r, fig.width=9, fig.height=9}
-# compute percent variation
-blme_raw_norm <- data.frame(blme_raw/rowSums(blme_raw))
-blme_cpm_norm <- data.frame(blme_cpm/rowSums(blme_cpm))
-blme_cpm_trans_norm <- data.frame(blme_cpm_trans/rowSums(blme_cpm_trans))
-blme_final_norm <- data.frame(blme_final/rowSums(blme_final))
-
-library(ggplot2)
-cowplot::plot_grid(
-  ggplot(data.frame(
-    prop = c(blme_cpm_norm$individual/blme_raw_norm$individual,
-             blme_cpm_trans_norm$individual/blme_cpm_norm$individual,
-             blme_final_norm$individual/blme_cpm_trans_norm$individual),
-    label = factor(rep(c(1:3), 
-                each = NROW(blme_raw_norm)),
-                levels = c(1:3),
-                labels = c("CPM-Raw", "Poisson/CPM", "Final/Poisson"))),
-       aes(x = label, y = prop)) +
-    geom_violin() + geom_boxplot(width = .2, aes(colour = label)) +
-      xlab("") +
-      ylab("Individual percent-variance ratio") +
-      ggtitle("Individual percent-variance ratio (to the previous step)") +
-      theme(legend.position = "none"),
-  ggplot(data.frame(
-    prop = c(blme_cpm_norm$individual/blme_raw_norm$individual,
-             blme_cpm_trans_norm$individual/blme_raw_norm$individual,
-             blme_final_norm$individual/blme_raw_norm$individual),
-    label = factor(rep(c(1:3), 
-                each = NROW(blme_raw_norm)),
-                levels = c(1:3),
-                labels = c("CPM/Raw", "Poisson/Raw", "Final/Raw"))),
-       aes(x = label, y = prop)) +
-    geom_violin() + geom_boxplot(width = .2, aes(colour = label)) +
-      xlab("") +
-      ylab("Individual percent-variance ratio") +
-      ggtitle("Individual percent-variance ratio (to Step Raw)") +
-      theme(legend.position = "none"),
-  ggplot(data.frame(
-    prop = log(c(blme_raw_norm$individual/blme_raw_norm$replicate,
-             blme_cpm_norm$individual/blme_cpm_norm$replicate,
-             blme_cpm_trans_norm$individual/blme_cpm_trans_norm$replicate,
-             blme_final_norm$individual/blme_final_norm$replicate)),
-    label = factor(rep(c(1:4), 
-                each = NROW(blme_raw_norm)),
-                levels = c(1:4),
-                labels = c("Raw", "CPM", "Poisson", "Final"))),
-       aes(x = label, y = prop)) +
-    geom_violin() + geom_boxplot(width = .2, aes(colour = label)) +
-      xlab("") +
-      ylab("log ratio of percent variance") +
-      ggtitle("Individual to replicate log-ratio") +
-      theme(legend.position = "none"),
-  labels = LETTERS[1:4])
-```
-
-Per-gene variation estimates between steps fail to reveal changes induced in the expression profiles between steps, if any. 
 
 *Multivariate distance between C1 preparations*: Friedman-Rafsky multivariate run test.
 
@@ -642,7 +576,7 @@ Make p-value heatmaps
 ```{r}
 load(file = "../data/fr-distance.rda")
 library(gplots)
-heatmap.2(as.matrix(fr_final$fr_pval), 
+heatmap.2(as.matrix(fr_raw$fr_pval), 
           dendrogram = "column",
           trace = "none", Rowv = FALSE,
           labRow = unique(anno_filter$batch),
