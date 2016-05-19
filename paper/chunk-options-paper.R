@@ -15,6 +15,9 @@ fig_main_noise <- "5"
 fig_supp_flowcell <- "S1"
 fig_supp_sickle <- "SX"
 
+# Numbering for supplementary tables
+table_supp_genotypes <- "1"
+
 # Import data
 anno_filter <- read.table("../data/annotation-filter.txt", header = TRUE,
                           stringsAsFactors = FALSE)
