@@ -127,16 +127,17 @@ img {
 <div id="TOC">
 <ul>
 <li><a href="#setup">Setup</a></li>
-<li><a href="#the-total-molecule-counts-not-including-na19098">The total molecule-counts (not including NA19098)</a></li>
-<li><a href="#the-relationship-between-concentration-and-total-molecule-counts">The relationship between concentration and total molecule-counts</a></li>
+<li><a href="#the-total-molecule-counts">The total molecule-counts</a></li>
+<li><a href="#the-relationship-between-concentration-and-total-molecule-counts-not-including-na19098">The relationship between concentration and total molecule-counts (not including NA19098)</a></li>
 <li><a href="#ercc-counts-and-total-molecule-counts">ERCC counts and total molecule counts</a></li>
 <li><a href="#plots-for-paper">Plots for paper</a></li>
+<li><a href="#expression-profile">Expression profile</a></li>
 <li><a href="#session-information">Session information</a></li>
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2016-04-28</p>
-<p><strong>Code version:</strong> 619e90fd099bbed4c78929c937abbdbdaad65b88</p>
+<p><strong>Last updated:</strong> 2016-05-19</p>
+<p><strong>Code version:</strong> ad817ee3853d04329bf66788ac8682a17410e310</p>
 <p>Recreate the <a href="depth.html">Sequencing depth and cellular RNA content</a> using updated data files to make figures for the paper.</p>
 <div id="setup" class="section level2">
 <h2>Setup</h2>
@@ -196,9 +197,9 @@ anno_single$total_molecules_ercc = colSums(molecules[ercc_index, ])
 anno_single$total_molecules = colSums(molecules)
 anno_single$num_genes = apply(molecules[!ercc_index, ], 2, function(x) sum(x &gt; 0))</code></pre>
 </div>
-<div id="the-total-molecule-counts-not-including-na19098" class="section level2">
-<h2>The total molecule-counts (not including NA19098)</h2>
-<p>For wells with a single cell observed, the total molecule-counts range from 30408 to 96315, the first quartile for the total number of gene molecules is 55561.25, and the third quartile is 78173.25.</p>
+<div id="the-total-molecule-counts" class="section level2">
+<h2>The total molecule-counts</h2>
+<p>For wells with a single cell observed, the total molecule-counts range from 30408 to 113832, the first quartile for the total number of gene molecules is 55561.25, and the third quartile is 78173.25.</p>
 <pre class="r"><code>## create a color palette with one color per individual and different shades for repplicates
 great_color_8 &lt;- c(&quot;#CC3300&quot;, &quot;#FF9966&quot;, &quot;#006633&quot;, &quot;#009900&quot;, &quot;#99FF99&quot;, &quot;#3366FF&quot;, &quot;#6699FF&quot;, &quot;#66CCFF&quot;)
 
@@ -225,8 +226,8 @@ Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&
           labels = LETTERS[1:2])</code></pre>
 <p><img src="figure/total-molecule.Rmd/total_molecules-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
 </div>
-<div id="the-relationship-between-concentration-and-total-molecule-counts" class="section level2">
-<h2>The relationship between concentration and total molecule-counts</h2>
+<div id="the-relationship-between-concentration-and-total-molecule-counts-not-including-na19098" class="section level2">
+<h2>The relationship between concentration and total molecule-counts (not including NA19098)</h2>
 <p>As we try to understand the general relationships between sequencing results and cellular mRNA content, we remove outlier batches. NA19098 replicate 1 failed the quantification of the concentration of the single cells and was hence removed. Because NA19098 concentration is only quantified in one replicate, we removed NA19098 from analysis involving batch differences and concentration.</p>
 <pre class="r"><code>anno_single_6 &lt;- anno_single %&gt;% filter(individual != &quot;NA19098&quot;)</code></pre>
 <pre class="r"><code>## look at endogenous genes
@@ -235,8 +236,9 @@ plot_conc_molecules_gene_individual &lt;-
          aes(x = concentration, 
              y = total_molecules_gene / 10^3, color = individual)) +
      geom_point(alpha = 0.8) +
+     scale_colour_manual(values = c(&quot;#33CC66&quot;, &quot;#6699FF&quot;)) +
      geom_smooth(method = &quot;lm&quot;, se = FALSE) +
-     labs(x = &quot;Concentration&quot;, y = &quot;Total gene molecule-counts (10^3)&quot;)
+     labs(x = &quot;Concentration (ng/ul)&quot;, y = &quot;Total gene molecule-counts (10^3)&quot;)
 
 ## look at ERCC spike-ins
 plot_conc_molecules_ercc_individual &lt;-
@@ -268,53 +270,6 @@ Model 2: total_molecules_gene ~ concentration
   #Df  LogLik Df  Chisq Pr(&gt;Chisq)    
 1   4 -4555.1                         
 2   3 -4577.1 -1 43.956  3.358e-11 ***
----
-Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
-<pre class="r"><code>## Is there a difference across replicates of 19101
-fit0 &lt;- lm(total_molecules_gene ~ concentration, 
-   data = anno_single_6, subset = individual == &quot;NA19101&quot;)
-fit1 &lt;- lm(total_molecules_gene ~ concentration + as.factor(replicate), 
-   data = anno_single_6, subset = individual == &quot;NA19101&quot;)
-# use likelihood ratio test to detect individual differences
-lrtest(fit1, fit0)</code></pre>
-<pre><code>Likelihood ratio test
-
-Model 1: total_molecules_gene ~ concentration + as.factor(replicate)
-Model 2: total_molecules_gene ~ concentration
-  #Df  LogLik Df  Chisq Pr(&gt;Chisq)
-1   5 -2180.5                     
-2   3 -2180.8 -2 0.6238     0.7321</code></pre>
-<pre class="r"><code># quick line plot
-ggplot(anno_single_6[anno_single_6$individual == &quot;NA19101&quot;, ],
-       aes(x = concentration, 
-           y = total_molecules_gene / 10^3, color = replicate)) +
-   geom_point(alpha = 0.8) +
-   geom_smooth(method = &quot;lm&quot;, se = FALSE) +
-   labs(x = &quot;Concentration&quot;, 
-        y = &quot;Total gene molecule-counts (10^3)&quot;)</code></pre>
-<p><img src="figure/total-molecule.Rmd/molecules-num-cells-batch-2.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
-<pre class="r"><code>## Is there a difference across replicates of 19239
-fit0 &lt;- lm(total_molecules_gene ~ concentration, 
-   data = anno_single_6, subset = individual == &quot;NA19239&quot;)
-fit1 &lt;- lm(total_molecules_gene ~ concentration + as.factor(replicate), 
-   data = anno_single_6, subset = individual == &quot;NA19239&quot;)
-ggplot(anno_single_6[anno_single_6$individual == &quot;NA19239&quot;, ],
-       aes(x = concentration, 
-           y = total_molecules_gene / 10^3, color = replicate)) +
-   geom_point(alpha = 0.8) +
-   geom_smooth(method = &quot;lm&quot;, se = FALSE) +
-   labs(x = &quot;Concentration&quot;, 
-        y = &quot;Total gene molecule-counts (10^3)&quot;)</code></pre>
-<p><img src="figure/total-molecule.Rmd/molecules-num-cells-batch-3.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
-<pre class="r"><code># use likelihood ratio test to detect individual differences
-lrtest(fit1, fit0)</code></pre>
-<pre><code>Likelihood ratio test
-
-Model 1: total_molecules_gene ~ concentration + as.factor(replicate)
-Model 2: total_molecules_gene ~ concentration
-  #Df  LogLik Df  Chisq Pr(&gt;Chisq)    
-1   5 -2351.6                         
-2   3 -2365.0 -2 26.662  1.623e-06 ***
 ---
 Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
 <p>Calculate correlation of concentration and molecule counts</p>
@@ -439,11 +394,36 @@ Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&
 <div id="plots-for-paper" class="section level2">
 <h2>Plots for paper</h2>
 <pre class="r"><code>plot_grid(plot_total_molecules_gene + theme(legend.position = &quot;none&quot;),
+          plot_total_molecules_ercc + theme(legend.position = &quot;none&quot;),
           plot_conc_molecules_gene_individual + theme(legend.position= &quot;none&quot;),
           plot_gene_mol_ercc_mol + theme(legend.position = &quot;none&quot;),
-          plot_gene_mol_perc_ercc + theme(legend.position= &quot;none&quot;),
           labels = LETTERS[1:4])</code></pre>
 <p><img src="figure/total-molecule.Rmd/plot-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
+</div>
+<div id="expression-profile" class="section level2">
+<h2>Expression profile</h2>
+<pre class="r"><code>## pca of endogenous genes
+pca_molecules_profile_ENSG &lt;- run_pca(molecules[!ercc_index, ])
+pca_molecules_ENSG_plot &lt;- plot_pca(pca_molecules_profile_ENSG$PCs,
+         explained = pca_molecules_profile_ENSG$explained,
+         metadata = anno_single, color = &quot;individual&quot;,
+         shape = &quot;replicate&quot;, alpha = 0.5, size = 2.2) +
+  labs(title = &quot;Endogenous gene expression profile&quot;)
+
+
+## pca of ERCC spike-ins
+pca_molecules_profile_ERCC &lt;- run_pca(molecules[ercc_index, ])
+pca_molecules_ERCC_plot &lt;- plot_pca(pca_molecules_profile_ERCC$PCs,
+         explained = pca_molecules_profile_ERCC$explained,
+         metadata = anno_single, color = &quot;individual&quot;,
+         shape = &quot;replicate&quot;, alpha = 0.5, size = 2.2) +
+  labs(title = &quot;ERCC spike-in expression profile&quot;)
+
+## make plots
+plot_grid(pca_molecules_ENSG_plot + theme(legend.position = &quot;none&quot;),
+          pca_molecules_ERCC_plot + theme(legend.position = &quot;none&quot;),
+          labels = LETTERS[1:2])</code></pre>
+<p><img src="figure/total-molecule.Rmd/expression-profile-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
 </div>
 <div id="session-information" class="section level2">
 <h2>Session information</h2>
@@ -463,18 +443,18 @@ attached base packages:
 [1] stats     graphics  grDevices utils     datasets  methods   base     
 
 other attached packages:
-[1] cowplot_0.3.1 ggplot2_1.0.1 lmtest_0.9-34 zoo_1.7-12    edgeR_3.10.2 
-[6] limma_3.24.9  tidyr_0.2.0   dplyr_0.4.2   knitr_1.10.5 
+ [1] testit_0.4    cowplot_0.3.1 ggplot2_1.0.1 lmtest_0.9-34 zoo_1.7-12   
+ [6] edgeR_3.10.2  limma_3.24.9  tidyr_0.2.0   dplyr_0.4.2   knitr_1.10.5 
 
 loaded via a namespace (and not attached):
- [1] Rcpp_0.12.0      magrittr_1.5     MASS_7.3-40      munsell_0.4.2   
+ [1] Rcpp_0.12.4      magrittr_1.5     MASS_7.3-40      munsell_0.4.3   
  [5] colorspace_1.2-6 lattice_0.20-31  R6_2.1.1         plyr_1.8.3      
  [9] stringr_1.0.0    httr_0.6.1       tools_3.2.0      parallel_3.2.0  
 [13] grid_3.2.0       gtable_0.1.2     DBI_0.3.1        htmltools_0.2.6 
 [17] lazyeval_0.1.10  yaml_2.1.13      assertthat_0.1   digest_0.6.8    
 [21] reshape2_1.4.1   formatR_1.2      bitops_1.0-6     RCurl_1.95-4.6  
-[25] evaluate_0.7     rmarkdown_0.6.1  labeling_0.3     stringi_0.4-1   
-[29] scales_0.2.4     proto_0.3-10    </code></pre>
+[25] evaluate_0.7     rmarkdown_0.6.1  labeling_0.3     stringi_1.0-1   
+[29] scales_0.4.0     proto_0.3-10    </code></pre>
 </div>
 
 

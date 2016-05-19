@@ -124,29 +124,25 @@ img {
 
 <div id="TOC">
 <ul>
-<li><a href="#basic-framework">Basic framework</a></li>
 <li><a href="#questions">Questions</a></li>
 <li><a href="#input">Input</a></li>
 <li><a href="#concentration-vs.total-molecule-count-ensg">Concentration vs. total molecule-count (ENSG)</a></li>
 <li><a href="#reads-to-molecule-conversion-efficiency">Reads to molecule conversion efficiency</a></li>
 <li><a href="#total-ensg-molecule-count-and-total-ercc-molecule-count">total ENSG molecule-count and total ERCC molecule-count</a></li>
-<li><a href="#percent-variation-per-gene">Percent variation per gene</a></li>
+<li><a href="#variance-components-per-gene">Variance components per gene</a></li>
 <li><a href="#correlation-between-and-within-batches">Correlation between and within batches</a></li>
 <li><a href="#session-information">Session information</a></li>
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2016-05-04</p>
-<p><strong>Code version:</strong> cd6b2c541439886c145c37e02be9ea4826fddff1</p>
+<p><strong>Last updated:</strong> 2016-05-19</p>
+<p><strong>Code version:</strong> ad817ee3853d04329bf66788ac8682a17410e310</p>
 <pre class="r"><code>library(&quot;dplyr&quot;)
 library(&quot;ggplot2&quot;)
 library(&quot;cowplot&quot;)
 library(&quot;lmtest&quot;)
 library(&quot;lme4&quot;)
 source(&quot;functions.R&quot;)</code></pre>
-<div id="basic-framework" class="section level2">
-<h2>Basic framework</h2>
-</div>
 <div id="questions" class="section level2">
 <h2>Questions</h2>
 <ol style="list-style-type: decimal">
@@ -189,6 +185,8 @@ head(anno_filter)</code></pre>
                                stringsAsFactors = FALSE)
 molecules_filter_ENSG &lt;- molecules_filter[grep(&quot;ERCC&quot;, rownames(molecules_filter), invert = TRUE), ]
   
+molecules_filter_ERCC &lt;- molecules_filter[grep(&quot;ERCC&quot;, rownames(molecules_filter), invert = FALSE), ]
+
 stopifnot(ncol(molecules_filter) == nrow(anno_filter),
           colnames(molecules_filter) == anno_filter$sample_id)</code></pre>
 <p>Input filtered read counts</p>
@@ -587,15 +585,15 @@ fit    6 134.98 160.99  -61.49   122.98 91.806      1  &lt; 2.2e-16 ***
 ---
 Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
 </div>
-<div id="percent-variation-per-gene" class="section level2">
-<h2>Percent variation per gene</h2>
+<div id="variance-components-per-gene" class="section level2">
+<h2>Variance components per gene</h2>
 <p>Load model fitting code - a wrapper of the blmer function that fits a bayesian nested model for one gene at a time.</p>
 <pre class="r"><code>#&#39; Per gene variance component model
 #&#39;
 #&#39; @param xx Matrix of expression measurements on log scale.
 #&#39; @param annotation Meta-data matrix of each column of xx.
 
-gene_variation &lt;- function(xx, annotation) {
+gene_variation &lt;- function(counts, annotation) {
   
   individual &lt;- as.factor(annotation$individual)
   replicate &lt;- as.factor(annotation$replicate)
@@ -606,9 +604,10 @@ gene_variation &lt;- function(xx, annotation) {
       
       value &lt;- unlist(counts[i,])
       
-      fit_try &lt;- tryCatch( fit &lt;- blme::blmer(value ~ 1|individual/replicate, 
-                                      cov.prior = wishart,
-                                      resid.prior = invgamma),
+      fit_try &lt;- tryCatch( 
+        fit &lt;- blme::blmer(value ~ 1|individual/replicate, 
+                           cov.prior = gamma(shape = 2),
+                           resid.prior = gamma(shape = 2)),
                              condition = function(c) c)
       if(inherits(fit_try, &quot;condition&quot;)){
       var_foo &lt;- rep(NA, 3)
@@ -629,166 +628,107 @@ gene_variation &lt;- function(xx, annotation) {
 replicate &lt;- as.factor(anno_filter$replicate)
 
 ## endogenous molecule-count
-blme_raw &lt;- gene_variation(xx = log2(molecules_filter_ENSG+1),
+blme_raw &lt;- gene_variation(counts = log2(molecules_filter_ENSG+1),
                            annotation = anno_filter)
 
 ## ERCC molecule-count
-blme_ercc &lt;- gene_variation(xx = log2(molecules_filter_ERCC+1),
+blme_ercc &lt;- gene_variation(counts = log2(molecules_filter_ERCC+1),
                             annotation = anno_filter)
 
 ## ENSG CPM
-blme_cpm &lt;- gene_variation(xx = molecules_cpm, 
+blme_cpm &lt;- gene_variation(counts = molecules_cpm, 
                            annotation = anno_filter)
 
 ## ENSG CPM Poisson
-blme_cpm_trans &lt;- gene_variation(xx = molecules_cpm_trans, 
+blme_cpm_trans &lt;- gene_variation(counts = molecules_cpm_trans, 
                            annotation = anno_filter)
 
 ## ENSG CPM Poisson
-blme_final &lt;- gene_variation(xx = molecules_final, 
+blme_final &lt;- gene_variation(counts = molecules_final, 
                            annotation = anno_filter)
 
 save(blme_raw, blme_ercc, blme_cpm, blme_cpm_trans,
      blme_final,
      file = &quot;../data/blme-variance.rda&quot;)</code></pre>
-<p>Standardardize variance components such that for each gene the variance component estimates sum up to 1. Because variance of sequencing counts depend on the dynamic range, we avoid biased comparison of variance estimates when comparing across genes, by the action of standarizing per gene variance components by the total of variance estimates.</p>
-<p><em>Endogenous genes</em></p>
+<p>Compute proportion of variance explained: the above analysis produces variance component estimates (e.g., <span class="math">\(\sigma^2_b\)</span> for batch effect) that are based on a penalized maximum likelihood approach. We compute naive approximation of sum of squared variation for the individual effect and for the batch effect, and their proportions of variation. Specifically, to simplify the computations of degrees of freedom for each factor, we approximate a balanced nested design and compute estiamted number of levels of each factor as the average of the observed number of levels of each factor: the approximate number of batches is 2.67 (i.e., (2+3+3)/3) and and the approximate number of cell is 70.5 (i.e., average number of cell samples per batch).</p>
 <pre class="r"><code>load(&quot;../data/blme-variance.rda&quot;)
-blme_raw_norm &lt;- (blme_raw/rowSums(blme_raw))
 
-par(mfrow = c(2,2))
-plot(blme_raw_norm[,1], blme_raw_norm[,2],
-     xlab = &quot;Individual&quot;,
-     ylab = &quot;Replicate&quot;)
-abline(0, 1, col = &quot;red&quot;)
-plot(blme_raw_norm[,3], blme_raw_norm[,1],
-     xlab = &quot;Residual&quot;,
-     ylab = &quot;Individual&quot;)
-plot(blme_raw_norm[,3], blme_raw_norm[,2],
-     xlab = &quot;Residual&quot;,
-     ylab = &quot;Replicate&quot;)
-boxplot(blme_raw_norm)
-title(main = &quot;Proportion of per-gene variance&quot;,
+labels &lt;- c(&quot;Endogenous raw&quot;, &quot;ERCC raw&quot;,
+            &quot;Endogenous CPM&quot;, &quot;Endogenous Poisson&quot;,
+            &quot;Endogenous final&quot;)
+blme_list &lt;- list(blme_raw, blme_ercc, blme_cpm, 
+                  blme_cpm_trans, blme_final)
+prop_list &lt;- vector(&quot;list&quot;, length(blme_list))
+names(prop_list) &lt;- c(&quot;raw&quot;, &quot;ercc&quot;, &quot;cpm&quot;, &quot;cpm_trans&quot;, &quot;final&quot;)
+par(mfrow = c(2,3))
+for (i in c(1:length(blme_list))) {
+  res &lt;- blme_list[[i]]  
+  ms_ind &lt;- (res[,1]*2.67*70.5) + (res[,2]*70.5) + res[,3]
+  ms_batch &lt;- (res[,2]*70.5) + res[,3]
+  ms_resid &lt;- res[,3]
+  ss_ind &lt;- ms_ind*(3-1)
+  ss_batch &lt;- ms_batch*3*(2.67-1)
+  ss_resid &lt;- ms_resid*3*2.67*(70.5-1)
+  prop_ind &lt;- ss_ind/(ss_ind + ss_batch + ss_resid)
+  prop_batch &lt;- ss_batch/(ss_ind + ss_batch + ss_resid)
+  prop_list[[i]] &lt;- data.frame(prop_ind = prop_ind,
+                               prop_batch = prop_batch)
+  plot(prop_ind, prop_batch,
+       xlab = paste(&quot;Individual&quot;, 
+                    100*round(median(prop_ind, na.rm = TRUE), 2), &quot;%&quot;),
+       ylab = paste(&quot;Batch&quot;, 
+                    100*round(median(prop_batch, na.rm = TRUE), 2), &quot;%&quot;),
+       main = labels[i])
+  abline(0, 1, col = &quot;red&quot;)
+}
+title(main = &quot;Proportion of individual-level variance&quot;,
       outer = TRUE, line = -1)</code></pre>
 <p><img src="figure/paper-additional-analysis.Rmd/unnamed-chunk-16-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
-<p>Compare individual versus replicate variance estimates.</p>
-<pre class="r"><code>summary(blme_raw_norm)</code></pre>
-<pre><code>   individual        replicate          residual      
- Min.   :0.02494   Min.   :0.00552   Min.   :0.01755  
- 1st Qu.:0.12481   1st Qu.:0.03089   1st Qu.:0.57745  
- Median :0.21108   Median :0.05178   Median :0.72380  
- Mean   :0.25177   Mean   :0.06003   Mean   :0.68819  
- 3rd Qu.:0.34422   3rd Qu.:0.08011   3rd Qu.:0.82784  
- Max.   :0.94753   Max.   :0.38313   Max.   :0.96808  
- NA&#39;s   :221       NA&#39;s   :221       NA&#39;s   :221      </code></pre>
+<p>Kruskal-wallis test to compare estimated proportion of variance</p>
 <pre class="r"><code># Kruskal wallis rank sum test to compare
 # proportions of variance explained due to individual
 # versus due to replicate
-kruskal.test(c(blme_raw_norm[,1], blme_raw_norm[,2]) ~
-               rep(c(1,2), each = NROW(blme_raw_norm)) )</code></pre>
+
+# endogenous raw
+kruskal.test(c(prop_list$raw[,1], prop_list$raw[,2]) ~
+               rep(c(1,2), each = NROW(blme_raw)) )</code></pre>
 <pre><code>
     Kruskal-Wallis rank sum test
 
-data:  c(blme_raw_norm[, 1], blme_raw_norm[, 2]) by rep(c(1, 2), each = NROW(blme_raw_norm))
-Kruskal-Wallis chi-squared = 14185, df = 1, p-value &lt; 2.2e-16</code></pre>
-<p><em>ERCC spike-in genes</em></p>
-<pre class="r"><code>load(&quot;../data/blme-variance.rda&quot;)
-blme_ercc_norm &lt;- (blme_ercc/rowSums(blme_ercc))
-
-par(mfrow = c(2,2))
-plot(blme_ercc_norm[,1], blme_ercc_norm[,2],
-     xlab = &quot;Individual&quot;,
-     ylab = &quot;Replicate&quot;)
-abline(0, 1, col = &quot;red&quot;)
-plot(blme_ercc_norm[,3], blme_ercc_norm[,1],
-     xlab = &quot;Residual&quot;,
-     ylab = &quot;Individual&quot;)
-plot(blme_ercc_norm[,3], blme_ercc_norm[,2],
-     xlab = &quot;Residual&quot;,
-     ylab = &quot;Replicate&quot;)
-boxplot(blme_ercc_norm)
-title(main = &quot;Proportion of per-gene variance&quot;)</code></pre>
-<p><img src="figure/paper-additional-analysis.Rmd/unnamed-chunk-18-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
-<p>Compare individual versus replicate variance estimates.</p>
-<pre class="r"><code>summary(blme_ercc_norm)</code></pre>
-<pre><code>   individual        replicate           residual      
- Min.   :0.03439   Min.   :0.006325   Min.   :0.05687  
- 1st Qu.:0.11242   1st Qu.:0.039234   1st Qu.:0.32177  
- Median :0.22901   Median :0.066389   Median :0.69696  
- Mean   :0.34245   Mean   :0.068853   Mean   :0.58870  
- 3rd Qu.:0.61512   3rd Qu.:0.098521   3rd Qu.:0.84403  
- Max.   :0.83184   Max.   :0.148082   Max.   :0.95868  </code></pre>
-<pre class="r"><code># Kruskal wallis rank sum test to compare
-# proportions of variance explained due to individual
-# versus due to replicate
-kruskal.test(c(blme_ercc_norm[,1], blme_ercc_norm[,2]) ~
-               rep(c(1,2), each = NROW(blme_ercc_norm)) )</code></pre>
+data:  c(prop_list$raw[, 1], prop_list$raw[, 2]) by rep(c(1, 2), each = NROW(blme_raw))
+Kruskal-Wallis chi-squared = 4888.2, df = 1, p-value &lt; 2.2e-16</code></pre>
+<pre class="r"><code># ercc raw
+kruskal.test(c(prop_list$ercc[,1], prop_list$ercc[,2]) ~
+               rep(c(1,2), each = NROW(prop_list$ercc)) )</code></pre>
 <pre><code>
     Kruskal-Wallis rank sum test
 
-data:  c(blme_ercc_norm[, 1], blme_ercc_norm[, 2]) by rep(c(1, 2), each = NROW(blme_ercc_norm))
-Kruskal-Wallis chi-squared = 43.299, df = 1, p-value = 4.698e-11</code></pre>
-<p><em>Per-gene variance estimates after each normalization step</em></p>
-<pre class="r"><code># compute percent variation
-blme_raw_norm &lt;- data.frame(blme_raw/rowSums(blme_raw))
-blme_cpm_norm &lt;- data.frame(blme_cpm/rowSums(blme_cpm))
-blme_cpm_trans_norm &lt;- data.frame(blme_cpm_trans/rowSums(blme_cpm_trans))
-blme_final_norm &lt;- data.frame(blme_final/rowSums(blme_final))
+data:  c(prop_list$ercc[, 1], prop_list$ercc[, 2]) by rep(c(1, 2), each = NROW(prop_list$ercc))
+Kruskal-Wallis chi-squared = 9.6074, df = 1, p-value = 0.001938</code></pre>
+<pre class="r"><code># endogenous cpm
+kruskal.test(c(prop_list$cpm[,1], prop_list$cpm[,2]) ~
+               rep(c(1,2), each = NROW(blme_raw)) )</code></pre>
+<pre><code>
+    Kruskal-Wallis rank sum test
 
-library(ggplot2)
-cowplot::plot_grid(
-  ggplot(data.frame(
-    prop = c(blme_cpm_norm$individual/blme_raw_norm$individual,
-             blme_cpm_trans_norm$individual/blme_cpm_norm$individual,
-             blme_final_norm$individual/blme_cpm_trans_norm$individual),
-    label = factor(rep(c(1:3), 
-                each = NROW(blme_raw_norm)),
-                levels = c(1:3),
-                labels = c(&quot;CPM-Raw&quot;, &quot;Poisson/CPM&quot;, &quot;Final/Poisson&quot;))),
-       aes(x = label, y = prop)) +
-    geom_violin() + geom_boxplot(width = .2, aes(colour = label)) +
-      xlab(&quot;&quot;) +
-      ylab(&quot;Individual percent-variance ratio&quot;) +
-      ggtitle(&quot;Individual percent-variance ratio (to the previous step)&quot;) +
-      theme(legend.position = &quot;none&quot;),
-  ggplot(data.frame(
-    prop = c(blme_cpm_norm$individual/blme_raw_norm$individual,
-             blme_cpm_trans_norm$individual/blme_raw_norm$individual,
-             blme_final_norm$individual/blme_raw_norm$individual),
-    label = factor(rep(c(1:3), 
-                each = NROW(blme_raw_norm)),
-                levels = c(1:3),
-                labels = c(&quot;CPM/Raw&quot;, &quot;Poisson/Raw&quot;, &quot;Final/Raw&quot;))),
-       aes(x = label, y = prop)) +
-    geom_violin() + geom_boxplot(width = .2, aes(colour = label)) +
-      xlab(&quot;&quot;) +
-      ylab(&quot;Individual percent-variance ratio&quot;) +
-      ggtitle(&quot;Individual percent-variance ratio (to Step Raw)&quot;) +
-      theme(legend.position = &quot;none&quot;),
-  ggplot(data.frame(
-    prop = log(c(blme_raw_norm$individual/blme_raw_norm$replicate,
-             blme_cpm_norm$individual/blme_cpm_norm$replicate,
-             blme_cpm_trans_norm$individual/blme_cpm_trans_norm$replicate,
-             blme_final_norm$individual/blme_final_norm$replicate)),
-    label = factor(rep(c(1:4), 
-                each = NROW(blme_raw_norm)),
-                levels = c(1:4),
-                labels = c(&quot;Raw&quot;, &quot;CPM&quot;, &quot;Poisson&quot;, &quot;Final&quot;))),
-       aes(x = label, y = prop)) +
-    geom_violin() + geom_boxplot(width = .2, aes(colour = label)) +
-      xlab(&quot;&quot;) +
-      ylab(&quot;log ratio of percent variance&quot;) +
-      ggtitle(&quot;Individual to replicate log-ratio&quot;) +
-      theme(legend.position = &quot;none&quot;),
-  labels = LETTERS[1:4])</code></pre>
-<pre><code>Warning: Removed 863 rows containing non-finite values (stat_ydensity).</code></pre>
-<pre><code>Warning: Removed 863 rows containing non-finite values (stat_boxplot).</code></pre>
-<pre><code>Warning: Removed 913 rows containing non-finite values (stat_ydensity).</code></pre>
-<pre><code>Warning: Removed 913 rows containing non-finite values (stat_boxplot).</code></pre>
-<pre><code>Warning: Removed 712 rows containing non-finite values (stat_ydensity).</code></pre>
-<pre><code>Warning: Removed 712 rows containing non-finite values (stat_boxplot).</code></pre>
-<p><img src="figure/paper-additional-analysis.Rmd/unnamed-chunk-20-1.png" title="" alt="" width="864" style="display: block; margin: auto;" /></p>
-<p>Per-gene variation estimates between steps fail to reveal changes induced in the expression profiles between steps, if any.</p>
+data:  c(prop_list$cpm[, 1], prop_list$cpm[, 2]) by rep(c(1, 2), each = NROW(blme_raw))
+Kruskal-Wallis chi-squared = 2936.4, df = 1, p-value &lt; 2.2e-16</code></pre>
+<pre class="r"><code># endogenous cpm transformed (poisson transformed)
+kruskal.test(c(prop_list$cpm_trans[,1], prop_list$cpm_trans[,2]) ~
+               rep(c(1,2), each = NROW(blme_raw)) )</code></pre>
+<pre><code>
+    Kruskal-Wallis rank sum test
+
+data:  c(prop_list$cpm_trans[, 1], prop_list$cpm_trans[, 2]) by rep(c(1, 2), each = NROW(blme_raw))
+Kruskal-Wallis chi-squared = 5644.3, df = 1, p-value &lt; 2.2e-16</code></pre>
+<pre class="r"><code># endogenous final
+kruskal.test(c(prop_list$final[,1], prop_list$final[,2]) ~
+               rep(c(1,2), each = NROW(blme_raw)) )</code></pre>
+<pre><code>
+    Kruskal-Wallis rank sum test
+
+data:  c(prop_list$final[, 1], prop_list$final[, 2]) by rep(c(1, 2), each = NROW(blme_raw))
+Kruskal-Wallis chi-squared = 10262, df = 1, p-value &lt; 2.2e-16</code></pre>
 <p><em>Multivariate distance between C1 preparations</em>: Friedman-Rafsky multivariate run test.</p>
 <pre class="r"><code>if (library(&quot;flowMap&quot;, quietly = TRUE, logical.return = TRUE) == FALSE) {
   devtools::install_github(&quot;jhsiao999/flowMap&quot;)
@@ -837,34 +777,34 @@ Attaching package: &#39;gplots&#39;
 The following object is masked from &#39;package:stats&#39;:
 
     lowess</code></pre>
-<pre class="r"><code>heatmap.2(as.matrix(fr_final$fr_pval), 
+<pre class="r"><code>heatmap.2(as.matrix(fr_raw$fr_pval), 
           dendrogram = &quot;column&quot;,
           trace = &quot;none&quot;, Rowv = FALSE,
           labRow = unique(anno_filter$batch),
           labCol = unique(anno_filter$batch),
           key = TRUE, main = &quot;Raw&quot;)</code></pre>
-<p><img src="figure/paper-additional-analysis.Rmd/unnamed-chunk-22-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p><img src="figure/paper-additional-analysis.Rmd/unnamed-chunk-19-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>heatmap.2(as.matrix(fr_cpm$fr_pval), 
           dendrogram = &quot;column&quot;,
           trace = &quot;none&quot;, Rowv = FALSE,
           labRow = unique(anno_filter$batch),
           labCol = unique(anno_filter$batch),
           key = TRUE, main = &quot;CPM&quot;)</code></pre>
-<p><img src="figure/paper-additional-analysis.Rmd/unnamed-chunk-22-2.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p><img src="figure/paper-additional-analysis.Rmd/unnamed-chunk-19-2.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>heatmap.2(as.matrix(fr_cpm_trans$fr_pval), 
           dendrogram = &quot;column&quot;,
           trace = &quot;none&quot;, Rowv = FALSE,
           labRow = unique(anno_filter$batch),
           labCol = unique(anno_filter$batch),
           key = TRUE, main = &quot;Poisson&quot;)</code></pre>
-<p><img src="figure/paper-additional-analysis.Rmd/unnamed-chunk-22-3.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p><img src="figure/paper-additional-analysis.Rmd/unnamed-chunk-19-3.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>heatmap.2(as.matrix(fr_final$fr_pval), 
           dendrogram = &quot;column&quot;,
           trace = &quot;none&quot;, Rowv = FALSE,
           labRow = unique(anno_filter$batch),
           labCol = unique(anno_filter$batch),
           key = TRUE, main = &quot;Final&quot;)</code></pre>
-<p><img src="figure/paper-additional-analysis.Rmd/unnamed-chunk-22-4.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p><img src="figure/paper-additional-analysis.Rmd/unnamed-chunk-19-4.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 </div>
 <div id="correlation-between-and-within-batches" class="section level2">
 <h2>Correlation between and within batches</h2>
@@ -964,7 +904,7 @@ vector length (arg 1)</code></pre>
                       &quot;between-batch-19239&quot;,
                       &quot;across-batches&quot;))
 axis(2)</code></pre>
-<p><img src="figure/paper-additional-analysis.Rmd/unnamed-chunk-23-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p><img src="figure/paper-additional-analysis.Rmd/unnamed-chunk-20-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <p>Kruskal wallis comparing all between-batch correlations with all within-batch correlations</p>
 <pre class="r"><code>df &lt;- data.frame(corrs = c(unlist(corr_filter[[1]]),
                                 unlist(corr_filter[[2]])),
@@ -1024,8 +964,8 @@ loaded via a namespace (and not attached):
 [22] gdata_2.16.1       minqa_1.2.4        magrittr_1.5      
 [25] codetools_0.2-11   htmltools_0.2.6    MASS_7.3-40       
 [28] splines_3.2.0      assertthat_0.1     colorspace_1.2-6  
-[31] labeling_0.3       KernSmooth_2.23-14 stringi_1.0-1     
-[34] RCurl_1.95-4.6     lazyeval_0.1.10    munsell_0.4.3     </code></pre>
+[31] KernSmooth_2.23-14 stringi_1.0-1      RCurl_1.95-4.6    
+[34] lazyeval_0.1.10    munsell_0.4.3     </code></pre>
 </div>
 
 
