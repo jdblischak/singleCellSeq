@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 
 # This script was modeled after the subsampling script I found on SeqAnswers
 # for fasta/fastq files. I remodeled it for use with bam files by
