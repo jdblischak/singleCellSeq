@@ -97,7 +97,7 @@ After filtering, we maintained `r nrow(anno_filter)` high quality single cells
 
 The quality control analyses were performed using all protein-coding genes (Ensembl GRCh37 release 82) with at least one observed read.
 Using the high quality single cells, we further removed genes with low expression levels for downstream analyses.
-We removed all genes with a mean log~2~ cpm less than 2, which we further verified that the overall structure of detected genes remain the same (Sup. Figure. 3).
+We removed all genes with a mean log~2~ cpm less than 2, which we further verified that the overall structure of detected genes remain the same (Sup. Figure. 10).
 We also removed genes with molecule counts larger than 1024 for the correction of collision probability.
 Thus we kept
 `r format(sum(grepl("ENSG", rownames(molecules_filter))), big.mark = ",")`
@@ -111,32 +111,50 @@ According to the information provided by Fluidigm, each of the 96 capture chambe
 Therefore, our estimation of the total spiked-in molecule number was 16,831 per sample. 
 Since the relative concentration of each ERCC genes were provided by the manufacture, we were able to calculate the molecule number of each ERCC gene added to each sample. 
 We observed that the levels of ERCC spike-ins strongly correlated with the input quantities (r = 0.9914, Figure. 1G).
-The capture efficiency, defined as the fraction of total input molecules being successfully detected in each high quality cells, has the average of 6.094 % 
+The capture efficiency, defined as the fraction of total input molecules being successfully detected in each high quality cells, has the average of 6.094 %.
+
+### Cell cycle phase classification
+
+Cell cycle analysis was done following the protocol from Macosko et al [@Macosko2015].
+However, instead of using G1/S, S, G2/M, M, and M/G1 as the different phases, we used G1/S, S, G2, G2/M, and M/G1 following the original classification from Whitfield et al [@Whitfield2002]. 
+To compare the results before and after applying our normalization method, we used the raw molecule counts (Sup. Figure 3. A, C, and E) and the corrected molecule numbers (Sup. Figure. B, D, and F) as the input data files for the classification.
+The raw molecule counts were used to calculate the total gene molecule-counts for both classifications (Sup. Figure 3. A and B).
 
 ### A framework for testing individual effect and batch effect
 
-Individual effect and batch effect between the individual cell samples were evaluated in a series of analyses that examine the potential sources of technical variations on gene expression measurements. These analyses took into consideration that in our study design, sources of variation between individual cell samples naturally fall into a hierarchy of individuals and C1 batches. In these analyses, the variations introduced at the individual-level and at the batch-level were modeled in a nested framework that allows random noises between C1 batches within individuals. Specifically, for each cell sample in individual $i$, replicate $j$ and well $k$, we use $y_{ijk}$ to denote some sample measurement (e.g., total molecule-counts), and $x_{ijk}$ to denote the covariate, if any, that is associated with $y_{ijk}$ (e.g., sample RNA concentration measurement), and fit a linear mixed model with the fixed effect of individual $\alpha_i$ and the random effect of batch $b_{ij}$:
+Individual effect and batch effect between the individual cell samples were evaluated in a series of analyses that examine the potential sources of technical variations on gene expression measurements. 
+These analyses took into consideration that in our study design, sources of variation between individual cell samples naturally fall into a hierarchy of individuals and C1 batches. 
+In these analyses, the variations introduced at the individual-level and at the batch-level were modeled in a nested framework that allows random noises between C1 batches within individuals. 
+Specifically, for each cell sample in individual $i$, replicate $j$ and well $k$, we use $y_{ijk}$ to denote some sample measurement (e.g., total molecule-counts), and $x_{ijk}$ to denote the covariate, if any, that is associated with $y_{ijk}$ (e.g., sample RNA concentration measurement), and fit a linear mixed model with the fixed effect of individual $\alpha_i$ and the random effect of batch $b_{ij}$:
 
 $$y_{ijk} = x_{ijk} + \alpha_{i} + b_{ij} + \epsilon_{ijk}$$
 
-where the random effect $b_{ij}$ of batch follows a normal distribution with mean zero and variance $\sigma^2_{b}$, and $\epsilon_{ij$ describes residual variation in the sample measurement. To test the statistical significance of individual effect (i.e., null hypothesis $\alpha_1 = \alpha_2 = \alpha_3$, we perform likelihood ratio test (LRT) for comparing the above full model and the reduced model that excludes $\alpha_i$. To test if there is a batch effect (i.e., null hypothesis  $\sigma^2_b = 0$), we perform a F-test for comparing the variance that is explained by the above full model and the variance due to the reduced model that excludes $b_{ij}$. 
+where the random effect $b_{ij}$ of batch follows a normal distribution with mean zero and variance $\sigma^2_{b}$, and $\epsilon_{ij$ describes residual variation in the sample measurement. 
+To test the statistical significance of individual effect (i.e., null hypothesis $\alpha_1 = \alpha_2 = \alpha_3$, we perform likelihood ratio test (LRT) for comparing the above full model and the reduced model that excludes $\alpha_i$. 
+To test if there is a batch effect (i.e., null hypothesis  $\sigma^2_b = 0$), we perform a F-test for comparing the variance that is explained by the above full model and the variance due to the reduced model that excludes $b_{ij}$. 
 
-The nested framework was applied to the testing of individual effect and batch effect between cell samples in the following cases. The data includes samples after quality control and filtering. 
+The nested framework was applied to the testing of individual effect and batch effect between cell samples in the following cases. 
+The data includes samples after quality control and filtering. 
 
-1. Total molecule-count per thousand for the endogenous genes was modeled as a function of the covariate sample RNA concentration, individual effect and batch effect. We excluded individual 19098 from the analysis, because sample concentration was quantified in only one of the two C1 replicates. 
+1. Total molecule-count per thousand for the endogenous genes was modeled as a function of the covariate sample RNA concentration, individual effect and batch effect. 
+We excluded individual 19098 from the analysis, because sample concentration was quantified in only one of the two C1 replicates. 
 
 2. Total molecule count (on the log2 scale) was modeled as a function of individual effect and batch effect, separately for the ERCC spike-ins and for the endogenous genes. 
 
 3. Read-to-molecule conversion efficiency was modeled as a function of individual effect and batch effect, separately for the ERCC spike-ins and for the endogenous genes.
 
-
 ### Estimating variance components for per-gene expression
 
-To assess the relative contribution of individual variation to technical variation, we analyzed per-gene expression profile and computed variance component estimates of individual effect and batch effect. The goal here is to quantify proportion of cell-cell variance per gene due to individual effect and to batch, which is different from the previous section, which aims to test the statistical significance of individual effect and batch effect. In this section, we fit a linear mixed model on per-gene expression (log scale) building on the model described in the previous section with an additional random component of individual effect. 
+To assess the relative contribution of individual variation to technical variation, we analyzed per-gene expression profile and computed variance component estimates of individual effect and batch effect. 
+The goal here is to quantify proportion of cell-cell variance per gene due to individual effect and to batch, which is different from the previous section, which aims to test the statistical significance of individual effect and batch effect. 
+In this section, we fit a linear mixed model on per-gene expression (log scale) building on the model described in the previous section with an additional random component of individual effect. 
 
-The variance parameters of individual effect and batch effect are estimated using a maximum penalized likelihood approach [@Chung2013], which can effectively avoid the common issue of zero variance estimates when sample size is small (we have three individuals and eight batches). We used the blmer function in the R package blme and set the default penalty function as the logarithm of a gamma density (shape parameter = 2 and rate parameter tends to zero). 
+The variance parameters of individual effect and batch effect are estimated using a maximum penalized likelihood approach [@Chung2013], which can effectively avoid the common issue of zero variance estimates when sample size is small (we have three individuals and eight batches). 
+We used the blmer function in the R package blme and set the default penalty function as the logarithm of a gamma density (shape parameter = 2 and rate parameter tends to zero). 
 
-The estimated variance components are used to compute the estimated sum of squared (SS) deviations for individual effect and batch effect. The proportion of variance due to each effect is equal to the relative contribution of SS for each effect to total per-gene SS. Finally, we compared the estimated proportions of variance across genes between the individual effect and the batch effect in a non-parametric one-way analysis of variance, also known as Kruskal-Wallis rank sum test.
+The estimated variance components are used to compute the estimated sum of squared (SS) deviations for individual effect and batch effect. 
+The proportion of variance due to each effect is equal to the relative contribution of SS for each effect to total per-gene SS. 
+Finally, we compared the estimated proportions of variance across genes between the individual effect and the batch effect in a non-parametric one-way analysis of variance, also known as Kruskal-Wallis rank sum test.
 
 ### Normalization
 
@@ -173,16 +191,9 @@ $$ \widehat{y}_{g,ijk} = y_{g,ijk} - \widehat{b}_{g,ij}, $$
 
 where $\widehat{b}_{g,ij}$ are the LS estimates. The computations in this step are done with the gls.series function of the limma package [@limma].
 
-### Cell cycle phase classification
-
-Cell cycle analysis was done following the protocol from Macosko et al [@Macosko2015].
-However, instead of using G1/S, S, G2/M, M, and M/G1 as the different phases, we used G1/S, S, G2, G2/M, and M/G1 following the original classification from Whitfield et al [@Whitfield2002]. 
-To compare the results before and after applying our normalization method, we used the raw molecule counts (Sup. Figure 3. A, C, and E) and the corrected molecule numbers (Sup. Figure. B, D, and F) as the input data files for the classification.
-The raw molecule counts were used to calculate the total gene molecule-counts for both classifications (Sup. Figure 3. A and B).
-
 ### Measurement of gene expression noise 
 
-While examining gene expression noise (using CV) as a function of RNA abundance (mean) across C1 replicates, we found that CV of molecule counts among endogenous genes and ERCC spike-in controls suggested similar expression variability patterns that track the expected Poisson distribution (Sup Figure. 8A-C), which is consistent with previous studies [@Islam2014; @Brennecke2013]. 
+While examining gene expression noise (using CV) as a function of RNA abundance (mean) across C1 replicates, we found that CV of molecule counts among endogenous genes and ERCC spike-in controls suggested similar expression variability patterns that track the expected Poisson distribution (Sup Figure. 11A-C), which is consistent with previous studies [@Islam2014; @Brennecke2013]. 
 We computed a measure of gene expression noise that is independent of RNA abundance across individuals [@Kolodziejczyk2015; @Newman2006]. 
 First, squared coefficients of variation (CVs) for each gene were computed for each individual and also across cell lines, using molecule counts after collision correction and transformations. 
 Then we computed the distance of individual-specific CVs to the rolling median of global CVs among genes that have similar RNA abundance levels. 
@@ -194,9 +205,8 @@ These transformed individual CV values are referred to our noise measure. We out
 
 3. Starting from the genes with the lowest global average gene expression level, for every sliding window of 50 genes, subtract log10 median squared CVs from log10 squared CVs of each cell line, and set 25 overlapping genes between windows. 
 The computation was performed with the rollapply function of the R zoo package [@Zeileis2005]. 
-After this transformation step, CV no longer has a polynomial relationship with mean gene molecule count (Sup Figure. 8D-E).
+After this transformation step, CV no longer has a polynomial relationship with mean gene molecule count (Sup Figure. 11D-E).
 We thus used the adjusted CV as the measurements of gene expression noise.
-
 
 ### Identification of differential CV genes
 
