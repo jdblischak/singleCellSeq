@@ -22,6 +22,7 @@ DATA_DIR = "/mnt/lustre/home/jdblischak/singleCellSeq/"
 # Set up for subsampling directory
 LOG_DIR = WORKING_DIR + "log/"
 BAM_DIR = WORKING_DIR + "bam-combined/"
+RMDUP_DIR = WORKING_DIR + "bam-rmdup-umi/"
 COUNTS_MATRIX = WORKING_DIR + "counts-matrix/"
 OUTPUT_DIR = WORKING_DIR + "output/"
 
@@ -30,7 +31,7 @@ GOOD_CELLS = DATA_DIR + "quality-single-cells.txt"
 KEEP_GENES = DATA_DIR + "genes-pass-filter.txt"
 
 
-for d in [LOG_DIR, BAM_DIR, OUTPUT_DIR]:
+for d in [LOG_DIR, BAM_DIR, RMDUP_DIR, OUTPUT_DIR]:
     if not os.path.isdir(d):
         os.mkdir(d)
 
@@ -53,7 +54,7 @@ quantiles = [0.5]
 
 # The target rules are in reverse order of the pipeline steps.
 
-localrules: all, submit_subsampler, submit_subsampler_test
+localrules: all, submit_subsampler, submit_subsampler_test, submit_subsample_bam
 
 rule all:
 	input: "subsampling-results.txt"
@@ -93,6 +94,15 @@ rule subsample_bam:
                                                        wildcards.DEPTH])
 	log: LOG_DIR
 	shell: "subsample-bam.py 12345 {params.depth} {BAM_DIR} {input}"
+
+# Do not submit this job with -c option. It submits a batch array job itself.
+rule rmdup_umi:
+	input: expand(BAM_DIR + "{IND}.{REP}.{ROW}{COL}.trim.sickle.sorted.combined.{DEPTH}.bam", \
+                  IND = ind, REP = rep, ROW = row, COL = col, DEPTH = depths)
+	output: expand(RMDUP_DIR + "{IND}.{REP}.{ROW}{COL}.trim.sickle.sorted.combined.{DEPTH}.rmdup.bam", \
+                  IND = ind, REP = rep, ROW = row, COL = col, DEPTH = depths)
+	params: depth = "{DEPTH}", h_vmem = '2g'
+    shell: "submit-array.sh rmdup-umi.sh {params.h_vmem} {input}"
 
 rule subsampler:
 	input: single_sub = COUNTS_MATRIX + "{DEPTH}-{TYPE}-raw-single-per-sample.txt",
