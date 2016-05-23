@@ -101,8 +101,8 @@ rule rmdup_umi:
                   IND = ind, REP = rep, ROW = row, COL = col, DEPTH = depths)
 	output: expand(RMDUP_DIR + "{IND}.{REP}.{ROW}{COL}.trim.sickle.sorted.combined.{DEPTH}.rmdup.bam", \
                   IND = ind, REP = rep, ROW = row, COL = col, DEPTH = depths)
-	params: depth = "{DEPTH}", h_vmem = '2g'
-    shell: "submit-array.sh rmdup-umi.sh {params.h_vmem} {input}"
+	params: h_vmem = '2g'
+	shell: "submit-array.sh rmdup-umi.sh {params.h_vmem} {input}"
 
 rule subsampler:
 	input: single_sub = COUNTS_MATRIX + "{DEPTH}-{TYPE}-raw-single-per-sample.txt",
