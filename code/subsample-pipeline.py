@@ -17,7 +17,7 @@ WORKING_DIR = "./"
 # The directory that contains the mapping results, i.e. BAM files
 SEQS_DIR = "/mnt/gluster/home/jdblischak/ssd/bam-combined/"
 # The directory that contains the processed data sets
-DATA_DIR = "/mnt/lustre/home/jdblischak/singleCellSeq/"
+DATA_DIR = "/mnt/lustre/home/jdblischak/singleCellSeq/data/"
 
 # Set up for subsampling directory
 LOG_DIR = WORKING_DIR + "log/"
@@ -37,15 +37,9 @@ for d in [LOG_DIR, BAM_DIR, RMDUP_DIR, OUTPUT_DIR]:
 
 # Variables --------------------------------------------------------------------
 
-# Variables for subsampling BAM files
-ind = ["19098", "19101", "19239"]
-rep = ["1", "2", "3"]
-row = [x for x in ascii_letters[26:34]]
-col = ["%02d"%(x) for x in range(1, 13)]
-
 individuals = ["NA19098", "NA19101", "NA19239"]
 depths = [50000, 250000, 1500000, 4000000]
-cells = [5, 10, 15, 20, 25, 50, 75, 100, 125, 150]
+cells = [5, 10, 15, 25, 50, 75, 125]
 seeds = range(1, 10 + 1)
 types = ["reads", "molecules"]
 quantiles = [0.5]
@@ -54,7 +48,7 @@ quantiles = [0.5]
 
 # The target rules are in reverse order of the pipeline steps.
 
-localrules: all, submit_subsampler, submit_subsampler_test, submit_subsample_bam
+localrules: all, submit_subsampler, submit_subsampler_test
 
 rule all:
 	input: "subsampling-results.txt"
@@ -75,34 +69,10 @@ rule submit_subsampler_test:
            SEED = seeds[0:2], \
            TYPE = types)
 
-rule submit_subsample_bam:
-	input: expand(BAM_DIR + "{IND}.{REP}.{ROW}{COL}.trim.sickle.sorted.combined.{DEPTH}.bam", \
-                  IND = ind, REP = rep, ROW = row, COL = col, DEPTH = depths)
-
 # Pipeline ---------------------------------------------------------------------
 
 # Contrary to the target rules, the pipeline rules are written below
 # in the order in which they are run.
-
-rule subsample_bam:
-	input: SEQS_DIR + "{IND}.{REP}.{ROW}{COL}.trim.sickle.sorted.combined.bam"
-	output: BAM_DIR + "{IND}.{REP}.{ROW}{COL}.trim.sickle.sorted.combined.{DEPTH}.bam"
-	params: depth = "{DEPTH}", h_vmem = '2g', bigio = '0',
-            name = lambda wildcards: 'subsample-bam-' + "-".join([wildcards.IND,
-                                                       wildcards.REP,
-                                                       wildcards.ROW + wildcards.COL,
-                                                       wildcards.DEPTH])
-	log: LOG_DIR
-	shell: "subsample-bam.py 12345 {params.depth} {BAM_DIR} {input}"
-
-# Do not submit this job with -c option. It submits a batch array job itself.
-rule rmdup_umi:
-	input: expand(BAM_DIR + "{IND}.{REP}.{ROW}{COL}.trim.sickle.sorted.combined.{DEPTH}.bam", \
-                  IND = ind, REP = rep, ROW = row, COL = col, DEPTH = depths)
-	output: expand(RMDUP_DIR + "{IND}.{REP}.{ROW}{COL}.trim.sickle.sorted.combined.{DEPTH}.rmdup.bam", \
-                  IND = ind, REP = rep, ROW = row, COL = col, DEPTH = depths)
-	params: h_vmem = '2g'
-	shell: "submit-array.sh rmdup-umi.sh {params.h_vmem} {input}"
 
 rule subsampler:
 	input: single_sub = COUNTS_MATRIX + "{DEPTH}-{TYPE}-raw-single-per-sample.txt",
