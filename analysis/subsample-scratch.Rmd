@@ -1,0 +1,76 @@
+---
+output: html_document
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+At lower number of sampled cells, reads appear tp perform better with lower sequencing.
+On the other hand, the molecules look as expected, higher sequencing depth leads to increased or similar performance.
+This is observed both for endogenous and ERCC genes.
+Maybe there is less bias with fewer reads?
+It's not due to changing number of available cells because I the highest sequencing depth I used was 1.5 million.
+
+I haven't correctly formatted the output for when there are not enough cells to be subsampled, so I removed these.
+
+```
+$ cat subsampling-results.txt | awk '$9 > 0' > subsampling-results4.txt
+```
+
+```{r}
+d <- read.table("/mnt/gluster/home/jdblischak/ssd/subsampled/subsampling-results4.txt",
+                header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+head(d)
+summary(d)
+```
+
+```{r}
+library("dplyr")
+d_grouped <- d %>%
+  group_by(type, depth, subsampled_cells, individual, potential_cells, available_cells) %>%
+  summarize(mean_ensg = mean(mean_cor_ensg),
+            sem_ensg = sd(mean_cor_ensg) / sqrt(length(mean_cor_ensg)),
+            mean_ercc = mean(mean_cor_ercc),
+            sem_ercc = sd(mean_cor_ercc) / sqrt(length(mean_cor_ercc)))
+head(d_grouped)
+dim(d_grouped)
+```
+
+Endogenous ensg
+
+```{r}
+library("ggplot2")
+d_plot <- ggplot(d_grouped, aes(x = subsampled_cells, y = mean_ensg, color = as.factor(depth))) +
+  geom_line() +
+  geom_errorbar(aes(ymin = mean_ensg - sem_ensg, ymax = mean_ensg + sem_ensg), width = 1) +
+  facet_grid(individual~type)
+d_plot
+d_plot %+% d_grouped[d_grouped$depth %in% c(250000, 1500000), ]
+```
+
+Control ercc
+
+```{r}
+d_plot <- ggplot(d_grouped, aes(x = subsampled_cells, y = mean_ercc, color = as.factor(depth))) +
+  geom_line() +
+  geom_errorbar(aes(ymin = mean_ercc - sem_ercc, ymax = mean_ercc + sem_ercc), width = 1) +
+  facet_grid(individual~type)
+d_plot
+d_plot %+% d_grouped[d_grouped$depth %in% c(250000, 1500000), ]
+```
+
+Available cells - don't change across depth because purposely only sampling 1.5 million reads at greatest depth.
+
+```{r}
+ggplot(d_grouped, aes(x = potential_cells, y = available_cells, color = as.factor(depth))) +
+  geom_point() +
+  facet_wrap(~individual)
+```
+
+## Session information
+
+```{r info}
+sessionInfo()
+```
+
