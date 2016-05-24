@@ -6,27 +6,34 @@ output: html_document
 
 **Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
 
-At lower number of sampled cells, reads appear tp perform better with lower sequencing.
+At lower number of sampled cells, reads appear to perform better with lower sequencing.
 On the other hand, the molecules look as expected, higher sequencing depth leads to increased or similar performance.
 This is observed both for endogenous and ERCC genes.
 Maybe there is less bias with fewer reads?
-It's not due to changing number of available cells because I the highest sequencing depth I used was 1.5 million.
+I re-did this analysis with more extreme differences in sequencing depth, from a low of 50,000 to a high of 4 million.
+The general trend remains the same.
 
 I haven't correctly formatted the output for when there are not enough cells to be subsampled, so I removed these.
 
 ```
-$ cat subsampling-results.txt | awk '$9 > 0' > subsampling-results4.txt
+$ cat subsampling-results.txt | awk '$9 > 0' > subsampling-results5.txt
 ```
 
+```{r packages, message=FALSE}
+library("dplyr")
+library("ggplot2")
+theme_set(theme_bw())
+```
+
+
 ```{r}
-d <- read.table("/mnt/gluster/home/jdblischak/ssd/subsampled/subsampling-results4.txt",
+d <- read.table("/mnt/gluster/home/jdblischak/ssd/subsampled/subsampling-results5.txt",
                 header = TRUE, sep = "\t", stringsAsFactors = FALSE)
 head(d)
 summary(d)
 ```
 
 ```{r}
-library("dplyr")
 d_grouped <- d %>%
   group_by(type, depth, subsampled_cells, individual, potential_cells, available_cells) %>%
   summarize(mean_ensg = mean(mean_cor_ensg),
@@ -40,13 +47,12 @@ dim(d_grouped)
 Endogenous ensg
 
 ```{r}
-library("ggplot2")
 d_plot <- ggplot(d_grouped, aes(x = subsampled_cells, y = mean_ensg, color = as.factor(depth))) +
   geom_line() +
   geom_errorbar(aes(ymin = mean_ensg - sem_ensg, ymax = mean_ensg + sem_ensg), width = 1) +
   facet_grid(individual~type)
 d_plot
-d_plot %+% d_grouped[d_grouped$depth %in% c(250000, 1500000), ]
+d_plot %+% d_grouped[d_grouped$depth %in% c(50000, 4000000), ]
 ```
 
 Control ercc
@@ -57,10 +63,10 @@ d_plot <- ggplot(d_grouped, aes(x = subsampled_cells, y = mean_ercc, color = as.
   geom_errorbar(aes(ymin = mean_ercc - sem_ercc, ymax = mean_ercc + sem_ercc), width = 1) +
   facet_grid(individual~type)
 d_plot
-d_plot %+% d_grouped[d_grouped$depth %in% c(250000, 1500000), ]
+d_plot %+% d_grouped[d_grouped$depth %in% c(50000, 4000000), ]
 ```
 
-Available cells - don't change across depth because purposely only sampling 1.5 million reads at greatest depth.
+Available cells - don't change up to 1.5 million reads, and then drop off at 4 million reads.
 
 ```{r}
 ggplot(d_grouped, aes(x = potential_cells, y = available_cells, color = as.factor(depth))) +
