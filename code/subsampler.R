@@ -109,6 +109,33 @@ main <- function(num_cells, seed, single_sub_fname, single_full_fname,
   assert("Subsampled cells are a subset of all single cells",
          colnames(single_cells_sub) %in% colnames(single_cells_full))
 
+  # Some diagnostic plots exploring the total counts for endogenous and ERCC
+  # genes between the subsampled and original full single cell data sets.
+  if (diagnose) {
+    totals_endo_single_sub <- colSums(single_cells_sub[
+                              grep("ENSG", rownames(single_cells_sub)), ])
+    totals_ercc_single_sub <- colSums(single_cells_sub[
+                              grep("ERCC", rownames(single_cells_sub)), ])
+    totals_endo_single_full <- colSums(single_cells_full[
+                               grep("ENSG", rownames(single_cells_full)), ])
+    totals_ercc_single_full <- colSums(single_cells_full[
+                               grep("ERCC", rownames(single_cells_full)), ])
+    op <- par(mfrow = c(2, 2))
+    hist(totals_endo_single_sub, main = "Subsampled Endogenous")
+    hist(totals_ercc_single_sub, main = "Subsampled ERCC")
+    hist(totals_endo_single_full, main = "Full Endogenous")
+    hist(totals_ercc_single_full, main = "Full ERCC")
+    par(op)
+    # Compare totals from full and subsampled data sets. Have to subset to only
+    # include cells in the subsampled set.
+    cells_in_sub <- colnames(single_cells_full) %in% colnames(single_cells_sub)
+    totals_combined <- data.frame(endo_sub = totals_endo_single_sub,
+                                  ercc_sub = totals_ercc_single_sub,
+                                  endo_full = totals_endo_single_full[cells_in_sub],
+                                  ercc_full = totals_ercc_single_full[cells_in_sub])
+    pairs(totals_combined)
+  }
+
   # potential cells - the number of single cells available after filtering for
   # individual, replicate, and quality
   results$potential_cells <- ncol(single_cells_full)
@@ -244,10 +271,12 @@ calc_mean_bulk_cell <- function(x) {
 # y - a numeric vector
 # method - method to caclulate correlation, see ?cor for options.
 # diagnose - Create diagnostic plot
+# digits - The number of digits for rounding. Default is 5.
 #
 # Returns a numeric vector of mean counts per million
 #
-calc_mean_cor <- function(x, y, method = "pearson", diagnose = FALSE) {
+calc_mean_cor <- function(x, y, method = "pearson", diagnose = FALSE,
+                          digits = 5) {
   assert("Proper input", length(x) == length(y), is.numeric(x), is.numeric(y))
   correlation <- cor(x, y, method = method)
   if (diagnose) {
@@ -260,6 +289,7 @@ calc_mean_cor <- function(x, y, method = "pearson", diagnose = FALSE) {
   }
   assert("Proper output", correlation >= -1, correlation <= 1,
          length(correlation) == 1)
+  correlation <- round(correlation, digits = digits)
   return(correlation)
 }
 
