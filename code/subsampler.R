@@ -170,9 +170,9 @@ main <- function(num_cells, seed, single_sub_fname, single_full_fname,
 
   # Calculate correlation between single cells and bulk samples
   results$mean_cor_ensg <- calc_mean_cor(single_cells_cpm_mean_ensg, bulk_cells_cpm_mean_ensg,
-                                         diagnose = diagnose)
+                                         diagnose = diagnose, method = "spearman")
   results$mean_cor_ercc <- calc_mean_cor(single_cells_cpm_mean_ercc, bulk_cells_cpm_mean_ercc,
-                                         diagnose = diagnose)
+                                         diagnose = diagnose, method = "spearman")
 
   write.table(results, file = outfile, quote = FALSE, row.names = FALSE,
               sep = "\t")
