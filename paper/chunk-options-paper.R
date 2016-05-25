@@ -25,8 +25,13 @@ fig_supp_design <- "S9"
 fig_supp_proportion <- "S10"
 fig_supp_CV <- "S11"
 
+# Numbering tables
+table_qualitycell <- "T1"
+
 # Numbering for supplementary tables
-table_supp_collection <- "1"
+table_supp_collection <- "ST1"
+table_noisygene <- "ST2"
+table_GO <- "ST3"
 
 # Import data
 anno_filter <- read.table("../data/annotation-filter.txt", header = TRUE,
