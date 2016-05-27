@@ -32,6 +32,7 @@ table_qualitycell <- "T1"
 table_supp_collection <- "ST1"
 table_noisygene <- "ST2"
 table_GO <- "ST3"
+table_supp_genotypes <- "ST4"
 
 # Import data
 anno_filter <- read.table("../data/annotation-filter.txt", header = TRUE,
