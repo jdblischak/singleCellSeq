@@ -10,7 +10,7 @@ suppressPackageStartupMessages(library("edgeR"))
 "Calculate statistics on the subsampled data.
 
 Usage:
-subsampler.R [options] [--quantiles=<q>...] <num_cells> <seed> <single_sub> <single_full> <ercc> <bulk>
+subsampler.R [options] <num_cells> <seed> <single_sub> <single_full> <ercc> <bulk>
 
 Options:
   -h --help              Show this screen.
@@ -18,8 +18,10 @@ Options:
   --replicate=<rep>      Only use data from rep, e.g. r1
   --good_cells=<file>    A 1-column file with the names of good quality cells to maintain
   --keep_genes=<file>    A 1-column file with the names of genes to maintain
-  -q --quantiles=<q>     Calculate the correlation for the genes separated by the provided
-                         quantiles, e.g. -q .25 -q .75
+  -l --lower_q=<l>       The lower quantile cutoff to filter genes based on
+                         expression level [default: 0]
+  -u --upper_q=<u>       The upper quantile cutoff to filter genes based on
+                         expression level [default: 1]
   -o --outfile=<file>    Output file to write results (default: stdout)
   -d --diagnose          Saves diagnostic plots to PDF file. Name of file is derived
                          from outfile option, otherwise written to Rplots.pdf
@@ -35,10 +37,11 @@ Arguments:
   bulk          sample-by-gene matrix of bulk cell data" -> doc
 
 # Main function ----------------------------------------------------------------
+
 main <- function(num_cells, seed, single_sub_fname, single_full_fname,
                  ercc_fname, bulk_fname,
                  individual = NULL, replicate = NULL,
-                 good_cells = NULL, keep_genes = NULL, quantiles = NULL,
+                 good_cells = NULL, keep_genes = NULL, lower_q = 0, upper_q = 1,
                  outfile = NULL, diagnose = FALSE) {
 
   # Data frame to contain all results
@@ -54,8 +57,8 @@ main <- function(num_cells, seed, single_sub_fname, single_full_fname,
     results$replicate = NA
   }
 
-  # If an output filename is specified, save the PDF using the same name with .pdf
-  # added as the file extension.
+  # If an output filename is specified, save the PDF using the same name with
+  # .pdf added as the file extension.
   if (diagnose & !is.null(outfile)) {
     pdf_file <- paste0(outfile, ".pdf")
     pdf(pdf_file)
@@ -150,7 +153,8 @@ main <- function(num_cells, seed, single_sub_fname, single_full_fname,
     return(invisible())
   }
   set.seed(seed)
-  single_cells_sub <- single_cells_sub[, sample(1:ncol(single_cells_sub), size = num_cells)]
+  single_cells_sub <- single_cells_sub[, sample(1:ncol(single_cells_sub),
+                                                size = num_cells)]
 
   # Split endogenous and ERCC genes
   ensg_index <- grepl("ENSG", rownames(bulk_cells))
@@ -167,6 +171,30 @@ main <- function(num_cells, seed, single_sub_fname, single_full_fname,
   # mean across the replicates
   bulk_cells_cpm_mean_ensg <- calc_mean_bulk_cell(bulk_cells[ensg_index, , drop = FALSE])
   bulk_cells_cpm_mean_ercc <- calc_mean_bulk_cell(bulk_cells[ercc_index, , drop = FALSE])
+
+  assert("Quantile cutoffs for gene expression level are valid input",
+         is.numeric(lower_q), is.numeric(upper_q), lower_q >= 0, upper_q <= 1,
+         upper_q > lower_q)
+  results$lower_q <- lower_q
+  results$upper_q <- upper_q
+
+  results$available_ensg <- length(bulk_cells_cpm_mean_ensg)
+  q_cutoffs_ensg <- quantile(bulk_cells_cpm_mean_ensg,
+                             probs = c(lower_q, upper_q))
+  q_exp_filter_ensg <- bulk_cells_cpm_mean_ensg >= q_cutoffs_ensg[1] &
+                       bulk_cells_cpm_mean_ensg <= q_cutoffs_ensg[2]
+  results$used_ensg <- sum(q_exp_filter_ensg)
+  single_cells_cpm_mean_ensg <- single_cells_cpm_mean_ensg[q_exp_filter_ensg]
+  bulk_cells_cpm_mean_ensg <- bulk_cells_cpm_mean_ensg[q_exp_filter_ensg]
+
+  results$available_ercc <- length(bulk_cells_cpm_mean_ercc)
+  q_cutoffs_ercc <- quantile(bulk_cells_cpm_mean_ercc,
+                             probs = c(lower_q, upper_q))
+  q_exp_filter_ercc <- bulk_cells_cpm_mean_ercc >= q_cutoffs_ercc[1] &
+                       bulk_cells_cpm_mean_ercc <= q_cutoffs_ercc[2]
+  results$used_ercc <- sum(q_exp_filter_ercc)
+  single_cells_cpm_mean_ercc <- single_cells_cpm_mean_ercc[q_exp_filter_ercc]
+  bulk_cells_cpm_mean_ercc <- bulk_cells_cpm_mean_ercc[q_exp_filter_ercc]
 
   # Calculate correlation between single cells and bulk samples
   results$mean_cor_ensg <- calc_mean_cor(single_cells_cpm_mean_ensg, bulk_cells_cpm_mean_ensg,
@@ -293,9 +321,7 @@ calc_mean_cor <- function(x, y, method = "pearson", diagnose = FALSE,
   return(correlation)
 }
 
-
-# ------------------------------------------------------------------------------
-# Input parameters
+# Input parameters -------------------------------------------------------------
 
 if (!interactive() & getOption('run.main', default = TRUE)) {
   opts <- docopt(doc)
@@ -309,7 +335,8 @@ if (!interactive() & getOption('run.main', default = TRUE)) {
        replicate = opts$replicate,
        good_cells = opts$good_cells,
        keep_genes = opts$keep_genes,
-       quantiles = as.numeric(opts$quantiles),
+       lower_q = as.numeric(opts$lower_q),
+       upper_q = as.numeric(opts$upper_q),
        outfile = opts$outfile,
        diagnose = opts$diagnose)
 } else if (interactive() & getOption('run.main', default = TRUE)) {
@@ -324,6 +351,7 @@ if (!interactive() & getOption('run.main', default = TRUE)) {
        replicate = "r1",
        good_cells = "../data/quality-single-cells.txt",
        keep_genes = "../data/genes-pass-filter.txt",
-       quantiles = c(.25, .5, .75),
+       lower_q = 0.25,
+       upper_q = 0.75,
        diagnose = TRUE)
 }

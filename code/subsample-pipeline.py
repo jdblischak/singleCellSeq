@@ -42,7 +42,7 @@ depths = [50000, 250000, 1500000, 4000000]
 cells = [5, 10, 15, 25, 50, 75, 125]
 seeds = range(1, 10 + 1)
 types = ["reads", "molecules"]
-quantiles = [0.5]
+genes = ["all", "lower", "upper"]
 
 # Targets ----------------------------------------------------------------------
 
@@ -54,20 +54,22 @@ rule all:
 	input: "subsampling-results.txt"
 
 rule submit_subsampler:
-    input: expand(OUTPUT_DIR + "{TYPE}-{IND}-{CELLS}-{SEED}-{DEPTH}.txt", \
+    input: expand(OUTPUT_DIR + "{TYPE}-{IND}-{CELLS}-{SEED}-{DEPTH}-{GENE}.txt", \
            IND = individuals, \
            DEPTH = depths, \
            CELLS = cells, \
            SEED = seeds, \
-           TYPE = types)
+           TYPE = types, \
+           GENE = genes)
 
 rule submit_subsampler_test:
-    input: expand(OUTPUT_DIR + "{TYPE}-{IND}-{CELLS}-{SEED}-{DEPTH}.txt", \
+    input: expand(OUTPUT_DIR + "{TYPE}-{IND}-{CELLS}-{SEED}-{DEPTH}-{GENE}.txt", \
            IND = individuals[0:2], \
            DEPTH = depths[0:2], \
            CELLS = cells[0:2], \
            SEED = seeds[0:2], \
-           TYPE = types)
+           TYPE = types, \
+           GENE = genes)
 
 # Pipeline ---------------------------------------------------------------------
 
@@ -81,7 +83,9 @@ rule subsampler:
            bulk = DATA_DIR + "reads-raw-bulk-per-sample.txt",
            good_cells = GOOD_CELLS,
            keep_genes = KEEP_GENES
-	output: OUTPUT_DIR + "{TYPE}-{IND}-{CELLS}-{SEED}-{DEPTH}.txt"
+	output: all = OUTPUT_DIR + "{TYPE}-{IND}-{CELLS}-{SEED}-{DEPTH}-all.txt",
+            lower = OUTPUT_DIR + "{TYPE}-{IND}-{CELLS}-{SEED}-{DEPTH}-lower.txt",
+            upper = OUTPUT_DIR + "{TYPE}-{IND}-{CELLS}-{SEED}-{DEPTH}-upper.txt"
 	params: cells = "{CELLS}", seed = "{SEED}",
             ind = "{IND}",
             h_vmem = '2g', bigio = '0',
@@ -94,15 +98,26 @@ rule subsampler:
 subsampler.R {params.cells} {params.seed} {input.single_sub} \
   {input.single_full} {input.ercc} {input.bulk} \
   --individual={params.ind} --good_cells={input.good_cells} \
-  --keep_genes={input.keep_genes} -d -o {output}"
+  --keep_genes={input.keep_genes} -d -o {output.all}; \
+\
+subsampler.R {params.cells} {params.seed} {input.single_sub} \
+  {input.single_full} {input.ercc} {input.bulk} \
+  --individual={params.ind} --good_cells={input.good_cells} \
+  --keep_genes={input.keep_genes} -d -u 0.5 -o {output.lower}; \
+\
+subsampler.R {params.cells} {params.seed} {input.single_sub} \
+  {input.single_full} {input.ercc} {input.bulk} \
+  --individual={params.ind} --good_cells={input.good_cells} \
+  --keep_genes={input.keep_genes} -d -l 0.5 -o {output.upper}"
 
 rule gather_subsample_results:
-	input: expand(OUTPUT_DIR + "{TYPE}-{IND}-{CELLS}-{SEED}-{DEPTH}.txt", \
+	input: expand(OUTPUT_DIR + "{TYPE}-{IND}-{CELLS}-{SEED}-{DEPTH}-{GENE}.txt", \
            IND = individuals, \
            DEPTH = depths, \
            CELLS = cells, \
            SEED = seeds, \
-           TYPE = types)
+           TYPE = types, \
+           GENE = genes)
 	output: "subsampling-results.txt"
 	params: h_vmem = '2g', bigio = '0',
             name = "gather-subsampling-results"
