@@ -197,9 +197,13 @@ main <- function(num_cells, seed, single_sub_fname, single_full_fname,
   bulk_cells_cpm_mean_ercc <- bulk_cells_cpm_mean_ercc[q_exp_filter_ercc]
 
   # Calculate correlation between single cells and bulk samples
-  results$mean_cor_ensg <- calc_mean_cor(single_cells_cpm_mean_ensg, bulk_cells_cpm_mean_ensg,
+  results$pearson_ensg <- calc_mean_cor(single_cells_cpm_mean_ensg, bulk_cells_cpm_mean_ensg,
+                                         diagnose = diagnose, method = "pearson")
+  results$pearson_ercc <- calc_mean_cor(single_cells_cpm_mean_ercc, bulk_cells_cpm_mean_ercc,
+                                         diagnose = diagnose, method = "pearson")
+  results$spearman_ensg <- calc_mean_cor(single_cells_cpm_mean_ensg, bulk_cells_cpm_mean_ensg,
                                          diagnose = diagnose, method = "spearman")
-  results$mean_cor_ercc <- calc_mean_cor(single_cells_cpm_mean_ercc, bulk_cells_cpm_mean_ercc,
+  results$spearman_ercc <- calc_mean_cor(single_cells_cpm_mean_ercc, bulk_cells_cpm_mean_ercc,
                                          diagnose = diagnose, method = "spearman")
 
   write.table(results, file = outfile, quote = FALSE, row.names = FALSE,

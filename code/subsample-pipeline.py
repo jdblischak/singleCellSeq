@@ -132,18 +132,19 @@ rule gather_subsample_results:
 
            # Create output file
            out = open(output[0], "w")
-           out.write("type\tdepth\t" + header)
+           out.write("type\tdepth\tgene_subset\t" + header)
 
            # Write the contents of each input file to output file
            for fname in input:
                fname_parts = os.path.basename(fname).rstrip(".txt").split("-")
                type = fname_parts[0]
-               depth = fname_parts[-1]
+               depth = fname_parts[-2]
+               gene_subset = fname_parts[-1]
                f = open(fname, "r")
                f_header = f.readline()
                assert "File %s has the correct header"%(fname), f_header == header
                for line in f:
-                   out.write(type + "\t" + depth + "\t" + line)
+                   out.write(type + "\t" + depth + "\t" + gene_subset + "\t" + line)
                f.close()
 
            out.close()
