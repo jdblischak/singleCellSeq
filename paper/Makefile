@@ -1,5 +1,5 @@
 
-MARKDOWN := title-page.md introduction.md results.md discussion.md methods.md references.md
+MARKDOWN := title-page.md introduction.md results.md discussion.md methods.md legends.md references.md
 TARGETS := title.yaml $(MARKDOWN)
 NAME := paper
 SUPP := supplement
