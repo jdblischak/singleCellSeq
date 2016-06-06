@@ -219,6 +219,24 @@ main <- function(num_cells, seed, single_sub_fname, single_full_fname,
   results$spearman_ercc <- calc_mean_cor(single_cells_cpm_mean_ercc, bulk_cells_cpm_mean_ercc,
                                          diagnose = FALSE, method = "spearman")
 
+  # Detect number of expressed genes
+  min_count = 1
+  min_cells = 1
+  detected_ensg_index <- apply(single_cells_sub_ensg, 1, detect_expression,
+                               min_count = min_count, min_cells = min_cells)
+  results$detected_ensg <- sum(detected_ensg_index)
+  detected_ercc_index <- apply(single_cells_sub_ercc, 1, detect_expression,
+                               min_count = min_count, min_cells = min_cells)
+  results$detected_ercc <- sum(detected_ercc_index)
+
+  # Detect number of reads/molecules
+  # Caculate mean number of total counts, using only genes which meet the
+  # criteria for detection.
+  single_cells_sub_ensg_detected <- single_cells_sub_ensg[detected_ensg_index, , drop = FALSE]
+  results$mean_counts_ensg <- mean(colSums(single_cells_sub_ensg_detected))
+  single_cells_sub_ercc_detected <- single_cells_sub_ercc[detected_ercc_index, , drop = FALSE]
+  results$mean_counts_ercc <- mean(colSums(single_cells_sub_ercc_detected))
+
   write.table(results, file = outfile, quote = FALSE, row.names = FALSE,
               sep = "\t")
 }
@@ -337,6 +355,30 @@ calc_mean_cor <- function(x, y, method = "pearson", diagnose = FALSE,
   correlation <- round(correlation, digits = digits)
   return(correlation)
 }
+
+# Detect which genes are expressed.
+#
+# x - vector of counts
+# min_count - minumum required observations per cell
+# min_cells - minimum required number of cells
+#
+# Returns TRUE if gene expressed, FALSE otherwise.
+#
+detect_expression <- function(x, min_count, min_cells) {
+  assert("Proper input", is.numeric(x), is.numeric(min_count),
+         is.numeric(min_cells), x >= 0, min_count > 0,
+         length(min_count) == 1, length(min_cells) == 1)
+  expressed <- sum(x >= min_count)
+  return(expressed >= min_cells)
+}
+
+assert("Detect expression function works properly.",
+       detect_expression(c(0, 0, 1, 1), 1, 2) == TRUE,
+       detect_expression(c(0, 0, 0, 1), 1, 2) == FALSE,
+       detect_expression(c(0, 0, 1, 1), 1, 3) == FALSE,
+       detect_expression(c(0, 1, 1, 1), 1, 3) == TRUE,
+       detect_expression(c(0, 2, 3, 1), 2, 2) == TRUE,
+       detect_expression(c(0, 1, 3, 1), 2, 2) == FALSE)
 
 # Input parameters -------------------------------------------------------------
 
