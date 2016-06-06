@@ -38,7 +38,7 @@ for d in [LOG_DIR, BAM_DIR, RMDUP_DIR, OUTPUT_DIR]:
 # Variables --------------------------------------------------------------------
 
 individuals = ["NA19098", "NA19101", "NA19239"]
-depths = [50000, 250000, 1500000, 4000000]
+depths = [50000, 250000, 500000, 1500000, 4000000]
 cells = [5, 10, 15, 25, 50, 75, 125]
 seeds = range(1, 10 + 1)
 types = ["reads", "molecules"]
