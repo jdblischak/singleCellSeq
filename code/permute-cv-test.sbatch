@@ -13,5 +13,5 @@
 module add R/3.2
 module load R/3.2
 
-Rscript permute-cv-test-run.r
+Rscript permute-cv-test.r
 

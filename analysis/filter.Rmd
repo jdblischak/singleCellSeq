@@ -211,8 +211,18 @@ pca_molecules_filter_plot <- plot_pca(pca_molecules_filter$PCs, explained = pca_
 pca_molecules_filter_plot
 ```
 
+Because we start with the [intersection of observed genes in the single cell or bulk samples][observed] and then the expression cutoff is based on the expresssion in the single cells, it is possible that a gene is not observed at all in the bulk samples.
+This causes an error with the PCA because that gene is invariant, so they are filtered before performing PCA.
+
+[observed]: http://jdblischak.github.io/singleCellSeq/analysis/prepare-counts.html#observed-genes
+
+```{r zeros}
+reads_bulk_zeros <- rowSums(reads_bulk_filter) == 0
+rownames(reads_bulk_filter)[reads_bulk_zeros]
+```
+
 ```{r pca-reads-bulk-filter}
-pca_reads_bulk_filter <- run_pca(reads_bulk_filter)
+pca_reads_bulk_filter <- run_pca(reads_bulk_filter[!reads_bulk_zeros, ])
 pca_reads_bulk_filter_plot <- plot_pca(pca_reads_bulk_filter$PCs, explained = pca_reads_bulk_filter$explained,
          metadata = anno_bulk, color = "individual",
          shape = "replicate") +

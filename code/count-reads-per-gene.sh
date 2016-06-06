@@ -21,4 +21,4 @@ then
 fi
 
 echo "Counting reads per gene..."
-featureCounts -a $EXONS -F SAF -R -s 1 -o $OUTDIR/$BASE.genecounts.txt $FILE
+featureCounts -a $EXONS -F SAF -R -s 1 --read2pos 5 -o $OUTDIR/$BASE.genecounts.txt $FILE

@@ -1,0 +1,824 @@
+---
+title: "Cell-to-cell variation analysis: non-detected cells"
+author: "Joyce Hsiao"
+date: 2016-03-01  
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+
+library(knitr)
+opts_chunk$set(message = FALSE, warning = FALSE, eval = TRUE, 
+               echo = TRUE)
+```
+
+
+## Background and some observations
+
+
+1. __Non-detection rate descriptives__: We found that the median of non-detected cells rate is 26% across the three individuals and ranges between 21 to 30% between the three individuals. 
+
+2. __Non-detection rate and Mean, Var, CV__: Expectedly, gene abundance and variance were both associated with percent of non-detected cells; even genes with as low as 10 percent of non-detected cells were restricted in the dynamic range of abudance levels. Gene coefficient of variation was not correlated with percent of non-detected genes (Spearman's correlation = .04) across the three individuals. Further analysis indicated that when including only cells with less than 50 percent of undetected cells, the gene CV decreases as a concave function of abundance, a commonly observed pattern in bulk RNA-seq data and in scRNA-seq when undetected cells are included in the analysis. 
+
+3. __Compare non-detection rates__: 1,958 genes were found to have significant differences in non-detection rates between the three individuals at false discovery rate less than .01.
+
+4. __Individual difference in non-detection rate and gene abundance__: We found no correlation between p-values of tests comparing gene mean abundance and p-values of tests comparing non-detection rate, for all three pairiwse between-individual comparisons. The results also held when we investigated the correlation between fold change and p-value of tests comparing non-detection rate between indivdiuals. Furthermore, we evaluated genes with absolute log2 fold change greater than 1, 1.5, and 2 in the pairwise comparison tests, most genes with our nominated fold change difference were found to not have a significant difference in the proportion of non-detected cells. 
+
+
+*Note: I don't trust the differential expression analysis results here. Over 95% of the genes in the overall F-test were to be significant at FDR < .01; same results were found for two of the pairwise comparisons (NA19098-NA19101, NA19098-NA19239). When looking at the fold change of gene expression, I found only a very small portion of the genes with log2 fold change more than 2; NA19098-NA19101: 5 genes, NA19098-NA19239: 4 genes, and NA19101-NA19101: 2 genes. 
+
+*Note: An interesting observation when computing fold change suggests that on average gene abundance levels of NA19239 > NA19101> NA19098*
+
+5. __Non-detection rate and adjusted CV of the expressed cells__: Similar to results with gene abundance, we found no correlation between individual differences in non-detection rate and adjusted CV. At FDR < .01, of the 679 genes with differential adjusted CV of the expressed cells, only 69 genes were found to have significant difference also in proportion of undetected cells in at least one pair of between individual comparisons. 
+
+
+## Set up
+
+```{r, message=FALSE, warning=FALSE}
+library("dplyr")
+library("limma")
+library("edgeR")
+library("ggplot2")
+library("grid")
+theme_set(theme_bw(base_size = 12))
+source("functions.R")
+library("Humanzee")
+library("cowplot")
+library("MASS")
+library("matrixStats")
+source("../code/cv-functions.r")
+source("../code/plotting-functions.R")
+library("mygene")
+library("aod")
+```
+
+
+
+## Prepare data
+
+We import molecule counts before standardizing and transformation and also log2-transformed counts after batch-correction. Biological variation analysis of the individuals is performed on the batch-corrected and log2-transformed counts. 
+
+
+```{r import-data}
+# Import filtered annotations
+anno_filter <- read.table("../data/annotation-filter.txt", 
+                      header = TRUE,
+                      stringsAsFactors = FALSE)
+
+# Import filtered molecule counts
+molecules_filter <- read.table("../data/molecules-filter.txt",
+                               header = TRUE, stringsAsFactors = FALSE)
+stopifnot(NROW(anno_filter) == NCOL(molecules_filter))
+
+# Import final processed molecule counts of endogeneous genes
+molecules_final <- read.table("../data/molecules-final.txt", 
+                             header = TRUE, stringsAsFactors = FALSE)
+stopifnot(NROW(anno_filter) == NCOL(molecules_final))
+
+# Import gene symbols
+gene_symbols <- read.table(file = "../data/gene-info.txt", sep = "\t",
+                           header = TRUE, stringsAsFactors = FALSE, quote = "")
+
+# Import cell-cycle gene list
+cell_cycle_genes <- read.table("../data/cellcyclegenes.txt",
+                               header = TRUE, sep = "\t",
+                               stringsAsFactors = FALSE)
+
+# Import pluripotency gene list
+
+pluripotency_genes <- read.table("../data/pluripotency-genes.txt",
+                               header = TRUE, sep = "\t",
+                               stringsAsFactors = FALSE)$To
+```
+
+
+Load gene CVs computed over all cells ([link1][link1]), CV computed only over the expressed cells ([link2][link2]), and differential CV results when including only the expressed cells ([link3][link3]).
+
+
+[link1]: http://jdblischak.github.io/singleCellSeq/analysis/cv-adjusted-summary-pois.html
+[link2]: http://jdblischak.github.io/singleCellSeq/analysis/cv-adjusted-summary-pois-expressed.html
+[link3]: http://jdblischak.github.io/singleCellSeq/analysis/cv-adjusted-summary-pois-expressed.html
+
+```{r}
+load("../data/cv-all-cells.rda")
+load("../data/cv-expressed-cells.rda")
+load("../data/permuted-pval-expressed.rda")
+load("../data/sig-mean-expressed.rda")
+```
+
+
+Compute a matrix of 0's and 1's indicating non-detected and detected cells, respectively.
+
+```{r}
+molecules_expressed <- molecules_filter
+molecules_expressed[which(molecules_filter > 0 , arr.ind = TRUE)] <- 1
+molecules_expressed <- as.matrix((molecules_expressed))
+```
+
+
+Take the gene subset included in the final data.
+
+```{r}
+genes_included <- Reduce(intersect,
+                         list(rownames(molecules_final),
+                             rownames(expressed_cv$NA19098),
+                             rownames(permuted_pval)) )
+
+molecules_filter_subset <- molecules_filter[
+  which(rownames(molecules_filter) %in% genes_included), ]
+
+molecules_final_subset <- molecules_final[
+  which(rownames(molecules_final) %in% genes_included), ]
+
+molecules_expressed_subset <- molecules_expressed[
+  which(rownames(molecules_expressed) %in% genes_included), ]
+
+molecules_final_expressed_subset <- molecules_final_subset*molecules_expressed_subset
+molecules_final_expressed_subset[which(molecules_expressed_subset == 0, arr.ind = TRUE)] <- NA
+
+permuted_pval_subset <- permuted_pval[which(rownames(permuted_pval) %in% genes_included), ]
+names(permuted_pval_subset) <- rownames(permuted_pval)[which(rownames(permuted_pval) %in% genes_included)]
+
+expressed_cv_subset <- lapply(expressed_cv, function(x)
+  x[which(rownames(x) %in% genes_included), ] )
+names(expressed_cv_subset) <- names(expressed_cv)
+
+expressed_dm_subset <- expressed_dm[which(rownames(expressed_dm) %in% genes_included), , ] 
+
+dim(molecules_final_subset)
+dim(molecules_expressed_subset)
+all.equal(rownames(expressed_cv_subset$NA19098), 
+          rownames(molecules_final_expressed_subset) )
+all.equal(names(permuted_pval_subset), 
+          rownames(molecules_expressed_subset) )
+```
+
+
+
+## Drop-out rate descriptives
+
+Compute drop-out rates.
+
+```{r compute-dropout}
+drop_out <- lapply(unique(anno_filter$individual), function(ind) {
+  temp_df <- molecules_filter_subset[,anno_filter$individual == ind]
+  zero_df <- array(0, dim = dim(temp_df))
+  rownames(zero_df) <- rownames(temp_df)
+  zero_df[which(temp_df == 0, arr.ind = TRUE)] <- 1
+  zero_count <- rowMeans(zero_df)
+  return(zero_count)
+})  
+names(drop_out) <- unique(anno_filter$individual)
+drop_out$all <- rowMeans(as.matrix(molecules_filter_subset) == 0)
+
+summary(drop_out$NA19098)
+summary(drop_out$NA19101)
+summary(drop_out$NA19239)
+summary(drop_out$all)
+```
+
+
+
+Histogram of drop-out percents.
+
+```{r}
+par(mfrow = c(2,2))
+for (i in 1:4) {
+h1 <- hist(drop_out[[i]], breaks = seq(0,1, by = .1), 
+           plot = FALSE)
+h1$density <- h1$counts/sum(h1$counts)*100
+plot(h1, ylab = "Percent",
+         xlab = "Proportion of non-detected cells",
+         main = names(drop_out)[i], 
+     freq=FALSE)
+}
+```
+
+Proportion of genes with 50 percent or more undetected cells.
+
+```{r}
+sapply(drop_out, function(x) mean(x>=.5))
+```
+
+
+## Explore the role of drop-outs
+
+NA19098, expressed cells
+
+```{r, fig.height=6, fig.width=6}
+par(mfrow = c(2,2))
+plot(y = log10(expressed_cv_subset$NA19098$expr_mean),
+     x = drop_out$NA19098,
+     xlab = "Percent of drop-outs",
+     ylab = "log10 mean expression",
+     pch = 16, cex =.3)
+lines(lowess( expressed_cv_subset$NA19098$expr_mean ~ drop_out$NA19098),
+      col = "red")
+plot(y = log10(expressed_cv_subset$NA19098$expr_var),
+     x = drop_out$NA19098,
+     xlab = "Percent of drop-outs",
+     ylab = "log10 variance of expression",
+     pch = 16, cex =.3)
+lines(lowess( log10(expressed_cv_subset$NA19098$expr_var) ~ drop_out$NA19098),
+      col = "red")
+plot(y = expressed_cv_subset$NA19098$expr_cv,
+     x = drop_out$NA19098,
+     xlab = "Percent of drop-outs",
+     ylab = "CV",
+     pch = 16, cex =.3)
+lines(lowess( expressed_cv_subset$NA19098$expr_cv ~ drop_out$NA19098),
+      col = "red")
+plot(y = expressed_dm_subset$NA19098,
+     x = drop_out$NA19098,
+     xlab = "Percent of drop-outs",
+     ylab = "Corrected CV",
+     pch = 16, cex =.3)
+lines(lowess( expressed_dm_subset$NA19098 ~ drop_out$NA19098),
+      col = "red")
+title(main = "Expressed cells, NA19098", outer = TRUE, line = -1)
+```
+
+
+All individuals, expressed cells
+
+```{r, fig.height=6, fig.width=6}
+par(mfrow = c(2,2))
+# abundance
+plot(y = log10(expressed_cv_subset$all$expr_mean),
+     x = drop_out$all,
+     xlab = "Percent of drop-outs",
+     ylab = "log10 mean expression",
+     pch = 16, cex =.3)
+lines(lowess( log10(expressed_cv_subset$all$expr_mean) ~ drop_out$all),
+      col = "red")
+# variance
+plot(y = log10(expressed_cv_subset$all$expr_var),
+     x = drop_out$all,
+     xlab = "Percent of drop-outs",
+     ylab = "log10 variance of expression",
+     pch = 16, cex =.3)
+lines(lowess( log10(expressed_cv_subset$all$expr_var) ~ drop_out$all),
+      col = "red")
+# CV
+plot(y = expressed_cv_subset$all$expr_cv,
+     x = drop_out$all,
+     xlab = "Percent of drop-outs",
+     ylab = "CV",
+     pch = 16, cex =.3)
+lines(lowess( expressed_cv_subset$all$expr_cv ~ drop_out$all),
+      col = "red")
+title(main = "All 3 individuals", outer = TRUE, line = -1)
+```
+
+
+
+CV and mean plus drop-out rates. 
+
+```{r}
+par(mfrow = c(2,2))
+plot(y = expressed_cv_subset$NA19098$expr_cv,
+     x = log10(expressed_cv_subset$NA19098$expr_mean),
+     cex = .9, col = alpha("grey40", .8), lwd = .6,
+     xlab = "log10 gene mean abundance",
+     ylab = "CV",
+     main = "Expressed cells, NA19098",
+     xlim = c(1,5), ylim = c(0,2.5))
+points(y = expressed_cv_subset$NA19098$expr_cv,
+       x = log10(expressed_cv_subset$NA19098$expr_mean), 
+       col = rev(RColorBrewer::brewer.pal(10, "RdYlBu"))[
+                cut(drop_out$NA19098, breaks = seq(0, 1, by = .1),
+                     include.lowest = TRUE)], 
+       cex = .6, pch = 16)
+
+
+plot(y = expressed_cv_subset$all$expr_cv,
+     x = log10(expressed_cv_subset$all$expr_mean),
+     cex = .9, col = alpha("grey40", .8), lwd = .6,
+     xlab = "log10 gene mean abundance",
+     ylab = "CV",
+     main = "Expressed cells, All 3 individuals",
+     xlim = c(1,5), ylim = c(0,2.5))
+points(y = expressed_cv_subset$all$expr_cv,
+       x = log10(expressed_cv_subset$all$expr_mean), 
+       col = rev(RColorBrewer::brewer.pal(10, "RdYlBu"))[
+                cut(drop_out$all, breaks = seq(0, 1, by = .1),
+                     include.lowest = TRUE)], 
+       cex = .6, pch = 16)
+
+
+plot(y = expressed_dm_subset$NA19098,
+     x = log10(expressed_cv_subset$NA19098$expr_mean),
+     cex = .9, col = alpha("grey40", .8), lwd = .6,
+     xlab = "log10 gene mean abundance",
+     ylab = "Adjusted CV",
+     main = "Expressed cells, NA19098",
+     xlim = c(1,5))
+points(y = expressed_dm_subset$NA19098,
+       x = log10(expressed_cv_subset$NA19098$expr_mean), 
+       col = rev(RColorBrewer::brewer.pal(10, "RdYlBu"))[
+                cut(drop_out$NA19098, breaks = seq(0, 1, by = .1),
+                     include.lowest = TRUE)], 
+       cex = .6, pch = 16)
+
+plot(1:10, pch = 15, cex = 2, axes = F, xlab = "", ylab = "",
+     col = rev(RColorBrewer::brewer.pal(10, "RdYlBu")), xlim = c(0, 13))
+text(labels = levels(cut(drop_out$NA19098, breaks = seq(0, 1, by = .1),
+                     include.lowest = TRUE)),
+     y = 1:10, x = 1:10 + 2, cex = .7)
+title(main = "drop-out rate")
+```
+
+
+
+## Compare non-detection rates between individuals
+
+Fisher's exact test for between individual comparisons. For some genes, we observed no undetected cells, a scenario that calls for Fisher's exact test instead of Chi-square test or logistic regression. 
+
+
+```{r}
+file_name <- "../data/sig-test-zeros.rda"
+if (file.exists(file_name)) {
+  load(file_name)
+} else {
+  ind <- factor(anno_filter$individual,
+              levels = unique(anno_filter$individual),
+              labels = unique(anno_filter$individual) )
+  fit_zero <- do.call(rbind,
+      lapply(1:NROW(molecules_expressed_subset), function(ii) {
+#      lapply(1:100, function(ii) {
+          tab <- table(molecules_expressed_subset[ii, ], ind)
+          if (dim(tab)[1] == 1) {
+             if (as.numeric(rownames(tab)) == 1) {
+               tab <- rbind(rep(0,3), tab)
+               rownames(tab) <- c(0,1)
+             } else {
+               tab <- rbind(rep(1,3), tab)
+               rownames(tab) <- c(0,1)
+             }
+          }
+          pval <- lapply(rev(1:dim(tab)[2]),
+                         function(i) {
+                              fisher.test(tab[,-i])$p.value                 
+                         })
+          names(pval) <- sapply(rev(1:dim(tab)[2]), 
+                               function(i) {
+                                 paste(colnames(tab[,-i])[1],
+                                      colnames(tab[,-i])[2],
+                                      sep = "-") })
+          df <- data.frame(
+                do.call(cbind, pval),
+                    row.names = rownames(molecules_expressed_subset)[ii] ) 
+          colnames(df) <- names(pval)
+          return(df)
+  }) )
+  fit_zero_qval <- do.call(cbind,
+    lapply(1:3, function(i) {
+    stats::p.adjust(fit_zero[,i], method = "fdr")
+  }))
+  colnames(fit_zero_qval) <- colnames(fit_zero)
+  
+  save(fit_zero, fit_zero_qval, file = file_name)
+}
+```
+
+
+
+```{r}
+par(mfrow = c(2,2))
+for (i in 1:3) {
+  hist(fit_zero[,i],
+       main = colnames(fit_zero)[i],
+       xlab = "p-value")
+}
+title(main = "p-value histogram", outer = TRUE, line = -1)
+
+# genes with almost 1 p-value
+table(rowSums(fit_zero > .999))
+
+par(mfrow = c(2,2))
+for (i in 1:3) {
+  plot(ecdf(fit_zero[,i]),
+       main = colnames(fit_zero)[i],
+       xlab = "p-value",
+       axes = F)
+  axis(1); axis(2)
+}
+title(main = "p-value empirical distribution function", outer = TRUE, line = -1)
+
+
+par(mfrow = c(2,2))
+for (i in 1:3) {
+  plot(ecdf(fit_zero_qval[,i]),
+       main = colnames(fit_zero_qval)[i],
+       xlab = "q-value",
+       axes = F)
+  axis(1); axis(2)
+}
+title(main = "q-value empirical distribution function", outer = TRUE, line = -1)
+
+table(rowSums(fit_zero_qval < .01))
+
+
+library(VennDiagram)
+library(gridExtra)
+genes <- rownames(molecules_expressed_subset)
+overlap_list <- lapply(1:3, function(i)
+      genes[ which( fit_zero_qval[ ,i] < .01 ) ] )
+names(overlap_list) <- colnames(fit_zero_qval)
+
+grid.arrange(gTree(children = venn.diagram(overlap_list,filename = NULL,
+                          category.names = names(overlap_list),
+                          name = "q-val < .01")) )
+```
+
+
+
+## Non-detection rate p-value and DE p-value
+
+For genes with sig. individual differences in percent of non-detected genes, consider the difference in gene abundance levels.
+
+```{r}
+colnames(fit_w)
+
+par(mfrow = c(2,2))
+plot(rank(fit_zero$`NA19098-NA19101`), 
+     rank((fit_w$p.value[ ,"NA19098_NA19101"] ) ),
+     pch = 16, cex = .3,
+     xlab = "Differential non-detection rate p-value (rank)",
+     ylab = "Differential expression p-value (rank)",
+     main = "NA19098-NA19101") 
+plot(rank(fit_zero$`NA19098-NA19239`), 
+     rank((fit_w$p.value[ ,"NA19098_NA19239"] ) ),
+     pch = 16, cex = .3,
+     xlab = "Differential non-detection rate p-value (rank)",
+     ylab = "Differential expression p-value (rank)",
+     main = "NA19098-NA19239") 
+plot(rank(fit_zero$`NA19101-NA19239`), 
+     rank((fit_w$p.value[ ,"NA19101_NA19239"] ) ),
+     pch = 16, cex = .3,
+     xlab = "Differential non-detection rate p-value (rank)",
+     ylab = "Differential expression p-value (rank)",
+     main = "NA19101-NA19239") 
+
+library(VennDiagram)
+library(gridExtra)
+genes <- rownames(molecules_final_subset)
+overlap_list <- lapply(1:3, function(i)
+  list(diffNonDetection = genes[which(fit_zero_qval[,i] < .01)],
+       diffAbundance = genes[ which(p.adjust(fit_w$p.value[,i], method = "fdr") < .01)]) )
+names(overlap_list) <- colnames(fit_zero_qval)
+
+grid.arrange(gTree(children = venn.diagram(overlap_list[[1]],filename = NULL,
+                          category.names = names(overlap_list[[1]]))),
+            gTree(children = venn.diagram(overlap_list[[2]],filename = NULL,
+                          category.names = names(overlap_list[[1]]))),
+            gTree(children = venn.diagram(overlap_list[[3]],filename = NULL,
+                          category.names = names(overlap_list[[3]]))),
+      ncol = 2)
+```
+
+
+
+## Non-detection rate p-value and fold change
+
+
+```{r}
+log2fc <- data.frame(
+  NA19098_NA19101 = rowMeans(molecules_final_expressed_subset[,anno_filter$individual == "NA19098"], na.rm = TRUE) - rowMeans(molecules_final_expressed_subset[,anno_filter$individual == "NA19101"], na.rm = TRUE),
+  NA19098_NA19239 = rowMeans(molecules_final_expressed_subset[,anno_filter$individual == "NA19098"], na.rm = TRUE) - rowMeans(molecules_final_expressed_subset[,anno_filter$individual == "NA19239"], na.rm = TRUE),
+  NA19101_NA19239 = rowMeans(molecules_final_expressed_subset[,anno_filter$individual == "NA19101"], na.rm = TRUE) - rowMeans(molecules_final_expressed_subset[,anno_filter$individual == "NA19239"], na.rm = TRUE) )
+
+
+par(mfrow = c(2,2))
+plot(rank(fit_zero$`NA19098-NA19101`), 
+     rank(log2fc$NA19098_NA19101),
+     pch = 16, cex = .3,
+     xlab = "Differential non-detection rate p-value (rank)",
+     ylab = "log2 fold change (rank)",
+     main = "NA19098-NA19101") 
+plot(rank(fit_zero$`NA19098-NA19239`), 
+     rank(log2fc$NA19098_NA19239),
+     pch = 16, cex = .3,
+     xlab = "Differential non-detection rate p-value (rank)",
+     ylab = "log2 fold change (rank)",
+     main = "NA19098-NA19239") 
+plot(rank(fit_zero$`NA19101-NA19239`), 
+     rank(log2fc$NA19101_NA19239),
+     pch = 16, cex = .3,
+     xlab = "Differential non-detection rate p-value (rank)",
+     ylab = "log2 fold change (rank)",
+     main = "NA19101-NA19239") 
+```
+
+
+```{r}
+print("abs. log2 FC > 1")
+sapply(log2fc, function(x) sum(abs(x) > 1))
+
+library(VennDiagram)
+library(gridExtra)
+genes <- rownames(molecules_final_subset)
+overlap_list <- lapply(1:3, function(i)
+  list(diffNonDetection = genes[which(fit_zero_qval[,i] < .01)],
+       diffAbundance = genes[ which( abs(log2fc[[i]]) > 1) ]) )
+names(overlap_list) <- colnames(fit_zero_qval)
+
+grid.arrange(gTree(children = venn.diagram(overlap_list[[1]],filename = NULL,
+                          category.names = names(overlap_list[[1]]))),
+            gTree(children = venn.diagram(overlap_list[[2]],filename = NULL,
+                          category.names = names(overlap_list[[1]]))),
+            gTree(children = venn.diagram(overlap_list[[3]],filename = NULL,
+                          category.names = names(overlap_list[[3]]))),
+      ncol = 2)
+```
+
+
+
+```{r}
+print("abs. log2 FC > 1.5")
+sapply(log2fc, function(x) sum(abs(x) > 1.5))
+genes <- rownames(molecules_final_subset)
+overlap_list <- lapply(1:3, function(i)
+  list(diffNonDetection = genes[which(fit_zero_qval[,i] < .01)],
+       diffAbundance = genes[ which( abs(log2fc[[i]]) > 1.5) ]) )
+names(overlap_list) <- colnames(fit_zero_qval)
+
+grid.arrange(gTree(children = venn.diagram(overlap_list[[1]],filename = NULL,
+                          category.names = names(overlap_list[[1]]))),
+            gTree(children = venn.diagram(overlap_list[[2]],filename = NULL,
+                          category.names = names(overlap_list[[1]]))),
+            gTree(children = venn.diagram(overlap_list[[3]],filename = NULL,
+                          category.names = names(overlap_list[[3]]))),
+      ncol = 2)
+```
+
+
+
+```{r}
+print("abs. log2 FC > 2")
+sapply(log2fc, function(x) sum(abs(x) > 2))
+genes <- rownames(molecules_final_subset)
+overlap_list <- lapply(1:3, function(i)
+  list(diffNonDetection = genes[which(fit_zero_qval[,i] < .01)],
+       diffAbundance = genes[ which( abs(log2fc[[i]]) > 2) ]) )
+names(overlap_list) <- colnames(fit_zero_qval)
+
+grid.arrange(gTree(children = venn.diagram(overlap_list[[1]],filename = NULL,
+                          category.names = names(overlap_list[[1]]))),
+            gTree(children = venn.diagram(overlap_list[[2]],filename = NULL,
+                          category.names = names(overlap_list[[1]]))),
+            gTree(children = venn.diagram(overlap_list[[3]],filename = NULL,
+                          category.names = names(overlap_list[[3]]))),
+      ncol = 2)
+```
+
+
+
+NA19098 vs. NA19101: diff non-detection,log2FC > 1.5
+
+```{r, fig.width=10, fig.height=7}
+# genes with the largest difference in non-detection rates
+gene_elect <- intersect(
+  rownames(fit_zero)[which(fit_zero_qval[,1] < .01)],
+  rownames(log2fc)[ which(abs(log2fc$NA19098_NA19101) > 1.5) ] )
+                         
+
+par(mfrow = c(3,2))
+for (i in 1:6) {
+  plot_density_overlay(
+    molecules = molecules_final_expressed_subset,
+    annotation = anno_filter,
+    which_gene = gene_elect[i], 
+    labels = "",
+    xlims = c(0,15), ylims = NULL,
+    gene_symbols = gene_symbols)
+}
+```
+
+
+
+
+
+## Differential non-detectoin rate and CV
+
+
+```{r}
+par(mfrow = c(2,2))
+plot(x = rank(matrixStats::rowProds(as.matrix(fit_zero), na.rm =TRUE)),
+     y = rank(permuted_pval_subset),
+     pch = 16, cex = .3,
+     ylab ="Diff. CV p-value (rank)",
+     xlab = "Diff non-detection rate p-values product (rank)",
+     main = "All 3 individuals")
+for (i in 1:3) {
+plot(x = rank(fit_zero[,i]),
+     y = rank(permuted_pval_subset),
+     pch = 16, cex = .3,
+     ylab ="Diff. CV p-value (rank)",
+     xlab = "Diff non-detection rate p-values (rank)",
+     main = colnames(fit_zero)[i] )
+}
+```
+
+Overlap of genes with at least one significant pairwise difference in proportion of detected genes, and genes with significant differential CV.
+
+
+```{r}
+# subset expression data of genes that were included
+# in the significance testing
+rownames(fit_zero_qval) <- rownames(fit_zero)
+
+library(VennDiagram)
+library(gridExtra)
+overlap_list_diff <- list(
+   diffCV = names(permuted_pval_subset)[which(permuted_pval_subset == 0)],
+   diffNonDetection = rownames(fit_zero_qval)[
+     which(rowSums(fit_zero_qval < .01, na.rm = TRUE) > 1)
+   ])  
+
+grid.arrange(gTree(children = venn.diagram(overlap_list_diff,filename = NULL,
+                          category.names = names(overlap_list_diff),
+                          name = "Diff. CV & non-detected rate")))
+```
+
+
+
+```{r, fig.width=10, fig.height=7}
+# genes with the largest difference in non-detection rates
+gene_elect <- intersect(
+  rownames(fit_zero)[which(rowSums(fit_zero_qval < .01, na.rm = TRUE) == 1)],
+  rownames(log2fc)[ which(permuted_pval_subset < .01) ] )
+                         
+par(mfrow = c(3,2))
+for (i in 1:6) {
+  plot_density_overlay(
+    molecules = molecules_final_expressed_subset,
+    annotation = anno_filter,
+    which_gene = gene_elect[i], 
+    labels = "",
+    xlims = c(0,15), ylims = NULL,
+    gene_symbols = gene_symbols)
+}
+```
+
+
+Overlap of genes with significant difference in proportion of undetected genes between all three pairs and overlap of genes with significant differential CV genes.
+
+
+```{r}
+# subset expression data of genes that were included
+# in the significance testing
+rownames(fit_zero_qval) <- rownames(fit_zero)
+
+library(VennDiagram)
+library(gridExtra)
+overlap_list_diff <- list(
+   diffCV = names(permuted_pval_subset)[which(permuted_pval_subset == 0)],
+   diffNonDetection = rownames(fit_zero_qval)[
+     which(rowSums(fit_zero_qval < .01, na.rm = TRUE) == 3)
+   ])  
+
+grid.arrange(gTree(children = venn.diagram(overlap_list_diff,filename = NULL,
+                          category.names = names(overlap_list_diff),
+                          name = "Diff. CV & non-detected rate")))
+```
+
+
+```{r, fig.width=10, fig.height=7}
+# genes with the largest difference in non-detection rates
+gene_elect <- intersect(
+  rownames(fit_zero)[which(rowSums(fit_zero_qval < .01, na.rm = TRUE) == 3)],
+  rownames(log2fc)[ which(permuted_pval_subset < .01) ] )
+                         
+par(mfrow = c(3,2))
+for (i in 1:6) {
+  plot_density_overlay(
+    molecules = molecules_final_expressed_subset,
+    annotation = anno_filter,
+    which_gene = gene_elect[i], 
+    labels = "",
+    xlims = c(0,15), ylims = NULL,
+    gene_symbols = gene_symbols)
+}
+```
+
+
+
+## Non-detection, fold change, CV: NA19098 vs. NA19101
+
+```{r}
+# subset expression data of genes that were included
+# in the significance testing
+rownames(fit_zero_qval) <- rownames(fit_zero)
+
+library(VennDiagram)
+library(gridExtra)
+overlap_list_diff <- list(
+   difflog2FC = rownames(log2fc)[which(abs(log2fc$NA19098_NA19101) > 1)],
+   diffCV = names(permuted_pval_subset)[which(permuted_pval_subset == 0)],
+   diffNonDetection = rownames(fit_zero_qval)[
+     which(fit_zero_qval[,1] < .01) ] )  
+
+grid.arrange(gTree(children = venn.diagram(overlap_list_diff,filename = NULL,
+                          category.names = names(overlap_list_diff))))
+```
+
+
+
+## Pluripotency genes
+
+
+```{r}
+pluri <- rownames(fit_zero)[which(rownames(fit_zero) %in% pluripotency_genes)]
+symbol <- gene_symbols$external_gene_name[match(pluri, gene_symbols$ensembl_gene_id)]
+
+zero_prop <- do.call(cbind,
+    lapply(unique(anno_filter$individual), function(ind) {
+        rowMeans(molecules_expressed_subset[, anno_filter$individual == ind] == 0,
+                 na.rm = TRUE)
+      }) )
+colnames(zero_prop) <- unique(anno_filter$individual)
+names(zero_prop) <- unique(anno_filter$individual)      
+
+summary_table <- data.frame(
+  gene_symbo = symbol, 
+  diffCVpval = permuted_pval_subset[which(names(permuted_pval_subset) %in% pluripotency_genes)] < .01,
+  fit_zero_qval[which(rownames(fit_zero) %in% pluripotency_genes), ] < .01,
+  round(log2fc[which(rownames(log2fc) %in% pluripotency_genes), ], digits = 2),
+  round(zero_prop[which(rownames(log2fc) %in% pluripotency_genes), ], digits = 2),
+  stringsAsFactors = FALSE)
+
+
+# The two significant CV genes
+
+
+#DNMT3B
+table(molecules_expressed_subset[which( rownames(molecules_expressed_subset) %in% "ENSG00000088305"), ])
+summary(unlist(molecules_final_expressed_subset[which( rownames(molecules_final_expressed_subset) %in% "ENSG00000088305"), ]) )
+
+# N66A1
+table(molecules_expressed_subset[which( rownames(molecules_expressed_subset) %in% "ENSG00000148200"), ])
+summary(unlist(molecules_final_expressed_subset[which( rownames(molecules_final_expressed_subset) %in% "ENSG00000148200"), ]) )
+
+
+# NANOG
+table(molecules_expressed_subset[which( rownames(molecules_expressed_subset) %in% "ENSG00000111704"), ])
+summary(unlist(molecules_final_expressed_subset[which( rownames(molecules_final_expressed_subset) %in% "ENSG00000111704"), ]) )
+
+#ZFP42
+table(molecules_expressed_subset[which( rownames(molecules_expressed_subset) %in% "ENSG00000179059"), ])
+summary(unlist(molecules_final_expressed_subset[which( rownames(molecules_final_expressed_subset) %in% "ENSG00000179059"), ]) )
+
+kable(summary_table)
+```
+
+
+
+```{r metagenomeSeq, eval = FALSE, include = FALSE}
+#you have to define the newMRexperiment object
+#and set libSize
+#when you define it
+#then in fitZig use the `useCSSoffset=FALSE`
+#and make sure the normalized counts aren't logged
+#obj@expSummary$expSummary` - this is where the libsize and the normfactors are hidden
+
+# Use zero-inflated log-normal mixture implemented in metagenomeSeq.
+library(metagenomeSeq)
+MRobj <- newMRexperiment(
+  molecules_final,
+  phenoData = AnnotatedDataFrame(
+    data.frame(anno_filter,
+        row.names = colnames(molecules_final),
+        stringsAsFactors = FALSE) ),
+  featureData = AnnotatedDataFrame(
+    data.frame(gene_id = rownames(molecules_final),
+        row.names = rownames(molecules_final),
+        stringsAsFactors = FALSE) ) ) 
+                                   
+design <- model.matrix(~ factor(individual,
+                                levels = unique(individual)), 
+                       data = pData(MRobj))
+
+control <- zigControl(maxit=50,verbose=FALSE)
+
+
+fit_zig <- fitZig(obj = MRobj,
+                  mod = design,
+                  zeroMod = design,
+                  useCSSoffset = FALSE,
+                  useMixedModel = FALSE,
+                  control = control)
+```
+
+
+
+
+## Session information
+
+```{r info}
+sessionInfo()
+```

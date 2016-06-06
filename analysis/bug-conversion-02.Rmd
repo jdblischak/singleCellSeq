@@ -1,0 +1,243 @@
+---
+title: "Tracking down bug in reads to molecules conversion - Attempt 02"
+author: "John Blischak"
+date: 2015-02-19
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+opts_chunk$set(cache = TRUE)
+```
+
+After [identifying a source of problematic reads][attempt-01] and re-running featureCounts [using the read2pos flag][read2pos], the [tests][] still fail.
+This anaysis explores the remaining bugs lurking in the [sequence processsing pipeline][pipeline].
+
+[attempt-01]: bug-conversion-01.html
+[read2pos]: read2pos.html
+[tests]: https://github.com/jdblischak/singleCellSeq/tree/master/tests
+[pipeline]: process-samples.html
+
+## Input
+
+Input annotation.
+
+```{r input-annotation}
+anno <- read.table("../data/annotation.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+```
+
+Input read counts.
+
+```{r input-read-counts}
+reads <- read.table("../data/reads.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+stopifnot(ncol(reads) == nrow(anno),
+          colnames(reads) == anno$sample_id)
+```
+
+Input molecule counts.
+
+```{r input-molecule-counts}
+molecules <- read.table("../data/molecules.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+stopifnot(ncol(molecules) == nrow(anno),
+          colnames(molecules) == anno$sample_id)
+```
+
+Input list of quality single cells.
+
+```{r input-quality-single-cells}
+quality_single_cells <- scan("../data/quality-single-cells.txt",
+                             what = "character")
+```
+
+## Identifying problem genes
+
+How often is this a problem? How many genes does it affect? For affected genes, how many samples are affected?
+
+```{r problem-genes}
+discordant_zeros <- (reads == 0) != (molecules == 0)
+all_genes <- rowSums(discordant_zeros)
+names(all_genes) <- rownames(reads)
+problem_genes <- all_genes[all_genes > 0]
+length(problem_genes)
+length(problem_genes) / length(all_genes)
+summary(problem_genes)
+```
+
+This problem affects `r length(problem_genes)`
+out of the `r length(all_genes)` total genes
+(`r round(length(problem_genes) / length(all_genes) * 100, digits = 2)`%).
+For these problem genes, the median number of affected samples is `r median(problem_genes)`
+and the max number of affected samples is `r max(problem_genes)`.
+
+Next I identify a problem gene-sample combination so that I can track down what happened.
+
+```{r problem-1}
+x <- names(problem_genes)[1]
+plot(as.numeric(reads[x, ]), as.numeric(molecules[x, ]))
+problem_sample <- colnames(reads)[discordant_zeros[x, ] == TRUE]
+reads[x, problem_sample]
+molecules[x, problem_sample]
+```
+
+For gene `r x`,
+the sample `r problem_sample`
+was assigned `r reads[x, problem_sample]` reads
+but `r molecules[x, problem_sample]` molecules.
+What happened?
+
+Note that `r problem_sample` is not a high quality single cell, so this particular error has no effect on our downstream results.
+
+```{r check-sample-quality}
+problem_sample %in% quality_single_cells
+```
+
+## Searching for where the reads are lost during the processing pipeline
+
+Now I am going to search for the bug by inspecting the intermediate data files from the [sequence processsing pipeline][pipeline].
+
+The following chunks are all Bash commands run from the data directory.
+
+```{r change-chunk-opts, cache=FALSE}
+opts_chunk$set(engine = "bash")
+opts_knit$set(root.dir = "/mnt/gluster/home/jdblischak/ssd")
+```
+
+First I confirm that this difference is observed at the [featureCounts step][featureCounts]:
+
+[featureCounts]: process-samples.html#count-reads-per-gene
+
+```{r featureCounts-reads-per-lane}
+# reads per lane
+grep ENSG00000143294 counts/19098.3.E09*trim.sickle.sorted.genecounts.txt | cut -f1,7
+```
+
+```{r featureCounts-molecules-per-lane}
+# molecules per lane
+grep ENSG00000143294 counts/19098.3.E09*trim.sickle.sorted.rmdup.genecounts.txt | cut -f1,7
+```
+
+```{r featureCounts-molecules-per-sample}
+# molecules per sample
+grep ENSG00000143294 counts/19098.3.E09.trim.sickle.sorted.combined.rmdup.genecounts.txt | cut -f1,7
+```
+
+It is. The featureCounts results corroborate that 33 reads are mapped to this sample but zero molecules.
+Therefore the problem is upstream of my [Python script to gather the gene counts][gather-gene-counts].
+
+[gather-gene-counts]: process-samples.html#gather-gene-counts
+
+Next I inspect the featureCounts assigment results (flag `-R`) to corroborate the output file results.
+Because all the lanes failed similarly, I'll focus on the lane with only 9 reads for simplicity.
+
+```{r assignments-reads-per-lane-3}
+# reads per lane
+grep ENSG00000143294 counts/19098.3.E09.TCCCATGG.L007.R1.C6WYKACXX.trim.sickle.sorted.bam.featureCounts
+```
+
+All 9 reads have the same UMI sequence.
+
+```{r assignments-molecules-per-lane-3}
+# molecules per lane
+grep ENSG00000143294 counts/19098.3.E09.TCCCATGG.L007.R1.C6WYKACXX.trim.sickle.sorted.rmdup.bam.featureCounts
+# I have to add the following to change the exit status. When grep does not find
+# a match, its exit status is 1. Since this is an error exit status, knitr
+# assumes something has failed and stops execution.
+exit 0
+```
+
+But no molecules!
+
+Now I want to know if featureCounts reports having seen any of these reads, but does not assign them for some reason (e.g. ambiguity, mapping to more than one feature).
+
+```{r problem-reads}
+problem_reads=`grep ENSG00000143294 counts/19098.3.E09.TCCCATGG.L007.R1.C6WYKACXX.trim.sickle.sorted.bam.featureCounts | cut -f1`
+for read in $problem_reads
+do
+  echo "read: $read"
+  grep $read counts/19098.3.E09.TCCCATGG.L007.R1.C6WYKACXX.trim.sickle.sorted.rmdup.bam.featureCounts
+done
+exit 0
+```
+
+featureCounts has no record of having seen any of these reads and then not assigning them.
+This suggests the problem is upstream.
+Are any of these reads present in the bam file passed to featureCounts?
+These are the output files from the [step to remove duplicate reads][rmdup] (i.e. convert reads to molecules).
+
+[rmdup]: http://jdblischak.github.io/singleCellSeq/analysis/process-samples.html#remove-duplicate-umis
+
+```{r rmdup-problem-reads}
+problem_reads=`grep ENSG00000143294 counts/19098.3.E09.TCCCATGG.L007.R1.C6WYKACXX.trim.sickle.sorted.bam.featureCounts | cut -f1`
+for read in $problem_reads
+do
+  echo "read: $read"
+  samtools view bam-rmdup-umi/19098.3.E09.TCCCATGG.L007.R1.C6WYKACXX.trim.sickle.sorted.rmdup.bam | grep $read
+done
+exit 0
+```
+
+Nothing there either.
+
+## Using the correct de-deduplicated sequences
+
+This was strange that none of these reads were maintained in the molecules file.
+I took a closer look at the data directory and realized there was still a `bam-dedup-umi` directory.
+I had used that when I was initially testing dedup_umi.py from UMI-tools.
+Checking the dates, I realized that these files were more recent!
+
+```{r ls-rmdup}
+ls -lhS bam-rmdup-umi/*bam | head
+```
+
+```{r ls-dedup}
+ls -lhS bam-dedup-umi/*bam | head
+```
+
+This is not good! The bam files in `bam-dedup-umi` are more recent than those in `bam-rmdup-umi`.
+It is the files that are in `bam-rmdup-umi` that get passed to featureCounts.
+Thus it appears I am passing results from `umitools rmdup` instead of `dedup_umi.py`.
+The creation of the files in `bam-dedup-umi` on January 11th is consistent with my commit history.
+I implemented UMI-tools `dedup_umi.py` in commit [2e024cd][] on January 12th.
+I know that the results from these two different methods are not drastically different because I compared results from the two, but perhaps this is what is causing these slight discrepancies.
+
+[2e024cd]: https://github.com/jdblischak/singleCellSeq/commit/2e024cdae1a8e9b3375aa037c3f7deb7c4b60057
+
+Looking in `bam-dedup-umi`, it does contain one of the sequences in the molecule file.
+
+```{r dedup-problem-reads}
+problem_reads=`grep ENSG00000143294 counts/19098.3.E09.TCCCATGG.L007.R1.C6WYKACXX.trim.sickle.sorted.bam.featureCounts | cut -f1`
+for read in $problem_reads
+do
+  echo "read: $read"
+  samtools view bam-dedup-umi/19098.3.E09.TCCCATGG.L007.R1.C6WYKACXX.trim.sickle.sorted.rmdup.bam | grep $read
+done
+exit 0
+```
+
+There is only one sequence, consistent with collapsing the 9 reads with the same UMI to one molecule.
+Focusing in on just this one sequence:
+
+```{r dedup-problem-reads-molecule}
+samtools view bam-dedup-umi/19098.3.E09.TCCCATGG.L007.R1.C6WYKACXX.trim.sickle.sorted.rmdup.bam | grep HWI-700819F:303:C6WYKACXX:7:1208:12235:61153:UMI_GTCTGGGG
+```
+
+Searching this sequence with BLAT, it does map to [ENSG00000143294][PRCC].
+
+[PRCC]: http://www.genome.ucsc.edu/cgi-bin/hgc?hgsid=476159087_GlgSvATrzrn0XnTPl8co67sJzTrQ&c=chr1&o=156737345&t=156770602&g=ensGene&i=ENST00000353233
+
+## Next step
+
+My plan is to delete all the de-duplicated files and re-run the [de-duplication][rmdup] and [gene counting][featureCounts] steps.
+If this doesn't fix the problem, it will at least make it easier to investigate and diagnose the exact problem.
+
+## Session information
+
+```{r info, engine='R'}
+sessionInfo()
+```

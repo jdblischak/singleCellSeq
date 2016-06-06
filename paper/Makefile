@@ -1,10 +1,10 @@
 
-MARKDOWN := introduction.md results.md methods.md references.md
+MARKDOWN := title-page.md introduction.md results.md discussion.md methods.md references.md
 TARGETS := title.yaml $(MARKDOWN)
 NAME := paper
 SUPP := supplement
 BIBLIO := refs.bib
-PANDOC_OPTS := --bibliography=${BIBLIO}
+PANDOC_OPTS := --bibliography=${BIBLIO} --csl=plos.csl
 
 all: html word pdf
 
@@ -20,7 +20,7 @@ $(NAME).html: $(TARGETS)
 	pandoc $^ --to html --output $@ --standalone --section-divs --toc $(PANDOC_OPTS) --mathjax
 
 $(NAME).docx: $(TARGETS)
-	pandoc $^ --to docx --output $@ $(PANDOC_OPTS)
+	pandoc $^ --to docx --output $@ $(PANDOC_OPTS) --reference-docx=reference.docx
 
 $(NAME).pdf: $(TARGETS)
 	pandoc $^ --to latex --output $@ --toc $(PANDOC_OPTS)
@@ -47,6 +47,7 @@ $(SUPP).pdf: $(SUPP).md
 
 ## Format references
 
+# Need to use Python 3
 bibtex:
 	python format-bibtex.py $(BIBLIO)
 

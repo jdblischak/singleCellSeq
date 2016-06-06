@@ -1,0 +1,393 @@
+---
+title: "Tracking down bug in reads to molecules conversion - Attempt 01"
+author: "John Blischak"
+date: 2015-02-18
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+opts_chunk$set(cache = TRUE)
+```
+
+We expect that any genes with at least one read will have at least one molecule.
+Conversely, any gene with zero reads should have zero molecules.
+There are a small number of instances where these relationships do not hold.
+This anaysis tracks down this bug in the [sequence processsing pipeline][pipeline].
+
+[pipeline]: http://jdblischak.github.io/singleCellSeq/analysis/process-samples.html
+
+## Input
+
+Input annotation.
+
+```{r input-annotation}
+anno <- read.table("../data/annotation.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+```
+
+Input read counts.
+
+```{r input-read-counts}
+reads <- read.table("../data/reads.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+stopifnot(ncol(reads) == nrow(anno),
+          colnames(reads) == anno$sample_id)
+```
+
+Input molecule counts.
+
+```{r input-molecule-counts}
+molecules <- read.table("../data/molecules.txt", header = TRUE,
+                    stringsAsFactors = FALSE)
+stopifnot(ncol(molecules) == nrow(anno),
+          colnames(molecules) == anno$sample_id)
+```
+
+## Identifying problem genes
+
+How often is this a problem? How many genes does it affect? For affected genes, how many samples are affected?
+
+```{r problem-genes}
+discordant_zeros <- (reads == 0) != (molecules == 0)
+all_genes <- rowSums(discordant_zeros)
+names(all_genes) <- rownames(reads)
+problem_genes <- all_genes[all_genes > 0]
+length(problem_genes)
+length(problem_genes) / length(all_genes)
+summary(problem_genes)
+```
+
+This problem affects `r length(problem_genes)`
+out of the `r length(all_genes)` total genes
+(`r round(length(problem_genes) / length(all_genes) * 100, digits = 2)`%).
+For these problem genes, the median number of affected samples is `r median(problem_genes)`.
+However, there is a long tail, with the max number of sample affected being `r max(problem_genes)`.
+
+Next I identify a problem gene-sample combination so that I can track down what happened.
+
+```{r problem-1}
+x <- names(problem_genes)[1]
+plot(as.numeric(reads[x, ]), as.numeric(molecules[x, ]))
+problem_sample <- colnames(reads)[discordant_zeros[x, ] == TRUE]
+reads[x, problem_sample]
+molecules[x, problem_sample]
+```
+
+For gene `r x`,
+the sample `r problem_sample`
+was assigned `r reads[x, problem_sample]` reads
+but `r molecules[x, problem_sample]` molecules.
+What happened?
+
+## Searching for where the reads are lost during the processing pipeline
+
+Now I am going to search for the bug by inspecting the intermediate data files from the [sequence processsing pipeline][pipeline].
+
+The following chunks are all Bash commands run from the data directory.
+
+```{r change-chunk-opts, cache=FALSE}
+opts_chunk$set(engine = "bash")
+opts_knit$set(root.dir = "/mnt/gluster/home/jdblischak/ssd")
+```
+
+Strange things are happening at the [featureCounts step][featureCounts]:
+
+[featureCounts]: http://jdblischak.github.io/singleCellSeq/analysis/process-samples.html#count-reads-per-gene
+
+```{r featureCounts-reads-per-lane}
+# reads per lane
+grep ENSG00000187583 counts/19098.1.G11*trim.sickle.sorted.genecounts.txt | cut -f1,7
+```
+
+```{r featureCounts-molecules-per-lane}
+# molecules per lane
+grep ENSG00000187583 counts/19098.1.G11*trim.sickle.sorted.rmdup.genecounts.txt | cut -f1,7
+```
+
+```{r featureCounts-molecules-per-sample}
+# molecules per sample
+grep ENSG00000187583 counts/19098.1.G11.trim.sickle.sorted.combined.rmdup.genecounts.txt | cut -f1,7
+```
+
+So for two of the per lane reads files, they get reduced to one molecule each.
+This seems reasonable.
+But one gets reduced to zero!
+And the combined file also contains zero.
+What is happening to these reads?
+Searching the featureCounts assignments (-R flag).
+
+First investigating the lane that was reduced from 6 reads to 1 molecule.
+
+```{r assignments-reads-per-lane-1}
+# reads per lane
+grep ENSG00000187583 counts/19098.1.G11.GGCAGACT.L002.R1.C6WYKACXX.trim.sickle.sorted.bam.featureCounts
+```
+
+As expected, there are 6 reads.
+Also they all clearly have the same UMI sequence, so it makes sense they are reduced to one molecule.
+
+```{r assignments-molecules-per-lane-1}
+# molecules per lane
+grep ENSG00000187583 counts/19098.1.G11.GGCAGACT.L002.R1.C6WYKACXX.trim.sickle.sorted.rmdup.bam.featureCounts
+```
+
+Wonderful. Only one of the reads from that lane is assigned as a molecule.
+
+Next the lane that was reduced from 12 reads to 1 molecule.
+
+```{r assignments-reads-per-lane-2}
+# reads per lane
+grep ENSG00000187583 counts/19098.1.G11.GGCAGACT.L006.R1.C723YACXX.trim.sickle.sorted.bam.featureCounts
+```
+
+Similarly, all reads in this lane have the same UMI sequence.
+Furthermore, it is the same UMI as in the other lane, so these are likely are originating from the same original molecule.
+
+```{r assignments-molecules-per-lane-2}
+# molecules per lane
+grep ENSG00000187583 counts/19098.1.G11.GGCAGACT.L006.R1.C723YACXX.trim.sickle.sorted.rmdup.bam.featureCounts
+```
+
+Now for the problem lane.
+There were 4 reads, but zero molecules.
+
+```{r assignments-reads-per-lane-3}
+# reads per lane
+grep ENSG00000187583 counts/19098.1.G11.GGCAGACT.L003.R1.C6WURACXX.trim.sickle.sorted.bam.featureCounts
+```
+
+Once again the same UMI sequence!
+
+```{r assignments-molecules-per-lane-3}
+# molecules per lane
+grep ENSG00000187583 counts/19098.1.G11.GGCAGACT.L003.R1.C6WURACXX.trim.sickle.sorted.rmdup.bam.featureCounts
+# I have to add the following to change the exit status. When grep does not find
+# a match, its exit status is 1. Since this is an error exit status, knitr
+# assumes something has failed and stops execution.
+exit 0
+```
+
+But no molecules!
+What could have possibly gone wrong only for this lane!
+
+So where were these reads lost?
+Here are the problem reads.
+
+```{r problem-reads}
+grep ENSG00000187583 counts/19098.1.G11.GGCAGACT.L003.R1.C6WURACXX.trim.sickle.sorted.bam.featureCounts | cut -f1
+```
+
+Was one of these 4 sequences passed to featureCounts, but not assigned for some reason?
+
+```{r assignment-of-problem-reads}
+grep HWI-700819F:304:C6WURACXX:3:1110:14216:42424:UMI_AGAAGGGG counts/19098.1.G11.GGCAGACT.L003.R1.C6WURACXX.trim.sickle.sorted.rmdup.bam.featureCounts
+grep HWI-700819F:304:C6WURACXX:3:1204:19248:93197:UMI_AGAAGGGG counts/19098.1.G11.GGCAGACT.L003.R1.C6WURACXX.trim.sickle.sorted.rmdup.bam.featureCounts
+grep HWI-700819F:304:C6WURACXX:3:1210:7316:85169:UMI_AGAAGGGG counts/19098.1.G11.GGCAGACT.L003.R1.C6WURACXX.trim.sickle.sorted.rmdup.bam.featureCounts
+grep HWI-700819F:304:C6WURACXX:3:1306:14259:83216:UMI_AGAAGGGG counts/19098.1.G11.GGCAGACT.L003.R1.C6WURACXX.trim.sickle.sorted.rmdup.bam.featureCounts
+exit 0
+```
+
+No, that is not the reason.
+I expected to see 1 of the 4 reads, but featureCounts does not report having seen any of these reads.
+
+Are any of these 4 reads in the molecules bam file, i.e. "rmdup"?
+These are the output files from the [step to remove duplicate reads][rmdup] (i.e. convert reads to molecules).
+
+[rmdup]: http://jdblischak.github.io/singleCellSeq/analysis/process-samples.html#remove-duplicate-umis
+
+```{r rmdup-problem-reads}
+samtools view bam-rmdup-umi/19098.1.G11.GGCAGACT.L003.R1.C6WURACXX.trim.sickle.sorted.rmdup.bam | grep HWI-700819F:304:C6WURACXX:3:1110:14216:42424:UMI_AGAAGGGG
+samtools view bam-rmdup-umi/19098.1.G11.GGCAGACT.L003.R1.C6WURACXX.trim.sickle.sorted.rmdup.bam | grep HWI-700819F:304:C6WURACXX:3:1204:19248:93197:UMI_AGAAGGGG
+samtools view bam-rmdup-umi/19098.1.G11.GGCAGACT.L003.R1.C6WURACXX.trim.sickle.sorted.rmdup.bam | grep HWI-700819F:304:C6WURACXX:3:1210:7316:85169:UMI_AGAAGGGG
+samtools view bam-rmdup-umi/19098.1.G11.GGCAGACT.L003.R1.C6WURACXX.trim.sickle.sorted.rmdup.bam | grep HWI-700819F:304:C6WURACXX:3:1306:14259:83216:UMI_AGAAGGGG
+exit 0
+```
+
+So it is clear that featureCounts is not the problem.
+The input molecule bam file did not contain them.
+
+Next possibility is that it was lost in the reads to molecule conversion step using UMI-tools dedup_umi.py.
+The input files for this step are in bam-processed.
+
+```{r processed-problem-read-1}
+samtools view bam-processed/19098.1.G11.GGCAGACT.L003.R1.C6WURACXX.trim.sickle.sorted.bam | grep HWI-700819F:304:C6WURACXX:3:1110:14216:42424:UMI_AGAAGGGG
+```
+
+```{r processed-problem-read-2}
+samtools view bam-processed/19098.1.G11.GGCAGACT.L003.R1.C6WURACXX.trim.sickle.sorted.bam | grep HWI-700819F:304:C6WURACXX:3:1204:19248:93197:UMI_AGAAGGGG
+```
+
+```{r processed-problem-read-3}
+samtools view bam-processed/19098.1.G11.GGCAGACT.L003.R1.C6WURACXX.trim.sickle.sorted.bam | grep HWI-700819F:304:C6WURACXX:3:1210:7316:85169:UMI_AGAAGGGG
+```
+
+```{r processed-problem-read-4}
+samtools view bam-processed/19098.1.G11.GGCAGACT.L003.R1.C6WURACXX.trim.sickle.sorted.bam | grep HWI-700819F:304:C6WURACXX:3:1306:14259:83216:UMI_AGAAGGGG
+```
+
+They are erased during the remove duplicate step!
+
+Now I want to confirm that all these reads from the 3 lanes are in the combined file.
+There should be 22 (6 + 4 + 12).
+
+```{r combined-count}
+samtools view bam-combined/19098.1.G11.trim.sickle.sorted.combined.bam chr1:911014-911014 -c
+```
+
+That is more than I expected.
+How many have the exact same UMI sequence?
+
+```{r combined-count-same-umi}
+samtools view bam-combined/19098.1.G11.trim.sickle.sorted.combined.bam chr1:911014-911014 | grep UMI_AGAAGGGG | wc -l
+```
+
+Strange.
+
+```{r combined-count-per-lane}
+samtools view bam-combined/19098.1.G11.trim.sickle.sorted.combined.bam chr1:911014-911014 | grep UMI_AGAAGGGG | cut -f1 | sort | uniq | cut -d":" -f3 | uniq -c
+```
+
+So there are actually more than 22 reads that have the UMI AGAAGGGG and start at chr1:911014, however, only 22 of the 40 get assigned to gene ENSG00000187583.
+
+## Exploring locus on UCSC genome browser
+
+Could this be a length issue?
+Since some reads are longer than others due to the quality trimming, perhaps the longer reads intersect an exon from another gene.
+There is variation in read length.
+
+```{r combined-read-length}
+samtools view bam-combined/19098.1.G11.trim.sickle.sorted.combined.bam chr1:911014-911014 | cut -f6 | sort | uniq -c
+```
+
+How many genes are in this [locus][]?
+
+[locus]: http://www.genome.ucsc.edu/cgi-bin/hgTracks?db=hg19&lastVirtModeType=default&lastVirtModeExtraState=&virtModeType=default&virtMode=0&nonVirtPosition=&position=chr1%3A899755-912515&hgsid=474114411_5p1uoEdzAHXD1CeJMaZwBnYxXea9
+
+I searched one of the 92M sequences with BLAT, and it does overlap two different Ensembl genes (red).
+The bottom three Ensembl transcripts ([ex][C1orf170]) are for the protein_coding gene C1orf170, or ENSG00000187642, and is on the - strand.
+The [transcript on the top][PLEKHN1] is the protein_coding gene PLEKHN1, or ENSG00000187583, and it is on the + strand.
+
+[C1orf170]: http://www.genome.ucsc.edu/cgi-bin/hgc?hgsid=475751231_cQ9aFo6I5sooILtaBiE2LQMsgbHq&c=chr1&o=910578&t=917497&g=ensGene&i=ENST00000433179
+[PLEKHN1]: http://www.genome.ucsc.edu/cgi-bin/hgc?hgsid=475751231_cQ9aFo6I5sooILtaBiE2LQMsgbHq&c=chr1&o=908891&t=911245&g=ensGene&i=ENST00000491024
+
+```{r sequence-92M}
+samtools view bam-combined/19098.1.G11.trim.sickle.sorted.combined.bam chr1:911014-911014 | grep 92M | cut -f10 | head -n 1 
+```
+
+![chr1:911014-92M](figure/bug-conversion-01.Rmd/chr1-911014-92M.png)
+
+Next I searched for the smallest fragment, which is 43 bp long.
+43M means 43 Match ([post][cigar]).
+
+[cigar]: https://www.biostars.org/p/16987/
+
+```{r sequence-43M}
+samtools view bam-combined/19098.1.G11.trim.sickle.sorted.combined.bam chr1:911014-911014 | grep 43M | cut -f10 | head -n 1 
+```
+
+![chr1:911014-43M](figure/bug-conversion-01.Rmd/chr1-911014-43M.png)
+
+It is in the intron of ENSG00000187642 (C1orf170), but it overlaps ENSG00000187583 (PLEKHN1).
+Maybe it is a strand issue.
+ 
+These reads are all on the + strand ([directions][flag-strand]).
+
+[flag-strand]: http://blog.nextgenetics.net/?e=17
+
+```{r positive-strand}
+# + strand = -F 1x10
+samtools view bam-combined/19098.1.G11.trim.sickle.sorted.combined.bam chr1:911014-911014 -F 0x10 | wc -l
+```
+
+```{r negative-strand}
+# - strand = -f 0x10
+samtools view bam-combined/19098.1.G11.trim.sickle.sorted.combined.bam chr1:911014-911014 -f 0x10 | wc -l
+```
+
+Because the reads map to the + strand, they can't be assigned to ENSG00000187642 (C1orf170).
+Similarly RefSeq has an extra gene annotation [PERM1][], but it is also on the - strand.
+
+[PERM1]: http://www.genome.ucsc.edu/cgi-bin/hgc?hgsid=475751231_cQ9aFo6I5sooILtaBiE2LQMsgbHq&c=chr1&o=910578&t=917497&g=refGene&i=NM_001291366
+
+What is going on with these reads?
+Maybe a soft clipped read will be informative.
+Using the 36M56S sequence.
+
+```{r sequence-36M56S}
+samtools view bam-combined/19098.1.G11.trim.sickle.sorted.combined.bam chr1:911014-911014 | grep 36M56S | cut -f10 | head -n 1 
+```
+
+![chr1:911014-36M56S](figure/bug-conversion-01.Rmd/chr1-911014-36M56S.png)
+
+Again, this overlaps nothing.
+It is also strange that the last 56 bp do not map to this locus at all!
+
+Looking at all the sequences that with this UMI and start position.
+
+```{r all-sequences}
+samtools view bam-combined/19098.1.G11.trim.sickle.sorted.combined.bam chr1:911014-911014 | cut -f10 | sort | uniq -c
+```
+
+What a mess!
+So here is my current interpretation, which is all educated guesses.
+This molecule arises from some unannotated transcript.
+This sort of thing happens since most of the genome is transcribed at some low level.
+The varying in length is due to the fragmentation during the sonication step.
+The soft clipped reads are due to sequencing of the adapter.
+Overall there should just be one molecule here, and it shouldn't map to any gene.
+featureCounts assigns the longer fragments to ENSG00000187583 (PLEKHN1) because their 3' end overlaps it.
+But this makes no sense since the read arose from nowhere.
+I can fix this in featureCounts using the following option to only map the 5' end of the sequence.
+
+```{r featureCounts-read2pos}
+# Have to use 2>&1 redirection trick because featureCounts only sends its help
+# to stderr
+featureCounts 2>&1 | grep read2pos -A 2
+```
+
+## Checking if sequence length is causing the problem
+
+So my current guess is that of those 40 sequences, the one that is kept is one of the shorter ones.
+Since these do not map to anything, the molecules report zero while the reads report sequences.
+
+But no!
+There is a 92M sequence in the bam-rmdup-umi file!!!!
+
+```{r combined-92M}
+samtools view bam-rmdup-umi/19098.1.G11.trim.sickle.sorted.combined.rmdup.bam | grep UMI_AGAAGGGG | grep 911014
+```
+
+Why wasn't it assigned to ENSG00000187583 (PLEKHN1) as expected?
+
+```{r assigned-combined-92M}
+grep HWI-700819F:303:C6WYKACXX:2:1311:13724:70217:UMI_AGAAGGGG counts/19098.1.G11.trim.sickle.sorted.combined.rmdup.bam.featureCounts
+exit 0
+```
+
+For some reason, featureCounts has no record of having processed this read.
+And this isn't the only read that is not accounted for.
+
+```{r samtools-read-number}
+samtools view -c bam-rmdup-umi/19098.1.G11.trim.sickle.sorted.combined.rmdup.bam
+```
+
+```{r featureCounts-read-number}
+wc -l counts/19098.1.G11.trim.sickle.sorted.combined.rmdup.bam.featureCounts
+```
+
+This is super confusing.
+For the problem lane, the 4 reads were lost in the remove duplicate step.
+But for the combined file, the problem is at the featureCounts step.
+
+I really don't know what is happening here, and I want this molecule removed from the analysis anyways.
+I'm going to re-run the gene counting with featureCounts uisng the flag `--read2pos 5` to remove this problem gene and any others, and then assess the extent of the problem.
+
+## Session information
+
+```{r info, engine='R'}
+sessionInfo()
+```

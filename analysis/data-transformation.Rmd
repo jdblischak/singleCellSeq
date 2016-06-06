@@ -19,6 +19,16 @@ theme_set(theme_bw(base_size = 12))
 source("functions.R")
 ```
 
+This file performs principal components analysis (PCA) and displays the results for the data at each stage of our data transformation pipeline.
+Furthermore, it quantifies and tests the PCA results using [pca-utils][] (commit [8540ff2][]).
+The methodology is described in [Worley et al., 2013][worley2013].
+Briefly, the differences between samples are calculated using the squared Mahalanobis distance.
+The distances are then scaled so that the hypothesis test that the samples from two groups come from separate distributions can be computed with an F-test.
+
+[pca-utils]: https://github.com/geekysuavo/pca-utils
+[8540ff2]: https://github.com/geekysuavo/pca-utils/tree/8540ff2c6769031b0505af78f2dcb5703ae09294
+[worley2013]: http://www.ncbi.nlm.nih.gov/pubmed/23079505
+
 ## Input
 
 Input filtered annotation.
@@ -78,6 +88,23 @@ pca_molecules_filter_plot <- plot_pca(pca_molecules_filter$PCs,
   labs(title = "Counts")
 ```
 
+```{r pca-molecules-filter-out}
+pca_molecules_filter_out <- data.frame(Obs.id = 1:nrow(anno_filter),
+                                       Obs.batch = anno_filter$batch,
+                                       pca_molecules_filter$PCs[, 1:2])
+write.table(pca_molecules_filter_out,
+            file = "../data/pca-molecules-filter.txt",
+            quote = FALSE, sep = "\t", row.names = FALSE)
+```
+
+```{r pca-molecules-filter-dist, engine='bash'}
+pca-distances -i ../data/pca-molecules-filter.txt
+```
+
+```{r pca-molecules-filter-dendro, engine='bash'}
+pca-dendrogram -i ../data/pca-molecules-filter.txt
+```
+
 ### PCA of standardized data
 
 ```{r pca-molecules-cpm}
@@ -87,6 +114,23 @@ pca_molecules_cpm_plot <- plot_pca(pca_molecules_cpm$PCs,
          metadata = anno_filter, color = "individual",
          shape = "replicate", alpha = 0.5, size = 2.2) +
   labs(title = "Counts per million (log)")
+```
+
+```{r pca-molecules-cpm-out}
+pca_molecules_cpm_out <- data.frame(Obs.id = 1:nrow(anno_filter),
+                                       Obs.batch = anno_filter$batch,
+                                       pca_molecules_cpm$PCs[, 1:2])
+write.table(pca_molecules_cpm_out,
+            file = "../data/pca-molecules-cpm.txt",
+            quote = FALSE, sep = "\t", row.names = FALSE)
+```
+
+```{r pca-molecules-cpm-dist, engine='bash'}
+pca-distances -i ../data/pca-molecules-cpm.txt
+```
+
+```{r pca-molecules-cpm-dendro, engine='bash'}
+pca-dendrogram -i ../data/pca-molecules-cpm.txt
 ```
 
 ### PCA of Poisson GLM transformed molecule counts per million
@@ -100,6 +144,23 @@ pca_molecules_cpm_trans_plot <- plot_pca(pca_molecules_cpm_trans$PCs,
   labs(title = "Poisson transformation")
 ```
 
+```{r pca-molecules-cpm-trans-out}
+pca_molecules_cpm_trans_out <- data.frame(Obs.id = 1:nrow(anno_filter),
+                                       Obs.batch = anno_filter$batch,
+                                       pca_molecules_cpm_trans$PCs[, 1:2])
+write.table(pca_molecules_cpm_trans_out,
+            file = "../data/pca-molecules-cpm-trans.txt",
+            quote = FALSE, sep = "\t", row.names = FALSE)
+```
+
+```{r pca-molecules-cpm-trans-dist, engine='bash'}
+pca-distances -i ../data/pca-molecules-cpm-trans.txt
+```
+
+```{r pca-molecules-cpm-trans-dendro, engine='bash'}
+pca-dendrogram -i ../data/pca-molecules-cpm-trans.txt
+```
+
 ### PCA of final batch-corrected data
 
 ```{r pca-molecules-final}
@@ -108,6 +169,23 @@ pca_final_plot <- plot_pca(pca_final$PCs, explained = pca_final$explained,
          metadata = anno_filter, color = "individual",
          shape = "replicate", alpha = 0.5, size = 2.2) +
   labs(title = "Batch corrected")
+```
+
+```{r pca-final-out}
+pca_final_out <- data.frame(Obs.id = 1:nrow(anno_filter),
+                            Obs.batch = anno_filter$batch,
+                            pca_final$PCs[, 1:2])
+write.table(pca_final_out,
+            file = "../data/pca-final.txt",
+            quote = FALSE, sep = "\t", row.names = FALSE)
+```
+
+```{r pca-molecules-final-dist, engine='bash'}
+pca-distances -i ../data/pca-final.txt
+```
+
+```{r pca-molecules-final-dendro, engine='bash'}
+pca-dendrogram -i ../data/pca-final.txt
 ```
 
 ## Data transformation figure

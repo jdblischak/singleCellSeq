@@ -104,21 +104,23 @@ grep -w failure ~/log/qc.sh/* | wc -l
 
 ## Map to genome
 
-[map-subread.sh][] maps the reads to the combined genome described above.
+[map-subjunc.sh][] maps the reads to the combined genome described above.
+We use Subjunc to ensure precise mapping of the 5' end of the read.
+This is necessary because the combination of the 5' start position and the UMI sequence are used to convert reads to molecules.
 We used [Subread version 1.5.0-p1][subread] with the default thresholds and reporting only uniquely mapping reads (flag `-u`).
 Output BAM files are written to the directory `bam`.
 
 ```bash
-submit-array.sh map-subread.sh 12g sickle/*fastq.gz
+submit-array.sh map-subjunc.sh 12g sickle/*fastq.gz
 ```
 
-[map-subread.sh]: https://github.com/jdblischak/singleCellSeq/blob/master/code/map-subread.sh
+[map-subjunc.sh]: https://github.com/jdblischak/singleCellSeq/blob/master/code/map-subjunc.sh
 [subread]: http://sourceforge.net/projects/subread/files/subread-1.5.0-p1/
 
 ```bash
 ls bam/*bam | wc -l
-grep -w success ~/log/map-subread.sh/* | wc -l
-grep -w failure ~/log/map-subread.sh/* | wc -l
+grep -w success ~/log/map-subjunc.sh/* | wc -l
+grep -w failure ~/log/map-subjunc.sh/* | wc -l
 ```
 
 ## Process bam files
@@ -165,7 +167,7 @@ do
       do
         ID=`printf "%s.%s.%s%02d\n" $IND $REP $ROW $COL`
         echo $ID
-        echo "samtools merge bam-combined/$ID.trim.sickle.sorted.combined.bam bam-processed/$ID*trim.sickle.sorted.bam" | qsub -l h_vmem=4g -N $ROW$COL.$IND.$REP.combine -cwd -o ~/log/combine.sh -j y -V
+        echo "samtools merge bam-combined/$ID.trim.sickle.sorted.combined.bam bam-processed/$ID*trim.sickle.sorted.bam" | qsub -l h_vmem=4g -N $ROW$COL.$IND.$REP.combine -cwd -o ~/log/combine -j y -V
       done
     done
   done
@@ -228,7 +230,7 @@ The molecule counts from the combined single cell samples in `bam-combined` are 
 submit-array.sh rmdup-umi.sh 2g `ls bam-processed/*bam | grep -v bulk` bam-combined/*bam
 ```
 
-[rmdup-umi.sh]: https://github.com/jdblischak/singleCellSeq/blob/update-pipeline/code/rmdup-umi.sh
+[rmdup-umi.sh]: https://github.com/jdblischak/singleCellSeq/blob/master/code/rmdup-umi.sh
 [UMI-tools]: https://github.com/CGATOxford/UMI-tools
 [UMI-version]: https://github.com/CGATOxford/UMI-tools/commit/e0ade5d0aad632cc95b6dfb95106e18c55ceecf9
 [cgat-post]: https://cgatoxford.wordpress.com/2015/08/14/unique-molecular-identifiers-the-problem-the-solution-and-the-proof/
@@ -253,7 +255,7 @@ The ouptut is written to the directory `counts`.
 submit-array.sh count-reads-per-gene.sh 2g bam-processed/*bam bam-rmdup-umi/*bam
 ```
 
-[count-reads-per-gene.sh]: https://github.com/jdblischak/singleCellSeq/blob/update-pipeline/code/count-reads-per-gene.sh
+[count-reads-per-gene.sh]: https://github.com/jdblischak/singleCellSeq/blob/master/code/count-reads-per-gene.sh
 
 Expect 6120 files:
 
@@ -285,7 +287,7 @@ It only gathers from the single cell samples, because this information is used f
 gather-summary-counts.py > summary-counts.txt
 ```
 
-[gather-summary-counts.py]: https://github.com/jdblischak/singleCellSeq/blob/update-pipeline/code/gather-summary-counts.py
+[gather-summary-counts.py]: https://github.com/jdblischak/singleCellSeq/blob/master/code/gather-summary-counts.py
 
 ## Gather gene counts
 
@@ -296,7 +298,7 @@ mkdir -p counts-matrix
 gather-gene-counts.py counts-matrix/ counts/*genecounts.txt
 ```
 
-[gather-gene-counts.py]: https://github.com/jdblischak/singleCellSeq/blob/update-pipeline/code/gather-gene-counts.py
+[gather-gene-counts.py]: https://github.com/jdblischak/singleCellSeq/blob/master/code/gather-gene-counts.py
 
 It creates six files:
 

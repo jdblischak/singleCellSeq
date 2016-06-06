@@ -1,0 +1,176 @@
+---
+title: "Coverage of ERCC spike-ins"
+date: 2015-02-22
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+```
+
+This is a companion to the analysis of the [coverage of endogenous genes][endo].
+It must be run first to prepare the bam files.
+We do not observe the expected 5' bias of the UMI protocol for the ERCC spike-ins.
+
+[endo]: coverage-endogenous.html
+
+```{r packages, message=FALSE}
+library("genomation")
+library("plyr")
+library("tidyr")
+library("ggplot2")
+theme_set(theme_bw(base_size = 14))
+theme_update(panel.grid.minor.x = element_blank(),
+             panel.grid.minor.y = element_blank(),
+             panel.grid.major.x = element_blank(),
+             panel.grid.major.y = element_blank())
+```
+
+## Input
+
+Input filtered molecule counts.
+
+```{r input-molecule-counts-filter}
+molecules_filter <- read.table("../data/molecules-filter.txt", header = TRUE,
+                               stringsAsFactors = FALSE)
+molecules_ercc <- molecules_filter[grep("ERCC", rownames(molecules_filter)), ]
+```
+
+Input ERCC data from Invitrogen.
+
+```{r input-ercc}
+ercc_all <- gffToGRanges("../data/ERCC92.gtf", split.group = TRUE)
+```
+
+## Prepare data
+
+Filter the ERCC spike-ins to only include those that pass the [filter](filter.html).
+
+```{r ercc-filter}
+ercc_filter <- ercc_all[ercc_all$gene_id %in% rownames(molecules_ercc)]
+```
+
+Create subset that only include 5 most highly expressed ERCC spike-ins.
+
+```{r ercc-max}
+# Order by mean expression - from highest to lowest
+mean_expr_ercc <- rowMeans(molecules_ercc)
+molecules_ercc <- molecules_ercc[order(mean_expr_ercc, decreasing = TRUE), ]
+ercc_max <- ercc_filter[ercc_filter$gene_id %in% rownames(molecules_ercc)[1:5]]
+```
+
+Using the same quality single cell samples from the analysis of the [coverage of endogenous genes][endo].
+
+```{r select-quality-cells}
+quality_cells <- c("19098.1.A01", "19101.1.A02", "19239.1.A01")
+names(quality_cells) <- c("NA19098.r1.A01", "NA19101.r1.A02", "NA19239.r1.A01")
+stopifnot(names(quality_cells) %in% colnames(molecules_filter))
+bam <- paste0("../data/", quality_cells, ".trim.sickle.sorted.combined.rmdup.sorted.bam")
+stopifnot(file.exists(bam), file.exists(paste0(bam, ".bai")))
+```
+
+## Calculate coverage
+
+Because the ERCC have different lengths, we have to bin them.
+`ScoreMatrix` and `ScoreMatrixList` handle one or multiple files, respectively, and calculate the coverage over windows of equal size.
+`ScoreMatrixBin` computes the coverage of one file over windows of unequal size.
+For some reason, `ScoreMatrixBinList` does not exist (here is an old [issue][bin-issue] from 2013 that discusses adding the feature for `ScoreMatrix` only).
+Thus we loop over the files manually.
+
+[bin-issue]: https://github.com/BIMSBbioinfo/genomation/issues/17
+
+```{r coverage-filter}
+filter_sm <- list()
+for (b in bam) {
+  filter_sm[[b]] <- ScoreMatrixBin(target = b, windows = ercc_filter, type = "bam",
+                                   rpm = TRUE, strand.aware = TRUE, bin.num = 50)
+}
+filter_sm <- new("ScoreMatrixList", .Data = filter_sm)
+```
+
+Calculate coverage for only the 5 most highly expressed ERCC.
+
+```{r coverage-max}
+max_sm <- list()
+for (b in bam) {
+  max_sm[[b]] <- ScoreMatrixBin(target = b, windows = ercc_max, type = "bam",
+                                   rpm = TRUE, strand.aware = TRUE, bin.num = 50)
+}
+max_sm <- new("ScoreMatrixList", .Data = max_sm)
+```
+
+## Summarize coverage
+
+```{r gather-filter}
+names(filter_sm) <- names(quality_cells)
+filter_sm_df <- ldply(filter_sm, colMeans, .id = "sample_id")
+colnames(filter_sm_df)[-1] <- paste0("p", 1:(ncol(filter_sm_df) - 1))
+filter_sm_df$subset = "filter"
+filter_sm_df_long <- gather(filter_sm_df, key = "pos", value = "rpm", p1:p50)
+```
+
+```{r gather-max}
+names(max_sm) <- names(quality_cells)
+max_sm_df <- ldply(max_sm, colMeans, .id = "sample_id")
+colnames(max_sm_df)[-1] <- paste0("p", 1:(ncol(max_sm_df) - 1))
+max_sm_df$subset = "max"
+max_sm_df_long <- gather(max_sm_df, key = "pos", value = "rpm", p1:p50)
+```
+
+Combine the two features.
+
+```{r combine-features}
+features <- rbind(filter_sm_df_long, max_sm_df_long)
+# Convert base position back to integer value
+features$pos <- sub("p", "", features$pos)
+features$pos <- as.numeric(features$pos)
+# Make subset factor more descriptive
+features$subset <- factor(features$subset, levels = c("filter", "max"),
+                          labels = c(paste(length(ercc_filter), "ERCC that pass expression filter"),
+                                     "5 most abundant ERCC"))
+```
+
+## Metagene plot
+
+```{r metaplot, fig.width=8, cache=FALSE}
+ggplot(features, aes(x = pos, y = rpm, color = sample_id)) +
+  geom_line() +
+  facet_wrap(~subset) + 
+  scale_color_discrete(name = "Sample") +
+  labs(x = "Bins (50) 5' -> 3'",
+       y = "Counts per million (mean)",
+       title = "5' bias of UMI protocol????") +
+  theme(legend.position = "bottom")
+```
+
+## Interpretation
+
+This was an unexpected result.
+There appears to be more coverage on the 3' end of the ERCC spike-ins.
+Some potential explanations:
+
+*  The GTF file lists the ERCC as on the positive strand.
+Maybe this needs to be switched (genomation does not filter reads based on strand).
+However, I checked (example code below) and this is not the case.
+The reads are mapped to the positive strand.
+
+```bash
+samtools view ../data/19098.1.A01.trim.sickle.sorted.combined.rmdup.sorted.bam -c -F 1x10 ERCC-00002
+```
+
+*  We saw in the [coverage of the endogenous genes][endo] that many molecules mapped just upstream of the TSS.
+Maybe there is some issue with the template switching, so that many reads do not get mapped to the 5' of the ERCC?
+
+* Maybe it could be a length issue?
+If a the transcript length is short, then the cumulative coverage at the 3' end could be higher than it should.
+However, running it with only the `r length(ercc_filter[ercc_filter@ranges@width > 1000])` ERCC that pass the filter and are longer than 1 kb (`ercc_filter@ranges@width > 1000`) did not change the overall pattern.
+The only difference was that NA19098 had a more noticeable peak at the 5' end, but it was still less than the 3' end.
+
+## Session information
+
+```{r info}
+sessionInfo()
+```

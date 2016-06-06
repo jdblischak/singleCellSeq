@@ -20,10 +20,15 @@ source("functions.R")
 library("edgeR")
 library(ggplot2)
 library("cowplot")
-theme_set(theme_bw(base_size = 16))
+theme_set(theme_bw(base_size = 12))
+theme_update(panel.grid.minor.x = element_blank(),
+             panel.grid.minor.y = element_blank(),
+             panel.grid.major.x = element_blank(),
+             panel.grid.major.y = element_blank())
+require(matrixStats)
 ```
 
-## Prepare single cell molecule data
+## Prepare single cell data
 
 Input annotation
 
@@ -42,9 +47,6 @@ molecules <- read.table("../data/molecules.txt", header = TRUE,
            stringsAsFactors = FALSE)
 
 molecules_filter <- read.table("../data/molecules-filter.txt", header = TRUE,
-           stringsAsFactors = FALSE)
-
-molecules_final <- read.table("../data/molecules-final.txt", header = TRUE,
            stringsAsFactors = FALSE)
 
 ## qc cell
@@ -67,17 +69,19 @@ stopifnot(anno_filter$sample_id == colnames(reads_qc))
 
 ## Molecule count data
 
-First look at the data set before removing lowly expressed genes (genes with low counts)
+First, look at the data set before removing lowly expressed genes (genes with low counts).
 
-Remove genes with zero count in the single cells
 ```{r}
 expressed_single <- rowSums(molecules_qc) > 0
+expressed_single_reads <- rowSums(reads_qc) > 0
+
+## stopifnot(expressed_single_reads == expressed_single)
+
 molecules_single <- molecules_qc[which(expressed_single), ]
-reads_single <- reads_qc[expressed_single, ]
+reads_single <- reads_qc[expressed_single_reads, ]
 ```
 
 ```{r mol-non-filtered}
-require(matrixStats)
 number_nonzero_cells <- colSums(molecules_single != 0)
 number_genes <- dim(molecules_single)[1]
 molecules_prop_genes_detected <- 
@@ -86,7 +90,7 @@ molecules_prop_genes_detected <-
                individual.batch = anno_filter$batch)
 
 ## create a color palette with one color per individual and different shades for repplicates
-great_color <- c("#CC3300", "#FF9966", "#FFCC99", "#006633", "#009900", "#99FF99", "#3366FF", "#6699FF", "#66CCFF")
+great_color <- c("#CC3300", "#FF9966", "#006633", "#009900", "#99FF99", "#3366FF", "#6699FF", "#66CCFF")
 
 genes_detected_plot <- ggplot(molecules_prop_genes_detected,
                        aes(y = prop, x = as.factor(individual.batch), fill = as.factor(individual.batch))) + 
@@ -97,16 +101,18 @@ genes_detected_plot <- ggplot(molecules_prop_genes_detected,
                        y = "Proportion of detected genes",
                        title = "Proportion of detected genes") +
                        theme(axis.text.x = element_text(hjust=1, angle = 45))
-
-genes_detected_plot
 ```
 
-Principal component analysis on log2 transformed values. We avoid log of 0's
+Principal component analysis on cpm log2 transformed values. We avoid log of 0's
 by add 1's. In addition, our PCA analysis requires that every gene needs
 to be present in at least one of the cells.
 
 ```{r pca}
-molecules_single_log2_pca <- run_pca( log2( molecules_single + 1 ) )
+## cpm 
+molecules_single_cpm <- cpm(molecules_single)
+
+## pca using log2 transformed data after adding 1
+molecules_single_log2_pca <- run_pca( log2( molecules_single_cpm + 1))
 
 pc1_plot <- qplot(y = molecules_single_log2_pca$PCs[,1],
       x = molecules_prop_genes_detected$prop,
@@ -126,10 +132,29 @@ qplot(y = molecules_single_log2_pca$PCs[,2],
       ylab = "PC2") 
 ```
 
+Also look at the genes that were commonly detected in all cells to see if the the gene expression levels were involed as well.
+```{r gene-all-cells}
+# keep only genes detected in all cells
+molecule_genes_all <- molecules_single[apply(molecules_single == 0, 1, sum) == 0 ,]
+dim(molecule_genes_all)
+
+molecules_gene_all_pca <- run_pca( cpm(molecule_genes_all) )
+
+pc1_plot_all <- qplot(y = molecules_gene_all_pca$PCs[,1],
+      x = molecules_prop_genes_detected$prop,
+      shape = as.factor(anno_filter$replicate),
+      colour = as.factor(anno_filter$individual),
+      xlab = "Proportion of genes detected",
+      ylab = "PC1",
+      title = "Proportion of genes detected") 
+```
+
+
 ## Molecule count data after filtering
 
+Next, look at the data set after removing lowly expressed genes (genes with low counts).
+
 ```{r mol-filtered}
-require(matrixStats)
 number_nonzero_cells_filter <- colSums(molecules_filter != 0)
 number_genes_filter <- dim(molecules_filter)[1]
 molecules_prop_genes_detected_filter <- 
@@ -146,12 +171,14 @@ genes_detected_filter_plot <- ggplot(molecules_prop_genes_detected_filter,
                               y = "Proportion of detected genes",
                               title = "Proportion of detected genes (filtered)") +
                               theme(axis.text.x = element_text(hjust=1, angle = 45))
-
-genes_detected_filter_plot
 ```
 
 ```{r pca-filter}
-molecules_filter_log2_pca <- run_pca( log2( molecules_filter + 1 ) )
+### cpm 
+molecules_filter_cpm <- cpm(molecules_filter)
+
+## pca using log2 transformed data after adding 1
+molecules_filter_log2_pca <- run_pca(log2 (molecules_filter_cpm + 1) )
 
 pc1_filter_plot <- qplot(y = molecules_filter_log2_pca$PCs[,1],
       x = molecules_prop_genes_detected_filter$prop,
@@ -164,40 +191,124 @@ pc1_filter_plot <- qplot(y = molecules_filter_log2_pca$PCs[,1],
 pc1_filter_plot
 
 qplot(y = molecules_filter_log2_pca$PCs[,2],
-      x = molecules_prop_genes_detected$prop,
+      x = molecules_prop_genes_detected_filter$prop,
       shape = as.factor(anno_filter$replicate),
       colour = as.factor(anno_filter$individual),
       xlab = "Proportion of genes detected (filter)",
       ylab = "PC2") 
 ```
 
-## Molecule count data final
+```{r gene-all-cells-filter}
+# keep only genes detected in all cells
+molecule_genes_all_filter <- molecules_filter[apply(molecules_filter == 0, 1, sum) == 0 ,]
+dim(molecule_genes_all_filter)
 
-```{r pca-final}
-molecules_final_pca <- run_pca(molecules_final)
+molecules_gene_all_filter_pca <- run_pca( cpm(molecule_genes_all_filter) )
 
-pc1_final_plot <- qplot(y = molecules_final_pca$PCs[,1],
+pc1_plot_all_filter <- qplot(y = molecules_gene_all_filter_pca$PCs[,1],
       x = molecules_prop_genes_detected_filter$prop,
       shape = as.factor(anno_filter$replicate),
       colour = as.factor(anno_filter$individual),
-      xlab = "Proportion of genes detected (final)",
+      xlab = "Proportion of genes detected",
       ylab = "PC1",
-      title = "Proportion of genes detected (final)") 
+      title = "Proportion of genes detected (filter)") 
+```
 
-pc1_final_plot
+## Read counts data
+
+```{r read-non-filtered}
+number_nonzero_cells_reads <- colSums(reads_single != 0)
+number_genes_reads <- dim(reads_single)[1]
+reads_prop_genes_detected <- 
+    data.frame(prop = number_nonzero_cells_reads/number_genes_reads,
+               individual = anno_filter$individual,
+               individual.batch = anno_filter$batch)
+
+genes_detected_plot_reads <- ggplot(reads_prop_genes_detected,
+                       aes(y = prop, x = as.factor(individual.batch), fill = as.factor(individual.batch))) + 
+                       geom_boxplot(alpha = .01, width = .2, position = position_dodge(width = .9)) +
+                       geom_violin(alpha = .5) + 
+                       scale_fill_manual(values = great_color) +
+                       labs(x = "Batch",
+                       y = "Proportion of detected genes",
+                       title = "Proportion of detected genes") +
+                       theme(axis.text.x = element_text(hjust=1, angle = 45))
+```
+
+
+## The effect of pseudocount in cpm
+
+Code from Joyce :)
+
+```{r pseudocounts}
+# this function computes PC1 of the inputted count matrix
+# and also the correlation between the computed PC1
+# and the proportion of genes detected.
+pseudocount_pca <- function(pseudo_count, 
+                            count_matrix,
+                            gene_prop_detected_vector,
+                            cor_method = "spearman", log_counts = FALSE) {
+  # we use edgeR cpm function to compute normalized expression
+  # a pseudo count is added to the count matrix if output is log expression
+  # a pseudo is not added to the count matrix if output 
+  if (log_counts == TRUE) {
+      molecules_cpm <- log2(cpm(count_matrix, prior.count = pseudo_count) + 1) }
+  if (log_counts == FALSE) {
+      molecules_cpm <- cpm(count_matrix, prior.count = pseudo_count) }
+  pc1 <- run_pca( (molecules_cpm))$PCs[,1]
+  cor_coef <- cor(x = pc1, y = gene_prop_detected_vector, method = cor_method)
+  return(list(pc1 = pc1, 
+              cor_coef = cor_coef))
+}
+
+# specify pseudocount parameters
+pseudo_count_vector <- c(10^(-5), 10^(-3), .1, .25, 1)
+
+# use log-transformed normalized data
+# compile results of the correlation between
+# pc1 and proportion of genes detected
+cor_pca_log <- lapply(1: length(pseudo_count_vector), function(ii) {
+  obj <- pseudocount_pca(pseudo_count_vector[ii],
+                          molecules_single,
+                          molecules_prop_genes_detected$prop, log_counts = TRUE)
+  return(obj)
+})
+
+
+# use normalized counts
+# compile results of the correlation between
+# pc1 and proportion of genes detected
+cor_pca_count <- lapply(1: length(pseudo_count_vector), function(ii) {
+  obj <- pseudocount_pca(pseudo_count_vector[ii],
+                          molecules_single,
+                          molecules_prop_genes_detected$prop, log_counts = FALSE)
+  return(obj)
+})
+
+
+par(mfrow = c(1,2))
+plot(x = pseudo_count_vector,
+     y = sapply(cor_pca_log, function(xx) xx[[2]]))
+plot(x = pseudo_count_vector,
+     y = sapply(cor_pca_count, function(xx) xx[[2]]))
 ```
 
 ## Summary plots
 
 ```{r sum-plots, fig.width=12, fig.height=12}
-theme_set(theme_bw(base_size = 12))
 plot_grid(genes_detected_plot + theme(legend.position = "none"),
           genes_detected_filter_plot + theme(legend.position = "none"),
-          pc1_plot + theme(legend.position = c(.87,.35)) + labs(col = "Individual", shape = "Replicate"),
+          pc1_plot + theme(legend.position = "none"),
           pc1_filter_plot + theme(legend.position = "none"),
-          pc1_final_plot + theme(legend.position = "none"),
-          labels = LETTERS[1:5],
+          labels = LETTERS[1:4],
           ncol = 2)
+```
+
+```{r sum-plots-all, fig.width=12, fig.height=6}
+plot_grid(pc1_plot_all + theme(legend.position = "none"),
+          pc1_plot_all_filter + theme(legend.position = "none"),
+          labels = LETTERS[3:4])
+
 ```
 
 

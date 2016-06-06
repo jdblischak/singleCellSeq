@@ -55,8 +55,8 @@ make_subsample <- function(counts, anno,
 }
 
 
-#' Compute coefficient of variation 
-#' 
+#' Compute coefficient of variation
+#'
 #' Compute CV across cells belong to each level of the grouping variable.
 #'
 #' @param log2counts log2 count matrix of gene by cell.
@@ -70,9 +70,19 @@ make_subsample <- function(counts, anno,
 #'
 compute_cv <- function(log2counts, grouping_vector) {
 
-  group_cv <- lapply( unique(grouping_vector), function(per_group) {
-    # Convert log2cpm to counts
-    counts_per_group <- 2^log2counts[ , grouping_vector == per_group ]
+  log2counts <- as.matrix(log2counts)
+
+  groups <- c(unique(grouping_vector), "all")
+
+  group_cv <- lapply( groups, function(per_group) {
+    if(per_group != "all") {
+      # Convert log2cpm to counts
+      counts_per_group <- 2^log2counts[ , grouping_vector == per_group ]
+    }
+    if (per_group == "all") {
+      # Convert log2cpm to counts
+      counts_per_group <- 2^log2counts
+    }
     mean_per_gene <- apply(counts_per_group, 1, mean, na.rm = TRUE)
     sd_per_gene <- apply(counts_per_group, 1, sd, na.rm = TRUE)
     cv_per_gene <- data.frame(mean = mean_per_gene,
@@ -83,7 +93,7 @@ compute_cv <- function(log2counts, grouping_vector) {
 
     return(cv_per_gene)
   })
-  names(group_cv) <- unique(grouping_vector)
+  names(group_cv) <- groups
   group_cv
 }
 
@@ -92,7 +102,7 @@ compute_cv <- function(log2counts, grouping_vector) {
 #'
 #' @param group_cv CVs per batch computed use compute_cv().
 #' @param log2counts log2 count matrix of gene by cell.
-#' 
+#'
 #' @export
 #'
 #' @examples
@@ -133,3 +143,126 @@ normalize_cv <- function(group_cv, log2counts, anno) {
   names(group_cv_adj) <- names(group_cv)
   group_cv_adj
 }
+
+
+
+
+#' Compute CV of expressed cells
+#'
+#' @param molecules_filter molecule count after collision correction.
+#' @param molecules_final molecule count after standardization and batch correction.
+#'
+#' @export
+#'
+#' @examples
+#' expressed_cv()
+#'
+#' #aa <- expressed_cv(molecules_filter,
+#' #                   molecules_final,
+#' #                   anno_filter$individual)
+#'
+compute_expressed_cv <- function(molecules_filter,
+                         molecules_final,
+                         grouping_vector) {
+  groups <- c(unique(grouping_vector), "all")
+
+  # Set all zero count cells to be NA
+  molecules_filter_df <- molecules_filter[match(rownames(molecules_final),
+                                             rownames(molecules_filter)), ]
+  molecules_filter_df[which(molecules_filter_df == 0, arr.ind = TRUE)] <- NA
+  molecules_filter_df[which(molecules_filter_df != 0, arr.ind = TRUE)] <- 1
+
+  molecules_final_df <- molecules_final
+
+  expressed_cv <- lapply( groups, function(ind) {
+    if(ind != "all") {
+      temp_final_ind <- molecules_final_df[, anno_filter$individual == ind]
+      temp_filter_ind <- molecules_filter_df[, anno_filter$individual == ind]
+    }
+    if(ind == "all") {
+      temp_final_ind <- molecules_final_df
+      temp_filter_ind <- molecules_filter_df
+    }
+  # exclude genes with zero counts in all cells
+    which_include <- which(rowSums(is.na(temp_filter_ind)) != NCOL(temp_filter_ind))
+    temp_filter_ind <- temp_filter_ind[which_include, ]
+    temp_final_ind <- temp_final_ind[which_include, ]
+
+    temp_ind <- 2^(temp_final_ind*temp_filter_ind)
+    gene_expr <- data.frame(
+      expr_mean = rowMeans(as.matrix(temp_ind), na.rm = TRUE),
+      expr_var = matrixStats::rowVars(as.matrix(temp_ind), na.rm = TRUE),
+      expr_cv = sqrt(matrixStats::rowVars(as.matrix(temp_ind), na.rm = TRUE))/rowMeans(as.matrix(temp_ind), na.rm = TRUE)
+    )
+
+    rownames(gene_expr) <- rownames(temp_final_ind)
+    return(gene_expr)
+  })
+  names(expressed_cv) <- groups
+
+  # filter genes that are present in all three individuals
+  which_genes_all <- Reduce("intersect",
+                             lapply(expressed_cv, rownames))
+
+  expressed_cv_filter <- lapply(expressed_cv, function(x) {
+      x[which(rownames(x) %in% which_genes_all), ]
+  })
+  names(expressed_cv_filter) <- names(expressed_cv)
+
+
+  return(expressed_cv_filter)
+}
+
+
+
+
+
+#' Normalize coefficients of variation with summary statistics
+#'
+#' @param expressed_cv a list. Each list is a data.frame of
+#'        gene mean expression, gene expression cv, and
+#'        gene expression variance. The last list is a data.frame of
+#'        the same summary statistics across all individuals.
+#'
+#' @export
+#'
+#' @examples
+#' normalize_cv_input()
+#'
+normalize_cv_input <- function(expressed_cv,
+                               grouping_vector) {
+  groups <- unique(grouping_vector)
+  ## normalize CV
+  library(zoo)
+  # order genes by overall mean expression level
+  expressed_gene_order <- order(expressed_cv[["all"]]$expr_mean)
+
+  # Rolling medians of log10 squared CV by mean expression levels
+  roll_medians <- suppressWarnings(
+    rollapply( log10(expressed_cv[["all"]]$expr_cv^2)[expressed_gene_order],
+               width = 50, by = 25,
+               FUN = median, fill = list("extend", "extend", "NA") )
+  )
+  ii_na <- which( is.na(roll_medians) )
+  roll_medians[ii_na] <- median(
+    log10(expressed_cv[["all"]]$expr_cv^2)[expressed_gene_order][ii_na] )
+  names(roll_medians) <- rownames(expressed_cv[[1]])[expressed_gene_order]
+
+  # Order rolling medians according to the count matrix
+  reorder_gene <- match(rownames(expressed_cv[[1]]), names(roll_medians) )
+  roll_medians <- roll_medians[ reorder_gene ]
+  stopifnot( all.equal(names(roll_medians), rownames(expressed_cv[[1]]) ) )
+
+  expressed_dm <- do.call(cbind,
+                          lapply(groups, function(ind) {
+                            # Adjusted coefficient of variation on log10 scale
+                            dm <- log10(expressed_cv[[ind]]$expr_cv^2) - roll_medians
+                            # combine the adjusted cv with the unadjusted cv
+                            return(dm)
+                          }) )
+  colnames(expressed_dm) <- groups
+  expressed_dm <- data.frame(expressed_dm)
+  return(expressed_dm)
+}
+
+

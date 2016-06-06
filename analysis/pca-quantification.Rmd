@@ -1,0 +1,113 @@
+---
+title: "PCA quantification"
+date: 2016-04-23
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+opts_chunk$set(fig.width = 8, fig.height = 8)
+```
+
+```{r packages, message=FALSE}
+library("HDMD")
+library("ggplot2")
+theme_set(theme_bw(base_size = 12))
+library("tidyr")
+```
+
+Needs to be run after the [data transformation analysis][data-transformation.html] because it uses the PCA results.
+We want to demonstrate the effect of our normalization steps on the technical variance as observed in the PCA plots.
+
+## Input
+
+Input filtered annotation.
+
+```{r input-annotation-filter}
+anno_filter <- read.table("../data/annotation-filter.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno_filter)
+```
+
+Input PCA results from [data transformation analysis][data-transformation.html].
+
+```{r input-pca}
+pca_raw <- read.table("../data/pca-molecules-filter.txt",
+                      header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+pca_cpm <- read.table("../data/pca-molecules-cpm.txt",
+                      header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+pca_pois <- read.table("../data/pca-molecules-cpm-trans.txt",
+                       header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+pca_final <- read.table("../data/pca-final.txt",
+                       header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+stopifnot(pca_raw$Obs.batch == anno_filter$batch,
+          pca_cpm$Obs.batch == anno_filter$batch,
+          pca_pois$Obs.batch == anno_filter$batch,
+          pca_final$Obs.batch == anno_filter$batch)
+```
+
+## Quantifying PCA results
+
+First visualizing how the pairwise differences between individuals and between replicates of the same individual change after each normalization step.
+
+```{r pca-quant}
+pca_results <- list(raw = pca_raw[, 3:4],
+                    cpm = pca_cpm[, 3:4],
+                    poisson = pca_pois[, 3:4],
+                    final = pca_final[, 3:4])
+distance_results <- NULL
+for (analysis in names(pca_results)) {
+  d <- pairwise.mahalanobis(x = pca_results[[analysis]],
+                            grouping = 1:nrow(pca_results[[analysis]]))$distance
+  rownames(d) <- anno_filter$sample_id
+  colnames(d) <- anno_filter$sample_id
+  d_long <- gather(as.data.frame(d), key = "sample1", value = "distance")
+  d_long$sample2 <- colnames(d)
+  stopifnot(d_long$d[d_long$sample1 == d_long$sample2] == 0)
+  d_long$analysis <- analysis
+  distance_results <- rbind(distance_results, d_long)
+}
+distance_results <- separate(distance_results, sample1, into = c("individual1", "replicate1", "well1"), sep = "\\.", remove = FALSE)
+distance_results <- separate(distance_results, sample2, into = c("individual2", "replicate2", "well2"), sep = "\\.", remove = FALSE)
+# Remove self-comparisons
+distance_results <- distance_results[distance_results$sample1 !=
+                                     distance_results$sample2, ]
+# Classify by comparison
+distance_results$same_ind <- distance_results$individual1 == distance_results$individual2
+distance_results$same_rep <- distance_results$replicate1 == distance_results$replicate2
+distance_results$comparison <- NA
+distance_results$comparison[distance_results$same_ind &
+                            distance_results$same_rep] <- "Same individual,\nsame replicate"
+distance_results$comparison[distance_results$same_ind &
+                            !distance_results$same_rep] <- "Same individual,\ndifferent replicate"
+distance_results$comparison[!distance_results$same_ind] <- "different individual"
+stopifnot(!is.na(distance_results$comparison))
+table(distance_results$comparison, useNA = "ifany")
+```
+
+Order the factors.
+
+```{r order-factors}
+distance_results$comparison <- factor(distance_results$comparison,
+                                      levels = c("different individual",
+                                                 "Same individual,\ndifferent replicate",
+                                                 "Same individual,\nsame replicate"))
+distance_results$analysis <- factor(distance_results$analysis,
+                                    levels = c("raw", "cpm", "poisson", "final"))
+```
+
+Plot.
+
+```{r pca-quant-plot}
+ggplot(distance_results, aes(x = comparison, y = distance, fill = analysis)) +
+  geom_boxplot()
+```
+
+## Session information
+
+```{r info}
+sessionInfo()
+```
