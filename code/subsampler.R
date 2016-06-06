@@ -210,14 +210,16 @@ main <- function(num_cells, seed, single_sub_fname, single_full_fname,
   bulk_cells_cpm_mean_ercc <- calc_mean_bulk_cell(bulk_cells_ercc)
 
   # Calculate correlation between single cells and bulk samples
-  results$pearson_ensg <- calc_mean_cor(single_cells_cpm_mean_ensg, bulk_cells_cpm_mean_ensg,
-                                         diagnose = diagnose, method = "pearson")
-  results$pearson_ercc <- calc_mean_cor(single_cells_cpm_mean_ercc, bulk_cells_cpm_mean_ercc,
-                                         diagnose = diagnose, method = "pearson")
-  results$spearman_ensg <- calc_mean_cor(single_cells_cpm_mean_ensg, bulk_cells_cpm_mean_ensg,
-                                         diagnose = FALSE, method = "spearman")
-  results$spearman_ercc <- calc_mean_cor(single_cells_cpm_mean_ercc, bulk_cells_cpm_mean_ercc,
-                                         diagnose = FALSE, method = "spearman")
+  results$pearson_ensg <- calc_cor(single_cells_cpm_mean_ensg, bulk_cells_cpm_mean_ensg,
+                                   diagnose = diagnose, method = "pearson",
+                                   prefix = "Correlation to bulk")
+  results$pearson_ercc <- calc_cor(single_cells_cpm_mean_ercc, bulk_cells_cpm_mean_ercc,
+                                   diagnose = diagnose, method = "pearson",
+                                   prefix = "Correlation to bulk")
+  results$spearman_ensg <- calc_cor(single_cells_cpm_mean_ensg, bulk_cells_cpm_mean_ensg,
+                                    diagnose = FALSE, method = "spearman")
+  results$spearman_ercc <- calc_cor(single_cells_cpm_mean_ercc, bulk_cells_cpm_mean_ercc,
+                                    diagnose = FALSE, method = "spearman")
 
   # Detect number of expressed genes
   min_count = 1
@@ -236,6 +238,17 @@ main <- function(num_cells, seed, single_sub_fname, single_full_fname,
   results$mean_counts_ensg <- mean(colSums(single_cells_sub_ensg_detected))
   single_cells_sub_ercc_detected <- single_cells_sub_ercc[detected_ercc_index, , drop = FALSE]
   results$mean_counts_ercc <- mean(colSums(single_cells_sub_ercc_detected))
+
+  # Calculate variance
+  var_full <- apply(single_cells_full_ensg, 1, var)
+  var_full_log <- log(var_full + 0.25)
+  var_sub <- apply(single_cells_sub_ensg, 1, var)
+  var_sub_log <- log(var_sub + 0.25)
+
+  results$var_pearson <- calc_cor(var_full_log, var_sub_log, method = "pearson",
+                                  diagnose = diagnose, prefix = "variance")
+  results$var_spearman <- calc_cor(var_full_log, var_sub_log, method = "spearman",
+                                   diagnose = FALSE)
 
   write.table(results, file = outfile, quote = FALSE, row.names = FALSE,
               sep = "\t")
@@ -335,19 +348,21 @@ calc_mean_bulk_cell <- function(x) {
 # method - method to caclulate correlation, see ?cor for options.
 # diagnose - Create diagnostic plot
 # digits - The number of digits for rounding. Default is 5.
+# prefix - a character prepended to the title of the diagnostic plot
 #
 # Returns a numeric vector of mean counts per million
 #
-calc_mean_cor <- function(x, y, method = "pearson", diagnose = FALSE,
-                          digits = 5) {
-  assert("Proper input", length(x) == length(y), is.numeric(x), is.numeric(y))
+calc_cor <- function(x, y, method = "pearson", diagnose = FALSE,
+                          digits = 5, prefix = "") {
+  assert("Proper input", length(x) == length(y), is.numeric(x), is.numeric(y),
+         is.character(prefix))
   correlation <- cor(x, y, method = method)
   if (diagnose) {
     model <- lm(y ~ x)
     plot(x, y)
     abline(0, 1, col = "red")
     abline(model, col = "blue")
-    title(main = sprintf("r: %.4f", correlation),
+    title(main = sprintf("%s\tr: %.4f", prefix, correlation),
           sub = "Red: 1-1    Blue: Best fit")
   }
   assert("Proper output", correlation >= -1, correlation <= 1,
