@@ -112,17 +112,59 @@ main <- function(num_cells, seed, single_sub_fname, single_full_fname,
   assert("Subsampled cells are a subset of all single cells",
          colnames(single_cells_sub) %in% colnames(single_cells_full))
 
+  # Split endogenous and ERCC genes
+  ensg_index <- grepl("ENSG", rownames(bulk_cells))
+  ercc_index <- grepl("ERCC", rownames(bulk_cells))
+  assert("Both endogenous Ensembl and ERCC genes available for analysis",
+         sum(ensg_index) > 0, sum(ercc_index) > 0)
+
+  # Filter genes based on quantile cutoffs
+  assert("Quantile cutoffs for gene expression level are valid input",
+         is.numeric(lower_q), is.numeric(upper_q), lower_q >= 0, upper_q <= 1,
+         upper_q > lower_q)
+  results$lower_q <- lower_q
+  results$upper_q <- upper_q
+  # Use the rowSums of the counts in the bulk samples to order the genes by
+  # expression level. This is sufficient because it maintains the relative gene
+  # ordering.
+  #cor(rowSums(bulk_cells), rowMeans(cpm(bulk_cells)), method = "spearman")
+  relative_gene_exp <- rowSums(bulk_cells)
+  # endogenous
+  results$available_ensg <- length(relative_gene_exp[ensg_index])
+  q_cutoffs_ensg <- quantile(relative_gene_exp[ensg_index],
+                             probs = c(lower_q, upper_q))
+  q_exp_filter_ensg <- relative_gene_exp >= q_cutoffs_ensg[1] &
+                       relative_gene_exp <= q_cutoffs_ensg[2]
+  results$used_ensg <- sum(ensg_index & q_exp_filter_ensg)
+  # ercc
+  results$available_ercc <- length(relative_gene_exp[ercc_index])
+  q_cutoffs_ercc <- quantile(relative_gene_exp[ercc_index],
+                             probs = c(lower_q, upper_q))
+  q_exp_filter_ercc <- relative_gene_exp >= q_cutoffs_ercc[1] &
+                       relative_gene_exp <= q_cutoffs_ercc[2]
+  results$used_ercc <- sum(ercc_index & q_exp_filter_ercc)
+  # Perform filtering
+  single_cells_sub_ensg <- single_cells_sub[ensg_index & q_exp_filter_ensg, , drop = FALSE]
+  single_cells_sub_ercc <- single_cells_sub[ercc_index & q_exp_filter_ercc, , drop = FALSE]
+  single_cells_full_ensg <- single_cells_full[ensg_index & q_exp_filter_ensg, , drop = FALSE]
+  single_cells_full_ercc <- single_cells_full[ercc_index & q_exp_filter_ercc, , drop = FALSE]
+  bulk_cells_ensg <- bulk_cells[ensg_index & q_exp_filter_ensg, , drop = FALSE]
+  bulk_cells_ercc <- bulk_cells[ercc_index & q_exp_filter_ercc, , drop = FALSE]
+  assert("Correct number of genes after quantile filtering",
+         nrow(single_cells_sub_ensg) == results$used_ensg,
+         nrow(single_cells_sub_ercc) == results$used_ercc,
+         nrow(single_cells_full_ensg) == results$used_ensg,
+         nrow(single_cells_full_ercc) == results$used_ercc,
+         nrow(bulk_cells_ensg) == results$used_ensg,
+         nrow(bulk_cells_ercc) == results$used_ercc)
+
   # Some diagnostic plots exploring the total counts for endogenous and ERCC
   # genes between the subsampled and original full single cell data sets.
   if (diagnose) {
-    totals_endo_single_sub <- colSums(single_cells_sub[
-                              grep("ENSG", rownames(single_cells_sub)), ])
-    totals_ercc_single_sub <- colSums(single_cells_sub[
-                              grep("ERCC", rownames(single_cells_sub)), ])
-    totals_endo_single_full <- colSums(single_cells_full[
-                               grep("ENSG", rownames(single_cells_full)), ])
-    totals_ercc_single_full <- colSums(single_cells_full[
-                               grep("ERCC", rownames(single_cells_full)), ])
+    totals_endo_single_sub <- colSums(single_cells_sub_ensg)
+    totals_ercc_single_sub <- colSums(single_cells_sub_ercc)
+    totals_endo_single_full <- colSums(single_cells_full_ensg)
+    totals_ercc_single_full <- colSums(single_cells_full_ercc)
     op <- par(mfrow = c(2, 2))
     hist(totals_endo_single_sub, main = "Subsampled Endogenous")
     hist(totals_ercc_single_sub, main = "Subsampled ERCC")
@@ -153,48 +195,19 @@ main <- function(num_cells, seed, single_sub_fname, single_full_fname,
     return(invisible())
   }
   set.seed(seed)
-  single_cells_sub <- single_cells_sub[, sample(1:ncol(single_cells_sub),
-                                                size = num_cells)]
-
-  # Split endogenous and ERCC genes
-  ensg_index <- grepl("ENSG", rownames(bulk_cells))
-  ercc_index <- grepl("ERCC", rownames(bulk_cells))
-  assert("Both endogenous Ensembl and ERCC genes available for analysis",
-         sum(ensg_index) > 0, sum(ercc_index) > 0)
+  subsample_index <- sample(1:ncol(single_cells_sub), size = num_cells)
+  single_cells_sub_ensg <- single_cells_sub_ensg[, subsample_index]
+  single_cells_sub_ercc <- single_cells_sub_ercc[, subsample_index]
 
   # Calculate mean gene expression:
   # For single cells, sum the counts across the single cells and then calculate
   # log2 cpm
-  single_cells_cpm_mean_ensg <- calc_mean_single_cell(single_cells_sub[ensg_index, , drop = FALSE])
-  single_cells_cpm_mean_ercc <- calc_mean_single_cell(single_cells_sub[ercc_index, , drop = FALSE])
+  single_cells_cpm_mean_ensg <- calc_mean_single_cell(single_cells_sub_ensg)
+  single_cells_cpm_mean_ercc <- calc_mean_single_cell(single_cells_sub_ercc)
   # For bulk samples, calculate cpm for each replicate and then calculate the
   # mean across the replicates
-  bulk_cells_cpm_mean_ensg <- calc_mean_bulk_cell(bulk_cells[ensg_index, , drop = FALSE])
-  bulk_cells_cpm_mean_ercc <- calc_mean_bulk_cell(bulk_cells[ercc_index, , drop = FALSE])
-
-  assert("Quantile cutoffs for gene expression level are valid input",
-         is.numeric(lower_q), is.numeric(upper_q), lower_q >= 0, upper_q <= 1,
-         upper_q > lower_q)
-  results$lower_q <- lower_q
-  results$upper_q <- upper_q
-
-  results$available_ensg <- length(bulk_cells_cpm_mean_ensg)
-  q_cutoffs_ensg <- quantile(bulk_cells_cpm_mean_ensg,
-                             probs = c(lower_q, upper_q))
-  q_exp_filter_ensg <- bulk_cells_cpm_mean_ensg >= q_cutoffs_ensg[1] &
-                       bulk_cells_cpm_mean_ensg <= q_cutoffs_ensg[2]
-  results$used_ensg <- sum(q_exp_filter_ensg)
-  single_cells_cpm_mean_ensg <- single_cells_cpm_mean_ensg[q_exp_filter_ensg]
-  bulk_cells_cpm_mean_ensg <- bulk_cells_cpm_mean_ensg[q_exp_filter_ensg]
-
-  results$available_ercc <- length(bulk_cells_cpm_mean_ercc)
-  q_cutoffs_ercc <- quantile(bulk_cells_cpm_mean_ercc,
-                             probs = c(lower_q, upper_q))
-  q_exp_filter_ercc <- bulk_cells_cpm_mean_ercc >= q_cutoffs_ercc[1] &
-                       bulk_cells_cpm_mean_ercc <= q_cutoffs_ercc[2]
-  results$used_ercc <- sum(q_exp_filter_ercc)
-  single_cells_cpm_mean_ercc <- single_cells_cpm_mean_ercc[q_exp_filter_ercc]
-  bulk_cells_cpm_mean_ercc <- bulk_cells_cpm_mean_ercc[q_exp_filter_ercc]
+  bulk_cells_cpm_mean_ensg <- calc_mean_bulk_cell(bulk_cells_ensg)
+  bulk_cells_cpm_mean_ercc <- calc_mean_bulk_cell(bulk_cells_ercc)
 
   # Calculate correlation between single cells and bulk samples
   results$pearson_ensg <- calc_mean_cor(single_cells_cpm_mean_ensg, bulk_cells_cpm_mean_ensg,
@@ -202,9 +215,9 @@ main <- function(num_cells, seed, single_sub_fname, single_full_fname,
   results$pearson_ercc <- calc_mean_cor(single_cells_cpm_mean_ercc, bulk_cells_cpm_mean_ercc,
                                          diagnose = diagnose, method = "pearson")
   results$spearman_ensg <- calc_mean_cor(single_cells_cpm_mean_ensg, bulk_cells_cpm_mean_ensg,
-                                         diagnose = diagnose, method = "spearman")
+                                         diagnose = FALSE, method = "spearman")
   results$spearman_ercc <- calc_mean_cor(single_cells_cpm_mean_ercc, bulk_cells_cpm_mean_ercc,
-                                         diagnose = diagnose, method = "spearman")
+                                         diagnose = FALSE, method = "spearman")
 
   write.table(results, file = outfile, quote = FALSE, row.names = FALSE,
               sep = "\t")
