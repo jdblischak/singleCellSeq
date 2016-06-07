@@ -1,7 +1,7 @@
 ---
 title: "Cell-cell variation analysis: summary"
 author: "Joyce Hsiao"
-date: 2016-03-13  
+date: 2016-06-06  
 ---
 
 **Last updated:** `r Sys.Date()`
@@ -170,6 +170,26 @@ summary(drop_out$NA19101)
 summary(drop_out$NA19239)
 summary(drop_out$all)
 ```
+
+
+Statistical test for individual difference in dropout rate: logistic regression
+
+```{r}
+if(!file.exists("../data/sig-dropout.rda")) {
+library(lmtest)
+  drop_out_significance <- sapply(1:NROW(molecules_expressed_subset), function(i) {
+  fit <- glm(molecules_expressed_subset[i,] ~ as.factor(anno_filter$individual),
+             family = "binomial")
+  lrtest(fit)$P[2]  
+})
+  save(drop_out_significance, file = "../data/sig-dropout.rda")
+} else {
+  load("../data/sig-dropout.rda")
+}
+quantile(drop_out_significance, prob = seq(0,1,.1))[2] < 1e-5
+sum(drop_out_significance < quantile(drop_out_significance, prob = seq(0,1,.1))[2])
+```
+
 
 
 
@@ -755,6 +775,32 @@ plot(y = expressed_cv_subset$all$expr_cv,
 lines(lowess( expressed_cv_subset$all$expr_cv ~ drop_out$all),
       col = "red")
 title(main = "Expressed cells, three individuals", outer = TRUE, line = -1)
+```
+
+
+
+## Supp. figure: venn diagram of gene-specific mean and adjusted CV for when all cells are included
+
+For more results for when including all cells, see [here][results-all-cells]. 
+
+[results-all-cells]: http://jdblischak.github.io/singleCellSeq/analysis/cv-adjusted-summary-pois.html
+
+```{r, fig.width = 5, fig.height=5}
+load("../data/cv-all-cells.rda")
+genes <- rownames(ENSG_cv[[1]])
+library(gplots)
+venn_cv_rank <- gplots::venn(
+  list(NA19098 = genes[ which( rank(ENSG_cv_adj$NA19098$log10cv2_adj) 
+                               > length(genes) - 1000 ) ],
+       NA19101 = genes[ which( rank(ENSG_cv_adj$NA19101$log10cv2_adj) 
+                               > length(genes) - 1000 ) ],
+       NA19239 = genes[ which( rank(ENSG_cv_adj$NA19239$log10cv2_adj) 
+                               > length(genes) - 1000 ) ] ))
+
+gplots::venn( 
+  list(NA19098 = genes[ which(rank(ENSG_cv[[1]]$mean) > length(genes) - 1000 ) ],
+       NA19101 = genes[ which(rank(ENSG_cv[[2]]$mean) > length(genes) - 1000 ) ],
+       NA19239 = genes[ which(rank(ENSG_cv[[3]]$mean) > length(genes) - 1000 ) ] ) )
 ```
 
 
