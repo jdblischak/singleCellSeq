@@ -142,10 +142,14 @@ rule gather_subsample_results:
                gene_subset = fname_parts[-1]
                f = open(fname, "r")
                f_header = f.readline()
-               assert "File %s has the correct header"%(fname), f_header == header
+               # Don't output results from analyses with too few cells to perform
+               # subsampling.
+               num_cols = len(f_header.split("\t"))
+               if num_cols < 22:
+                   continue
+               assert f_header == header, "File %s does not have the correct header"%(fname)
                for line in f:
                    out.write(type + "\t" + depth + "\t" + gene_subset + "\t" + line)
                f.close()
 
            out.close()
-
