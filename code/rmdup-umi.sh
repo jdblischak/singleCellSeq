@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e
 
+# dedup_umi.py requires pysam.
+
 FILE=$1
 BASE=`basename ${FILE%.bam}`
 OUTDIR=bam-rmdup-umi

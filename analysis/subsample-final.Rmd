@@ -1,0 +1,146 @@
+---
+title: "Final subsampling plots"
+date: 2016-06-06
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+opts_chunk$set(cache = FALSE)
+```
+
+## Input
+
+```{r packages, message=FALSE, cache=FALSE}
+library("dplyr")
+library("tidyr")
+library("ggplot2")
+library("cowplot")
+theme_set(theme_bw(base_size = 12))
+theme_update(panel.grid.minor.x = element_blank(),
+             panel.grid.minor.y = element_blank(),
+             panel.grid.major.x = element_blank(),
+             panel.grid.major.y = element_blank())
+```
+
+```{r input-data}
+d <- read.table("../data/subsampling-results.txt",
+                header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+str(d)
+```
+
+```{r group}
+d_grouped <- d %>%
+  group_by(type, depth, gene_subset, subsampled_cells,
+           individual, potential_cells, available_cells,
+           lower_q, upper_q, available_ensg, used_ensg,
+           available_ercc, used_ercc) %>%
+  summarize(mean_detected = mean(detected_ensg),
+            sem_detected = sd(detected_ensg) / sqrt(length(detected_ensg)),
+            mean_bulk = mean(pearson_ensg),
+            sem_bulk = sd(pearson_ensg) / sqrt(length(pearson_ensg)),
+            mean_var = mean(var_pearson),
+            sem_var = sd(var_pearson) / sqrt(length(var_pearson)))
+```
+
+```{r filter}
+d_filter <- d_grouped %>% filter(individual == "NA19239",
+                                type == "molecules",
+                                gene_subset %in% c("lower", "upper"))
+d_filter$gene_subset <- factor(d_filter$gene_subset,
+                               levels = c("lower", "upper"),
+                               labels = c("Lower 50% of expressed genes",
+                                          "Upper 50% of expressed genes"))
+```
+
+## Figures
+
+```{r plot-bulk}
+plot_bulk <- ggplot(d_filter,
+                 aes(x = subsampled_cells, y = mean_bulk,
+                     color = as.factor(depth))) +
+  geom_line() +
+  geom_errorbar(aes(ymin = mean_bulk - sem_bulk,
+                    ymax = mean_bulk + sem_bulk),
+                width = 1) +
+  facet_wrap(~gene_subset) +
+  scale_color_grey(start = 0.8, end = 0.2, name = "Sequencing depth") +
+  theme(legend.position = "none") +
+  labs(x = "Number of subsampled cells",
+       y = "Pearson's r (+/- SEM)",
+       title = "Correlation with bulk sequencing")
+plot_bulk
+```
+
+```{r plot-detected}
+plot_detected <- ggplot(d_filter,
+                 aes(x = subsampled_cells, y = mean_detected,
+                     color = as.factor(depth))) +
+  geom_line() +
+  geom_errorbar(aes(ymin = mean_detected - sem_detected,
+                    ymax = mean_detected + sem_detected),
+                width = 1) +
+  facet_wrap(~gene_subset) +
+  scale_color_grey(start = 0.8, end = 0.2, name = "Sequencing depth") +
+  theme(legend.position = c(0.75, 0.35)) +
+  labs(x = "Number of subsampled cells",
+       y = "Number of genes detected in at least one cell",
+       title = "Number of genes detected")
+plot_detected
+```
+
+```{r plot-var}
+plot_var <- ggplot(d_filter,
+                 aes(x = subsampled_cells, y = mean_var,
+                     color = as.factor(depth))) +
+  geom_line() +
+  geom_errorbar(aes(ymin = mean_var - sem_var,
+                    ymax = mean_var + sem_var),
+                width = 1) +
+  facet_wrap(~gene_subset) +
+  scale_color_grey(start = 0.8, end = 0.2, name = "Sequencing depth") +
+  theme(legend.position = "none") +
+  labs(x = "Number of subsampled cells",
+       y = "Pearson's r (+/- SEM)",
+       title = "Correlation with cell-to-cell variance of full data")
+plot_var
+```
+
+```{r plot-final}
+plot_final <- plot_grid(plot_bulk, plot_detected, plot_var,
+                        ncol = 1, labels = LETTERS[1:3])
+plot_final
+png("../paper/figure/fig-subsample.png", width = 8, height = 12, units = "in", res = 300)
+plot_final
+dev.off()
+```
+
+## Number of molecules per sequencing depth
+
+```{r}
+molecules_per_depth <- d %>%
+  filter(gene_subset == "all", type == "molecules")
+```
+
+```{r molecules-per-depth-ensg}
+ggplot(molecules_per_depth, aes(x = as.factor(depth), y = mean_counts_ensg)) +
+  geom_boxplot() +
+  facet_wrap(~individual) +
+  scale_y_continuous(breaks = seq(0, 1e5, by = 1e4))
+```
+
+```{r molecules-per-depth-ercc}
+ggplot(molecules_per_depth, aes(x = as.factor(depth), y = mean_counts_ercc)) +
+  geom_boxplot() +
+  facet_wrap(~individual)
+```
+
+
+## Session information
+
+```{r info}
+sessionInfo()
+```
