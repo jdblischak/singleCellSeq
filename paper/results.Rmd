@@ -61,10 +61,37 @@ We found that while gene-specific read and molecule counts are exceptionally hig
 Moreover, the gene-specific read and molecule counts correlation is noticeably lower for genes that are expressed at lower levels (Figure `r fig_main_qc`F).
 These observations concur with previous studies [@Islam2014; @Grun2014] as they underscore the importance of using UMIs in single cell gene expression studies.
 
-Beyond quality control of the samples, we also estimated the number of molecules required for representing the gene expression level patterns of the bulk samples.
-To this end, we conducted a systematic subsampling at the levels of sequencing depth (including both read and molecules) and cell numbers, using the high quality samples (Figure `r fig_main_subsample`).
-We found that sequencing depth of 2 million reads from each cell, which corresponds to ~100,000 molecule counts, with 75 single cells from each individual, is sufficient to capture the majority of genes expressed (~90 %, Figure `r fig_main_subsample`A), as well as to accurately reflect mean expression levels in the whole cell culture (r > 0.93, Figure `r fig_main_subsample`B). 
-The variation in gene expression levels across single cells is also estimated well with roughly 75 single cells (r > 0.95, Figure `r fig_main_subsample`C).
+```{r}
+library("dplyr")
+d <- read.table("../data/subsampling-results.txt",
+                header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+d_grouped <- d %>%
+  group_by(type, depth, gene_subset, subsampled_cells,
+           individual, potential_cells, available_cells,
+           lower_q, upper_q, available_ensg, used_ensg,
+           available_ercc, used_ercc) %>%
+  summarize(mean_detected = mean(detected_ensg),
+            sem_detected = sd(detected_ensg) / sqrt(length(detected_ensg)),
+            mean_bulk = mean(pearson_ensg),
+            sem_bulk = sd(pearson_ensg) / sqrt(length(pearson_ensg)),
+            mean_var = mean(var_pearson),
+            sem_var = sd(var_pearson) / sqrt(length(var_pearson)))
+d_filter <- d_grouped %>% filter(individual == "NA19239",
+                                type == "molecules",
+                                gene_subset == "lower",
+                                depth == 1500000,
+                                subsampled_cells == 75)
+
+```
+
+
+Beyond quality control of the samples, we also investigated the effect of sequencing depth and the number of single cells collected.
+To this end, we conducted a systematic subsampling to assess the correlation of the single cell gene expression estimates to the bulk samples, the number of genes detected, and the correlation of the cell-to-cell gene expression level variance estimates in the subsampled single cells to the full single cell data set (Figure `r fig_main_subsample`).
+We observed quickly diminishing improvement in all three of these metrics with increasing sequencing depth and number of cells collected, especially for the highly expressed genes.
+For example, a sequencing depth of 1.5 million reads (which corresponds to ~50,000 molecules) for 75 single cells is sufficient for measuring even the lower 50% of expressed genes;
+it correlates with the bulk sample gene expression levels with a mean Pearson coefficient of `r round(d_filter$mean_bulk, digits = 2)` (Figure `r fig_main_subsample`A),
+detects a mean of `r d_filter$mean_detected ` genes out of `r d_filter$used_ensg` expressed genes (Figure `r fig_main_subsample`B),
+and correlates with the cell-to-cell gene expression level variance estimates from the full data set with a mean Pearson coefficient of `r round(d_filter$mean_var, digits = 2)` (Figure `r fig_main_subsample`C).
 
 ### Is there a need to standardize molecule-counts?  
 Standard analysis of single cell gene expression data often relies on the implicit assumption that molecule-count data, collected by using single cell UMI-based approaches, can be thought of as an absolute estimate of the total number of RNA molecules in the cell [@Islam2014; @Grun2014]. 
