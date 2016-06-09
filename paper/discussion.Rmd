@@ -12,21 +12,23 @@ source("chunk-options-paper.R")
 
 Our nested study design allowed us to explicitly estimate technical batch effects associated with single cell sample processing on the C1 platform.
 We found previously unreported technical sources of variation associated with the C1 sample processing and the use of UMIs, including a batch-specific read-to-molecule conversion efficiency. 
-Our batch effect correction following standardization and normalization of the molecule count data can successfully remove these technical effects while maintaining individual differences in gene expression level and variation across single cells. 
+In the context of the nested study design, our batch effect correction following standardization and normalization of the molecule count data can successfully remove these technical effects while maintaining individual differences in gene expression level and variation across single cells. 
 However, to fully capture the batch effect across C1 plates and to retrieve the maximum amount of biological information, we recommend a balanced study design consisting of multiple individuals within a C1 plate and multiple C1 replicates (for example, Figure `r fig_supp_design`A).
-Using a method originally developed for detecting sample swaps in DNA sequencing experiments [@Jun2012], we were able to correctly identify the correct YRI individual of origin for all the single cells from the current experiment by comparing the polymorphisms present in the RNA-seq reads to the known genotypes for all 120 YRI individuals of the International HapMap Project (Figure `r fig_supp_design`B).
+The cell can then be identified using the RNA sequencing data.
+Indeed, using a method originally developed for detecting sample swaps in DNA sequencing experiments [@Jun2012], we were able to correctly identify the correct YRI individual of origin for all the single cells from the current experiment by comparing the polymorphisms identified using the RNA-seq reads to the known genotypes for all 120 YRI individuals of the International HapMap Project (Figure `r fig_supp_design`B).
+The mixed-individual-plate is an attractive study design because it allows one to account for the batch effect without the requirement to explicitly spend additional resources on technical replication (because the total number of cells assayed from each individual can be equal to a design in which one individual is being processed in using a single C1 plate).
 
-We also addressed the study design decisions of how many single cells to collect and at what depth to sequence (Figure `r fig_main_subsample`).
-Similar assessments have been performed for single sequencing with the C1 platform [@Wu2014; @Pollen2014], but no previous study has investigated the effects of these parameters for single cells studies using UMIs.
-We focused on recapitulating the gene expression levels observed in bulk sequencing experiments, detecting as many genes as possible, and accurately measuring the cell-to-cell variance in gene expression levels.
+We also addressed additional study design properties with respect to the desired number of single cells to collect and the desired depth of sequencing (Figure `r fig_main_subsample`).
+Similar assessments have been previously performed for single cell sequencing with the C1 platform [@Wu2014; @Pollen2014], but no previous study has investigated the effects of these parameters for single cells studies using UMIs.
+We focused on recapitulating the gene expression levels observed in bulk sequencing experiments, detecting as many genes as possible, and accurately measuring the cell-to-cell variation in gene expression levels.
 We recommend sequencing at least 75 high quality cells per biological condition with a minumum of 1.5 million raw reads to obtain optimal performance of these three metrics.
 
 ### Effective use of UMIs and molecule counts
 
 When UMIs were first incorporated in scRNA-seq protocols using the C1 system, it was assumed that total molecule counts directly relate to the absolute number of mRNA molecules in the cell [@Islam2014].
 In other words, a difference in total number of observed molecules between cells was thought to indicate a corresponding difference in the actual number of mRNA molecules between cells [@Vallejos2015].
-The inference was that samples with more mRNA content, for example - cells in G2 phase, would have higher numbers of total molecules than samples with less mRNA content, for example - cells in G1 phase [@Vallejos2015; @Buettner2015].
-Our work suggests that the correlation between sample concentration and total molecule counts is associated with considerable variation.
+The inference was that samples with more mRNA content, for example - cells in G2 phase, would have higher numbers of sequenced total molecules than samples with less mRNA content, for example - cells in G1 phase [@Vallejos2015; @Buettner2015].
+Our work suggests that the correlation between sample concentration and total molecule counts sequenced from single cells is associated with considerable variation.
 A particular extreme example include the class of samples in which more than one cell were captured.
 In these cases, the RNA content is expected to be roughly doubled compared with samples in which a single cell was captured, yet the library concentration, as well as the total number of sequenced molecules, are not consistently higher (and in many cases, are lower than the single cell samples).
 
@@ -41,26 +43,24 @@ There may be various potential causes for this observation, both biological or t
 Importantly, because of the inconsistency of conversion efficiency, we cannot assume that counting UMIs is a completely unbiased process.
 As a result, UMI based molecule counts need to be standardized, normalized, and corrected for batch effect.
 
-### The effectiveness of ERCC spike-in controls in scRNA-seq
+### Are ERCC spike-in controls useful?
 
-The ERCC spike-in controls have been used in previous scRNA-seq studies to identify low quality cells, infer the total number of molecules per cell, and model the technical variability across cells [@Brennecke2013; @Grun2014; @Ding2015; @Vallejos2015]. 
+The ERCC spike-in controls have been used in previous scRNA-seq studies to identify low quality cells, infer the absolute total number of molecules per cell, and model the technical variability across cells [@Brennecke2013; @Grun2014; @Ding2015; @Vallejos2015]. 
 In our experience, the ERCC controls are not particularly well-suited for any one of these tasks, much less all three.
-For identifying low quality cells, we did observe that wells with no visible cell had a higher percentage of reads mapping to the ERCC controls, as expected.
-However, there was no clear distinction between low and high quality cells when observing only the ERCC percentage, and any particular cutoff used is inherently arbitrary (Figure `r fig_main_qc`E).
-For inferring the total number of molecules per cell, we do not think the ERCC percentage is adequate.
-We observed that our biological covariate of interest (difference between the three YRI individuals) explained a large proportion of the variance in the ERCC counts (Figure `r fig_supp_variance`), and furthermore that the ERCC controls were also affected by the individual-specific effect on the read-to-molecule conversion (Figure `r fig_main_batch`D,F).
-Thus any differences in the total number of molecules per cell across technical or biological replicates using this method will be heavily influenced by these technical factors.
+With respect to identifying low quality cells, we indeed observed that wells with no visible cell had a higher percentage of reads mapping to the ERCC controls, as expected.
+However, there was no clear difference between low and high quality cells in the percentage of ERCC reads or molecules, and thus any arbitrarily chosen cutoff would be associated with considerable error (Figure `r fig_main_qc`E).
+With respect to inferring the absolute total number of molecules per cell, we observed that the biological covariate of interest (difference between the three YRI individuals), rather than batch, explained a large proportion of the variance in the ERCC counts (Figure `r fig_supp_variance`), and furthermore that the ERCC controls were also affected by the individual-specific effect on the read-to-molecule conversion (Figure `r fig_main_batch`D,F).
+Thus ERCC-based estimates of the total number of molecules per cell across technical or biological replicates will be strongly biased.
 These batch effects on the ERCC controls driven by the biological covariate of interest will also impede the modeling of the technical variation in single cell experiments.
-Furthermore, it is inherently difficult to model unknown sources of technical variation using so few genes [@Risso2014] (only approximately half of the 92 ERCC controls are even detecetd in single cell experiments), and the ERCC controls are also stronly impacted by technical sources of variation even in bulk RNA-seq experiments [@SEQC/MAQC-IIIConsortium2014].
+
+More generally, it is inherently difficult to model unknown sources of technical variation using so few genes [@Risso2014] (only approximately half of the 92 ERCC controls are detecetd in typical single cell experiments), and the ERCC controls are also stronly impacted by technical sources of variation even in bulk RNA-seq experiments [@SEQC/MAQC-IIIConsortium2014].
 Lastly, from a theoretical perspective, the ERCC controls have shorter polyA tails and are overall shorter compared to mammalian mRNAs.
-For these reasons, we caution the reliance of ERCC controls in scRNA-seq studies and highlight that an alternative set of controls that more faithfully mimics mammalian mRNAs and provides more detectable spike-ins is highly desired for improving future scRNA-seq studies.
+For these reasons, we caution against the reliance of ERCC controls in scRNA-seq studies and highlight that an alternative set of controls that more faithfully mimics mammalian mRNAs and provides more detectable spike-ins is highly desired for improving future scRNA-seq studies.
+Our recommendation is to include total RNA from a distant species, for example using drosophila RNA in studies of single cells from humans.
 
-### Gene regulatory noise
-Despite the popular interest for gene regulatory noise, there lacks single cell experiments directly examining inter-individual differences in gene expression variation [@Borel2015]. 
-Our findings indicate pervasive inter-individual difference in gene regulatory noise beyond gene abundance.
-At the same time, we recognize that the task of parsing sources of variation is difficult and warrants a study design controlling for technical variation that could potentially confound with inter-individual expression variation. 
-In addition, and importantly, we considered that gene regulatory noise is contingent upon the cells being detected [@Finak2015] - a unique feature of our data offered by the use of UMI.
+### Outlook
 
-In conclusion, scRNA-seq can provide additional insight into gene regulatory variation beyond bulk-sample expression data. 
-Further scRNA-seq studies are needed for genetic variation in gene regulatory noise.
-
+Single cell experiments are ideally suited to study gene regulatory noise and robustness [@Borel2015; @Finak2015]. 
+Yet, in order to study biological noise in gene expression levels it is imperative that one is able to effectively estimate and account for technical noise single cell gene expression data. 
+Our results indicate that previous single cells gene expression studies may have not been able to distinguish between the technical and biological components of variation because single cell from each individual biological sample were processed using a single batch. 
+When technical noise is properly accounted for, even in this small pilot study, our findings indicate pervasive inter-individual difference in gene regulatory noise, independently from gene abundance. 
