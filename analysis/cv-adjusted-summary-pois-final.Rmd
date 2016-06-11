@@ -1,7 +1,7 @@
 ---
 title: "Cell-cell variation analysis: summary"
 author: "Joyce Hsiao"
-date: 2016-03-13  
+date: 2016-06-06  
 ---
 
 **Last updated:** `r Sys.Date()`
@@ -172,6 +172,26 @@ summary(drop_out$all)
 ```
 
 
+Statistical test for individual difference in dropout rate: logistic regression
+
+```{r}
+if(!file.exists("../data/sig-dropout.rda")) {
+library(lmtest)
+  drop_out_significance <- sapply(1:NROW(molecules_expressed_subset), function(i) {
+  fit <- glm(molecules_expressed_subset[i,] ~ as.factor(anno_filter$individual),
+             family = "binomial")
+  lrtest(fit)$P[2]  
+})
+  save(drop_out_significance, file = "../data/sig-dropout.rda")
+} else {
+  load("../data/sig-dropout.rda")
+}
+quantile(drop_out_significance, prob = seq(0,1,.1))[2] < 1e-5
+sum(drop_out_significance < quantile(drop_out_significance, prob = seq(0,1,.1))[2])
+```
+
+
+
 
 
 
@@ -270,7 +290,29 @@ grid.arrange(gTree(children = venn.diagram(venn_mean_expressed,filename = NULL,
              ncol = 2)
 ```
 
+venn diagram of gene-specific mean and adjusted CV for when all cells are included
 
+For more results for when including all cells, see [here][results-all-cells]. 
+
+[results-all-cells]: http://jdblischak.github.io/singleCellSeq/analysis/cv-adjusted-summary-pois.html
+
+```{r, fig.width = 5, fig.height=5}
+load("../data/cv-all-cells.rda")
+genes <- rownames(ENSG_cv[[1]])
+library(gplots)
+venn_cv_rank <- gplots::venn(
+  list(NA19098 = genes[ which( rank(ENSG_cv_adj$NA19098$log10cv2_adj) 
+                               > length(genes) - 1000 ) ],
+       NA19101 = genes[ which( rank(ENSG_cv_adj$NA19101$log10cv2_adj) 
+                               > length(genes) - 1000 ) ],
+       NA19239 = genes[ which( rank(ENSG_cv_adj$NA19239$log10cv2_adj) 
+                               > length(genes) - 1000 ) ] ))
+
+gplots::venn( 
+  list(NA19098 = genes[ which(rank(ENSG_cv[[1]]$mean) > length(genes) - 1000 ) ],
+       NA19101 = genes[ which(rank(ENSG_cv[[2]]$mean) > length(genes) - 1000 ) ],
+       NA19239 = genes[ which(rank(ENSG_cv[[3]]$mean) > length(genes) - 1000 ) ] ) )
+```
 
 ## Main figure 2
 
@@ -309,7 +351,7 @@ for (i in 1:nrow(query_genes_ensg)) {
   colnames(df) <- unique(anno_filter$individual)
   df <- t(t(df)/colSums(df))
   barplot(df, col = c("grey40", "grey80"),
-          ylab = "Proportion of detected cells",
+          ylab = "Proportion of cells",
           cex.names = 0.9)
 
   plot_density_overlay(
@@ -727,7 +769,7 @@ par(mfrow = c(1,3))
 # abundance
 plot(y = log10(expressed_cv_subset$all$expr_mean),
      x = drop_out$all,
-     xlab = "Proportion of undetected cells",
+     xlab = "Gene-specific dropout rate",
      ylab = "log10 mean expression",
      pch = 16, cex =.3, 
      cex.axis = 1.5, 
@@ -737,7 +779,7 @@ lines(lowess( log10(expressed_cv_subset$all$expr_mean) ~ drop_out$all),
 # variance
 plot(y = log10(expressed_cv_subset$all$expr_var),
      x = drop_out$all,
-     xlab = "Proportion of undetected cells",
+     xlab = "Gene-specific dropout rate",
      ylab = "log10 variance of expression",
      pch = 16, cex =.3, 
      cex.axis = 1.5, 
@@ -747,7 +789,7 @@ lines(lowess( log10(expressed_cv_subset$all$expr_var) ~ drop_out$all),
 # CV
 plot(y = expressed_cv_subset$all$expr_cv,
      x = drop_out$all,
-     xlab = "Proportion of undetected cells",
+     xlab = "Gene-specific dropout rate",
      ylab = "CV",
      pch = 16, cex =.3, 
      cex.axis = 1.5, 

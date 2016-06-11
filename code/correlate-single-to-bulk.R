@@ -11,8 +11,10 @@ correlate-single-cell-to-bulk.R [options] [--quantiles=<q>...] <num_cells> <seed
 
 Options:
   -h --help              Show this screen.
-  --individual=<ind>     Only use data from ind, e.g. 19098
+  --individual=<ind>     Only use data from ind, e.g. NA19098
+  --replicate=<rep>      Only use data from rep, e.g. r1
   --good_cells=<file>    A 1-column file with the names of good quality cells to maintain
+  --keep_genes=<file>    A 1-column file with the names of genes to maintain
   -q --quantiles=<q>     Calculate the correlation for the genes separated by the provided
                          quantiles, e.g. -q .25 -q .75
 
@@ -20,45 +22,42 @@ Arguments:
   num_cells     number of single cells to subsample
   seed          seed for random number generator
   single        sample-by-gene matrix of single cell data
-  bulk          gene-by-sample matrix of bulk cell data" -> doc
+  bulk          sample-by-gene matrix of bulk cell data" -> doc
 
-main <- function(num_cells, seed, single_fname, bulk_fname, individual = NULL,
-                 good_cells = NULL, quantiles = NULL) {
+main <- function(num_cells, seed, single_fname, bulk_fname,
+                 individual = NULL, replicate = NULL,
+                 good_cells = NULL, keep_genes = NULL, quantiles = NULL) {
   suppressPackageStartupMessages(library("edgeR"))
   library("testit")
   id <- "single-to-bulk-correlation"
 
-  # Load single cell data
-  single_cells <- read.table(single_fname, header = TRUE, sep = "\t",
-                             stringsAsFactors = FALSE)
-  # Filter by individual
-  if (!is.null(individual)) {
-    single_cells <- single_cells[single_cells$individual == individual, ]
+  # Load filtering data: good_cells and keep_genes
+  if (!is.null(keep_genes)) {
+    assert("File with list of genes to keep exists.",
+           file.exists(keep_genes))
+    keep_genes_list <- scan(keep_genes, what = "character", quiet = TRUE)
+  } else {
+    keep_genes_list <- NULL
   }
-  # Remove bulk samples
-  single_cells <- single_cells[single_cells$well != "bulk", ]
-  # Add rownames
-  rownames(single_cells) <- paste(single_cells$individual, single_cells$batch,
-                                  single_cells$well, sep = ".")
-  # Remove meta-info cols
-  single_cells <- single_cells[, grepl("ENSG", colnames(single_cells)) |
-                                 grepl("ERCC", colnames(single_cells))]
-  # Transpose
-  single_cells <- t(single_cells)
-  # Fix ERCC names
-  rownames(single_cells) <- sub(pattern = "\\.", replacement = "-",
-                                rownames(single_cells))
-  # Keep only good quality cells
   if (!is.null(good_cells)) {
     assert("File with list of good quality cells exists.",
            file.exists(good_cells))
     good_cells_list <- scan(good_cells, what = "character", quiet = TRUE)
-    good_cells_list <- substr(good_cells_list, start = 3, stop = 13)
-    single_cells <- single_cells[, colnames(single_cells) %in% good_cells_list]
-    assert("There are quality cells to perform the analysis.",
-           ncol(single_cells) > 0)
+  } else {
+    good_cells_list <- NULL
   }
 
+  # Load single cell data
+  single_cells <- read.table(single_fname, header = TRUE, sep = "\t",
+                             stringsAsFactors = FALSE)
+  assert("Single cell data does not contain bulk samples",
+         single_cells$well != "bulk")
+
+  # Filter individuals, cells, and genes. Also transpose to gene-by-sample.
+  single_cells <- prepare_counts(single_cells, individual = individual,
+                                 replicate = replicate,
+                                 good_cells_list = good_cells_list,
+                                 keep_genes_list = keep_genes_list)
   # Subsample number of single cells
   if (ncol(single_cells) < num_cells) {
     cat(sprintf("%d\t%d\tNA\tNA\tNA\n", num_cells, seed))
@@ -66,61 +65,105 @@ main <- function(num_cells, seed, single_fname, bulk_fname, individual = NULL,
   }
   set.seed(seed)
   single_cells <- single_cells[, sample(1:ncol(single_cells), size = num_cells)]
-  # Calculate cpm
 
-  single_cells <- cpm(single_cells)
 #   single_cells[1:10, 1:10]
 #   dim(single_cells)
 
   # Load bulk cell data
-  bulk_cells <- read.table(bulk_fname, row.names = 1, header = TRUE, sep = "\t",
+  bulk_cells <- read.table(bulk_fname, header = TRUE, sep = "\t",
                            stringsAsFactors = FALSE)
-  # Filter by individual
-  if (!is.null(individual)) {
-    bulk_cells <- bulk_cells[, grepl(individual, colnames(bulk_cells))]
-  }
-  # Remove single cells
-  bulk_cells <- bulk_cells[, grepl("bulk", colnames(bulk_cells))]
-  # Calculate cpm
-  bulk_cells <- cpm(bulk_cells)
+  assert("Bulk data does not contain single cell samples",
+         bulk_cells$well == "bulk")
+  # Filter individuals and genes. Also transpose to gene-by-sample.
+  bulk_cells <- prepare_counts(bulk_cells, individual = individual,
+                               replicate = replicate,
+                               keep_genes_list = keep_genes_list)
 
 #   bulk_cells[1:10, 1:10]
 #   dim(bulk_cells)
 #   head(bulk_cells)
-
-  # Filter genes
-  # Remove unexpressed
-  bulk_cells <- bulk_cells[rowSums(bulk_cells) > 0, ]
-  # Remove the bottom 25%
-  bulk_cells <- bulk_cells[rowMeans(bulk_cells) > quantile(rowMeans(bulk_cells), .25), ]
-  # Filter genes in single cells
-  single_cells <- single_cells[rownames(single_cells) %in% rownames(bulk_cells), ]
 
   assert("Same number of genes in bulk and single cells.",
          nrow(bulk_cells) == nrow(single_cells))
   assert("Same order of genes in bulk and single cells.",
          rownames(bulk_cells) == rownames(single_cells))
 
-  mean_single_expression <- log2(rowMeans(single_cells) + 1)
-  mean_bulk_expression <- log2(rowMeans(bulk_cells) + 1)
+  # Do not include ERCC control genes
+  endogenous <- grep("ENSG", rownames(single_cells))
+  single_cells <- single_cells[endogenous, ]
+  bulk_cells <- bulk_cells[endogenous, ]
+
+  # For single cells, sum the counts across the single cells and then calculate
+  # log2 cpm
+  single_cells_sum <- as.data.frame(rowSums(single_cells))
+  single_cells_sum_cpm <- cpm(single_cells_sum, log = TRUE, prior.count = 1)
+  single_cells_sum_cpm <- as.numeric(single_cells_sum_cpm)
+  # For bulk samples, calculate cpm for each replicate and then calculate the
+  # mean across the replicates
+  bulk_cells_cpm <- cpm(bulk_cells, log = TRUE, prior.count = 1)
+  bulk_cells_cpm_mean <- rowMeans(bulk_cells_cpm)
 
   quantiles <- c(quantiles, 1)
   quantiles <- sort(quantiles)
-  q_cutoffs <- quantile(mean_bulk_expression, probs = quantiles)
+  q_cutoffs <- quantile(bulk_cells_cpm_mean, probs = quantiles)
   q_r <- numeric(length = length(quantiles))
   q_n <- numeric(length = length(quantiles))
   for (i in 1:length(quantiles)) {
     # Correlate
-    gene_in_quantile <- mean_bulk_expression <= q_cutoffs[i]
+    gene_in_quantile <- bulk_cells_cpm_mean <= q_cutoffs[i]
     q_n[i] <- sum(gene_in_quantile)
-    q_r[i] <- cor(mean_single_expression[gene_in_quantile],
-                  mean_bulk_expression[gene_in_quantile])
+    q_r[i] <- cor(single_cells_sum_cpm[gene_in_quantile],
+                  bulk_cells_cpm_mean[gene_in_quantile])
     # Output
     cat(sprintf("%d\t%d\t%f\t%f\t%d\n", num_cells, seed, quantiles[i], q_r[i], q_n[i]))
     # Remove genes already analyzed
-    mean_single_expression <- mean_single_expression[!gene_in_quantile]
-    mean_bulk_expression <- mean_bulk_expression[!gene_in_quantile]
+    single_cells_sum_cpm <- single_cells_sum_cpm[!gene_in_quantile]
+    bulk_cells_cpm_mean <- bulk_cells_cpm_mean[!gene_in_quantile]
   }
+}
+
+# Converts a sample-by-gene data frame to a filtered gene-by-sample matrix.
+#
+# x - sample-by-gene data frame
+# individual - character vector of individuals to keep, e.g. NA19098
+# good_cells_list - A character vector with the names of good quality cells to maintain
+# keep_genes_list - A character vector with the names of genes to maintain
+#
+prepare_counts <- function(x, individual = NULL, replicate = NULL,
+                           good_cells_list = NULL, keep_genes_list = NULL) {
+  library("testit")
+  assert("Input is a data frame", class(x) == "data.frame")
+  assert("Input is not empty", dim(x) > 0)
+  assert("Input has necessary columns",
+         c("individual", "replicate", "well") %in% colnames(x))
+  # Filter by individual
+  if (!is.null(individual)) {
+    x <- x[x$individual == individual, ]
+  }
+  # Filter by replicate
+  if (!is.null(replicate)) {
+    x <- x[x$replicate == replicate, ]
+  }
+  # Add rownames
+  rownames(x) <- paste(x$individual, x$replicate, x$well, sep = ".")
+  # Remove meta-info cols
+  x <- x[, grepl("ENSG", colnames(x)) | grepl("ERCC", colnames(x)), drop = FALSE]
+  # Transpose
+  x <- t(x)
+  # Fix ERCC names
+  rownames(x) <- sub(pattern = "\\.", replacement = "-", rownames(x))
+  # Filter genes
+  if (!is.null(keep_genes_list)) {
+    x <- x[rownames(x) %in% keep_genes_list, , drop = FALSE]
+  }
+  # Keep only good quality cells
+  if (!is.null(good_cells_list)) {
+    x <- x[, colnames(x) %in% good_cells_list]
+    assert("There are quality cells to perform the analysis.",
+           ncol(x) > 0)
+  }
+  assert("Output is a matrix", class(x) == "matrix")
+  return(x)
 }
 
 if (!interactive() & getOption('run.main', default = TRUE)) {
@@ -130,15 +173,19 @@ if (!interactive() & getOption('run.main', default = TRUE)) {
        single_fname = opts$single,
        bulk_fname = opts$bulk,
        individual = opts$individual,
+       replicate = opts$replicate,
        good_cells = opts$good_cells,
+       keep_genes = opts$keep_genes,
        quantiles = as.numeric(opts$quantiles))
 } else if (interactive() & getOption('run.main', default = TRUE)) {
   # what to do if interactively testing
   main(num_cells = 20,
        seed = 1,
-       single_fname = "/mnt/gluster/data/internal_supp/singleCellSeq/subsampled/molecule-counts-200000.txt",
-       bulk_fname = "~/singleCellSeq/data/reads.txt",
-       individual = "19098",
+       single_fname = "/mnt/gluster/home/jdblischak/ssd/subsampled/counts-matrix/250000-molecules-raw-single-per-sample.txt",
+       bulk_fname = "../data/reads-raw-bulk-per-sample.txt",
+       individual = "NA19098",
+       replicate = "r1",
        good_cells = "../data/quality-single-cells.txt",
+       keep_genes = "../data/genes-pass-filter.txt",
        quantiles = c(.25, .5, .75))
 }

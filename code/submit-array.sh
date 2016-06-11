@@ -35,4 +35,4 @@ then
 else
   echo -e \"failure\t\$F\"
 fi
-" | qsub -l h_vmem=$MEM -V -j y -N $NAME -o ~/log/$NAME -cwd -t 1-$numfiles
+" | qsub -l h_vmem=$MEM -V -j y -N $NAME -o ~/log/$NAME -cwd -t 1-$numfiles -l 'hostname=!(bigmem01|bigmem02|bigmem03|bigmem04)'
