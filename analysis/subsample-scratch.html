@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+
+
+<title></title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+
+<div id="TOC">
+<ul>
+<li><a href="#setup">Setup</a></li>
+<li><a href="#endogenous-pearson-na19098">Endogenous Pearson NA19098</a></li>
+<li><a href="#endogenous-pearson-na19101">Endogenous Pearson NA19101</a></li>
+<li><a href="#endogenous-pearson-na19239">Endogenous Pearson NA19239</a></li>
+<li><a href="#ercc-pearson-na19098">ERCC Pearson NA19098</a></li>
+<li><a href="#ercc-pearson-na19101">ERCC Pearson NA19101</a></li>
+<li><a href="#ercc-pearson-na19239">ERCC Pearson NA19239</a></li>
+<li><a href="#endogenous-spearman-na19098">Endogenous Spearman NA19098</a></li>
+<li><a href="#endogenous-spearman-na19101">Endogenous Spearman NA19101</a></li>
+<li><a href="#endogenous-spearman-na19239">Endogenous Spearman NA19239</a></li>
+<li><a href="#ercc-spearman-na19098">ERCC Spearman NA19098</a></li>
+<li><a href="#ercc-spearman-na19101">ERCC Spearman NA19101</a></li>
+<li><a href="#ercc-spearman-na19239">ERCC Spearman NA19239</a></li>
+<li><a href="#available-cells">Available cells</a></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2016-06-11</p>
+<p><strong>Code version:</strong> 0242e47aaea33879b60143338a1f1f3232683dc6</p>
+<p>At lower number of sampled cells, reads appear to perform better with lower sequencing. On the other hand, the molecules look as expected, higher sequencing depth leads to increased or similar performance. This is observed both for endogenous and ERCC genes. Maybe there is less bias with fewer reads? I re-did this analysis with more extreme differences in sequencing depth, from a low of 50,000 to a high of 4 million.</p>
+<p>The key is separating the low and high expressed genes. The reads do a poor job of capturing the lowly expressed genes, so with more sequencing, this relationship gets less linear. This is why Spearman correlation works better for the reads. The molecules are less affected because they remove the amplification bias of the highly expressed genes.</p>
+<div id="setup" class="section level2">
+<h2>Setup</h2>
+<p>I haven’t correctly formatted the output for when there are not enough cells to be subsampled, so I removed these.</p>
+<pre><code>$ cat subsampling-results.txt | awk &#39;$17 &gt;= 0&#39; &gt; subsampling-results9.txt</code></pre>
+<pre class="r"><code>library(&quot;knitr&quot;)
+opts_chunk$set(fig.width = 8, fig.height = 8, fig.pos = &quot;center&quot;)
+library(&quot;dplyr&quot;)
+library(&quot;ggplot2&quot;)
+theme_set(theme_bw())</code></pre>
+<pre class="r"><code>d &lt;- read.table(&quot;/mnt/gluster/home/jdblischak/ssd/subsampled/subsampling-results9.txt&quot;,
+                header = TRUE, sep = &quot;\t&quot;, stringsAsFactors = FALSE)
+head(d)</code></pre>
+<pre><code>##    type depth gene_subset seed subsampled_cells individual replicate
+## 1 reads 50000         all    1                5    NA19098        NA
+## 2 reads 50000         all    1                5    NA19101        NA
+## 3 reads 50000         all    1                5    NA19239        NA
+## 4 reads 50000         all    2                5    NA19098        NA
+## 5 reads 50000         all    2                5    NA19101        NA
+## 6 reads 50000         all    2                5    NA19239        NA
+##   lower_q upper_q available_ensg used_ensg available_ercc used_ercc
+## 1       0       1          12192     12192             43        43
+## 2       0       1          12192     12192             43        43
+## 3       0       1          12192     12192             43        43
+## 4       0       1          12192     12192             43        43
+## 5       0       1          12192     12192             43        43
+## 6       0       1          12192     12192             43        43
+##   potential_cells available_cells pearson_ensg pearson_ercc spearman_ensg
+## 1             142             142      0.77372      0.89264       0.77204
+## 2             201             201      0.78894      0.93821       0.78813
+## 3             221             221      0.79517      0.88738       0.79944
+## 4             142             142      0.79803      0.87317       0.80282
+## 5             201             201      0.79057      0.92739       0.79274
+## 6             221             221      0.80337      0.92590       0.80882
+##   spearman_ercc detected_ensg detected_ercc mean_counts_ensg
+## 1       0.85401          7972            29          22471.4
+## 2       0.90245          8342            28          23950.0
+## 3       0.83461          8445            26          24029.4
+## 4       0.85869          8402            30          22983.8
+## 5       0.89337          8359            29          23149.4
+## 6       0.87887          8253            26          24063.6
+##   mean_counts_ercc var_pearson var_spearman
+## 1            568.8     0.80393      0.76168
+## 2            478.8     0.80016      0.76394
+## 3            344.8     0.81700      0.77808
+## 4            356.0     0.82731      0.78670
+## 5            453.2     0.81677      0.77771
+## 6            387.4     0.82407      0.78949</code></pre>
+<pre class="r"><code>summary(d)</code></pre>
+<pre><code>##      type               depth         gene_subset             seed       
+##  Length:6236        Min.   :  50000   Length:6236        Min.   : 1.000  
+##  Class :character   1st Qu.: 250000   Class :character   1st Qu.: 3.000  
+##  Mode  :character   Median : 500000   Mode  :character   Median : 5.000  
+##                     Mean   :1234413                      Mean   : 5.497  
+##                     3rd Qu.:1500000                      3rd Qu.: 8.000  
+##                     Max.   :4000000                      Max.   :10.000  
+##  subsampled_cells  individual        replicate         lower_q      
+##  Min.   :  5.00   Length:6236        Mode:logical   Min.   :0.0000  
+##  1st Qu.: 10.00   Class :character   NA&#39;s:6236      1st Qu.:0.0000  
+##  Median : 25.00   Mode  :character                  Median :0.0000  
+##  Mean   : 42.81                                     Mean   :0.1668  
+##  3rd Qu.: 75.00                                     3rd Qu.:0.5000  
+##  Max.   :125.00                                     Max.   :0.5000  
+##     upper_q       available_ensg    used_ensg     available_ercc
+##  Min.   :0.5000   Min.   :12192   Min.   : 6096   Min.   :43    
+##  1st Qu.:0.5000   1st Qu.:12192   1st Qu.: 6097   1st Qu.:43    
+##  Median :1.0000   Median :12192   Median : 6097   Median :43    
+##  Mean   :0.8335   Mean   :12192   Mean   : 8130   Mean   :43    
+##  3rd Qu.:1.0000   3rd Qu.:12192   3rd Qu.:12192   3rd Qu.:43    
+##  Max.   :1.0000   Max.   :12192   Max.   :12192   Max.   :43    
+##    used_ercc  potential_cells available_cells  pearson_ensg   
+##  Min.   :22   Min.   :142.0   Min.   :112     Min.   :0.3264  
+##  1st Qu.:22   1st Qu.:142.0   1st Qu.:142     1st Qu.:0.7631  
+##  Median :22   Median :201.0   Median :201     Median :0.8497  
+##  Mean   :29   Mean   :188.4   Mean   :182     Mean   :0.8091  
+##  3rd Qu.:43   3rd Qu.:221.0   3rd Qu.:221     3rd Qu.:0.8894  
+##  Max.   :43   Max.   :221.0   Max.   :221     Max.   :0.9466  
+##   pearson_ercc     spearman_ensg    spearman_ercc    detected_ensg  
+##  Min.   :0.03195   Min.   :0.3563   Min.   :0.1429   Min.   : 2216  
+##  1st Qu.:0.78142   1st Qu.:0.7823   1st Qu.:0.8333   1st Qu.: 6003  
+##  Median :0.95352   Median :0.8279   Median :0.9579   Median : 6096  
+##  Mean   :0.86309   Mean   :0.8154   Mean   :0.8816   Mean   : 7659  
+##  3rd Qu.:0.97999   3rd Qu.:0.8908   3rd Qu.:0.9752   3rd Qu.:11141  
+##  Max.   :0.99466   Max.   :0.9479   Max.   :0.9921   Max.   :12190  
+##  detected_ercc   mean_counts_ensg  mean_counts_ercc   var_pearson    
+##  Min.   : 3.00   Min.   :    664   Min.   :    0.6   Min.   :0.3774  
+##  1st Qu.:22.00   1st Qu.:  12439   1st Qu.:   46.6   1st Qu.:0.7660  
+##  Median :22.00   Median :  28784   Median :  438.8   Median :0.8906  
+##  Mean   :27.05   Mean   : 203773   Mean   : 3387.5   Mean   :0.8466  
+##  3rd Qu.:38.00   3rd Qu.: 112088   3rd Qu.: 1873.2   3rd Qu.:0.9457  
+##  Max.   :43.00   Max.   :2024301   Max.   :39582.3   Max.   :0.9973  
+##   var_spearman   
+##  Min.   :0.4141  
+##  1st Qu.:0.7947  
+##  Median :0.8829  
+##  Mean   :0.8542  
+##  3rd Qu.:0.9382  
+##  Max.   :0.9964</code></pre>
+<pre class="r"><code>d_grouped &lt;- d %&gt;%
+  group_by(type, depth, gene_subset, subsampled_cells,
+           individual, potential_cells, available_cells,
+           lower_q, upper_q, available_ensg, used_ensg,
+           available_ercc, used_ercc) %&gt;%
+  summarize(mean_pearson_ensg = mean(pearson_ensg),
+            sem_pearson_ensg = sd(pearson_ensg) / sqrt(length(pearson_ensg)),
+            mean_pearson_ercc = mean(pearson_ercc),
+            sem_pearson_ercc = sd(pearson_ercc) / sqrt(length(pearson_ercc)),
+            mean_spearman_ensg = mean(spearman_ensg),
+            sem_spearman_ensg = sd(spearman_ensg) / sqrt(length(spearman_ensg)),
+            mean_spearman_ercc = mean(spearman_ercc),
+            sem_spearman_ercc = sd(spearman_ercc) / sqrt(length(spearman_ercc)))
+head(d_grouped)</code></pre>
+<pre><code>## Source: local data frame [6 x 21]
+## Groups: type, depth, gene_subset, subsampled_cells, individual, potential_cells, available_cells, lower_q, upper_q, available_ensg, used_ensg, available_ercc
+## 
+##        type depth gene_subset subsampled_cells individual potential_cells
+## 1 molecules 50000         all                5    NA19098             142
+## 2 molecules 50000         all                5    NA19101             201
+## 3 molecules 50000         all                5    NA19239             221
+## 4 molecules 50000         all               10    NA19098             142
+## 5 molecules 50000         all               10    NA19101             201
+## 6 molecules 50000         all               10    NA19239             221
+## Variables not shown: available_cells (int), lower_q (dbl), upper_q (dbl),
+##   available_ensg (int), used_ensg (int), available_ercc (int), used_ercc
+##   (int), mean_pearson_ensg (dbl), sem_pearson_ensg (dbl),
+##   mean_pearson_ercc (dbl), sem_pearson_ercc (dbl), mean_spearman_ensg
+##   (dbl), sem_spearman_ensg (dbl), mean_spearman_ercc (dbl),
+##   sem_spearman_ercc (dbl)</code></pre>
+<pre class="r"><code>dim(d_grouped)</code></pre>
+<pre><code>## [1] 624  21</code></pre>
+</div>
+<div id="endogenous-pearson-na19098" class="section level2">
+<h2>Endogenous Pearson NA19098</h2>
+<pre class="r"><code>ensg_pearson_plot &lt;- ggplot(d_grouped[d_grouped$individual == &quot;NA19098&quot;, ],
+                 aes(x = subsampled_cells, y = mean_pearson_ensg,
+                     color = as.factor(depth))) +
+  geom_line() +
+  geom_errorbar(aes(ymin = mean_pearson_ensg - sem_pearson_ensg,
+                    ymax = mean_pearson_ensg + sem_pearson_ensg),
+                width = 1) +
+  facet_grid(gene_subset~type) +
+  scale_color_brewer(type = &quot;sequential&quot;, palette = &quot;GnBu&quot;)
+ensg_pearson_plot</code></pre>
+<p><img src="subsample-scratch_files/figure-html/unnamed-chunk-3-1.png" title="" alt="" width="768" /></p>
+</div>
+<div id="endogenous-pearson-na19101" class="section level2">
+<h2>Endogenous Pearson NA19101</h2>
+<pre class="r"><code>ensg_pearson_plot %+% d_grouped[d_grouped$individual == &quot;NA19101&quot;, ]</code></pre>
+<p><img src="subsample-scratch_files/figure-html/unnamed-chunk-4-1.png" title="" alt="" width="768" /></p>
+<pre class="r"><code>ensg_pearson_plot %+% d_grouped[d_grouped$individual == &quot;NA19101&quot; &amp;
+                                d_grouped$depth %in% c(50000, 250000, 1500000), ]</code></pre>
+<p><img src="subsample-scratch_files/figure-html/unnamed-chunk-4-2.png" title="" alt="" width="768" /></p>
+</div>
+<div id="endogenous-pearson-na19239" class="section level2">
+<h2>Endogenous Pearson NA19239</h2>
+<pre class="r"><code>ensg_pearson_plot %+% d_grouped[d_grouped$individual == &quot;NA19239&quot;, ]</code></pre>
+<p><img src="subsample-scratch_files/figure-html/unnamed-chunk-5-1.png" title="" alt="" width="768" /></p>
+</div>
+<div id="ercc-pearson-na19098" class="section level2">
+<h2>ERCC Pearson NA19098</h2>
+<pre class="r"><code>ercc_pearson_plot &lt;- ggplot(d_grouped[d_grouped$individual == &quot;NA19098&quot;, ],
+                 aes(x = subsampled_cells, y = mean_pearson_ercc,
+                     color = as.factor(depth))) +
+  geom_line() +
+  geom_errorbar(aes(ymin = mean_pearson_ercc - sem_pearson_ercc,
+                    ymax = mean_pearson_ercc + sem_pearson_ercc),
+                width = 1) +
+  facet_grid(gene_subset~type)
+ercc_pearson_plot</code></pre>
+<p><img src="subsample-scratch_files/figure-html/unnamed-chunk-6-1.png" title="" alt="" width="768" /></p>
+</div>
+<div id="ercc-pearson-na19101" class="section level2">
+<h2>ERCC Pearson NA19101</h2>
+<pre class="r"><code>ercc_pearson_plot %+% d_grouped[d_grouped$individual == &quot;NA19101&quot;, ]</code></pre>
+<p><img src="subsample-scratch_files/figure-html/unnamed-chunk-7-1.png" title="" alt="" width="768" /></p>
+<pre class="r"><code>ercc_pearson_plot %+% d_grouped[d_grouped$individual == &quot;NA19101&quot; &amp;
+                                d_grouped$depth %in% c(50000, 250000), ]</code></pre>
+<p><img src="subsample-scratch_files/figure-html/unnamed-chunk-7-2.png" title="" alt="" width="768" /></p>
+</div>
+<div id="ercc-pearson-na19239" class="section level2">
+<h2>ERCC Pearson NA19239</h2>
+<pre class="r"><code>ercc_pearson_plot %+% d_grouped[d_grouped$individual == &quot;NA19239&quot;, ]</code></pre>
+<p><img src="subsample-scratch_files/figure-html/unnamed-chunk-8-1.png" title="" alt="" width="768" /></p>
+<hr />
+</div>
+<div id="endogenous-spearman-na19098" class="section level2">
+<h2>Endogenous Spearman NA19098</h2>
+<pre class="r"><code>ensg_spearman_plot &lt;- ggplot(d_grouped[d_grouped$individual == &quot;NA19098&quot;, ],
+                 aes(x = subsampled_cells, y = mean_spearman_ensg,
+                     color = as.factor(depth))) +
+  geom_line() +
+  geom_errorbar(aes(ymin = mean_spearman_ensg - sem_spearman_ensg,
+                    ymax = mean_spearman_ensg + sem_spearman_ensg),
+                width = 1) +
+  facet_grid(gene_subset~type)
+ensg_spearman_plot</code></pre>
+<p><img src="subsample-scratch_files/figure-html/unnamed-chunk-9-1.png" title="" alt="" width="768" /></p>
+</div>
+<div id="endogenous-spearman-na19101" class="section level2">
+<h2>Endogenous Spearman NA19101</h2>
+<pre class="r"><code>ensg_spearman_plot %+% d_grouped[d_grouped$individual == &quot;NA19101&quot;, ]</code></pre>
+<p><img src="subsample-scratch_files/figure-html/unnamed-chunk-10-1.png" title="" alt="" width="768" /></p>
+<pre class="r"><code>ensg_spearman_plot %+% d_grouped[d_grouped$individual == &quot;NA19101&quot; &amp;
+                                 d_grouped$depth %in% c(50000, 4000000), ]</code></pre>
+<p><img src="subsample-scratch_files/figure-html/unnamed-chunk-10-2.png" title="" alt="" width="768" /></p>
+</div>
+<div id="endogenous-spearman-na19239" class="section level2">
+<h2>Endogenous Spearman NA19239</h2>
+<pre class="r"><code>ensg_spearman_plot %+% d_grouped[d_grouped$individual == &quot;NA19239&quot;, ]</code></pre>
+<p><img src="subsample-scratch_files/figure-html/unnamed-chunk-11-1.png" title="" alt="" width="768" /></p>
+</div>
+<div id="ercc-spearman-na19098" class="section level2">
+<h2>ERCC Spearman NA19098</h2>
+<pre class="r"><code>ercc_spearman_plot &lt;- ggplot(d_grouped[d_grouped$individual == &quot;NA19098&quot;, ],
+                 aes(x = subsampled_cells, y = mean_spearman_ercc,
+                     color = as.factor(depth))) +
+  geom_line() +
+  geom_errorbar(aes(ymin = mean_spearman_ercc - sem_spearman_ercc,
+                    ymax = mean_spearman_ercc + sem_spearman_ercc),
+                width = 1) +
+  facet_grid(gene_subset~type)
+ercc_spearman_plot</code></pre>
+<p><img src="subsample-scratch_files/figure-html/unnamed-chunk-12-1.png" title="" alt="" width="768" /></p>
+</div>
+<div id="ercc-spearman-na19101" class="section level2">
+<h2>ERCC Spearman NA19101</h2>
+<pre class="r"><code>ercc_spearman_plot %+% d_grouped[d_grouped$individual == &quot;NA19101&quot;, ]</code></pre>
+<p><img src="subsample-scratch_files/figure-html/unnamed-chunk-13-1.png" title="" alt="" width="768" /></p>
+<pre class="r"><code>ercc_spearman_plot %+% d_grouped[d_grouped$individual == &quot;NA19101&quot; &amp;
+                                 d_grouped$depth %in% c(50000, 4000000), ]</code></pre>
+<p><img src="subsample-scratch_files/figure-html/unnamed-chunk-13-2.png" title="" alt="" width="768" /></p>
+</div>
+<div id="ercc-spearman-na19239" class="section level2">
+<h2>ERCC Spearman NA19239</h2>
+<pre class="r"><code>ercc_spearman_plot %+% d_grouped[d_grouped$individual == &quot;NA19239&quot;, ]</code></pre>
+<p><img src="subsample-scratch_files/figure-html/unnamed-chunk-14-1.png" title="" alt="" width="768" /></p>
+</div>
+<div id="available-cells" class="section level2">
+<h2>Available cells</h2>
+<p>Available cells - don’t change up to 1.5 million reads, and then drop off at 4 million reads.</p>
+<pre class="r"><code>ggplot(d_grouped, aes(x = potential_cells, y = available_cells,
+                      color = as.factor(depth))) +
+  geom_point() +
+  facet_wrap(~individual)</code></pre>
+<p><img src="subsample-scratch_files/figure-html/unnamed-chunk-15-1.png" title="" alt="" width="768" /></p>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>## R version 3.2.0 (2015-04-16)
+## Platform: x86_64-unknown-linux-gnu (64-bit)
+## 
+## locale:
+##  [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+##  [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+##  [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+##  [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+##  [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+## [11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+## 
+## attached base packages:
+## [1] stats     graphics  grDevices utils     datasets  methods   base     
+## 
+## other attached packages:
+## [1] ggplot2_1.0.1 dplyr_0.4.2   knitr_1.10.5 
+## 
+## loaded via a namespace (and not attached):
+##  [1] Rcpp_0.12.4        magrittr_1.5       MASS_7.3-40       
+##  [4] munsell_0.4.3      colorspace_1.2-6   R6_2.1.1          
+##  [7] stringr_1.0.0      httr_0.6.1         plyr_1.8.3        
+## [10] tools_3.2.0        parallel_3.2.0     grid_3.2.0        
+## [13] gtable_0.1.2       DBI_0.3.1          htmltools_0.2.6   
+## [16] lazyeval_0.1.10    yaml_2.1.13        assertthat_0.1    
+## [19] digest_0.6.8       RColorBrewer_1.1-2 reshape2_1.4.1    
+## [22] formatR_1.2        bitops_1.0-6       RCurl_1.95-4.6    
+## [25] evaluate_0.7       rmarkdown_0.6.1    labeling_0.3      
+## [28] stringi_1.0-1      scales_0.4.0       proto_0.3-10</code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>
