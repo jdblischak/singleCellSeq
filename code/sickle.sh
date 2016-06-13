@@ -22,4 +22,4 @@ fi
 # Run sickle only cutting from the 3' end
 sickle se -f <(zcat $FILE) -t sanger -o $OUTDIR/$BASE.sickle.fastq.gz -x -g
 
-zcat $OUTDIR/$BASE.sickle.fastq.gz | grep "@" | wc -l > $OUTDIR/$BASE.sickle.count.txt
+bioawk -c fastx 'END{print NR}' $OUTDIR/$BASE.sickle.fastq.gz > $OUTDIR/$BASE.sickle.count.txt
