@@ -11,7 +11,7 @@ source("chunk-options-paper.R")
 We collected single cell RNA-seq (scRNA-seq) data from three YRI iPSC lines using the Fluidigm C1 microfluidic system followed by sequencing. 
 We added ERCC spike-in controls to each sample, and used 5-bp random sequence UMIs to allow for the direct quantification of mRNA molecule numbers. 
 For each of the YRI lines, we performed three independent C1 collections.
-This study design (Figure `r fig_main_qc`A) allows us to estimate error and variability associated with the technical processing of the samples, independently from the biological variation between individuals.  
+This study design (Figure `r fig_main_qc`A) allows us to estimate error and variability associated with the technical processing of the samples, independently from the biological variation across single cells of different individuals.  
 
 The three C1 replicates of each individual were collected on different dates using cell cultures of different passage numbers (`r table_supp_collection`A). 
 Each replicate of C1 collection was accompanied by procesing of a matching bulk sample using the same reagents. 
@@ -19,7 +19,7 @@ This property of the study design allowed us to globally characterize the regula
 
 In what follows, we describe data as originating from different samples when we refer to data from distinct wells of each C1 collection. 
 Generally, data from each sample correspond to data from a single cell. 
-In turn, we describe data as originating from different replicates when we refer to all samples from a given C1 collection, and from different individuals when we refer to data from all replicates of a given genetically distinct iPSC line.
+In turn, we describe data as originating from different replicates when we refer to all samples from a given C1 collection, and from different individuals when we refer to data from all samples and replicates of a given genetically distinct iPSC line.
 
 ```{r calculate-seq-depth}
 library("dplyr")
@@ -38,20 +38,20 @@ We obtained an average of `r round(depth_stats$mean / 10^6, digits = 1)` +/-
 `r round(depth_stats$sd / 10^6, digits = 1)` million sequencing reads per sample
 (range `r round(depth_stats$min / 10^6, digits = 1)`-`r round(depth_stats$max / 10^6, digits = 1)` million reads).
 We processed the sequencing reads using a standard alignment approach (see Methods). 
-Given the low abundance of mRNA content and the high vulnerability of single cells and the low amount of starting material, scRNA-seq can be highly affected by various technical artifacts arising from cell isolation, mRNA capture efficiency, library preparation, and sequencing.
+Given the low abundance of mRNA content, the high vulnerability of single cells and the low amount of starting material, scRNA-seq can be highly affected by various technical artifacts arising from cell isolation, mRNA capture efficiency, library preparation, and sequencing.
 We thus performed multiple quality control analyses.
 
 As a first step, we estimated the proportion of ERCC spike-in reads from each sample. 
-We found that, across samples, sequencing reads from the second replicate of individual NA19098 include unusually high ERCC content compared to all other samples and replicates (Figure `r fig_supp_qc`A and `r fig_supp_qc`B). 
+We found that, across samples, sequencing reads from practically all samples of the second replicate of individual NA19098 include unusually high ERCC content compared to all other samples and replicates (Figure `r fig_supp_qc`A and `r fig_supp_qc`B). 
 We concluded that a pipetting error led to excess ERCC content in this replicate and we excluded the data from all samples of this replicate in subsequent analyses.
 With the exception of the excluded samples, data from all other replicates seem to have similar global properties (using general metrics; Figure `r fig_main_qc`C-E and Figure `r fig_supp_qc`C-F). 
 
 We proceeded by focusing on the assumption that data from each sample correspond to data from a single cell. 
-Before the processing of the single cell samples, we performed visual inspection on the C1 microfluidic plates. 
+After the cell sorting was complete, but before the processing of the samples, we performed visual inspection on the C1 microfluidic plates. 
 Based on that visual inspection, we have flagged sequencing data from 21 samples that did not contain any cell, and 54 samples that contained more than one cell (across all batches). 
 Visual inspection of the C1 microfluidic plate is an important quality control step, but it is not infallible. 
 We therefore filtered data from the remaining samples based on the number of total mapped reads, the percentage of unmapped reads, the percentage of ERCC spike-in reads, and the number of genes detected (Figure `r fig_main_qc`B-E).
-We chose data-driven inclusion cutoffs for each metric, based on the 95th percentile of the distribution for the 21 libraries that were amplified from samples that did not include a cell based on visual inspection (Figure `r fig_supp_qc`C-F). 
+We chose data-driven inclusion cutoffs for each metric, based on the 95th percentile of the respective distributions for the 21 libraries that were amplified from samples that did not include a cell based on visual inspection (Figure `r fig_supp_qc`C-F). 
 Using this approach, we identified and removed data from 15 additional samples that were classified as originating from a single cell based on visual inspection, but whose data were more consistent with a multiple-cell origin based on the number of total molecules, the concentration of cDNA amplicons, and the read-to-molecule conversion efficiency (defined as the number of total molecules divided by the number of total reads; Figure `r fig_supp_lda`). 
 At the conclusion of these quality control analyses and exclusion steps, we retained data from `r nrow(anno_filter)` high quality samples, which correspond, with reasonable confidence, to `r nrow(anno_filter)` single cells, across eight replicates from three individuals (`r table_qualitycell`).
 
@@ -85,14 +85,11 @@ d_filter <- d_grouped %>% filter(individual == "NA19239",
 ```
 
 
-Beyond quality control of the samples, we also investigated the effect of sequencing depth and the number of single cells collected.
-To this end, we conducted a systematic subsampling to assess the correlation of the single cell gene expression estimates to the bulk samples, the number of genes detected, and the correlation of the cell-to-cell gene expression level variance estimates in the subsampled single cells to the full single cell data set (Figure `r fig_main_subsample`).
-We observed quickly diminishing improvement in all three of these metrics with increasing sequencing depth and number of cells collected, especially for the highly expressed genes.
-For example, a per cell sequencing depth of 1.5 million reads (which corresponds to ~50,000 molecules) for 75 single cells is sufficient to quantify even the lower 50% of expressed genes.
-At this level of subsampling for individual NA19239,
-the sum of the single cell gene expression levels correlates with the bulk sample gene expression levels with a mean Pearson coefficient of `r round(d_filter$mean_bulk, digits = 2)` (Figure `r fig_main_subsample`A),
-a mean of `r d_filter$mean_detected ` genes out of `r d_filter$used_ensg` expressed genes are detected (Figure `r fig_main_subsample`B),
-and the cell-to-cell gene expression level variance estimates of the subsampled single cells correlates with the variance estimates from the full data set with a mean Pearson coefficient of `r round(d_filter$mean_var, digits = 2)` (Figure `r fig_main_subsample`C).
+Beyond quality control of the samples, we also investigated the effect of sequencing depth and the number of single cells collected on multiple properties of the data.
+To this end, we repeatedly subsampled samples and sequencing reads to assess the correlation of the single cell gene expression estimates to the bulk samples, the number of genes detected, and the correlation of the cell-to-cell gene expression level variance estimates between the subsampled data and the full single cell data set (Figure `r fig_main_subsample`).
+We observed quickly diminishing improvement in all three of these properties with increasing sequencing depth and the number of sampled cells, especially for highly expressed genes.
+For example, a sequencing depth of 1.5 million reads (which corresponds to ~50,000 molecules) from each of 75 single cells, is sufficient for effectively measuring even the lower 50% of expressed genes.
+We are able to detect a mean of `r d_filter$mean_detected ` genes out of `r d_filter$used_ensg` expressed in the bulk samples (the bottom 50%; Figure `r fig_main_subsample`B); the estimated single cell expression levels of these genes correlate with the bulk sample gene expression levels with a mean Pearson coefficient of  `r round(d_filter$mean_bulk, digits = 2)` (Figure `r fig_main_subsample`A), and the estimated cell-to-cell variation in gene expression levels based on 75 samples is correlated with the variation estimated from the full data set with a mean Pearson coefficient of `r round(d_filter$mean_var, digits = 2)` (Figure `r fig_main_subsample`C).
 
 ### Is there a need to standardize molecule-counts?  
 Standard analysis of single cell gene expression data often relies on the implicit assumption that molecule-count data, collected by using single cell UMI-based approaches, can be thought of as an absolute estimate of the total number of RNA molecules in the cell [@Islam2014; @Grun2014]. 
