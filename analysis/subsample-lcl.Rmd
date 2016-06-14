@@ -20,30 +20,30 @@ Lanes 5-8 each contained just one single cell.
 These are highly oversequenced and will be used to assess saturation.
 
 ```bash
-cd $ssd/lcl
-mkdir -p full-lane/bam-combined
+cd /mnt/gluster/home/jdblischak/ssd/lcl
+mkdir -p subsampled/bam-combined
 mkdir -p ~/log/subsample-bam.py
 for WELL in A9E1 B2E2 B4H1 D2H2
 do
   FILE=bam-combined/19239.1.$WELL.trim.sickle.sorted.combined.bam
-  for NUM in 200000 1000000 10000000 20000000 30000000 40000000 50000000
+  for NUM in 1000000 10000000 20000000 30000000 40000000 50000000 60000000 70000000 80000000
   do
-    echo "subsample-bam.py 12345 $NUM full-lane/bam-combined $FILE" | qsub -l h_vmem=8g -V -cwd -N sub.$WELL.$NUM -j y -o ~/log/subsample-bam.py
+    echo "subsample-bam.py 12345 $NUM subsampled/bam-combined $FILE" | qsub -l h_vmem=8g -V -cwd -N sub.$WELL.$NUM -j y -o ~/log/subsample-bam.py
   done
 done
 ```
 
 ```bash
-ls full-lane/bam-combined/*bam | wc -l
+ls subsampled/bam-combined/*bam | wc -l
 cat ~/log/subsample-bam.py/* | grep success | wc -l
 cat ~/log/subsample-bam.py/* | grep failure | wc -l
 ```
 
-Switch to directory `full-lane`.
+Switch to directory `subsampled`.
 Symlink `exons.saf`.
 
 ```bash
-cd full-lane
+cd subsampled
 mkdir genome
 ln -s /mnt/lustre/home/jdblischak/singleCellSeq/data/exons.saf genome/exons.saf
 ```
@@ -51,7 +51,7 @@ ln -s /mnt/lustre/home/jdblischak/singleCellSeq/data/exons.saf genome/exons.saf
 Remove duplicate UMIs.
 
 ```bash
-submit-array.sh rmdup-umi.sh 2g bam-combined/*bam
+submit-array.sh rmdup-umi.sh 12g bam-combined/*bam
 ```
 
 ```bash
@@ -63,7 +63,7 @@ grep -w failure ~/log/rmdup-umi.sh/* | wc -l
 Count reads per gene.
 
 ```bash
-submit-array.sh count-reads-per-gene.sh 2g bam-combined/*bam bam-rmdup-umi/*bam
+submit-array.sh count-reads-per-gene.sh 12g bam-combined/*bam bam-rmdup-umi/*bam
 ```
 
 ```bash
@@ -72,126 +72,28 @@ grep -w success ~/log/count-reads-per-gene.sh/* | wc -l
 grep -w failure ~/log/count-reads-per-gene.sh/* | wc -l
 ```
 
-Gather the gene counts.
+Remove the `*.featureCounts` files created by the `-R` flag.
+These report the assignment of each read, which is only useful for detailed diagnostics.
+Because each file is data from a whole lane, these files are large.
 
 ```bash
-mkdir -p ~/log/gather-gene-counts.py
-for NUM in 200000 1000000 10000000 20000000 30000000 40000000 50000000
-do
-  echo "gather-gene-counts.py counts/*.$NUM.genecounts.txt > read-counts-$NUM.txt" | qsub -l h_vmem=8g -cwd -V -j y -o ~/log/gather-gene-counts.py -N read-counts-$NUM
-  echo "gather-gene-counts.py counts/*.$NUM.rmdup.genecounts.txt > molecule-counts-$NUM.txt" | qsub -l h_vmem=8g -cwd -V -j y -o ~/log/gather-gene-counts.py -N molecule-counts-$NUM
-done
-```
-
-```bash
-# There should be no output
-cat ~/log/gather-gene-counts.py/*
-```
-
-## Mutliplexed samples
-
-Lanes 1-4 each contained 24 single cells.
-These multiplexed cells will be used to compare to the iPSC results.
-
-```bash
-cd $ssd/lcl
-mkdir -p multiplexed/bam-combined
-mkdir -p ~/log/subsample-bam.py
-for ROW in {A..H}
-do
-  for COL in {1..12}
-  do
-    WELL=`printf "%s%02d\n" $ROW $COL`
-    FILE=bam-combined/19239.1.$WELL.trim.sickle.sorted.combined.bam
-    for NUM in 250000 500000 1000000 2000000 3000000 4000000
-    do
-      echo "subsample-bam.py 12345 $NUM multiplexed/bam-combined $FILE" | qsub -l h_vmem=2g -V -cwd -N sub.$WELL.$NUM -j y -o ~/log/subsample-bam.py
-    done
-  done
-done
-```
-
-```bash
-ls multiplexed/bam-combined/*bam | wc -l
-cat ~/log/subsample-bam.py/* | grep success | wc -l
-cat ~/log/subsample-bam.py/* | grep failure | wc -l
-# Many fail because they do not have sufficient reads for the subsampling
-cat ~/log/subsample-bam.py/* | grep failure | grep -v less | wc -l
-# Some failed for IO reasons (couldn't find target directory)
-grep -LE "success|failure" ~/log/subsample-bam.py/* | xargs cat
-```
-
-Re-run the failed jobs.
-
-```bash
-mkdir -p ~/log/subsample-bam.py-2
-for LOG in `grep -LE "success|failure" ~/log/subsample-bam.py/*`
-do
-  BASE=`basename $LOG`
-  echo $BASE
-  WELL=`echo $BASE | cut -d"." -f2`
-  NUM=`echo $BASE | cut -d"." -f3`
-  FILE=bam-combined/19239.1.$WELL.trim.sickle.sorted.combined.bam
-  echo $FILE
-  echo "subsample-bam.py 12345 $NUM multiplexed/bam-combined $FILE" | qsub -l h_vmem=2g -V -cwd -N sub.$WELL.$NUM -j y -o ~/log/subsample-bam.py-2
-done
-```
-
-```bash
-ls multiplexed/bam-combined/*bam | wc -l
-cat ~/log/subsample-bam.py-2/* | grep success | wc -l
-cat ~/log/subsample-bam.py-2/* | grep failure | wc -l
-# Many fail because they do not have sufficient reads for the subsampling
-cat ~/log/subsample-bam.py-2/* | grep failure | grep -v less | wc -l
-```
-
-Switch to directory `multiplexed`.
-Symlink `exons.saf`.
-
-```bash
-cd multiplexed
-mkdir genome
-ln -s /mnt/lustre/home/jdblischak/singleCellSeq/data/exons.saf genome/exons.saf
-```
-
-Remove duplicate UMIs.
-
-```bash
-submit-array.sh rmdup-umi.sh 2g bam-combined/*bam
-```
-
-```bash
-ls bam-rmdup-umi/*bam | wc -l
-grep -w success ~/log/rmdup-umi.sh/* | wc -l
-grep -w failure ~/log/rmdup-umi.sh/* | wc -l
-```
-
-Count reads per gene.
-
-```bash
-submit-array.sh count-reads-per-gene.sh 2g bam-combined/*bam bam-rmdup-umi/*bam
-```
-
-```bash
-ls counts/*genecounts.txt | wc -l
-grep -w success ~/log/count-reads-per-gene.sh/* | wc -l
-grep -w failure ~/log/count-reads-per-gene.sh/* | wc -l
+rm counts/*.featureCounts
 ```
 
 Gather the gene counts.
 
 ```bash
-mkdir -p ~/log/gather-gene-counts.py
-for NUM in 250000 500000 1000000 2000000 3000000 4000000
+mkdir -p counts-matrix
+mkdir -p ~/log/gather-gene-counts-subsample.py
+for NUM in 1000000 10000000 20000000 30000000 40000000 50000000 60000000 70000000 80000000
 do
-  echo "gather-gene-counts.py counts/*.$NUM.genecounts.txt > read-counts-$NUM.txt" | qsub -l h_vmem=8g -cwd -V -j y -o ~/log/gather-gene-counts.py -N read-counts-$NUM
-  echo "gather-gene-counts.py counts/*.$NUM.rmdup.genecounts.txt > molecule-counts-$NUM.txt" | qsub -l h_vmem=8g -cwd -V -j y -o ~/log/gather-gene-counts.py -N molecule-counts-$NUM
+  echo "gather-gene-counts-subsample.py counts-matrix/$NUM- counts/*.$NUM.*genecounts.txt" | qsub -l h_vmem=2g -cwd -V -j y -o ~/log/gather-gene-counts-subsample.py -N gene-counts-$NUM -q blades.q
 done
 ```
 
 ```bash
 # There should be no output
-cat ~/log/gather-gene-counts.py/*
+cat ~/log/gather-gene-counts-subsample.py/*
 ```
 
 ## Session information
