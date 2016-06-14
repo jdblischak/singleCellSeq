@@ -41,7 +41,7 @@ All of the 18 bulk libraries were then pooled and labelled as the "bulk" for seq
 Single-cell RNA-seq libraries generated from 96 single cells (namely, one C1 microfluidic prep) were pooled and then sequenced in three lanes on an Illumina Hiseq 2500 instrument using the PCR primer (C1-P1-PCR-2: Bio-GAATGATACGGCGACCACCGAT) as the read 1 primer and the Tn5 adapter (C1-Tn5-U: PHO-CTGTCTCTTATACACATCTGACGC) as the index read primer following the UMI protocol [@Islam2014].
 The master mixes, one mix with all the bulk samples and nine mixes corresponding to the three replicates for the three individuals, were sequenced across four flowcells using a design aimed to minimize the introduction of technical batch effects (`r table_supp_collection`B). 
 Single-end 100 bp reads were generated along with 8-bp index reads corresponding to the cell-specific barcodes. 
-We didn't observe any obvious technical effects due to sequencing lane or flow cell that confounded the inter-individual and inter-replicate comparisons.
+We did not observe any obvious technical effects due to sequencing lane or flow cell that confounded the inter-individual and inter-replicate comparisons.
 
 We also collected scRNA-seq data from Lymphoblastoid Cell Lines (LCLs) in a trial run.
 We sequenced four single cells, each in their own separate lane.
@@ -64,7 +64,7 @@ Next, we converted read counts to molecule counts using UMI-tools [@Smith2016].
 UMI-tools counts the number of UMIs at each read start position.
 Furthermore, it accounts for sequencing errors in the UMIs introduced during the PCR amplification or sequencing steps using a "directional adjacency" method.
 Briefly, all UMIs at a given read start position are connected in a network using an edit distance of one base pair.
-However, edges between nodes (the UMIs) are only formed if the nodes have a 2x difference in reads.
+However, edges between nodes (the UMIs) are only formed if the nodes less than have a 2x difference in reads.
 The node with the highest number of reads is counted as a unique molecule, and then it and all connected nodes are removed from the network.
 This is repeated until all nodes have been counted or removed.
 
@@ -140,7 +140,8 @@ The raw molecule counts were used to calculate the total gene molecule-counts fo
 
 Individual effect and batch effect between the single cell samples were evaluated in a series of analyses that examine the potential sources of technical variation on gene expression measurements. 
 These analyses took into consideration that in our study design, sources of variation between single cell samples naturally fall into a hierarchy of individuals and C1 batches. 
-In these analyses, the variation introduced at the individual-level and at the batch-level were modeled in a nested framework that allows random noise between C1 batches within individuals. 
+In these analyses, the variation introduced at the individual-level and at the batch-level were modeled in a nested framework that allows random noise between C1 batches within individuals.
+Each gene is analyzed independently.
 Specifically, for each cell sample in individual $i$, replicate $j$ and well $k$, we use $y_{ijk}$ to denote some sample measurement (e.g., total molecule-counts), and $x_{ijk}$ to denote the covariate, if any, that is associated with $y_{ijk}$ (e.g., sample RNA concentration measurement), and fit a linear mixed model with the fixed effect of individual $\alpha_i$ and the random effect of batch $b_{ij}$:
 
 $$y_{ijk} = x_{ijk} + \alpha_{i} + b_{ij} + \epsilon_{ijk}$$
@@ -152,7 +153,7 @@ To test if there is a batch effect (i.e., null hypothesis  $\sigma^2_b = 0$), we
 The nested framework was applied to the testing of individual effect and batch effect between cell samples in the following cases.
 The data includes samples after quality control and filtering.
 
-1. Total molecule-count for the endogenous genes was modeled as a function of the covariate sample RNA concentration, individual effect and batch effect.
+1. Total molecule-count for the endogenous genes was modeled as a function of the covariate sample cDNA amplicon concentration, individual effect and batch effect.
 We excluded individual NA19098 from the analysis, because sample concentration was quantified in only one of the two C1 replicates.
 
 2. Total molecule count (on the log2 scale) was modeled as a function of individual effect and batch effect, separately for the ERCC spike-ins and for the endogenous genes.
@@ -202,19 +203,20 @@ We fit a linear mixed model for each gene $g$ that includes a fixed effect of in
 
 $$ y_{g,ijk} = \mu_{g} + \alpha_{g,i} + b_{g,ij} + \epsilon_{g,ijk}, $$
 
-where $y_{g,ijk}$ denotes log~2~ counts-per-million (cpm) of gene $g$ in individual $i$, replicate $j$, and cell $k$; $i = NA19098, NA19101, NA19239$, $j = 1, \dots, n_i$ with $n_i$ the number of replicates in individual $i$, $k = 1, \dots, n_{g,ij}$ with $n_{g,ij}$ the number of cells in individual $i$ replicate $j$. $\mu_g$ denote gene mean expression level across cells, $\alpha_{g,i}$ quantify individual effect in mean gene expression, $b_{g,ij}$ model replicate effect in mean expression level, which are assumed to be stochastic, independent, and identifically distributed with mean 0 and variance $\sigma^2_{g,b})$, finally $\epsilon_{g,ijk}$ describe residual variation in gene expression.
+where $y_{g,ijk}$ denotes log~2~ counts-per-million (cpm) of gene $g$ in individual $i$, replicate $j$, and cell $k$; $i = NA19098, NA19101, NA19239$, $j = 1, \dots, n_i$ with $n_i$ the number of replicates in individual $i$, $k = 1, \dots, n_{g,ij}$ with $n_{g,ij}$ the number of cells in individual $i$ replicate $j$. $\mu_g$ denote gene mean expression level across cells, $\alpha_{g,i}$ quantify individual effect in mean gene expression, $b_{g,ij}$ model replicate effect in mean expression level, which are assumed to be stochastic, independent, and identifically distributed with mean 0 and variance $\sigma^2_{g,b}$, finally $\epsilon_{g,ijk}$ describe residual variation in gene expression.
 
 
 Batch-corrected expression are computed as
 
 $$ \widehat{y}_{g,ijk} = y_{g,ijk} - \widehat{b}_{g,ij}, $$
 
-where $\widehat{b}_{g,ij}$ are the least-squares estimates. The computations in this step are done with the gls.series function of the limma package [@limma].
+where $\widehat{b}_{g,ij}$ are the least-squares estimates. 
+The computations in this step are done with the gls.series function of the limma package [@limma].
 
 ### Measurement of gene expression noise
 
 While examining gene expression noise (using CV) as a function of RNA abundance (mean) across C1 replicates, we found that CV of molecule counts among endogenous genes and ERCC spike-in controls suggested similar expression variability patterns.
-Both endogenous and ERCC spike-in control CV patterns track over-dispersed Poisson distribution (Figure `r fig_supp_CV`A-C), which is consistent with previous studies [@Islam2014; @Brennecke2013].
+Both endogenous and ERCC spike-in control CV patterns approximately follow an over-dispersed Poisson distribution (Figure `r fig_supp_CV`A-C), which is consistent with previous studies [@Islam2014; @Brennecke2013].
 We computed a measure of gene expression noise that is independent of RNA abundance across individuals [@Kolodziejczyk2015; @Newman2006].
 First, squared coefficients of variation (CVs) for each gene were computed for each individual and also across individuals, using the batch-corrected molecule data.
 Then we computed the distance of individual-specific CVs to the rolling median of global CVs among genes that have similar RNA abundance levels.
