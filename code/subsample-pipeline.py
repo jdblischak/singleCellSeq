@@ -21,8 +21,6 @@ DATA_DIR = "/mnt/lustre/home/jdblischak/singleCellSeq/data/"
 
 # Set up for subsampling directory
 LOG_DIR = WORKING_DIR + "log/"
-BAM_DIR = WORKING_DIR + "bam-combined/"
-RMDUP_DIR = WORKING_DIR + "bam-rmdup-umi/"
 COUNTS_MATRIX = WORKING_DIR + "counts-matrix/"
 OUTPUT_DIR = WORKING_DIR + "output/"
 
@@ -30,8 +28,12 @@ OUTPUT_DIR = WORKING_DIR + "output/"
 GOOD_CELLS = DATA_DIR + "quality-single-cells.txt"
 KEEP_GENES = DATA_DIR + "genes-pass-filter.txt"
 
+# Paths for LCL subsampling analysis
+LCL_DIR = "/mnt/gluster/home/jdblischak/ssd/lcl/subsampled/"
+LCL_COUNTS = LCL_DIR + "counts-matrix/"
+LCL_OUT = LCL_DIR + "output/"
 
-for d in [LOG_DIR, BAM_DIR, RMDUP_DIR, OUTPUT_DIR]:
+for d in [LOG_DIR, OUTPUT_DIR, LCL_OUT]:
     if not os.path.isdir(d):
         os.mkdir(d)
 
@@ -44,14 +46,20 @@ seeds = range(1, 10 + 1)
 types = ["reads", "molecules"]
 genes = ["all", "lower", "upper"]
 
+# LCL
+lcl_depth = ["1000000"] + [str(x) + "000000" for x in range(10, 90, 10)]
+lcl_type = ["molecules", "reads"]
+lcl_well = ["A9E1", "B2E2", "B4H1", "D2H2"]
+lcl_gene = ["ENSG", "ERCC"]
+
 # Targets ----------------------------------------------------------------------
 
 # The target rules are in reverse order of the pipeline steps.
 
-localrules: all, submit_subsampler, submit_subsampler_test
+localrules: all, submit_subsampler, submit_subsampler_test, submit_lcl
 
 rule all:
-	input: "subsampling-results.txt"
+	input: "subsampling-results.txt", LCL_DIR + "subsampling-results-lcl.txt"
 
 rule submit_subsampler:
     input: expand(OUTPUT_DIR + "{TYPE}-{IND}-{CELLS}-{SEED}-{DEPTH}-{GENE}.txt", \
@@ -70,6 +78,13 @@ rule submit_subsampler_test:
            SEED = seeds[0:2], \
            TYPE = types, \
            GENE = genes)
+
+rule submit_lcl:
+	input: expand(LCL_OUT + "{lcl_depth}-{lcl_type}-{lcl_well}-{lcl_gene}.txt", \
+                  lcl_depth = lcl_depth, \
+                  lcl_type = lcl_type, \
+                  lcl_well = lcl_well, \
+                  lcl_gene = lcl_gene)
 
 # Pipeline ---------------------------------------------------------------------
 
@@ -153,3 +168,50 @@ rule gather_subsample_results:
                f.close()
 
            out.close()
+
+rule lcl_detect_genes:
+	input: LCL_COUNTS + "{lcl_depth}-{lcl_type}-raw-single-per-sample.txt"
+	output: LCL_OUT + "{lcl_depth}-{lcl_type}-{lcl_well}-{lcl_gene}.txt"
+	params: well = "{lcl_well}", gene_pattern = "{lcl_gene}",
+            h_vmem = '2g', bigio = '0',
+            name = lambda wildcards: 'lcl-' + "-".join([wildcards.lcl_depth,
+                                                        wildcards.lcl_type,
+                                                        wildcards.lcl_well,
+                                                        wildcards.lcl_gene])
+	log: LOG_DIR
+	shell: "detect-genes.R --wells={params.well} \
+                           --gene={params.gene_pattern} \
+                           1 1 {input} > {output}"
+
+rule lcl_gather:
+	input: expand(LCL_OUT + "{lcl_depth}-{lcl_type}-{lcl_well}-{lcl_gene}.txt", \
+                  lcl_depth = lcl_depth, \
+                  lcl_type = lcl_type, \
+                  lcl_well = lcl_well, \
+                  lcl_gene = lcl_gene)
+	output: LCL_DIR + "subsampling-results-lcl.txt"
+	params: h_vmem = '2g', bigio = '0',
+            name = "gather-lcl-sub-results"
+	log: LOG_DIR
+	run:
+           import os
+
+           # Create output file
+           out = open(output[0], "w")
+           out.write("depth\ttype\twell\tgene_subset\tnum_cells\tseed\tgenes\tcounts\n")
+
+           # Write the contents of each input file to output file
+           for fname in input:
+               fname_parts = os.path.basename(fname).rstrip(".txt").split("-")
+               depth = fname_parts[0]
+               type = fname_parts[1]
+               well = fname_parts[2]
+               gene_subset = fname_parts[3]
+               f = open(fname, "r")
+               line = f.readline()
+               out.write(depth + "\t" + type + "\t" + well + "\t" + \
+                         gene_subset + "\t" + line)
+               f.close()
+
+           out.close()           
+           
