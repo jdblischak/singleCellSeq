@@ -47,8 +47,8 @@ We concluded that a pipetting error led to excess ERCC content in this replicate
 With the exception of the excluded samples, data from all other replicates seem to have similar global properties (using general metrics; Figure `r fig_main_qc`C-E and Figure `r fig_supp_qc`C-F).
 
 We proceeded by focusing on the assumption that data from each sample correspond to data from a single cell.
-After the cell sorting was complete, but before the processing of the samples, we performed visual inspection on the C1 microfluidic plates.
-Based on that visual inspection, we have flagged sequencing data from 21 samples that did not contain any cell, and 54 samples that contained more than one cell (across all batches).
+After the cell sorting was complete, but before the processing of the samples, we performed visual inspection of the C1 microfluidic plates.
+Based on that visual inspection, we flagged 21 samples that did not contain any cell, and 54 samples that contained more than one cell (across all batches).
 Visual inspection of the C1 microfluidic plate is an important quality control step, but it is not infallible.
 We therefore filtered data from the remaining samples based on the number of total mapped reads, the percentage of unmapped reads, the percentage of ERCC spike-in reads, and the number of genes detected (Figure `r fig_main_qc`B-E).
 We chose data-driven inclusion cutoffs for each metric, based on the 95th percentile of the respective distributions for the 21 libraries that were amplified from samples that did not include a cell based on visual inspection (Figure `r fig_supp_qc`C-F).
@@ -89,37 +89,9 @@ Beyond quality control of the samples, we also investigated the effect of sequen
 To this end, we repeatedly subsampled samples and sequencing reads to assess the correlation of the single cell gene expression estimates to the bulk samples, the number of genes detected, and the correlation of the cell-to-cell gene expression level variance estimates between the subsampled data and the full single cell data set (Figure `r fig_main_subsample`).
 We observed quickly diminishing improvement in all three of these properties with increasing sequencing depth and the number of sampled cells, especially for highly expressed genes.
 For example, a per cell sequencing depth of 1.5 million reads (which corresponds to ~50,000 molecules) from each of 75 single cells is sufficient for effectively quantifying even the lower 50% of expressed genes.
-At this level of subsampling for individual NA19239, we are able to detect a mean of `r d_filter$mean_detected ` genes out of `r d_filter$used_ensg` expressed in the bulk samples (the bottom 50%; Figure `r fig_main_subsample`B); the estimated single cell expression levels of these genes correlate with the bulk sample gene expression levels with a mean Pearson coefficient of  `r round(d_filter$mean_bulk, digits = 2)` (Figure `r fig_main_subsample`A), and the estimated cell-to-cell variation in gene expression levels based on 75 samples is correlated with the variation estimated from the full data set with a mean Pearson coefficient of `r round(d_filter$mean_var, digits = 2)` (Figure `r fig_main_subsample`C).
-
-### Is there a need to standardize molecule-counts?  
-Standard analysis of single cell gene expression data often relies on the implicit assumption that molecule-count data, collected by using single cell UMI-based approaches, can be thought of as an absolute estimate of the total number of RNA molecules in the cell [@Islam2014; @Grun2014].
-In other words, overall differences in RNA molecule-counts between cells may indicate differences in the amount of RNA content across cells, which generally correspond to differences in cell size when all cells are of the same type [@Padovan-Merhar2015].
-However, this conjecture can only be correct if all RNA molecules in single cells are being amplified (‘captured’) and sequenced, or if the capture rate and sequencing of RNA molecules is highly similar (practically identical) across single cells.
-
-Our study design allows us to carefully examine this notion.
-To do so, we considered the correlation between sample concentrations (measured at the library stage) and total molecule-counts per sample, summed over all detected endogenous genes (between 30,408 to 113,832 molecules per cell; Figure `r fig_main_batch`A).
-We only included data from individuals NA19101 and NA19239 in this analysis, because sample concentration measurements from individual NA19098 were not available.
-Consistent with previous reports, we observed a positive correlation between total molecule-counts in single cells and the measured sample concentration (Figure `r fig_main_batch`C).
-However, we also observed that the relationship between total single cell molecule-counts and concentration is significantly different across individuals (likelihood ratio test (LRT); *P* < 0.001), as well as across C1 replicates from the same individual (F-test; *P* < 0.01, See Method).
-This observation indicates that it is challenging to infer the sample concentration (which is a proxy for the absolute total number of mRNA molecules per cell) based on the observed number of molecules.
-While a trend exists, there is significant variation in this trend, both within and across C1 replicates.
-As a consequence, it would be difficult, for example, to correctly infer the relative size of single cells based on the observed number of molecules.
-
-We investigated the relationship between total molecule-count and concentration further by inferring the cell cycle phase of single cells based on their gene expression profiles using molecule counts [@Macosko2015; @Whitfield2002].
-We then considered the correspondence between the inferred cell cycle phase and the observed total molecule-counts in single cells.
-It is expected that cells that are inferred to be in G2 and G2/M phases (larger cells), would have higher total molecule-counts [@Vallejos2015], which is indeed our general observation (Figure `r fig_supp_cellcycle`A and `r fig_supp_cellcycle`B).
-However, variation from this pattern can clearly be seen across single cell collections from different individuals, as well as across different C1 replicates from the same individual (Figure `r fig_supp_cellcycle`).
-We conclude that classification of cell cycle phases based on observed total molecule-counts in single cells would be associated with a high error rate.
-
-Our observations suggest that total molecule-counts in single cells are a poor proxy for the total amount of RNA in the cell.
-It therefore follows that molecule-counts should not be used as an absolute estimate of gene expression levels, but rather should be standardized, much like read counts.
-Indeed, even if one assumes that the molecule ‘capturing rate’ (the probability that a molecule is sampled) is similar across single cells, C1 replicates, and individuals, it is reasonable to assume that not all molecules in each sample are sequenced.
-Indeed, both the number of detected endogenous genes (Figure `r fig_supp_subsample`A) and the total number of molecules (Figure `r fig_supp_subsample`C) had still not plateaued at a sequencing depth of 80 million reads per single cell (an order of magnitude more than the number of reads sequenced in typical single cell experiments).
+At this level of subsampling for individual NA19239, we were able to detect a mean of `r d_filter$mean_detected ` genes out of `r d_filter$used_ensg` expressed in the bulk samples (the bottom 50%; Figure `r fig_main_subsample`B); the estimated single cell expression levels of these genes correlate with the bulk sample gene expression levels with a mean Pearson coefficient of  `r round(d_filter$mean_bulk, digits = 2)` (Figure `r fig_main_subsample`A), and the estimated cell-to-cell variation in gene expression levels based on 75 samples is correlated with the variation estimated from the full data set with a mean Pearson coefficient of `r round(d_filter$mean_var, digits = 2)` (Figure `r fig_main_subsample`C).
 
 ### Is there a batch effect associated with UMI-based single cell data?
-It is reasonable to assume that batch effects impact single cell gene expression data.
-Our previous analysis already suggests that differences in the relationship between total molecule-counts and sample concentration exist not only between individuals, but also between C1 replicates of samples from the same individual (Figure `r fig_main_batch`C).
-
 In the context of the C1 platform, typical study designs make use of a single C1 plate (batch/replicate) per biological condition.
 In that case, it is impossible to distinguish between biological and technical effects associated with the independent capturing and sequencing of each C1 replicate.
 We designed our study with multiple technical replicates per biological condition (individual) in order to directly and explicitly estimate the batch effect associated with independent C1 preparations (Figure `r fig_main_qc`A).
@@ -150,7 +122,7 @@ We reason that the difference in read to molecule conversion efficiency across C
 
 ### Measuring regulatory noise in single-cell gene expression data
 Our analysis indicated that molecule counts need to be standardized and that there is a considerable batch effect in the single cell gene expression data collected from the C1 platform.
-We thus sought an approach that will account for the batch effect and allow us to study biological properties of the single-cell molecule count based estimates of gene expression levels, albeit in a small sample of just three individuals.
+We thus sought an approach that would account for the batch effect and allow us to study biological properties of the single-cell molecule count based estimates of gene expression levels, albeit in a small sample of just three individuals.
 As a first step, we adjusted the raw molecule counts by using a Poisson approximation to account for the random use of identical UMI sequences in molecules from highly expressed genes (this was previously termed a correction for the UMI ‘collision probability’ [@Fu2011]).
 We then excluded data from genes whose inferred molecule count exceeded 1024 (the theoretical number of UMI sequences) – this step resulted in the exclusion of data from 6 genes, all mitochondrial.
 
