@@ -27,12 +27,12 @@ fig_supp_cellcycle <- "S10"
 fig_supp_subsample <- "S11"
 
 # Numbering tables
-table_qualitycell <- "Table 1"
+table_qualitycell <- "1"
 
 # Numbering for supplementary tables
-table_supp_collection <- "Sup. Table 1"
-table_noisygene <- "Sup. Table 2"
-table_GO <- "Sup. Table 3"
+table_supp_collection <- "S1"
+table_noisygene <- "S2"
+table_GO <- "S3"
 
 # Import data
 anno_filter <- read.table("../data/annotation-filter.txt", header = TRUE,
