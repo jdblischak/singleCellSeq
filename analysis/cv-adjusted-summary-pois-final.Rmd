@@ -1,7 +1,7 @@
 ---
-title: "Cell-cell variation analysis: summary"
+title: "Cell-to-cell variation analysis: summary"
 author: "Joyce Hsiao"
-date: 2016-06-06  
+date: 2016-06-25  
 ---
 
 **Last updated:** `r Sys.Date()`
@@ -21,7 +21,6 @@ opts_chunk$set(message = FALSE, warning = FALSE, eval = TRUE,
 ## Objective
 
 This page documents analysis performed for the paper figures. 
-
 
 
 ## Set up
@@ -84,23 +83,28 @@ pluripotency_genes <- read.table("../data/pluripotency-genes.txt",
 ```
 
 
-Load gene CVs computed over all cells ([link1][link1]), CV computed only over the expressed cells ([link2][link2]), and differential CV results when including only the expressed cells ([link3][link3]).
+Load gene CVs computed over all cells ([link1][link1]) and CV computed only over the expressed cells ([link2][link2]).
 
 
 [link1]: http://jdblischak.github.io/singleCellSeq/analysis/cv-adjusted-summary-pois.html
 [link2]: http://jdblischak.github.io/singleCellSeq/analysis/cv-adjusted-summary-pois-expressed.html
-[link3]: http://jdblischak.github.io/singleCellSeq/analysis/cv-adjusted-summary-pois-expressed.html
 
 ```{r}
 load("../data/cv-all-cells.rda")
 load("../data/cv-expressed-cells.rda")
-load("../data/sig-mean-expressed.rda")
+#load("../data/sig-mean-expressed.rda")
 
+## TBD
 ## permutation results
 # expressed cells
-load("../data/permuted-pval-expressed.rda")
+#load("../data/permuted-pval-expressed.rda")
 # # all cells
-# load("../data/permuted-pval.rda")
+#load("../data/permuted-pval.rda")
+
+load("rda/cv-adjusted-summary-pois-expressed/mad-perm-values.rda")
+mad_expressed <- rowMedians( abs( as.matrix(expressed_dm) - rowMedians(as.matrix(expressed_dm)) ) )
+perm_pval <- (rowSums(perm_set > mad_expressed) + 1)/( NCOL(perm_set) + 1)
+names(perm_pval) <- rownames(expressed_dm)
 ```
 
 
@@ -121,7 +125,7 @@ Take the gene subset included in the final data.
 genes_included <- Reduce(intersect,
                          list(rownames(molecules_final),
                              rownames(expressed_cv$NA19098),
-                             rownames(permuted_pval)) )
+                             names(perm_pval)) )
 
 molecules_filter_subset <- molecules_filter[
   which(rownames(molecules_filter) %in% genes_included), ]
@@ -135,8 +139,8 @@ molecules_expressed_subset <- molecules_expressed[
 molecules_final_expressed_subset <- molecules_final_subset*molecules_expressed_subset
 molecules_final_expressed_subset[which(molecules_expressed_subset == 0, arr.ind = TRUE)] <- NA
 
-permuted_pval_subset <- permuted_pval[which(rownames(permuted_pval) %in% genes_included), ]
-names(permuted_pval_subset) <- rownames(permuted_pval)[which(rownames(permuted_pval) %in% genes_included)]
+permuted_pval_subset <- perm_pval[which(names(perm_pval) %in% genes_included)]
+names(permuted_pval_subset) <- names(perm_pval)[which(names(perm_pval) %in% genes_included)]
 
 expressed_cv_subset <- lapply(expressed_cv, function(x)
   x[which(rownames(x) %in% genes_included), ] )
@@ -326,6 +330,7 @@ gplots::venn(
        NA19101 = genes[ which(rank(ENSG_cv[[2]]$mean) > length(genes) - 1000 ) ],
        NA19239 = genes[ which(rank(ENSG_cv[[3]]$mean) > length(genes) - 1000 ) ] ) )
 ```
+
 
 ## Main figure 2
 
@@ -697,7 +702,7 @@ Legend: (A) Histogram of empirical p-values based on 12,192 permutations. (B) -l
 ```{r, fig.width=12, fig.height=12}
 # Bins average gene expression and make a boxplot of -log10 p-values
 # for each bin
-permuted_pval_subset[which(permuted_pval_subset == 0)] <- 1/length(permuted_pval)
+permuted_pval_subset[which(permuted_pval_subset == 0)] <- 1/length(perm_pval)
 mad_expressed <- rowMedians( abs( as.matrix(expressed_dm_subset) - rowMedians(as.matrix(expressed_dm_subset)) ) )
 
 
@@ -741,8 +746,6 @@ plot_grid(
 
 *All cells*
 
-Legend: (A) Histogram of empirical p-values based on 12,192 permutations. (B) -log10 empirical p-values are plotted against average gene expression levels. Blue line displays predicted -log10 p-values using locally weighted scatterplot smooth (LOESS).  (C) Median of Absolute Deviation (MAD) of genes versus average gene expression levels. LOESS was also used to depict predicted MAD values. 
-
 *[chunk not evaluated]*
 ```{r, fig.width=12, fig.height=12, eval  = FALSE}
 # Bins average gene expression and make a boxplot of -log10 p-values
@@ -750,21 +753,22 @@ Legend: (A) Histogram of empirical p-values based on 12,192 permutations. (B) -l
 gene_means <- rowMeans(as.matrix(molecules_final_subset))
 
 plot_grid(
-  ggplot( data.frame(pvals = permuted_pval$mad_pval),
+  ggplot( data.frame(pvals = perm_pval),
          aes(x = pvals) ) +
     geom_histogram() + xlim(0, 1) +
-    labs(x = "Permutation-based p-values", y = "Counts"),
-  ggplot( data.frame(pvals = permuted_pval$mad_pval,
-                     gene_mean = rowMeans(as.matrix(molecules_final)),
-                     bins = cut_number(gene_means, n = 10)),
+    labs(x = "Permutation-based p-values", y = "Frequency"),
+  ggplot( 
+    data.frame(pvals = perm_pval,
+               gene_mean = rowMeans(as.matrix(molecules_final_expressed_subset)),
+               bins = cut_number(gene_means, n = 10)),
          aes(x = gene_mean, y = -log10(pvals)) ) +
     geom_point(alpha = .5, cex = .2) +
     stat_smooth() +
     theme(legend.position = "none") +
     ylab("-log10(p-value)") +
     xlab("Average gene expression level"),
-  ggplot( data.frame(mad = mad,
-                   gene_mean = rowMeans(as.matrix(molecules_final)),
+  ggplot( data.frame(mad = mad_expressed,
+                   gene_mean = rowMeans(as.matrix(molecules_final_expressed_subset)),
                    bins = cut_number(gene_means, n = 10)),
          aes(x = gene_mean, y = mad) ) +
       geom_point( alpha = .5, cex = .2) +
