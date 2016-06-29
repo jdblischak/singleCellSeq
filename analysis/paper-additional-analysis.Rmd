@@ -1,6 +1,6 @@
 ---
 title: "Additional analysis for the manuscript"
-date: 2016-05-02
+date: 2016-06-23
 ---
 
 **Last updated:** `r Sys.Date()`
@@ -500,7 +500,56 @@ title(main = "Proportion of individual-level variance",
 ```
 
 
-Kruskal-wallis test to compare estimated proportion of variance
+Boxplot displaying proportion of variance explained due to individual, batch and residual cell-to-cell variation.
+
+```{r, fig.height=6, fig.width=12}
+load("../data/blme-variance.rda")
+theme_set(theme_bw(base_size = 12))
+theme_update(panel.grid.minor.x = element_blank(),
+             panel.grid.minor.y = element_blank(),
+             panel.grid.major.x = element_blank(),
+             panel.grid.major.y = element_blank())
+cowplot::plot_grid(
+  ggplot(
+    data.frame(proportion = 
+                 c(prop_list$raw$prop_ind, 
+                   prop_list$raw$prop_batch, 
+                   1- prop_list$raw$prop_ind - prop_list$raw$prop_batch),
+              type = rep(1:3, 
+                         each = dim(prop_list$raw)[1])),
+          aes(x = factor(type,
+                          labels = c("Individual",
+                                     "C1 replicate",
+                                     "Residual \n cell-to-cell variance")), 
+              y = proportion)) +
+    geom_violin(alpha = .5) +
+    geom_boxplot(alpha = .01, width = 0.1, 
+                 position = position_dodge(width = 0.9)) + 
+    ylim(0,1) + xlab("") + ylab("Proportion of variance explained") +
+    labs( title = "The proportion of variance due to individual is larger than \n variance due to C1 batch in endogenous genes"),
+  ggplot(
+    data.frame(proportion = 
+                 c(prop_list$ercc$prop_ind, 
+                   prop_list$ercc$prop_batch, 
+                   1- prop_list$ercc$prop_ind - prop_list$ercc$prop_batch),
+              type = rep(1:3, 
+                         each = dim(prop_list$ercc)[1])),
+          aes(x = factor(type,
+                          labels = c("Individual",
+                                     "C1 replicate",
+                                     "Residual \n cell-to-cell variance")), 
+              y = proportion)) +
+    geom_violin(alpha = .5) +
+    geom_boxplot(alpha = .01, width = 0.1, 
+                 position = position_dodge(width = 0.9)) + 
+    ylim(0,1) + xlab("") + ylab("Proportion of variance explained") +
+    labs( title = "The proportion of variance due to individual is larger than \n variance due to C1 batch in ERCC spike-in controls"),
+  labels = c("A", "B") )
+
+```
+
+
+Kruskal-wallis test to compare estimated proportion of variance explained.
 
 ```{r}
 # Kruskal wallis rank sum test to compare

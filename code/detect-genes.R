@@ -21,12 +21,12 @@ Arguments:
 
 suppressMessages(library("docopt"))
 library("testit")
+library("data.table")
 
 main <- function(num_cells, seed, exp_fname, individual = NULL, min_count = 1,
                  min_cells = 1, good_cells = NULL, wells = NULL, gene = NULL) {
   # Load expression data
-  exp_dat <- read.table(exp_fname, header = TRUE, sep = "\t",
-                        stringsAsFactors = FALSE)
+  exp_dat <- fread(exp_fname, data.table = FALSE)
   # Filter by individual
   if (!is.null(individual)) {
     exp_dat <- exp_dat[exp_dat$individual == individual, ]
@@ -38,16 +38,19 @@ main <- function(num_cells, seed, exp_fname, individual = NULL, min_count = 1,
   # Remove bulk samples
   exp_dat <- exp_dat[exp_dat$well != "bulk", ]
   # Add rownames
-  rownames(exp_dat) <- paste(exp_dat$individual, exp_dat$batch,
-                                  exp_dat$well, sep = ".")
+  if ("replicate" %in% colnames(exp_dat)) {
+    rownames(exp_dat) <- paste(exp_dat$individual, exp_dat$replicate,
+                               exp_dat$well, sep = ".")
+  } else {
+    # allow legacy versions of data which uses batch instead of replicate
+    rownames(exp_dat) <- paste(exp_dat$individual, exp_dat$batch,
+                               exp_dat$well, sep = ".")
+  }
   # Remove meta-info cols
   exp_dat <- exp_dat[, grepl("ENSG", colnames(exp_dat)) |
                                  grepl("ERCC", colnames(exp_dat)), drop = FALSE]
   # Transpose
   exp_dat <- t(exp_dat)
-  # Fix ERCC names
-  rownames(exp_dat) <- sub(pattern = "\\.", replacement = "-",
-                                rownames(exp_dat))
   # Filter genes based on input pattern, e.g. "ENSG" or "ERCC"
   # browser()
   if (!is.null(gene)) {
@@ -122,18 +125,19 @@ if (!interactive() & getOption('run.main', default = TRUE)) {
        gene = opts$gene)
 } else if (interactive() & getOption('run.main', default = TRUE)) {
   # what to do if interactively testing
-  main(num_cells = 20,
-       seed = 1,
-       exp_fname = "/mnt/gluster/data/internal_supp/singleCellSeq/subsampled/molecule-counts-200000.txt",
-       individual = "19098",
-       min_count = 10,
-       min_cells = 5,
-       good_cells = "../data/quality-single-cells.txt")
-#   main(num_cells = 1,
+#   main(num_cells = 20,
 #        seed = 1,
-#        exp_fname = "/mnt/gluster/data/internal_supp/singleCellSeq/lcl/full-lane/molecule-counts-200000.txt",
-#        min_count = 1,
-#        min_cells = 1,
-#        wells = "A9E1",
-#        gene = "ENSG")
+#        exp_fname = "/mnt/gluster/data/internal_supp/singleCellSeq/subsampled/molecule-counts-200000.txt",
+#        individual = "19098",
+#        min_count = 10,
+#        min_cells = 5,
+#        good_cells = "../data/quality-single-cells.txt")
+  main(num_cells = 1,
+       seed = 1,
+       # exp_fname = "/mnt/gluster/data/internal_supp/singleCellSeq/lcl/full-lane/molecule-counts-200000.txt",
+       exp_fname = "/mnt/gluster/home/jdblischak/ssd/lcl/subsampled/counts-matrix/80000000-molecules-raw-single-per-sample.txt",
+       min_count = 1,
+       min_cells = 1,
+       wells = "A9E1",
+       gene = "ENSG")
 }

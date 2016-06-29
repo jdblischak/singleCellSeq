@@ -1,0 +1,124 @@
+---
+title: "Final LCL subsampling plots"
+date: 2016-06-15
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+opts_chunk$set(cache = FALSE)
+```
+
+The LCL subsampled files were created using the pipeline described [here](subsample-lcl.html), which is similar to the [pipeline](process-samples.html) used to process the full data files.
+The only difference is that the samples were processed in chunks of 4 million reads (the default output from CASAVA) and then merged pre-removal of duplicate UMIs.
+
+## Input
+
+```{r packages, message=FALSE, cache=FALSE}
+library("dplyr")
+library("tidyr")
+library("ggplot2")
+library("cowplot")
+theme_set(theme_bw(base_size = 16))
+theme_update(panel.grid.minor.x = element_blank(),
+             panel.grid.minor.y = element_blank(),
+             panel.grid.major.x = element_blank(),
+             panel.grid.major.y = element_blank())
+```
+
+The subsampling statistics were generated with [subsample-pipeline.py](https://github.com/jdblischak/singleCellSeq/blob/master/code/subsample-pipeline.py) and [detect-genes.R](https://github.com/jdblischak/singleCellSeq/blob/master/code/detect-genes.R).
+
+```{r input-data}
+d <- read.table("../data/subsampling-results-lcl.txt",
+                header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+d$depth_mil <- d$depth / 10^6
+d$counts_thous <- d$counts / 10^3
+d$counts_mil <- d$counts / 10^6
+str(d)
+```
+
+Endogenous genes detected
+
+```{r plot-genes-ensg}
+p_genes_ensg <- ggplot(d[d$gene_subset == "ENSG" &
+                         d$type == "molecules", ],
+                       aes(x = as.factor(depth_mil), y = genes)) +
+  geom_boxplot() + 
+  geom_point(aes(color  = well)) +
+  scale_color_brewer(palette = "Dark2", name = "Single cell") +
+  theme(legend.position = "none") +
+  labs(x = expression("Sequencing depth (" * 10^6 * ")"),
+       y = "Genes detected",
+       title = "Endogenous genes")
+p_genes_ensg
+```
+
+ERCC control genes detected
+
+```{r plot-genes-ercc}
+p_genes_ercc <- p_genes_ensg %+% d[d$gene_subset == "ERCC" &
+                                   d$type == "molecules", ] +
+  labs(title = "ERCC controls")
+p_genes_ercc
+```
+
+Endogenous molecules
+
+```{r plot-molecules-ensg}
+p_molecules_ensg <- p_genes_ensg %+% d[d$type == "molecules" &
+                                       d$gene_subset == "ENSG", ] %+%
+  aes(y = counts_thous) +
+  labs(y = expression("Molecules (" * 10^3 * ")"))
+p_molecules_ensg
+```
+
+ERCC molecules
+
+```{r plot-molecules-ercc}
+p_molecules_ercc <- p_molecules_ensg %+% d[d$type == "molecules" &
+                                           d$gene_subset == "ERCC", ] +
+  labs(title = "ERCC controls") +
+  theme(legend.position = c(0.75, 0.35))
+p_molecules_ercc
+```
+
+Endogenous reads
+
+```{r plot-reads-ensg}
+p_reads_ensg <- p_molecules_ensg %+% d[d$type == "reads" &
+                                       d$gene_subset == "ENSG", ] +
+  aes(y = counts_mil) +
+  labs(y = expression("Reads (" * 10^6 * ")"))
+p_reads_ensg
+```
+
+ERCC reads
+
+```{r plot-reads-ercc}
+p_reads_ercc <- p_reads_ensg %+% d[d$type == "reads" &
+                                   d$gene_subset == "ERCC", ] +
+  labs(title = "ERCC controls")
+p_reads_ercc
+```
+
+Final plot for supplementary figure
+
+```{r plot-lcl-final, fig.width=12, fig.height=16}
+plot_final <- plot_grid(p_genes_ensg, p_genes_ercc,
+                        p_molecules_ensg, p_molecules_ercc,
+                        p_reads_ensg, p_reads_ercc,
+                        ncol = 2, labels = LETTERS[1:6])
+png("../paper/figure/fig-subsample-lcl.png", width = 8, height = 12,
+    units = "in", res = 300)
+plot_final
+dev.off()
+```
+
+## Session information
+
+```{r info}
+sessionInfo()
+```

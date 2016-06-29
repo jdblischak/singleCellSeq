@@ -10,28 +10,29 @@ fig_main_subsample <- "2"
 fig_main_batch <- "3"
 fig_main_normalization <- "4"
 fig_main_noise <- "5"
-fig_main_noisygene <- "6"
 
 # Numbering for supplementary figures
 fig_supp_qc <- "S1"
 fig_supp_lda <- "S2"
-fig_supp_cellcycle <- "S3"
-fig_supp_subsample <- "S4"
-fig_supp_variance <- "S5"
-fig_supp_dropout <- "S6"
-fig_supp_permutation <- "S7"
-fig_supp_plurigene <- "S8"
-fig_supp_design <- "S9"
-fig_supp_proportion <- "S10"
-fig_supp_CV <- "S11"
+fig_supp_variance <- "S3"
+fig_supp_dropout <- "S4"
+fig_supp_permutation <- "S5"
+fig_supp_noisygene <- "S6"
+fig_supp_plurigene <- "S7"
+fig_supp_design <- "S8"
+fig_supp_proportion <- "S9"
+fig_supp_CV <- "S10"
+
+fig_supp_cellcycle <- "S11"
+fig_supp_subsample <- "S12"
 
 # Numbering tables
-table_qualitycell <- "Table 1"
+table_qualitycell <- "1"
 
 # Numbering for supplementary tables
-table_supp_collection <- "Sup. Table 1"
-table_noisygene <- "Sup. Table 2"
-table_GO <- "Sup. Table 3"
+table_supp_collection <- "S1"
+table_noisygene <- "S2"
+table_GO <- "S3"
 
 # Import data
 anno_filter <- read.table("../data/annotation-filter.txt", header = TRUE,

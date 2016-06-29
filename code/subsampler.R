@@ -266,8 +266,7 @@ main <- function(num_cells, seed, single_sub_fname, single_full_fname,
 prepare_counts <- function(fname, individual = NULL, replicate = NULL,
                            good_cells_list = NULL, keep_genes_list = NULL) {
   assert("Input file exists", file.exists(fname))
-  x <- fread(fname)
-  setDF(x)
+  x <- fread(fname, data.table = FALSE)
   assert("Input has necessary columns",
          c("individual", "replicate", "well") %in% colnames(x))
   # Filter by individual

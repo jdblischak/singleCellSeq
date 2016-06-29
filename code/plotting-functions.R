@@ -18,7 +18,9 @@
 plot_density_overlay <- function(molecules, annotation,
                                 individual_label = NULL, batches = NULL,
                                 which_gene, labels,
-                                xlims = NULL, ylims = NULL, gene_symbols) {
+                                xlims = NULL, ylims = NULL,
+                                cex.lab1 = 1, cex.axis1 =1,
+                                gene_symbols) {
   if_present <- which(rownames(molecules) == which_gene)
   if(length(if_present) == 0) {
     stop("Gene not present in the data")
@@ -60,7 +62,9 @@ plot_density_overlay <- function(molecules, annotation,
 
   plot(dens[[1]],
        xlab = "log2 gene expression", main = "",
-       ylab = "Density", axes = F, lwd = 0, xlim = xlims, ylim = ylims)
+       ylab = "Density", axes = F, lwd = 0, xlim = xlims, ylim = ylims,
+       cex.lab = cex.lab1,
+       cex.axis = cex.axis1)
   for (i in 1:length(individuals)) {
     polygon(dens[[i]],
             col = alpha(crayon[colors_df[i]], .4),
