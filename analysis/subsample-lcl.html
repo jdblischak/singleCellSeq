@@ -125,120 +125,55 @@ img {
 <div id="TOC">
 <ul>
 <li><a href="#full-lane-samples">Full lane samples</a></li>
-<li><a href="#mutliplexed-samples">Mutliplexed samples</a></li>
 <li><a href="#session-information">Session information</a></li>
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2015-07-13</p>
-<p><strong>Code version:</strong> a4d865fb33bba771e8c3bdcd182882556aedab55</p>
+<p><strong>Last updated:</strong> 2016-06-29</p>
+<p><strong>Code version:</strong> c59e3a495e7257caa3180d1dfdaf315cdd79d715</p>
 <p>Subsample reads post-mapping. Includes both mapped and unmapped reads.</p>
 <div id="full-lane-samples" class="section level2">
 <h2>Full lane samples</h2>
 <p>Lanes 5-8 each contained just one single cell. These are highly oversequenced and will be used to assess saturation.</p>
-<pre class="bash"><code>cd $ssd/lcl
-mkdir -p full-lane/bam-combined
+<pre class="bash"><code>cd /mnt/gluster/home/jdblischak/ssd/lcl
+mkdir -p subsampled/bam-combined
 mkdir -p ~/log/subsample-bam.py
 for WELL in A9E1 B2E2 B4H1 D2H2
 do
   FILE=bam-combined/19239.1.$WELL.trim.sickle.sorted.combined.bam
-  for NUM in 200000 1000000 10000000 20000000 30000000 40000000 50000000
+  for NUM in 1000000 10000000 20000000 30000000 40000000 50000000 60000000 70000000 80000000
   do
-    echo &quot;subsample-bam.py 12345 $NUM full-lane/bam-combined $FILE&quot; | qsub -l h_vmem=8g -V -cwd -N sub.$WELL.$NUM -j y -o ~/log/subsample-bam.py
+    echo &quot;subsample-bam.py 12345 $NUM subsampled/bam-combined $FILE&quot; | qsub -l h_vmem=8g -V -cwd -N sub.$WELL.$NUM -j y -o ~/log/subsample-bam.py
   done
 done</code></pre>
-<pre class="bash"><code>ls full-lane/bam-combined/*bam | wc -l
+<pre class="bash"><code>ls subsampled/bam-combined/*bam | wc -l
 cat ~/log/subsample-bam.py/* | grep success | wc -l
 cat ~/log/subsample-bam.py/* | grep failure | wc -l</code></pre>
-<p>Switch to directory <code>full-lane</code>. Symlink <code>exons.saf</code>.</p>
-<pre class="bash"><code>cd full-lane
+<p>Switch to directory <code>subsampled</code>. Symlink <code>exons.saf</code>.</p>
+<pre class="bash"><code>cd subsampled
 mkdir genome
 ln -s /mnt/lustre/home/jdblischak/singleCellSeq/data/exons.saf genome/exons.saf</code></pre>
 <p>Remove duplicate UMIs.</p>
-<pre class="bash"><code>submit-array.sh rmdup-umi.sh 2g bam-combined/*bam</code></pre>
+<pre class="bash"><code>submit-array.sh rmdup-umi.sh 12g bam-combined/*bam</code></pre>
 <pre class="bash"><code>ls bam-rmdup-umi/*bam | wc -l
 grep -w success ~/log/rmdup-umi.sh/* | wc -l
 grep -w failure ~/log/rmdup-umi.sh/* | wc -l</code></pre>
 <p>Count reads per gene.</p>
-<pre class="bash"><code>submit-array.sh count-reads-per-gene.sh 2g bam-combined/*bam bam-rmdup-umi/*bam</code></pre>
+<pre class="bash"><code>submit-array.sh count-reads-per-gene.sh 12g bam-combined/*bam bam-rmdup-umi/*bam</code></pre>
 <pre class="bash"><code>ls counts/*genecounts.txt | wc -l
 grep -w success ~/log/count-reads-per-gene.sh/* | wc -l
 grep -w failure ~/log/count-reads-per-gene.sh/* | wc -l</code></pre>
+<p>Remove the <code>*.featureCounts</code> files created by the <code>-R</code> flag. These report the assignment of each read, which is only useful for detailed diagnostics. Because each file is data from a whole lane, these files are large.</p>
+<pre class="bash"><code>rm counts/*.featureCounts</code></pre>
 <p>Gather the gene counts.</p>
-<pre class="bash"><code>mkdir -p ~/log/gather-gene-counts.py
-for NUM in 200000 1000000 10000000 20000000 30000000 40000000 50000000
+<pre class="bash"><code>mkdir -p counts-matrix
+mkdir -p ~/log/gather-gene-counts-subsample.py
+for NUM in 1000000 10000000 20000000 30000000 40000000 50000000 60000000 70000000 80000000
 do
-  echo &quot;gather-gene-counts.py counts/*.$NUM.genecounts.txt &gt; read-counts-$NUM.txt&quot; | qsub -l h_vmem=8g -cwd -V -j y -o ~/log/gather-gene-counts.py -N read-counts-$NUM
-  echo &quot;gather-gene-counts.py counts/*.$NUM.rmdup.genecounts.txt &gt; molecule-counts-$NUM.txt&quot; | qsub -l h_vmem=8g -cwd -V -j y -o ~/log/gather-gene-counts.py -N molecule-counts-$NUM
+  echo &quot;gather-gene-counts-subsample.py counts-matrix/$NUM- counts/*.$NUM.*genecounts.txt&quot; | qsub -l h_vmem=2g -cwd -V -j y -o ~/log/gather-gene-counts-subsample.py -N gene-counts-$NUM -q blades.q
 done</code></pre>
 <pre class="bash"><code># There should be no output
-cat ~/log/gather-gene-counts.py/*</code></pre>
-</div>
-<div id="mutliplexed-samples" class="section level2">
-<h2>Mutliplexed samples</h2>
-<p>Lanes 1-4 each contained 24 single cells. These multiplexed cells will be used to compare to the iPSC results.</p>
-<pre class="bash"><code>cd $ssd/lcl
-mkdir -p multiplexed/bam-combined
-mkdir -p ~/log/subsample-bam.py
-for ROW in {A..H}
-do
-  for COL in {1..12}
-  do
-    WELL=`printf &quot;%s%02d\n&quot; $ROW $COL`
-    FILE=bam-combined/19239.1.$WELL.trim.sickle.sorted.combined.bam
-    for NUM in 250000 500000 1000000 2000000 3000000 4000000
-    do
-      echo &quot;subsample-bam.py 12345 $NUM multiplexed/bam-combined $FILE&quot; | qsub -l h_vmem=2g -V -cwd -N sub.$WELL.$NUM -j y -o ~/log/subsample-bam.py
-    done
-  done
-done</code></pre>
-<pre class="bash"><code>ls multiplexed/bam-combined/*bam | wc -l
-cat ~/log/subsample-bam.py/* | grep success | wc -l
-cat ~/log/subsample-bam.py/* | grep failure | wc -l
-# Many fail because they do not have sufficient reads for the subsampling
-cat ~/log/subsample-bam.py/* | grep failure | grep -v less | wc -l
-# Some failed for IO reasons (couldn&#39;t find target directory)
-grep -LE &quot;success|failure&quot; ~/log/subsample-bam.py/* | xargs cat</code></pre>
-<p>Re-run the failed jobs.</p>
-<pre class="bash"><code>mkdir -p ~/log/subsample-bam.py-2
-for LOG in `grep -LE &quot;success|failure&quot; ~/log/subsample-bam.py/*`
-do
-  BASE=`basename $LOG`
-  echo $BASE
-  WELL=`echo $BASE | cut -d&quot;.&quot; -f2`
-  NUM=`echo $BASE | cut -d&quot;.&quot; -f3`
-  FILE=bam-combined/19239.1.$WELL.trim.sickle.sorted.combined.bam
-  echo $FILE
-  echo &quot;subsample-bam.py 12345 $NUM multiplexed/bam-combined $FILE&quot; | qsub -l h_vmem=2g -V -cwd -N sub.$WELL.$NUM -j y -o ~/log/subsample-bam.py-2
-done</code></pre>
-<pre class="bash"><code>ls multiplexed/bam-combined/*bam | wc -l
-cat ~/log/subsample-bam.py-2/* | grep success | wc -l
-cat ~/log/subsample-bam.py-2/* | grep failure | wc -l
-# Many fail because they do not have sufficient reads for the subsampling
-cat ~/log/subsample-bam.py-2/* | grep failure | grep -v less | wc -l</code></pre>
-<p>Switch to directory <code>multiplexed</code>. Symlink <code>exons.saf</code>.</p>
-<pre class="bash"><code>cd multiplexed
-mkdir genome
-ln -s /mnt/lustre/home/jdblischak/singleCellSeq/data/exons.saf genome/exons.saf</code></pre>
-<p>Remove duplicate UMIs.</p>
-<pre class="bash"><code>submit-array.sh rmdup-umi.sh 2g bam-combined/*bam</code></pre>
-<pre class="bash"><code>ls bam-rmdup-umi/*bam | wc -l
-grep -w success ~/log/rmdup-umi.sh/* | wc -l
-grep -w failure ~/log/rmdup-umi.sh/* | wc -l</code></pre>
-<p>Count reads per gene.</p>
-<pre class="bash"><code>submit-array.sh count-reads-per-gene.sh 2g bam-combined/*bam bam-rmdup-umi/*bam</code></pre>
-<pre class="bash"><code>ls counts/*genecounts.txt | wc -l
-grep -w success ~/log/count-reads-per-gene.sh/* | wc -l
-grep -w failure ~/log/count-reads-per-gene.sh/* | wc -l</code></pre>
-<p>Gather the gene counts.</p>
-<pre class="bash"><code>mkdir -p ~/log/gather-gene-counts.py
-for NUM in 250000 500000 1000000 2000000 3000000 4000000
-do
-  echo &quot;gather-gene-counts.py counts/*.$NUM.genecounts.txt &gt; read-counts-$NUM.txt&quot; | qsub -l h_vmem=8g -cwd -V -j y -o ~/log/gather-gene-counts.py -N read-counts-$NUM
-  echo &quot;gather-gene-counts.py counts/*.$NUM.rmdup.genecounts.txt &gt; molecule-counts-$NUM.txt&quot; | qsub -l h_vmem=8g -cwd -V -j y -o ~/log/gather-gene-counts.py -N molecule-counts-$NUM
-done</code></pre>
-<pre class="bash"><code># There should be no output
-cat ~/log/gather-gene-counts.py/*</code></pre>
+cat ~/log/gather-gene-counts-subsample.py/*</code></pre>
 </div>
 <div id="session-information" class="section level2">
 <h2>Session information</h2>
@@ -261,9 +196,10 @@ other attached packages:
 [1] knitr_1.10.5
 
 loaded via a namespace (and not attached):
- [1] magrittr_1.5    formatR_1.2     tools_3.2.0     htmltools_0.2.6
- [5] yaml_2.1.13     stringi_0.4-1   rmarkdown_0.6.1 stringr_1.0.0  
- [9] digest_0.6.8    evaluate_0.7   </code></pre>
+ [1] httr_0.6.1      magrittr_1.5    formatR_1.2     htmltools_0.2.6
+ [5] tools_3.2.0     RCurl_1.95-4.6  yaml_2.1.13     rmarkdown_0.6.1
+ [9] stringi_1.0-1   digest_0.6.8    stringr_1.0.0   bitops_1.0-6   
+[13] evaluate_0.7   </code></pre>
 </div>
 
 
@@ -303,6 +239,15 @@ $(document).ready(function () {
 
 </script>
 
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
 
 </body>
 </html>

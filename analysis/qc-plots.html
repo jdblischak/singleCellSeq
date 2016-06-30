@@ -131,13 +131,13 @@ img {
 <li><a href="#distribution-of-fold-change-to-mean">Distribution of fold change to mean</a></li>
 <li><a href="#visualizing-capture-efficiency">Visualizing capture efficiency</a></li>
 <li><a href="#calculate-capture-efficiency-per-cell">Calculate capture efficiency per cell</a></li>
-<li><a href="#qc-plots">QC plots</a></li>
+<li><a href="#qc-plots-for-paper">QC plots for paper</a></li>
 <li><a href="#session-information">Session information</a></li>
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2016-02-27</p>
-<p><strong>Code version:</strong> e913fc0a3f954acf436955c670b4cdf1d052c075</p>
+<p><strong>Last updated:</strong> 2016-06-29</p>
+<p><strong>Code version:</strong> c59e3a495e7257caa3180d1dfdaf315cdd79d715</p>
 <div id="input" class="section level2">
 <h2>Input</h2>
 <pre class="r"><code>library(&quot;biomaRt&quot;)
@@ -226,7 +226,9 @@ cbPalette &lt;- c(&quot;#0000FF&quot;, &quot;#999999&quot;, &quot;#990033&quot;,
 plot_mean_log &lt;- ggplot(distribution, aes(x = molecules_mean, y = reads_mean, col = type)) + 
   geom_point(size = 3, alpha = 0.5) +  
   scale_colour_manual(values=cbPalette) + 
-  labs(x = &quot;Mean molecule&quot;, y = &quot;Mean reads&quot;, title = &quot;Reads vs. Molecules - log scale&quot;) + 
+  labs(x = &quot;Mean molecule-counts across samples&quot;, 
+       y = &quot;Mean read-counts across samples&quot;, 
+       title = &quot;Amplification bias is stronger \n in endogenous genes than in ERCC spike-ins&quot;) + 
   scale_x_log10() + 
   scale_y_log10()
 
@@ -235,7 +237,9 @@ plot_mean_log</code></pre>
 <pre class="r"><code>plot_mean_filter_log &lt;- ggplot(distribution_filter, aes(x = molecules_filter_mean, y = reads_filter_mean, col = type)) + 
   geom_point(size = 3, alpha = 0.5) +  
   scale_colour_manual(values=cbPalette) + 
-  labs(x = &quot;Mean molecule&quot;, y = &quot;Mean reads&quot;, title = &quot;Reads vs. Molecules - log scale (filtered)&quot;) + 
+  labs(x = &quot;Mean molecule-counts across samples&quot;, 
+       y = &quot;Mean read-counts&quot;, 
+       title = &quot;Read-counts and molecule-counts of each gene (log scale)&quot;) + 
   scale_x_log10() + 
   scale_y_log10()
 
@@ -244,7 +248,9 @@ plot_mean_filter_log</code></pre>
 <pre class="r"><code>plot_mean &lt;- ggplot(distribution, aes(x = molecules_mean, y = reads_mean, col = type)) + 
   geom_point(size = 3, alpha = 0.5) +  
   scale_colour_manual(values=cbPalette) + 
-  labs(x = &quot;Mean molecule&quot;, y = &quot;Mean reads&quot;, title = &quot;Reads vs. Molecules&quot;) +
+  labs(x = &quot;Mean molecule-counts across samples&quot;, 
+       y = &quot;Mean read-counts across samples&quot;, 
+       title = &quot;Amplification bias is stronger \n in endogenous genes than in ERCC spike-ins&quot;) +
   geom_smooth(method = &quot;lm&quot;)
 
 plot_mean</code></pre>
@@ -319,14 +325,14 @@ str(ercc_filter_plot)</code></pre>
   geom_errorbar(aes(ymin = observed_mean - observed_sem,
                     ymax = observed_mean + observed_sem), width = 0) +
   labs(x = &quot;Expected ERCC molecules&quot;,
-       y = &quot;Observed ERCC molecules\n(mean +/- sem)&quot;,
+       y = &quot;Observed ERCC molecules\n(mean +/- SEM)&quot;,
        title = &quot;ERCC capture efficiency&quot;)
 
 p_efficiency_plot &lt;- p_efficiency + scale_x_log10() +
   scale_y_log10() +
   labs(x = &quot;Expected ERCC molecules&quot;,
-       y = &quot;Observed ERCC molecules\n(mean +/- sem)&quot;,
-       title = &quot;ERCC capture efficiency - log scale&quot;)
+       y = &quot;Observed ERCC molecules\n(mean +/- SEM)&quot;,
+       title = &quot;ERCC capture efficiency \n (48 ERCC spike-in controls)&quot;)
 
 p_efficiency_plot + geom_text(hjust = 0, nudge_x = 0.05, size = 4)</code></pre>
 <p><img src="figure/qc-plots.Rmd/ercc-capture-efficiency-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
@@ -336,8 +342,8 @@ p_efficiency_plot + geom_text(hjust = 0, nudge_x = 0.05, size = 4)</code></pre>
                     ymax = observed_mean + observed_sem), width = 0) +
                     scale_x_log10() + scale_y_log10() +
                     labs(x = &quot;Expected ERCC molecules&quot;,
-                    y = &quot;Observed ERCC molecules\n(mean +/- sem)&quot;,
-                    title = &quot;ERCC capture efficiency - log scale (filtered)&quot;)
+                    y = &quot;Observed ERCC molecules\n(mean +/- SEM)&quot;,
+                    title = &quot;ERCC capture efficiency&quot;)
 
 p_efficiency_filter_plot</code></pre>
 <p><img src="figure/qc-plots.Rmd/ercc-capture-efficiency-2.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
@@ -356,13 +362,11 @@ summary(efficiency)</code></pre>
 <pre><code>   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
 0.03978 0.05459 0.06140 0.06580 0.07621 0.12150 </code></pre>
 </div>
-<div id="qc-plots" class="section level2">
-<h2>QC plots</h2>
-<pre class="r"><code>plot_grid(plot_mean_filter_log + theme(legend.position = c(.85,.25)) + labs (col = &quot;&quot;),
+<div id="qc-plots-for-paper" class="section level2">
+<h2>QC plots for paper</h2>
+<pre class="r"><code>plot_grid(plot_mean_log + theme(legend.position = c(.85,.25)) + labs (col = &quot;&quot;),
           p_efficiency_plot + theme(legend.position = &quot;none&quot;),
-          plot_mean_log + theme(legend.position = c(.85,.25)) + labs (col = &quot;&quot;),
-          p_efficiency_filter_plot + theme(legend.position = &quot;none&quot;),
-          labels = LETTERS[4:7])</code></pre>
+          labels = LETTERS[6:7])</code></pre>
 <p><img src="figure/qc-plots.Rmd/plots-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
 </div>
 <div id="session-information" class="section level2">
@@ -388,7 +392,7 @@ other attached packages:
 [5] dplyr_0.4.2      data.table_1.9.4 biomaRt_2.24.0   knitr_1.10.5    
 
 loaded via a namespace (and not attached):
- [1] Rcpp_0.12.0          formatR_1.2          GenomeInfoDb_1.4.0  
+ [1] Rcpp_0.12.4          formatR_1.2          GenomeInfoDb_1.4.0  
  [4] plyr_1.8.3           bitops_1.0-6         tools_3.2.0         
  [7] digest_0.6.8         RSQLite_1.0.0        evaluate_0.7        
 [10] gtable_0.1.2         DBI_0.3.1            yaml_2.1.13         
@@ -396,10 +400,10 @@ loaded via a namespace (and not attached):
 [16] stringr_1.0.0        S4Vectors_0.6.0      IRanges_2.2.4       
 [19] stats4_3.2.0         Biobase_2.28.0       R6_2.1.1            
 [22] AnnotationDbi_1.30.1 XML_3.98-1.2         rmarkdown_0.6.1     
-[25] reshape2_1.4.1       magrittr_1.5         scales_0.2.4        
+[25] reshape2_1.4.1       magrittr_1.5         scales_0.4.0        
 [28] htmltools_0.2.6      BiocGenerics_0.14.0  MASS_7.3-40         
 [31] assertthat_0.1       colorspace_1.2-6     labeling_0.3        
-[34] stringi_0.4-1        RCurl_1.95-4.6       munsell_0.4.2       
+[34] stringi_1.0-1        RCurl_1.95-4.6       munsell_0.4.3       
 [37] chron_2.3-45        </code></pre>
 </div>
 

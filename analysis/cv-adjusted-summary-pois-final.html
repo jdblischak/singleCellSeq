@@ -10,9 +10,9 @@
 
 <meta name="author" content="Joyce Hsiao" />
 
-<meta name="date" content="2016-06-06" />
+<meta name="date" content="2016-06-25" />
 
-<title>Cell-cell variation analysis: summary</title>
+<title>Cell-to-cell variation analysis: summary</title>
 
 <script src="libs/jquery-1.11.0/jquery.min.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -119,9 +119,9 @@ img {
 </div><!--/.navbar -->
 
 <div id="header">
-<h1 class="title">Cell-cell variation analysis: summary</h1>
+<h1 class="title">Cell-to-cell variation analysis: summary</h1>
 <h4 class="author"><em>Joyce Hsiao</em></h4>
-<h4 class="date"><em>2016-06-06</em></h4>
+<h4 class="date"><em>2016-06-25</em></h4>
 </div>
 
 <div id="TOC">
@@ -140,8 +140,8 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2016-06-11</p>
-<p><strong>Code version:</strong> 0242e47aaea33879b60143338a1f1f3232683dc6</p>
+<p><strong>Last updated:</strong> 2016-06-29</p>
+<p><strong>Code version:</strong> c59e3a495e7257caa3180d1dfdaf315cdd79d715</p>
 <div id="objective" class="section level2">
 <h2>Objective</h2>
 <p>This page documents analysis performed for the paper figures.</p>
@@ -194,16 +194,23 @@ cell_cycle_genes &lt;- read.table(&quot;../data/cellcyclegenes.txt&quot;,
 pluripotency_genes &lt;- read.table(&quot;../data/pluripotency-genes.txt&quot;,
                                header = TRUE, sep = &quot;\t&quot;,
                                stringsAsFactors = FALSE)$To</code></pre>
-<p>Load gene CVs computed over all cells (<a href="http://jdblischak.github.io/singleCellSeq/analysis/cv-adjusted-summary-pois.html">link1</a>), CV computed only over the expressed cells (<a href="http://jdblischak.github.io/singleCellSeq/analysis/cv-adjusted-summary-pois-expressed.html">link2</a>), and differential CV results when including only the expressed cells (<a href="http://jdblischak.github.io/singleCellSeq/analysis/cv-adjusted-summary-pois-expressed.html">link3</a>).</p>
+<p>Load gene CVs computed over all cells (<a href="http://jdblischak.github.io/singleCellSeq/analysis/cv-adjusted-summary-pois.html">link1</a>) and CV computed only over the expressed cells (<a href="http://jdblischak.github.io/singleCellSeq/analysis/cv-adjusted-summary-pois-expressed.html">link2</a>).</p>
 <pre class="r"><code>load(&quot;../data/cv-all-cells.rda&quot;)
 load(&quot;../data/cv-expressed-cells.rda&quot;)
-load(&quot;../data/sig-mean-expressed.rda&quot;)
+#load(&quot;../data/sig-mean-expressed.rda&quot;)
 
+## TBD
 ## permutation results
 # expressed cells
-load(&quot;../data/permuted-pval-expressed.rda&quot;)
+#load(&quot;../data/permuted-pval-expressed.rda&quot;)
 # # all cells
-# load(&quot;../data/permuted-pval.rda&quot;)</code></pre>
+#load(&quot;../data/permuted-pval.rda&quot;)
+
+# load permute p-values
+load(&quot;../data/permuted-pval-expressed.rda&quot;)
+
+# compute MAD of the cells detected as expressed
+mad_expressed &lt;- rowMedians( abs( as.matrix(expressed_dm) - rowMedians(as.matrix(expressed_dm)) ) )</code></pre>
 <p>Compute a matrix of 0’s and 1’s labeling non-detected and detected cells, respectively.</p>
 <pre class="r"><code>molecules_expressed &lt;- molecules_filter
 molecules_expressed[which(molecules_filter &gt; 0 , arr.ind = TRUE)] &lt;- 1
@@ -212,7 +219,7 @@ molecules_expressed &lt;- as.matrix((molecules_expressed))</code></pre>
 <pre class="r"><code>genes_included &lt;- Reduce(intersect,
                          list(rownames(molecules_final),
                              rownames(expressed_cv$NA19098),
-                             rownames(permuted_pval)) )
+                             names(perm_pval)) )
 
 molecules_filter_subset &lt;- molecules_filter[
   which(rownames(molecules_filter) %in% genes_included), ]
@@ -226,8 +233,8 @@ molecules_expressed_subset &lt;- molecules_expressed[
 molecules_final_expressed_subset &lt;- molecules_final_subset*molecules_expressed_subset
 molecules_final_expressed_subset[which(molecules_expressed_subset == 0, arr.ind = TRUE)] &lt;- NA
 
-permuted_pval_subset &lt;- permuted_pval[which(rownames(permuted_pval) %in% genes_included), ]
-names(permuted_pval_subset) &lt;- rownames(permuted_pval)[which(rownames(permuted_pval) %in% genes_included)]
+permuted_pval_subset &lt;- perm_pval[which(names(perm_pval) %in% genes_included)]
+names(permuted_pval_subset) &lt;- names(perm_pval)[which(names(perm_pval) %in% genes_included)]
 
 expressed_cv_subset &lt;- lapply(expressed_cv, function(x)
   x[which(rownames(x) %in% genes_included), ] )
@@ -236,9 +243,9 @@ names(expressed_cv_subset) &lt;- names(expressed_cv)
 expressed_dm_subset &lt;- expressed_dm[which(rownames(expressed_dm) %in% genes_included), , ] 
 
 dim(molecules_final_subset)</code></pre>
-<pre><code>[1] 12137   564</code></pre>
+<pre><code>[1] 13043   564</code></pre>
 <pre class="r"><code>dim(molecules_expressed_subset)</code></pre>
-<pre><code>[1] 12137   564</code></pre>
+<pre><code>[1] 13043   564</code></pre>
 <pre class="r"><code>all.equal(rownames(expressed_cv_subset$NA19098), 
           rownames(molecules_final_expressed_subset) )</code></pre>
 <pre><code>[1] TRUE</code></pre>
@@ -257,16 +264,16 @@ drop_out$all &lt;- rowMeans(as.matrix(molecules_filter_subset) == 0)
 
 summary(drop_out$NA19098)</code></pre>
 <pre><code>   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-0.00000 0.01408 0.17610 0.27930 0.50700 0.99300 </code></pre>
+0.00000 0.02113 0.21130 0.32060 0.59860 0.99300 </code></pre>
 <pre class="r"><code>summary(drop_out$NA19101)</code></pre>
 <pre><code>   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-0.00000 0.03483 0.24880 0.32610 0.58210 0.99500 </code></pre>
+0.00000 0.04975 0.29350 0.36500 0.66170 0.99500 </code></pre>
 <pre class="r"><code>summary(drop_out$NA19239)</code></pre>
 <pre><code>   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-0.00000 0.02262 0.20810 0.30980 0.56560 0.99550 </code></pre>
+0.00000 0.02715 0.25340 0.35060 0.65610 0.99550 </code></pre>
 <pre class="r"><code>summary(drop_out$all)</code></pre>
 <pre><code>   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-0.00000 0.02837 0.21990 0.30800 0.56030 0.92730 </code></pre>
+0.00000 0.03723 0.26060 0.34820 0.64540 0.93090 </code></pre>
 <p>Statistical test for individual difference in dropout rate: logistic regression</p>
 <pre class="r"><code>if(!file.exists(&quot;../data/sig-dropout.rda&quot;)) {
 library(lmtest)
@@ -288,7 +295,6 @@ TRUE </code></pre>
 <div id="main-figure-1" class="section level2">
 <h2>Main figure 1</h2>
 <p><img src="figure/cv-adjusted-summary-pois-final.Rmd/bio-figure1.png" alt="bio-figure1" /></p>
-<p><em>[Chunk not evaluted]</em></p>
 <pre class="r"><code># Venn diagrams
 # only expressed cells
 library(gplots)
@@ -373,6 +379,17 @@ grid.arrange(gTree(children = venn.diagram(venn_mean_expressed,filename = NULL,
                           name = &quot;Top 1000 CV&quot;)),
              ncol = 2)</code></pre>
 <p><img src="figure/cv-adjusted-summary-pois-final.Rmd/venn-plots-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>genes &lt;- rownames(expressed_cv_subset[[1]])
+venn_mean_rank &lt;- gplots::venn( 
+  list(NA19098 = genes[ which(rank(expressed_cv_subset[[1]]$expr_mean) &gt; length(genes) - 1000 ) ],
+       NA19101 = genes[ which(rank(expressed_cv_subset[[2]]$expr_mean) &gt; length(genes) - 1000 ) ],
+       NA19239 = genes[ which(rank(expressed_cv_subset[[3]]$expr_mean) &gt; length(genes) - 1000 ) ] ) )</code></pre>
+<p><img src="figure/cv-adjusted-summary-pois-final.Rmd/venn-expressed-1.png" title="" alt="" width="480" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>venn_cv_rank &lt;- gplots::venn( 
+  list(NA19098 = genes[ which(rank(expressed_cv_subset[[1]]$expr_cv) &gt; length(genes) - 1000 ) ],
+       NA19101 = genes[ which(rank(expressed_cv_subset[[2]]$expr_cv) &gt; length(genes) - 1000 ) ],
+       NA19239 = genes[ which(rank(expressed_cv_subset[[3]]$expr_cv) &gt; length(genes) - 1000 ) ] ) )</code></pre>
+<p><img src="figure/cv-adjusted-summary-pois-final.Rmd/venn-expressed-2.png" title="" alt="" width="480" style="display: block; margin: auto;" /></p>
 <p>venn diagram of gene-specific mean and adjusted CV for when all cells are included</p>
 <p>For more results for when including all cells, see <a href="http://jdblischak.github.io/singleCellSeq/analysis/cv-adjusted-summary-pois.html">here</a>.</p>
 <pre class="r"><code>load(&quot;../data/cv-all-cells.rda&quot;)
@@ -385,12 +402,12 @@ venn_cv_rank &lt;- gplots::venn(
                                &gt; length(genes) - 1000 ) ],
        NA19239 = genes[ which( rank(ENSG_cv_adj$NA19239$log10cv2_adj) 
                                &gt; length(genes) - 1000 ) ] ))</code></pre>
-<p><img src="figure/cv-adjusted-summary-pois-final.Rmd/unnamed-chunk-6-1.png" title="" alt="" width="480" style="display: block; margin: auto;" /></p>
+<p><img src="figure/cv-adjusted-summary-pois-final.Rmd/venn-all-1.png" title="" alt="" width="480" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>gplots::venn( 
   list(NA19098 = genes[ which(rank(ENSG_cv[[1]]$mean) &gt; length(genes) - 1000 ) ],
        NA19101 = genes[ which(rank(ENSG_cv[[2]]$mean) &gt; length(genes) - 1000 ) ],
        NA19239 = genes[ which(rank(ENSG_cv[[3]]$mean) &gt; length(genes) - 1000 ) ] ) )</code></pre>
-<p><img src="figure/cv-adjusted-summary-pois-final.Rmd/unnamed-chunk-6-2.png" title="" alt="" width="480" style="display: block; margin: auto;" /></p>
+<p><img src="figure/cv-adjusted-summary-pois-final.Rmd/venn-all-2.png" title="" alt="" width="480" style="display: block; margin: auto;" /></p>
 </div>
 <div id="main-figure-2" class="section level2">
 <h2>Main figure 2</h2>
@@ -427,7 +444,9 @@ for (i in 1:nrow(query_genes_ensg)) {
   df &lt;- t(t(df)/colSums(df))
   barplot(df, col = c(&quot;grey40&quot;, &quot;grey80&quot;),
           ylab = &quot;Proportion of cells&quot;,
-          cex.names = 0.9)
+          cex.names = 0.9,
+          cex.axis = 1.2, 
+          cex.lab = 1.2)
 
   plot_density_overlay(
     molecules = molecules_final_expressed_subset,
@@ -435,6 +454,8 @@ for (i in 1:nrow(query_genes_ensg)) {
     which_gene = query_genes_ensg$ensembl_gene_id[i], 
     labels = &quot;&quot;,
     xlims = c(4,12.5), ylims = c(0,1),
+    cex.lab = 1.2,
+    cex.axis = 1.2,
     gene_symbols = gene_symbols)
     individuals &lt;- unique(anno_filter$individual)
   library(scales)
@@ -446,7 +467,9 @@ for (i in 1:nrow(query_genes_ensg)) {
   barplot(height = abs(unlist(expressed_dm_subset[which(rownames(expressed_dm_subset) %in% query_genes_ensg$ensembl_gene_id[i]),])), col = cols,
           ylim = c(0,.7), border = &quot;white&quot;,
           ylab = &quot;Absolute value of adjusted CV&quot;,
-          cex.names = 0.9)
+          cex.names = 0.9,
+          cex.axis = 1.2, 
+          cex.lab = 1.2)
   abline(h = 0)
 
   # print MAD values  
@@ -494,7 +517,7 @@ gplots::heatmap.2(
   labCol = &quot;&quot;,
   labRow = gene_symbols$external_gene_name[match(rownames(molecules_final_subset)[which_pluri], gene_symbols$ensembl_gene_id)],
   col = rev(viridis::viridis(256)))</code></pre>
-<p><img src="figure/cv-adjusted-summary-pois-final.Rmd/unnamed-chunk-7-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="figure/cv-adjusted-summary-pois-final.Rmd/unnamed-chunk-6-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
 <div id="supp.-figure-pluripotent-gens-density-plot-for-all-batches" class="section level2">
 <h2>Supp. figure: pluripotent gens density plot for all batches</h2>
@@ -539,7 +562,7 @@ cowplot::plot_grid(
                     molecules_filter[grep(&quot;ERCC&quot;, rownames(molecules_filter)), 
                                      anno_filter$individual == &quot;NA19098&quot;], 
                     is_log2count = FALSE,
-                    main = &quot;Filtered counts, NA19098&quot;) +
+                    main = &quot;CV across single cells of NA19098&quot;) +
                     theme(legend.position = &quot;none&quot;),
     plot_poisson_cv(molecules_filter[grep(&quot;ERCC&quot;, rownames(molecules_filter),
                                       invert = TRUE), 
@@ -547,7 +570,7 @@ cowplot::plot_grid(
                 molecules_filter[grep(&quot;ERCC&quot;, rownames(molecules_filter)), 
                                  anno_filter$individual == &quot;NA19101&quot;], 
                 is_log2count = FALSE,
-                main = &quot;Filtered counts, NA19101&quot;) +
+                main = &quot;CV across single cells of NA19101&quot;) +
                 theme(legend.position = &quot;none&quot;),
     plot_poisson_cv(molecules_filter[grep(&quot;ERCC&quot;, rownames(molecules_filter),
                                   invert = TRUE), 
@@ -555,11 +578,11 @@ cowplot::plot_grid(
             molecules_filter[grep(&quot;ERCC&quot;, rownames(molecules_filter)), 
                              anno_filter$individual == &quot;NA19239&quot;], 
             is_log2count = FALSE,
-            main = &quot;Filtered counts, NA19239&quot;) +
+            main = &quot;CV across single cells of NA19239&quot;) +
             theme(legend.position = &quot;none&quot;),
   nrow = 1,
   labels = LETTERS[1:3])</code></pre>
-<p><img src="figure/cv-adjusted-summary-pois-final.Rmd/unnamed-chunk-8-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
+<p><img src="figure/cv-adjusted-summary-pois-final.Rmd/unnamed-chunk-7-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
 </div>
 <div id="supplemental-figure-xx-adjusted-cv-sanity-checks" class="section level2">
 <h2>Supplemental figure XX: Adjusted CV sanity checks</h2>
@@ -571,28 +594,28 @@ cowplot::plot_grid(
          aes(x = log2_mean, y = dm)) +
       geom_point(cex = .4) +
       xlab(&quot;log2 average molecule count&quot;) +
-      ylab(&quot;DM values&quot;) +
-      ggtitle(&quot;NA19098&quot;) +
+      ylab(&quot;Adjusted CV value&quot;) +
+      ggtitle(&quot;Adjusted CV of NA19098&quot;) +
       theme(legend.position = &quot;none&quot;),
     ggplot(data.frame(dm = ENSG_cv_adj$NA19101$log10cv2_adj,
                     log2_mean = log10(ENSG_cv_adj$NA19101$mean)),
          aes(x = log2_mean, y = dm)) +
       geom_point(cex = .4) +
       xlab(&quot;log2 average molecule count&quot;) +
-      ylab(&quot;DM values&quot;) +
-      ggtitle(&quot;NA19101&quot;) +
+      ylab(&quot;Adjusted CV value&quot;) +
+      ggtitle(&quot;Adjusted CV of NA19101&quot;) +
       theme(legend.position = &quot;none&quot;),
   ggplot(data.frame(dm = ENSG_cv_adj$NA19239$log10cv2_adj,
                     log2_mean = log10(ENSG_cv_adj$NA19239$mean)),
          aes(x = log2_mean, y = dm)) +
       geom_point(cex = .4) +
       xlab(&quot;log2 average molecule count&quot;) +
-      ylab(&quot;DM values&quot;) +
-      ggtitle(&quot;NA19239&quot;) +
+      ylab(&quot;Adjusted value&quot;) +
+      ggtitle(&quot;Adjusted CV of NA19239&quot;) +
       theme(legend.position = &quot;none&quot;),
   nrow = 1,
   labels = LETTERS[4:6] )</code></pre>
-<p><img src="figure/cv-adjusted-summary-pois-final.Rmd/unnamed-chunk-9-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
+<p><img src="figure/cv-adjusted-summary-pois-final.Rmd/unnamed-chunk-8-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
 <p>Expressed cells</p>
 <pre class="r"><code>plot_grid(
   ggplot(data.frame(dm = expressed_dm_subset$NA19098,
@@ -621,7 +644,7 @@ cowplot::plot_grid(
       theme(legend.position = &quot;none&quot;),
   nrow = 1,
   labels = LETTERS[4:6] )</code></pre>
-<p><img src="figure/cv-adjusted-summary-pois-final.Rmd/unnamed-chunk-10-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
+<p><img src="figure/cv-adjusted-summary-pois-final.Rmd/unnamed-chunk-9-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
 </div>
 <div id="supp.-figure-permutation-test-results" class="section level2">
 <h2>Supp. figure: permutation test results</h2>
@@ -629,7 +652,7 @@ cowplot::plot_grid(
 <p>Legend: (A) Histogram of empirical p-values based on 12,192 permutations. (B) -log10 empirical p-values are plotted against average gene expression levels. Blue line displays predicted -log10 p-values using locally weighted scatterplot smooth (LOESS). (C) Median of Absolute Deviation (MAD) of genes versus average gene expression levels. LOESS was also used to depict predicted MAD values.</p>
 <pre class="r"><code># Bins average gene expression and make a boxplot of -log10 p-values
 # for each bin
-permuted_pval_subset[which(permuted_pval_subset == 0)] &lt;- 1/length(permuted_pval)
+permuted_pval_subset[which(permuted_pval_subset == 0)] &lt;- 1/length(perm_pval)
 mad_expressed &lt;- rowMedians( abs( as.matrix(expressed_dm_subset) - rowMedians(as.matrix(expressed_dm_subset)) ) )
 
 
@@ -637,7 +660,7 @@ plot_grid(
   ggplot( data.frame(pvals = permuted_pval_subset),
          aes(x = pvals) ) +
     geom_histogram() + xlim(0, 1) +
-    labs(x = &quot;Permutation-based p-values&quot;, y = &quot;Count&quot;),
+    labs(x = &quot;Permutation-based P-values&quot;, y = &quot;Count&quot;, title = &quot;Empirical P-values based on permutation&quot;),
   ggplot( data.frame(pvals = permuted_pval_subset,
                      gene_mean = rowMeans(as.matrix(molecules_final_expressed_subset),
                                           na.rm = TRUE),
@@ -649,8 +672,9 @@ plot_grid(
     geom_point(alpha = .5, cex = .2) +
     stat_smooth() +
     theme(legend.position = &quot;none&quot;) +
-    ylab(&quot;-log10(p-value)&quot;) +
-    xlab(&quot;Average gene expression level&quot;),
+    ylab(&quot;-log10 P-value&quot;) +
+    xlab(&quot;Average gene expression level&quot;) +
+    ggtitle(&quot;Gene expression level and empirical P-values&quot;),
   ggplot( data.frame(mad = mad_expressed,
                    gene_mean = rowMeans(as.matrix(molecules_final_expressed_subset),
                                         na.rm = TRUE),
@@ -660,35 +684,36 @@ plot_grid(
       geom_point( alpha = .5, cex = .2) +
       stat_smooth(col = 11) +
       theme(legend.position = &quot;none&quot;) +
-      ylab(&quot;Median of absolute deviation (MAD)&quot;) +
-      xlab(&quot;Average gene expression level&quot;),
+      ylab(&quot;Adjusted CV&quot;) +
+      xlab(&quot;Average gene expression level&quot;) +
+      ggtitle(&quot;Gene expression level and adjusted CV&quot;),
   ncol = 2,
   labels = LETTERS[1:3]
   )</code></pre>
-<p><img src="figure/cv-adjusted-summary-pois-final.Rmd/unnamed-chunk-11-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
+<p><img src="figure/cv-adjusted-summary-pois-final.Rmd/unnamed-chunk-10-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
 <p><em>All cells</em></p>
-<p>Legend: (A) Histogram of empirical p-values based on 12,192 permutations. (B) -log10 empirical p-values are plotted against average gene expression levels. Blue line displays predicted -log10 p-values using locally weighted scatterplot smooth (LOESS). (C) Median of Absolute Deviation (MAD) of genes versus average gene expression levels. LOESS was also used to depict predicted MAD values.</p>
 <p><em>[chunk not evaluated]</em></p>
 <pre class="r"><code># Bins average gene expression and make a boxplot of -log10 p-values
 # for each bin
 gene_means &lt;- rowMeans(as.matrix(molecules_final_subset))
 
 plot_grid(
-  ggplot( data.frame(pvals = permuted_pval$mad_pval),
+  ggplot( data.frame(pvals = perm_pval),
          aes(x = pvals) ) +
     geom_histogram() + xlim(0, 1) +
-    labs(x = &quot;Permutation-based p-values&quot;, y = &quot;Count&quot;),
-  ggplot( data.frame(pvals = permuted_pval$mad_pval,
-                     gene_mean = rowMeans(as.matrix(molecules_final)),
-                     bins = cut_number(gene_means, n = 10)),
+    labs(x = &quot;Permutation-based p-values&quot;, y = &quot;Frequency&quot;),
+  ggplot( 
+    data.frame(pvals = perm_pval,
+               gene_mean = rowMeans(as.matrix(molecules_final_expressed_subset)),
+               bins = cut_number(gene_means, n = 10)),
          aes(x = gene_mean, y = -log10(pvals)) ) +
     geom_point(alpha = .5, cex = .2) +
     stat_smooth() +
     theme(legend.position = &quot;none&quot;) +
     ylab(&quot;-log10(p-value)&quot;) +
     xlab(&quot;Average gene expression level&quot;),
-  ggplot( data.frame(mad = mad,
-                   gene_mean = rowMeans(as.matrix(molecules_final)),
+  ggplot( data.frame(mad = mad_expressed,
+                   gene_mean = rowMeans(as.matrix(molecules_final_expressed_subset)),
                    bins = cut_number(gene_means, n = 10)),
          aes(x = gene_mean, y = mad) ) +
       geom_point( alpha = .5, cex = .2) +
@@ -715,6 +740,7 @@ plot(y = log10(expressed_cv_subset$all$expr_mean),
      cex.lab = 1.5)
 lines(lowess( log10(expressed_cv_subset$all$expr_mean) ~ drop_out$all),
       col = &quot;red&quot;)
+
 # variance
 plot(y = log10(expressed_cv_subset$all$expr_var),
      x = drop_out$all,
@@ -736,7 +762,7 @@ plot(y = expressed_cv_subset$all$expr_cv,
 lines(lowess( expressed_cv_subset$all$expr_cv ~ drop_out$all),
       col = &quot;red&quot;)
 title(main = &quot;Expressed cells, three individuals&quot;, outer = TRUE, line = -1)</code></pre>
-<p><img src="figure/cv-adjusted-summary-pois-final.Rmd/unnamed-chunk-13-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
+<p><img src="figure/cv-adjusted-summary-pois-final.Rmd/unnamed-chunk-12-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
 </div>
 <div id="session-information" class="section level2">
 <h2>Session information</h2>

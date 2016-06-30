@@ -9,7 +9,7 @@
 <meta name="generator" content="pandoc" />
 
 
-<meta name="date" content="2016-05-02" />
+<meta name="date" content="2016-06-23" />
 
 <title>Additional analysis for the manuscript</title>
 
@@ -119,7 +119,7 @@ img {
 
 <div id="header">
 <h1 class="title">Additional analysis for the manuscript</h1>
-<h4 class="date"><em>2016-05-02</em></h4>
+<h4 class="date"><em>2016-06-23</em></h4>
 </div>
 
 <div id="TOC">
@@ -135,8 +135,8 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2016-05-19</p>
-<p><strong>Code version:</strong> ad817ee3853d04329bf66788ac8682a17410e310</p>
+<p><strong>Last updated:</strong> 2016-06-29</p>
+<p><strong>Code version:</strong> c59e3a495e7257caa3180d1dfdaf315cdd79d715</p>
 <pre class="r"><code>library(&quot;dplyr&quot;)
 library(&quot;ggplot2&quot;)
 library(&quot;cowplot&quot;)
@@ -684,7 +684,53 @@ for (i in c(1:length(blme_list))) {
 title(main = &quot;Proportion of individual-level variance&quot;,
       outer = TRUE, line = -1)</code></pre>
 <p><img src="figure/paper-additional-analysis.Rmd/unnamed-chunk-16-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
-<p>Kruskal-wallis test to compare estimated proportion of variance</p>
+<p>Boxplot displaying proportion of variance explained due to individual, batch and residual cell-to-cell variation.</p>
+<pre class="r"><code>load(&quot;../data/blme-variance.rda&quot;)
+theme_set(theme_bw(base_size = 12))
+theme_update(panel.grid.minor.x = element_blank(),
+             panel.grid.minor.y = element_blank(),
+             panel.grid.major.x = element_blank(),
+             panel.grid.major.y = element_blank())
+cowplot::plot_grid(
+  ggplot(
+    data.frame(proportion = 
+                 c(prop_list$raw$prop_ind, 
+                   prop_list$raw$prop_batch, 
+                   1- prop_list$raw$prop_ind - prop_list$raw$prop_batch),
+              type = rep(1:3, 
+                         each = dim(prop_list$raw)[1])),
+          aes(x = factor(type,
+                          labels = c(&quot;Individual&quot;,
+                                     &quot;C1 replicate&quot;,
+                                     &quot;Residual \n cell-to-cell variance&quot;)), 
+              y = proportion)) +
+    geom_violin(alpha = .5) +
+    geom_boxplot(alpha = .01, width = 0.1, 
+                 position = position_dodge(width = 0.9)) + 
+    ylim(0,1) + xlab(&quot;&quot;) + ylab(&quot;Proportion of variance explained&quot;) +
+    labs( title = &quot;The proportion of variance due to individual is larger than \n variance due to C1 batch in endogenous genes&quot;),
+  ggplot(
+    data.frame(proportion = 
+                 c(prop_list$ercc$prop_ind, 
+                   prop_list$ercc$prop_batch, 
+                   1- prop_list$ercc$prop_ind - prop_list$ercc$prop_batch),
+              type = rep(1:3, 
+                         each = dim(prop_list$ercc)[1])),
+          aes(x = factor(type,
+                          labels = c(&quot;Individual&quot;,
+                                     &quot;C1 replicate&quot;,
+                                     &quot;Residual \n cell-to-cell variance&quot;)), 
+              y = proportion)) +
+    geom_violin(alpha = .5) +
+    geom_boxplot(alpha = .01, width = 0.1, 
+                 position = position_dodge(width = 0.9)) + 
+    ylim(0,1) + xlab(&quot;&quot;) + ylab(&quot;Proportion of variance explained&quot;) +
+    labs( title = &quot;The proportion of variance due to individual is larger than \n variance due to C1 batch in ERCC spike-in controls&quot;),
+  labels = c(&quot;A&quot;, &quot;B&quot;) )</code></pre>
+<pre><code>Warning: Removed 753 rows containing non-finite values (stat_ydensity).</code></pre>
+<pre><code>Warning: Removed 753 rows containing non-finite values (stat_boxplot).</code></pre>
+<p><img src="figure/paper-additional-analysis.Rmd/unnamed-chunk-17-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
+<p>Kruskal-wallis test to compare estimated proportion of variance explained.</p>
 <pre class="r"><code># Kruskal wallis rank sum test to compare
 # proportions of variance explained due to individual
 # versus due to replicate
@@ -783,28 +829,28 @@ The following object is masked from &#39;package:stats&#39;:
           labRow = unique(anno_filter$batch),
           labCol = unique(anno_filter$batch),
           key = TRUE, main = &quot;Raw&quot;)</code></pre>
-<p><img src="figure/paper-additional-analysis.Rmd/unnamed-chunk-19-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p><img src="figure/paper-additional-analysis.Rmd/unnamed-chunk-20-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>heatmap.2(as.matrix(fr_cpm$fr_pval), 
           dendrogram = &quot;column&quot;,
           trace = &quot;none&quot;, Rowv = FALSE,
           labRow = unique(anno_filter$batch),
           labCol = unique(anno_filter$batch),
           key = TRUE, main = &quot;CPM&quot;)</code></pre>
-<p><img src="figure/paper-additional-analysis.Rmd/unnamed-chunk-19-2.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p><img src="figure/paper-additional-analysis.Rmd/unnamed-chunk-20-2.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>heatmap.2(as.matrix(fr_cpm_trans$fr_pval), 
           dendrogram = &quot;column&quot;,
           trace = &quot;none&quot;, Rowv = FALSE,
           labRow = unique(anno_filter$batch),
           labCol = unique(anno_filter$batch),
           key = TRUE, main = &quot;Poisson&quot;)</code></pre>
-<p><img src="figure/paper-additional-analysis.Rmd/unnamed-chunk-19-3.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p><img src="figure/paper-additional-analysis.Rmd/unnamed-chunk-20-3.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>heatmap.2(as.matrix(fr_final$fr_pval), 
           dendrogram = &quot;column&quot;,
           trace = &quot;none&quot;, Rowv = FALSE,
           labRow = unique(anno_filter$batch),
           labCol = unique(anno_filter$batch),
           key = TRUE, main = &quot;Final&quot;)</code></pre>
-<p><img src="figure/paper-additional-analysis.Rmd/unnamed-chunk-19-4.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p><img src="figure/paper-additional-analysis.Rmd/unnamed-chunk-20-4.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 </div>
 <div id="correlation-between-and-within-batches" class="section level2">
 <h2>Correlation between and within batches</h2>
@@ -904,7 +950,7 @@ vector length (arg 1)</code></pre>
                       &quot;between-batch-19239&quot;,
                       &quot;across-batches&quot;))
 axis(2)</code></pre>
-<p><img src="figure/paper-additional-analysis.Rmd/unnamed-chunk-20-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p><img src="figure/paper-additional-analysis.Rmd/unnamed-chunk-21-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
 <p>Kruskal wallis comparing all between-batch correlations with all within-batch correlations</p>
 <pre class="r"><code>df &lt;- data.frame(corrs = c(unlist(corr_filter[[1]]),
                                 unlist(corr_filter[[2]])),
@@ -964,8 +1010,8 @@ loaded via a namespace (and not attached):
 [22] gdata_2.16.1       minqa_1.2.4        magrittr_1.5      
 [25] codetools_0.2-11   htmltools_0.2.6    MASS_7.3-40       
 [28] splines_3.2.0      assertthat_0.1     colorspace_1.2-6  
-[31] KernSmooth_2.23-14 stringi_1.0-1      RCurl_1.95-4.6    
-[34] lazyeval_0.1.10    munsell_0.4.3     </code></pre>
+[31] labeling_0.3       KernSmooth_2.23-14 stringi_1.0-1     
+[34] RCurl_1.95-4.6     lazyeval_0.1.10    munsell_0.4.3     </code></pre>
 </div>
 
 
