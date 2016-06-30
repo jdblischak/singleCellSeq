@@ -61,6 +61,18 @@ We found that while gene-specific reads and molecule counts are exceptionally hi
 Moreover, the gene-specific read and molecule counts correlation is noticeably lower for genes that are expressed at lower levels (Figure `r fig_main_qc`F).
 These observations concur with previous studies [@Islam2014; @Grun2014] as they underscore the importance of using UMIs in single cell gene expression studies.
 
+![**Figure `r fig_main_qc`. Experimental design and quality control of scRNA-seq.**
+\(A\) Three C1 96 well-integrated fluidic circuit (IFC) replicates were collected from each of the three Yoruba individuals.
+A bulk sample was included in each batch.
+(B) Summary of the cutoffs used to remove low quality cells that might be ruptured or dead (See Figure `r fig_supp_qc` for details).
+(C-E) To assess the quality of the scRNA-seq data, the capture efficiency of cells and the faithfulness of mRNA fraction amplification were determined based on the proportion of unmapped reads, the number of detected genes, the numbers of total mapped reads, and the proportion of ERCC spike-in reads across cells.
+The dash lines indicate the cutoffs summarized in (B).
+The three colors represent the three individuals (NA19098 in red, NA19101 in green, and NA19239 in blue), and the numbers indicate the cell numbers observed in each capture site on C1 plate.
+(F) Scatterplots in log scale showing the mean read counts and the mean molecule counts of each endogenous gene (grey) and ERCC spike-ins (blue) from the `r nrow(anno_filter)` high quality single cell samples before removal of genes with low expression.
+(G) mRNA capture efficiency shown as observed molecule count versus number of molecules added to each sample, only including the `r sum(grepl("ERCC", rownames(molecules_filter)))` ERCC spike-in controls remaining after removal of genes with low abundance.
+Each red dot represents the mean +/- SEM of an ERCC spike-in across the `r nrow(anno_filter)` high quality single cell samples.
+](figure/Figure01.jpeg)
+
 ```{r}
 library("dplyr")
 d <- read.table("../data/subsampling-results.txt",
@@ -84,12 +96,18 @@ d_filter <- d_grouped %>% filter(individual == "NA19239",
 
 ```
 
-
 Beyond quality control of the samples, we also investigated the effect of sequencing depth and the number of single cells collected on multiple properties of the data.
 To this end, we repeatedly subsampled samples and sequencing reads to assess the correlation of the single cell gene expression estimates to the bulk samples, the number of genes detected, and the correlation of the cell-to-cell gene expression level variance estimates between the subsampled data and the full single cell data set (Figure `r fig_main_subsample`).
 We observed quickly diminishing improvement in all three of these properties with increasing sequencing depth and the number of sampled cells, especially for highly expressed genes.
 For example, a per cell sequencing depth of 1.5 million reads (which corresponds to ~50,000 molecules) from each of 75 single cells was sufficient for effectively quantifying even the lower 50% of expressed genes.
 At this level of subsampling for individual NA19239, we were able to detect a mean of `r d_filter$mean_detected ` genes out of `r d_filter$used_ensg` expressed in the bulk samples (the bottom 50%; Figure `r fig_main_subsample`B); the estimated single cell expression levels of these genes (summed across all cells) correlated with the bulk sample gene expression levels with a mean Pearson coefficient of  `r round(d_filter$mean_bulk, digits = 2)` (Figure `r fig_main_subsample`A), and the estimated cell-to-cell variation in gene expression levels based on 75 samples was correlated with the variation estimated from the full data set with a mean Pearson coefficient of `r round(d_filter$mean_var, digits = 2)` (Figure `r fig_main_subsample`C).
+
+![**Figure `r fig_main_subsample`. The effect of sequencing depth and cell number on single cell UMI estimates.**
+Sequencing reads from single cells were subsampled to the indicated sequencing depth and cell number, and subsequently converted to molecules using the UMIs. Each point represents the mean +/- SEM of 10 random draws of the indicated cell number.
+The left panel displays the results for 6,097 (50% of detected) genes with lower expression levels  and the right panel the results for 6,097 genes with higher expression levels.
+\(A\) Pearson correlation of aggregated gene expression level estimates from single cells compared to the bulk sequencing samples.
+(B) Total number of genes detected with at least one molecule in at least one of the single cells.
+(C) Pearson correlation of cell-to-cell gene expression level variance estimates from subsets of single cells compared to the full single cell data set.](figure/Figure02.jpeg)
 
 ### Batch effects associated with UMI-based single cell data
 In the context of the C1 platform, typical study designs make use of a single C1 plate (batch/replicate) per biological condition.
@@ -121,6 +139,16 @@ Unexpectedly, we observed a significant batch effect in the read-to-molecule con
 Moreover, the difference in read-to-molecule conversion efficiency across the three individuals was significant not only for endogenous genes (LRT; *P* < 0.01, Figure `r fig_main_batch`C) but also in the ERCC spike-ins (LRT; *P* < 0.01, Figure `r fig_main_batch`D).
 We reason that the difference in read to molecule conversion efficiency across C1 preparations may contribute to the observed batch effect in this platform.
 
+![**Figure `r fig_main_batch`. Batch effect of scRNA-seq data using the C1 platform.**
+\(A\) Violin plots of the number of total ERCC spike-in molecule-counts in single cell samples per C1 replicate.
+(B) Scatterplot of the total ERCC molecule-counts and total gene molecule-counts.
+The colors represent the three individuals (NA19098 is in red, NA19101 in green, and NA19239 in blue).
+Data from different C1 replicates is plotted in different shapes.
+(C and D) Violin plots of the reads to molecule conversion efficiency (total molecule-counts divided by total read-counts per single cells) by C1 replicate.
+The endogenous genes and the ERCC spike-ins are shown separately in (C) and (D), respectively.
+There is significant difference across individuals of both endogenous genes (*P* < 0.001) and ERCC spike-ins (*P* < 0.05).
+The differences across C1 replicates per individual of endogenous genes and ERCC spike-ins were also evaluated (both *P* < 0.01).](figure/Figure03.jpeg)
+
 ### Measuring regulatory noise in single-cell gene expression data
 Our analysis indicated that there is a considerable batch effect in the single cell gene expression data collected from the C1 platform.
 We thus sought an approach that would account for the batch effect and allow us to study biological properties of the single-cell molecule count-based estimates of gene expression levels, albeit in a small sample of just three individuals.
@@ -135,6 +163,11 @@ Finally, to account for the technical batch effect, we modeled between-sample co
 Our approach is similar in principle to *limma*, which was initially developed for adjusting within-replicate correlations in microarray data [@Smyth2005].
 We assume that samples within each C1 replicate share a component of technical variation, which is independent of biological variation across individuals. We fit a linear mixed model for each gene, which includes a fixed effect for individual and a random effect for batch.
 The batch effect is specific to each C1 replicate, and is independent of biological variation across individuals. We use this approach to estimate and remove the batch effect associated with different C1 preparations (Figure `r fig_main_normalization`D).
+
+![**Figure `r fig_main_normalization`. Normalization and removal of technical variability.**
+Principal component (PC) 1 versus PC2 of the (A) raw molecule counts, (B) log~2~ counts per million (cpm), (C) Poisson transformed expression levels (accounting for technical variability modeled by the ERCC spike-ins), and (D) batch-corrected expression levels.
+The colors represent the three individuals (NA19098 in red, NA19101 in green, and NA19239 in blue).
+Data from different C1 replicates is plotted in different shapes.](figure/Figure04.jpeg)
 
 Once we removed the unwanted technical variability, we focused on analyzing biological variation in gene expression between single cells.
 Our goal was to identify inter-individual differences in the amount of variation of gene expression levels across single cells.
@@ -164,3 +197,9 @@ For the purpose of this analysis, we only included data from cells in which the 
 Based on permutations (Figure `r fig_supp_permutation`), we classified the estimates of regulatory noise of 330 genes as significantly different across individuals (empirical permutation *P* < 10^-5^; Figure `r fig_supp_noisygene` for examples; Table `r table_noisygene` for gene list).
 These 330 genes are enriched for genes involved in protein translation, protein disassembly, and various biosynthetic processes (Table `r table_GO`).
 Interestingly, among the genes whose regulatory noise estimates differ between individuals, we found two highly expressed pluripotency genes, *DNMT3B* and *NR6A1* (Figure `r fig_supp_noisygene`; Figure `r fig_supp_plurigene`).
+
+![**Figure `r fig_main_noise`. Cell-to-cell variation in gene expression.**
+Adjusted CV plotted against average molecule counts across all cells in (A) and across only the cells in which the gene is expressed (B), including data from all three individuals.
+Each dot represents a gene, and the color indicates the corresponding gene-specific dropout rate (the proportion of cells in which the gene is undetected).
+(C and D) Venn diagrams showing the overlaps of top 1000 genes across individuals based on mean expression level in (C) and based on adjusted CV values in (D), considering only the cells in which the gene is expressed.
+(E and F) Similarly, Venn diagrams showing the overlaps of top 1000 genes across individuals based on mean expression level in (E) and based on adjusted CV values in (F), across all cells.](figure/Figure05.jpeg)
