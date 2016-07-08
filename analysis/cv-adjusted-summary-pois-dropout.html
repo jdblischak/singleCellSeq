@@ -1,0 +1,1187 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+<meta name="author" content="Joyce Hsiao" />
+
+<meta name="date" content="2016-07-08" />
+
+<title>Cell-to-cell variation analysis: cells not detected as expressed</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Cell-to-cell variation analysis: cells not detected as expressed</h1>
+<h4 class="author"><em>Joyce Hsiao</em></h4>
+<h4 class="date"><em>2016-07-08</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#background-and-some-observations">Background and some observations</a></li>
+<li><a href="#set-up">Set up</a></li>
+<li><a href="#prepare-data">Prepare data</a></li>
+<li><a href="#drop-out-rate-descriptives">Drop-out rate descriptives</a></li>
+<li><a href="#explore-the-role-of-drop-outs">Explore the role of drop-outs</a></li>
+<li><a href="#compare-non-detection-rates-between-individuals">Compare non-detection rates between individuals</a></li>
+<li><a href="#non-detection-rate-p-value-and-fold-change">Non-detection rate p-value and fold change</a></li>
+<li><a href="#differential-non-detectoin-rate-and-cv">Differential non-detectoin rate and CV</a></li>
+<li><a href="#non-detection-fold-change-cv-na19098-vs.na19101">Non-detection, fold change, CV: NA19098 vs. NA19101</a></li>
+<li><a href="#pluripotency-genes">Pluripotency genes</a></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2016-07-08</p>
+<p><strong>Code version:</strong> f3271c626c586079652907b55fa357b6f569fd26</p>
+<div id="background-and-some-observations" class="section level2">
+<h2>Background and some observations</h2>
+<ol style="list-style-type: decimal">
+<li><p><strong>Non-detection rate descriptives</strong>: We found that the median of non-detected cells rate is 26% across the three individuals and ranges between 21 to 30% between the three individuals.</p></li>
+<li><p><strong>Non-detection rate and Mean, Var, CV</strong>: Expectedly, gene abundance and variance were both associated with percent of non-detected cells; even genes with as low as 10 percent of non-detected cells were restricted in the dynamic range of abudance levels. Gene coefficient of variation was not correlated with percent of non-detected genes (Spearman’s correlation = .04) across the three individuals. Further analysis indicated that when including only cells with less than 50 percent of undetected cells, the gene CV decreases as a concave function of abundance, a commonly observed pattern in bulk RNA-seq data and in scRNA-seq when undetected cells are included in the analysis.</p></li>
+<li><p><strong>Compare non-detection rates</strong>: 1,958 genes were found to have significant differences in non-detection rates between the three individuals at false discovery rate less than .01.</p></li>
+<li><p><strong>Individual difference in non-detection rate and gene abundance</strong>: We found no correlation between p-values of tests comparing gene mean abundance and p-values of tests comparing non-detection rate, for all three pairiwse between-individual comparisons. The results also held when we investigated the correlation between fold change and p-value of tests comparing non-detection rate between indivdiuals. Furthermore, we evaluated genes with absolute log2 fold change greater than 1, 1.5, and 2 in the pairwise comparison tests, most genes with our nominated fold change difference were found to not have a significant difference in the proportion of non-detected cells.</p></li>
+</ol>
+<p>*Note: I don’t trust the differential expression analysis results here. Over 95% of the genes in the overall F-test were to be significant at FDR &lt; .01; same results were found for two of the pairwise comparisons (NA19098-NA19101, NA19098-NA19239). When looking at the fold change of gene expression, I found only a very small portion of the genes with log2 fold change more than 2; NA19098-NA19101: 5 genes, NA19098-NA19239: 4 genes, and NA19101-NA19101: 2 genes.</p>
+<p><em>Note: An interesting observation when computing fold change suggests that on average gene abundance levels of NA19239 &gt; NA19101&gt; NA19098</em></p>
+<ol start="5" style="list-style-type: decimal">
+<li><strong>Non-detection rate and adjusted CV of the expressed cells</strong>: Similar to results with gene abundance, we found no correlation between individual differences in non-detection rate and adjusted CV. At FDR &lt; .01, of the 679 genes with differential adjusted CV of the expressed cells, only 69 genes were found to have significant difference also in proportion of undetected cells in at least one pair of between individual comparisons.</li>
+</ol>
+</div>
+<div id="set-up" class="section level2">
+<h2>Set up</h2>
+<pre class="r"><code>library(&quot;dplyr&quot;)
+library(&quot;limma&quot;)
+library(&quot;edgeR&quot;)
+library(&quot;ggplot2&quot;)
+library(&quot;scales&quot;)
+library(&quot;grid&quot;)
+theme_set(theme_bw(base_size = 12))
+source(&quot;functions.R&quot;)
+library(&quot;Humanzee&quot;)
+library(&quot;cowplot&quot;)
+library(&quot;MASS&quot;)
+library(&quot;matrixStats&quot;)
+source(&quot;../code/cv-functions.r&quot;)
+source(&quot;../code/plotting-functions.R&quot;)
+library(&quot;mygene&quot;)
+library(&quot;aod&quot;)</code></pre>
+</div>
+<div id="prepare-data" class="section level2">
+<h2>Prepare data</h2>
+<p>We import molecule counts before standardizing and transformation and also log2-transformed counts after batch-correction. Biological variation analysis of the individuals is performed on the batch-corrected and log2-transformed counts.</p>
+<pre class="r"><code># Import filtered annotations
+anno_filter &lt;- read.table(&quot;../data/annotation-filter.txt&quot;, 
+                      header = TRUE,
+                      stringsAsFactors = FALSE)
+
+# Import filtered molecule counts
+molecules_filter &lt;- read.table(&quot;../data/molecules-filter.txt&quot;,
+                               header = TRUE, stringsAsFactors = FALSE)
+stopifnot(NROW(anno_filter) == NCOL(molecules_filter))
+
+# Import final processed molecule counts of endogeneous genes
+molecules_final &lt;- read.table(&quot;../data/molecules-final.txt&quot;, 
+                             header = TRUE, stringsAsFactors = FALSE)
+stopifnot(NROW(anno_filter) == NCOL(molecules_final))
+
+# Import gene symbols
+gene_symbols &lt;- read.table(file = &quot;../data/gene-info.txt&quot;, sep = &quot;\t&quot;,
+                           header = TRUE, stringsAsFactors = FALSE, quote = &quot;&quot;)
+
+# Import cell-cycle gene list
+cell_cycle_genes &lt;- read.table(&quot;../data/cellcyclegenes.txt&quot;,
+                               header = TRUE, sep = &quot;\t&quot;,
+                               stringsAsFactors = FALSE)
+
+# Import pluripotency gene list
+
+pluripotency_genes &lt;- read.table(&quot;../data/pluripotency-genes.txt&quot;,
+                               header = TRUE, sep = &quot;\t&quot;,
+                               stringsAsFactors = FALSE)$To</code></pre>
+<p>Load gene CVs computed over all cells (<a href="http://jdblischak.github.io/singleCellSeq/analysis/cv-adjusted-summary-pois.html">link1</a>), CV computed only over the expressed cells (<a href="http://jdblischak.github.io/singleCellSeq/analysis/cv-adjusted-summary-pois-expressed.html">link2</a>), and differential CV results when including only the expressed cells (<a href="http://jdblischak.github.io/singleCellSeq/analysis/cv-adjusted-summary-pois-expressed.html">link3</a>).</p>
+<pre class="r"><code>load(&quot;../data/cv-all-cells.rda&quot;)
+load(&quot;../data/cv-expressed-cells.rda&quot;)
+load(&quot;../data/permuted-pval-expressed-set1.rda&quot;)</code></pre>
+<p>Compute a matrix of 0’s and 1’s indicating non-detected and detected cells, respectively.</p>
+<pre class="r"><code>molecules_expressed &lt;- molecules_filter
+molecules_expressed[which(molecules_filter &gt; 0 , arr.ind = TRUE)] &lt;- 1
+molecules_expressed &lt;- as.matrix((molecules_expressed))</code></pre>
+<p>Take the gene subset included in the final data.</p>
+<pre class="r"><code>genes_included &lt;- Reduce(intersect,
+                         list(rownames(molecules_final),
+                             rownames(expressed_cv$NA19098),
+                             names(perm_pval_set1)) )
+
+molecules_filter_subset &lt;- molecules_filter[
+  which(rownames(molecules_filter) %in% genes_included), ]
+
+molecules_final_subset &lt;- molecules_final[
+  which(rownames(molecules_final) %in% genes_included), ]
+
+molecules_expressed_subset &lt;- molecules_expressed[
+  which(rownames(molecules_expressed) %in% genes_included), ]
+
+molecules_final_expressed_subset &lt;- molecules_final_subset*molecules_expressed_subset
+molecules_final_expressed_subset[which(molecules_expressed_subset == 0, arr.ind = TRUE)] &lt;- NA
+
+permuted_pval_subset &lt;- perm_pval_set1[which(names(perm_pval_set1) %in% genes_included)]
+names(permuted_pval_subset) &lt;- names(perm_pval_set1)[which(names(perm_pval_set1) %in% genes_included)]
+
+expressed_cv_subset &lt;- lapply(expressed_cv, function(x)
+  x[which(rownames(x) %in% genes_included), ] )
+names(expressed_cv_subset) &lt;- names(expressed_cv)
+
+expressed_dm_subset &lt;- expressed_dm[which(rownames(expressed_dm) %in% genes_included), , ] 
+
+dim(molecules_final_subset)</code></pre>
+<pre><code>[1] 13043   564</code></pre>
+<pre class="r"><code>dim(molecules_expressed_subset)</code></pre>
+<pre><code>[1] 13043   564</code></pre>
+<pre class="r"><code>all.equal(rownames(expressed_cv_subset$NA19098), 
+          rownames(molecules_final_expressed_subset) )</code></pre>
+<pre><code>[1] TRUE</code></pre>
+<pre class="r"><code>all.equal(names(permuted_pval_subset), 
+          rownames(molecules_expressed_subset) )</code></pre>
+<pre><code>[1] TRUE</code></pre>
+</div>
+<div id="drop-out-rate-descriptives" class="section level2">
+<h2>Drop-out rate descriptives</h2>
+<p>Compute drop-out rates.</p>
+<pre class="r"><code>drop_out &lt;- lapply(unique(anno_filter$individual), function(ind) {
+  temp_df &lt;- molecules_filter_subset[,anno_filter$individual == ind]
+  zero_df &lt;- array(0, dim = dim(temp_df))
+  rownames(zero_df) &lt;- rownames(temp_df)
+  zero_df[which(temp_df == 0, arr.ind = TRUE)] &lt;- 1
+  zero_count &lt;- rowMeans(zero_df)
+  return(zero_count)
+})  
+names(drop_out) &lt;- unique(anno_filter$individual)
+drop_out$all &lt;- rowMeans(as.matrix(molecules_filter_subset) == 0)
+
+summary(drop_out$NA19098)</code></pre>
+<pre><code>   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+0.00000 0.02113 0.21130 0.32060 0.59860 0.99300 </code></pre>
+<pre class="r"><code>summary(drop_out$NA19101)</code></pre>
+<pre><code>   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+0.00000 0.04975 0.29350 0.36500 0.66170 0.99500 </code></pre>
+<pre class="r"><code>summary(drop_out$NA19239)</code></pre>
+<pre><code>   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+0.00000 0.02715 0.25340 0.35060 0.65610 0.99550 </code></pre>
+<pre class="r"><code>summary(drop_out$all)</code></pre>
+<pre><code>   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+0.00000 0.03723 0.26060 0.34820 0.64540 0.93090 </code></pre>
+<p>Histogram of drop-out percents.</p>
+<pre class="r"><code>par(mfrow = c(2,2))
+for (i in 1:4) {
+h1 &lt;- hist(drop_out[[i]], breaks = seq(0,1, by = .1), 
+           plot = FALSE)
+h1$density &lt;- h1$counts/sum(h1$counts)*100
+plot(h1, ylab = &quot;Percent&quot;,
+         xlab = &quot;Proportion of non-detected cells&quot;,
+         main = names(drop_out)[i], 
+     freq=FALSE)
+}</code></pre>
+<p><img src="figure/cv-adjusted-summary-pois-dropout.Rmd/unnamed-chunk-5-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>Proportion of genes with 50 percent or more undetected cells.</p>
+<pre class="r"><code>sapply(drop_out, function(x) mean(x&gt;=.5))</code></pre>
+<pre><code>  NA19098   NA19101   NA19239       all 
+0.3091313 0.3592732 0.3378057 0.3384957 </code></pre>
+</div>
+<div id="explore-the-role-of-drop-outs" class="section level2">
+<h2>Explore the role of drop-outs</h2>
+<p>NA19098, expressed cells</p>
+<pre class="r"><code>par(mfrow = c(2,2))
+plot(y = log10(expressed_cv_subset$NA19098$expr_mean),
+     x = drop_out$NA19098,
+     xlab = &quot;Percent of drop-outs&quot;,
+     ylab = &quot;log10 mean expression&quot;,
+     pch = 16, cex =.3)
+lines(lowess( expressed_cv_subset$NA19098$expr_mean ~ drop_out$NA19098),
+      col = &quot;red&quot;)
+plot(y = log10(expressed_cv_subset$NA19098$expr_var),
+     x = drop_out$NA19098,
+     xlab = &quot;Percent of drop-outs&quot;,
+     ylab = &quot;log10 variance of expression&quot;,
+     pch = 16, cex =.3)
+lines(lowess( log10(expressed_cv_subset$NA19098$expr_var) ~ drop_out$NA19098),
+      col = &quot;red&quot;)
+plot(y = expressed_cv_subset$NA19098$expr_cv,
+     x = drop_out$NA19098,
+     xlab = &quot;Percent of drop-outs&quot;,
+     ylab = &quot;CV&quot;,
+     pch = 16, cex =.3)
+lines(lowess( expressed_cv_subset$NA19098$expr_cv ~ drop_out$NA19098),
+      col = &quot;red&quot;)
+plot(y = expressed_dm_subset$NA19098,
+     x = drop_out$NA19098,
+     xlab = &quot;Percent of drop-outs&quot;,
+     ylab = &quot;Corrected CV&quot;,
+     pch = 16, cex =.3)
+lines(lowess( expressed_dm_subset$NA19098 ~ drop_out$NA19098),
+      col = &quot;red&quot;)
+title(main = &quot;Expressed cells, NA19098&quot;, outer = TRUE, line = -1)</code></pre>
+<p><img src="figure/cv-adjusted-summary-pois-dropout.Rmd/unnamed-chunk-7-1.png" title="" alt="" width="576" style="display: block; margin: auto;" /></p>
+<p>All individuals, expressed cells</p>
+<pre class="r"><code>par(mfrow = c(2,2))
+# abundance
+plot(y = log10(expressed_cv_subset$all$expr_mean),
+     x = drop_out$all,
+     xlab = &quot;Percent of drop-outs&quot;,
+     ylab = &quot;log10 mean expression&quot;,
+     pch = 16, cex =.3)
+lines(lowess( log10(expressed_cv_subset$all$expr_mean) ~ drop_out$all),
+      col = &quot;red&quot;)
+# variance
+plot(y = log10(expressed_cv_subset$all$expr_var),
+     x = drop_out$all,
+     xlab = &quot;Percent of drop-outs&quot;,
+     ylab = &quot;log10 variance of expression&quot;,
+     pch = 16, cex =.3)
+lines(lowess( log10(expressed_cv_subset$all$expr_var) ~ drop_out$all),
+      col = &quot;red&quot;)
+# CV
+plot(y = expressed_cv_subset$all$expr_cv,
+     x = drop_out$all,
+     xlab = &quot;Percent of drop-outs&quot;,
+     ylab = &quot;CV&quot;,
+     pch = 16, cex =.3)
+lines(lowess( expressed_cv_subset$all$expr_cv ~ drop_out$all),
+      col = &quot;red&quot;)
+title(main = &quot;All 3 individuals&quot;, outer = TRUE, line = -1)</code></pre>
+<p><img src="figure/cv-adjusted-summary-pois-dropout.Rmd/unnamed-chunk-8-1.png" title="" alt="" width="576" style="display: block; margin: auto;" /></p>
+<p>CV and mean plus drop-out rates.</p>
+<pre class="r"><code>par(mfrow = c(2,2))
+plot(y = expressed_cv_subset$NA19098$expr_cv,
+     x = log10(expressed_cv_subset$NA19098$expr_mean),
+     cex = .9, col = alpha(&quot;grey40&quot;, .8), lwd = .6,
+     xlab = &quot;log10 gene mean abundance&quot;,
+     ylab = &quot;CV&quot;,
+     main = &quot;Expressed cells, NA19098&quot;,
+     xlim = c(1,5), ylim = c(0,2.5))
+points(y = expressed_cv_subset$NA19098$expr_cv,
+       x = log10(expressed_cv_subset$NA19098$expr_mean), 
+       col = rev(RColorBrewer::brewer.pal(10, &quot;RdYlBu&quot;))[
+                cut(drop_out$NA19098, breaks = seq(0, 1, by = .1),
+                     include.lowest = TRUE)], 
+       cex = .6, pch = 16)
+
+
+plot(y = expressed_cv_subset$all$expr_cv,
+     x = log10(expressed_cv_subset$all$expr_mean),
+     cex = .9, col = alpha(&quot;grey40&quot;, .8), lwd = .6,
+     xlab = &quot;log10 gene mean abundance&quot;,
+     ylab = &quot;CV&quot;,
+     main = &quot;Expressed cells, All 3 individuals&quot;,
+     xlim = c(1,5), ylim = c(0,2.5))
+points(y = expressed_cv_subset$all$expr_cv,
+       x = log10(expressed_cv_subset$all$expr_mean), 
+       col = rev(RColorBrewer::brewer.pal(10, &quot;RdYlBu&quot;))[
+                cut(drop_out$all, breaks = seq(0, 1, by = .1),
+                     include.lowest = TRUE)], 
+       cex = .6, pch = 16)
+
+
+plot(y = expressed_dm_subset$NA19098,
+     x = log10(expressed_cv_subset$NA19098$expr_mean),
+     cex = .9, col = alpha(&quot;grey40&quot;, .8), lwd = .6,
+     xlab = &quot;log10 gene mean abundance&quot;,
+     ylab = &quot;Adjusted CV&quot;,
+     main = &quot;Expressed cells, NA19098&quot;,
+     xlim = c(1,5))
+points(y = expressed_dm_subset$NA19098,
+       x = log10(expressed_cv_subset$NA19098$expr_mean), 
+       col = rev(RColorBrewer::brewer.pal(10, &quot;RdYlBu&quot;))[
+                cut(drop_out$NA19098, breaks = seq(0, 1, by = .1),
+                     include.lowest = TRUE)], 
+       cex = .6, pch = 16)
+
+plot(1:10, pch = 15, cex = 2, axes = F, xlab = &quot;&quot;, ylab = &quot;&quot;,
+     col = rev(RColorBrewer::brewer.pal(10, &quot;RdYlBu&quot;)), xlim = c(0, 13))
+text(labels = levels(cut(drop_out$NA19098, breaks = seq(0, 1, by = .1),
+                     include.lowest = TRUE)),
+     y = 1:10, x = 1:10 + 2, cex = .7)
+title(main = &quot;drop-out rate&quot;)</code></pre>
+<p><img src="figure/cv-adjusted-summary-pois-dropout.Rmd/unnamed-chunk-9-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="compare-non-detection-rates-between-individuals" class="section level2">
+<h2>Compare non-detection rates between individuals</h2>
+<p>Fisher’s exact test for between individual comparisons. For some genes, we observed no undetected cells, a scenario that calls for Fisher’s exact test instead of Chi-square test or logistic regression.</p>
+<pre class="r"><code>file_name &lt;- &quot;../data/sig-test-zeros.rda&quot;
+if (file.exists(file_name)) {
+  load(file_name)
+} else {
+  ind &lt;- factor(anno_filter$individual,
+              levels = unique(anno_filter$individual),
+              labels = unique(anno_filter$individual) )
+  fit_zero &lt;- do.call(rbind,
+      lapply(1:NROW(molecules_expressed_subset), function(ii) {
+#      lapply(1:100, function(ii) {
+          tab &lt;- table(molecules_expressed_subset[ii, ], ind)
+          if (dim(tab)[1] == 1) {
+             if (as.numeric(rownames(tab)) == 1) {
+               tab &lt;- rbind(rep(0,3), tab)
+               rownames(tab) &lt;- c(0,1)
+             } else {
+               tab &lt;- rbind(rep(1,3), tab)
+               rownames(tab) &lt;- c(0,1)
+             }
+          }
+          pval &lt;- lapply(rev(1:dim(tab)[2]),
+                         function(i) {
+                              fisher.test(tab[,-i])$p.value                 
+                         })
+          names(pval) &lt;- sapply(rev(1:dim(tab)[2]), 
+                               function(i) {
+                                 paste(colnames(tab[,-i])[1],
+                                      colnames(tab[,-i])[2],
+                                      sep = &quot;-&quot;) })
+          df &lt;- data.frame(
+                do.call(cbind, pval),
+                    row.names = rownames(molecules_expressed_subset)[ii] ) 
+          colnames(df) &lt;- names(pval)
+          return(df)
+  }) )
+  fit_zero_qval &lt;- do.call(cbind,
+    lapply(1:3, function(i) {
+    stats::p.adjust(fit_zero[,i], method = &quot;fdr&quot;)
+  }))
+  colnames(fit_zero_qval) &lt;- colnames(fit_zero)
+  
+  save(fit_zero, fit_zero_qval, file = file_name)
+}</code></pre>
+<pre class="r"><code>par(mfrow = c(2,2))
+for (i in 1:3) {
+  hist(fit_zero[,i],
+       main = colnames(fit_zero)[i],
+       xlab = &quot;p-value&quot;)
+}
+title(main = &quot;p-value histogram&quot;, outer = TRUE, line = -1)
+
+# genes with almost 1 p-value
+table(rowSums(fit_zero &gt; .999))</code></pre>
+<pre><code>
+   0    1    2    3 
+8865 2188  282 1708 </code></pre>
+<pre class="r"><code>par(mfrow = c(2,2))</code></pre>
+<p><img src="figure/cv-adjusted-summary-pois-dropout.Rmd/unnamed-chunk-11-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>for (i in 1:3) {
+  plot(ecdf(fit_zero[,i]),
+       main = colnames(fit_zero)[i],
+       xlab = &quot;p-value&quot;,
+       axes = F)
+  axis(1); axis(2)
+}
+title(main = &quot;p-value empirical distribution function&quot;, outer = TRUE, line = -1)
+
+
+par(mfrow = c(2,2))</code></pre>
+<p><img src="figure/cv-adjusted-summary-pois-dropout.Rmd/unnamed-chunk-11-2.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>for (i in 1:3) {
+  plot(ecdf(fit_zero_qval[,i]),
+       main = colnames(fit_zero_qval)[i],
+       xlab = &quot;q-value&quot;,
+       axes = F)
+  axis(1); axis(2)
+}
+title(main = &quot;q-value empirical distribution function&quot;, outer = TRUE, line = -1)
+
+table(rowSums(fit_zero_qval &lt; .01))</code></pre>
+<pre><code>
+   0    1    2    3 
+9877 1746 1347   73 </code></pre>
+<pre class="r"><code>library(VennDiagram)
+library(gridExtra)
+genes &lt;- rownames(molecules_expressed_subset)
+overlap_list &lt;- lapply(1:3, function(i)
+      genes[ which( fit_zero_qval[ ,i] &lt; .01 ) ] )
+names(overlap_list) &lt;- colnames(fit_zero_qval)
+
+grid.arrange(gTree(children = venn.diagram(overlap_list,filename = NULL,
+                          category.names = names(overlap_list),
+                          name = &quot;q-val &lt; .01&quot;)) )</code></pre>
+<p><img src="figure/cv-adjusted-summary-pois-dropout.Rmd/unnamed-chunk-11-3.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="non-detection-rate-p-value-and-fold-change" class="section level2">
+<h2>Non-detection rate p-value and fold change</h2>
+<pre class="r"><code>log2fc &lt;- data.frame(
+  NA19098_NA19101 = rowMeans(molecules_final_expressed_subset[,anno_filter$individual == &quot;NA19098&quot;], na.rm = TRUE) - rowMeans(molecules_final_expressed_subset[,anno_filter$individual == &quot;NA19101&quot;], na.rm = TRUE),
+  NA19098_NA19239 = rowMeans(molecules_final_expressed_subset[,anno_filter$individual == &quot;NA19098&quot;], na.rm = TRUE) - rowMeans(molecules_final_expressed_subset[,anno_filter$individual == &quot;NA19239&quot;], na.rm = TRUE),
+  NA19101_NA19239 = rowMeans(molecules_final_expressed_subset[,anno_filter$individual == &quot;NA19101&quot;], na.rm = TRUE) - rowMeans(molecules_final_expressed_subset[,anno_filter$individual == &quot;NA19239&quot;], na.rm = TRUE) )
+
+
+par(mfrow = c(2,2))
+plot(rank(fit_zero$`NA19098-NA19101`), 
+     rank(log2fc$NA19098_NA19101),
+     pch = 16, cex = .3,
+     xlab = &quot;Differential non-detection rate p-value (rank)&quot;,
+     ylab = &quot;log2 fold change (rank)&quot;,
+     main = &quot;NA19098-NA19101&quot;) 
+plot(rank(fit_zero$`NA19098-NA19239`), 
+     rank(log2fc$NA19098_NA19239),
+     pch = 16, cex = .3,
+     xlab = &quot;Differential non-detection rate p-value (rank)&quot;,
+     ylab = &quot;log2 fold change (rank)&quot;,
+     main = &quot;NA19098-NA19239&quot;) 
+plot(rank(fit_zero$`NA19101-NA19239`), 
+     rank(log2fc$NA19101_NA19239),
+     pch = 16, cex = .3,
+     xlab = &quot;Differential non-detection rate p-value (rank)&quot;,
+     ylab = &quot;log2 fold change (rank)&quot;,
+     main = &quot;NA19101-NA19239&quot;) </code></pre>
+<p><img src="figure/cv-adjusted-summary-pois-dropout.Rmd/unnamed-chunk-12-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>print(&quot;abs. log2 FC &gt; 1&quot;)</code></pre>
+<pre><code>[1] &quot;abs. log2 FC &gt; 1&quot;</code></pre>
+<pre class="r"><code>sapply(log2fc, function(x) sum(abs(x) &gt; 1))</code></pre>
+<pre><code>NA19098_NA19101 NA19098_NA19239 NA19101_NA19239 
+            178             164              32 </code></pre>
+<pre class="r"><code>library(VennDiagram)
+library(gridExtra)
+genes &lt;- rownames(molecules_final_subset)
+overlap_list &lt;- lapply(1:3, function(i)
+  list(diffNonDetection = genes[which(fit_zero_qval[,i] &lt; .01)],
+       diffAbundance = genes[ which( abs(log2fc[[i]]) &gt; 1) ]) )
+names(overlap_list) &lt;- colnames(fit_zero_qval)
+
+grid.arrange(gTree(children = venn.diagram(overlap_list[[1]],filename = NULL,
+                          category.names = names(overlap_list[[1]]))),
+            gTree(children = venn.diagram(overlap_list[[2]],filename = NULL,
+                          category.names = names(overlap_list[[1]]))),
+            gTree(children = venn.diagram(overlap_list[[3]],filename = NULL,
+                          category.names = names(overlap_list[[3]]))),
+      ncol = 2)</code></pre>
+<p><img src="figure/cv-adjusted-summary-pois-dropout.Rmd/unnamed-chunk-13-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>print(&quot;abs. log2 FC &gt; 1.5&quot;)</code></pre>
+<pre><code>[1] &quot;abs. log2 FC &gt; 1.5&quot;</code></pre>
+<pre class="r"><code>sapply(log2fc, function(x) sum(abs(x) &gt; 1.5))</code></pre>
+<pre><code>NA19098_NA19101 NA19098_NA19239 NA19101_NA19239 
+             12              12              10 </code></pre>
+<pre class="r"><code>genes &lt;- rownames(molecules_final_subset)
+overlap_list &lt;- lapply(1:3, function(i)
+  list(diffNonDetection = genes[which(fit_zero_qval[,i] &lt; .01)],
+       diffAbundance = genes[ which( abs(log2fc[[i]]) &gt; 1.5) ]) )
+names(overlap_list) &lt;- colnames(fit_zero_qval)
+
+grid.arrange(gTree(children = venn.diagram(overlap_list[[1]],filename = NULL,
+                          category.names = names(overlap_list[[1]]))),
+            gTree(children = venn.diagram(overlap_list[[2]],filename = NULL,
+                          category.names = names(overlap_list[[1]]))),
+            gTree(children = venn.diagram(overlap_list[[3]],filename = NULL,
+                          category.names = names(overlap_list[[3]]))),
+      ncol = 2)</code></pre>
+<p><img src="figure/cv-adjusted-summary-pois-dropout.Rmd/unnamed-chunk-14-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>print(&quot;abs. log2 FC &gt; 2&quot;)</code></pre>
+<pre><code>[1] &quot;abs. log2 FC &gt; 2&quot;</code></pre>
+<pre class="r"><code>sapply(log2fc, function(x) sum(abs(x) &gt; 2))</code></pre>
+<pre><code>NA19098_NA19101 NA19098_NA19239 NA19101_NA19239 
+              5               6               2 </code></pre>
+<pre class="r"><code>genes &lt;- rownames(molecules_final_subset)
+overlap_list &lt;- lapply(1:3, function(i)
+  list(diffNonDetection = genes[which(fit_zero_qval[,i] &lt; .01)],
+       diffAbundance = genes[ which( abs(log2fc[[i]]) &gt; 2) ]) )
+names(overlap_list) &lt;- colnames(fit_zero_qval)
+
+grid.arrange(gTree(children = venn.diagram(overlap_list[[1]],filename = NULL,
+                          category.names = names(overlap_list[[1]]))),
+            gTree(children = venn.diagram(overlap_list[[2]],filename = NULL,
+                          category.names = names(overlap_list[[1]]))),
+            gTree(children = venn.diagram(overlap_list[[3]],filename = NULL,
+                          category.names = names(overlap_list[[3]]))),
+      ncol = 2)</code></pre>
+<p><img src="figure/cv-adjusted-summary-pois-dropout.Rmd/unnamed-chunk-15-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>NA19098 vs. NA19101: diff non-detection,log2FC &gt; 1.5</p>
+<pre class="r"><code># genes with the largest difference in non-detection rates
+gene_elect &lt;- intersect(
+  rownames(fit_zero)[which(fit_zero_qval[,1] &lt; .01)],
+  rownames(log2fc)[ which(abs(log2fc$NA19098_NA19101) &gt; 1.5) ] )
+                         
+
+par(mfrow = c(3,2))
+for (i in 1:6) {
+  plot_density_overlay(
+    molecules = molecules_final_expressed_subset,
+    annotation = anno_filter,
+    which_gene = gene_elect[i], 
+    labels = &quot;&quot;,
+    xlims = c(0,15), ylims = NULL,
+    gene_symbols = gene_symbols)
+}</code></pre>
+<p><img src="figure/cv-adjusted-summary-pois-dropout.Rmd/unnamed-chunk-16-1.png" title="" alt="" width="960" style="display: block; margin: auto;" /></p>
+</div>
+<div id="differential-non-detectoin-rate-and-cv" class="section level2">
+<h2>Differential non-detectoin rate and CV</h2>
+<pre class="r"><code>par(mfrow = c(2,2))
+plot(x = rank(matrixStats::rowProds(as.matrix(fit_zero), na.rm =TRUE)),
+     y = rank(permuted_pval_subset),
+     pch = 16, cex = .3,
+     ylab =&quot;Diff. CV p-value (rank)&quot;,
+     xlab = &quot;Diff non-detection rate p-values product (rank)&quot;,
+     main = &quot;All 3 individuals&quot;)
+for (i in 1:3) {
+plot(x = rank(fit_zero[,i]),
+     y = rank(permuted_pval_subset),
+     pch = 16, cex = .3,
+     ylab =&quot;Diff. CV p-value (rank)&quot;,
+     xlab = &quot;Diff non-detection rate p-values (rank)&quot;,
+     main = colnames(fit_zero)[i] )
+}</code></pre>
+<p><img src="figure/cv-adjusted-summary-pois-dropout.Rmd/unnamed-chunk-17-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>Overlap of genes with at least one significant pairwise difference in proportion of detected genes, and genes with significant differential CV.</p>
+<pre class="r"><code># subset expression data of genes that were included
+# in the significance testing
+rownames(fit_zero_qval) &lt;- rownames(fit_zero)
+
+library(VennDiagram)
+library(gridExtra)
+overlap_list_diff &lt;- list(
+   diffCV = names(permuted_pval_subset)[which(permuted_pval_subset == 0)],
+   diffNonDetection = rownames(fit_zero_qval)[
+     which(rowSums(fit_zero_qval &lt; .01, na.rm = TRUE) &gt; 1)
+   ])  
+
+grid.arrange(gTree(children = venn.diagram(overlap_list_diff,filename = NULL,
+                          category.names = names(overlap_list_diff),
+                          name = &quot;Diff. CV &amp; non-detected rate&quot;)))</code></pre>
+<p><img src="figure/cv-adjusted-summary-pois-dropout.Rmd/unnamed-chunk-18-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code># genes with the largest difference in non-detection rates
+gene_elect &lt;- intersect(
+  rownames(fit_zero)[which(rowSums(fit_zero_qval &lt; .01, na.rm = TRUE) == 1)],
+  rownames(log2fc)[ which(permuted_pval_subset &lt; .01) ] )
+                         
+par(mfrow = c(3,2))
+for (i in 1:6) {
+  plot_density_overlay(
+    molecules = molecules_final_expressed_subset,
+    annotation = anno_filter,
+    which_gene = gene_elect[i], 
+    labels = &quot;&quot;,
+    xlims = c(0,15), ylims = NULL,
+    gene_symbols = gene_symbols)
+}</code></pre>
+<p><img src="figure/cv-adjusted-summary-pois-dropout.Rmd/unnamed-chunk-19-1.png" title="" alt="" width="960" style="display: block; margin: auto;" /></p>
+<p>Overlap of genes with significant difference in proportion of undetected genes between all three pairs and overlap of genes with significant differential CV genes.</p>
+<pre class="r"><code># subset expression data of genes that were included
+# in the significance testing
+rownames(fit_zero_qval) &lt;- rownames(fit_zero)
+
+library(VennDiagram)
+library(gridExtra)
+overlap_list_diff &lt;- list(
+   diffCV = names(permuted_pval_subset)[which(permuted_pval_subset == 0)],
+   diffNonDetection = rownames(fit_zero_qval)[
+     which(rowSums(fit_zero_qval &lt; .01, na.rm = TRUE) == 3)
+   ])  
+
+grid.arrange(gTree(children = venn.diagram(overlap_list_diff,filename = NULL,
+                          category.names = names(overlap_list_diff),
+                          name = &quot;Diff. CV &amp; non-detected rate&quot;)))</code></pre>
+<p><img src="figure/cv-adjusted-summary-pois-dropout.Rmd/unnamed-chunk-20-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code># genes with the largest difference in non-detection rates
+gene_elect &lt;- intersect(
+  rownames(fit_zero)[which(rowSums(fit_zero_qval &lt; .01, na.rm = TRUE) == 3)],
+  rownames(log2fc)[ which(permuted_pval_subset &lt; .01) ] )
+                         
+par(mfrow = c(3,2))
+for (i in 1:6) {
+  plot_density_overlay(
+    molecules = molecules_final_expressed_subset,
+    annotation = anno_filter,
+    which_gene = gene_elect[i], 
+    labels = &quot;&quot;,
+    xlims = c(0,15), ylims = NULL,
+    gene_symbols = gene_symbols)
+}</code></pre>
+<p><img src="figure/cv-adjusted-summary-pois-dropout.Rmd/unnamed-chunk-21-1.png" title="" alt="" width="960" style="display: block; margin: auto;" /></p>
+</div>
+<div id="non-detection-fold-change-cv-na19098-vs.na19101" class="section level2">
+<h2>Non-detection, fold change, CV: NA19098 vs. NA19101</h2>
+<pre class="r"><code># subset expression data of genes that were included
+# in the significance testing
+rownames(fit_zero_qval) &lt;- rownames(fit_zero)
+
+library(VennDiagram)
+library(gridExtra)
+overlap_list_diff &lt;- list(
+   difflog2FC = rownames(log2fc)[which(abs(log2fc$NA19098_NA19101) &gt; 1)],
+   diffCV = names(permuted_pval_subset)[which(permuted_pval_subset == 0)],
+   diffNonDetection = rownames(fit_zero_qval)[
+     which(fit_zero_qval[,1] &lt; .01) ] )  
+
+grid.arrange(gTree(children = venn.diagram(overlap_list_diff,filename = NULL,
+                          category.names = names(overlap_list_diff))))</code></pre>
+<p><img src="figure/cv-adjusted-summary-pois-dropout.Rmd/unnamed-chunk-22-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="pluripotency-genes" class="section level2">
+<h2>Pluripotency genes</h2>
+<pre class="r"><code>pluri &lt;- rownames(fit_zero)[which(rownames(fit_zero) %in% pluripotency_genes)]
+symbol &lt;- gene_symbols$external_gene_name[match(pluri, gene_symbols$ensembl_gene_id)]
+
+zero_prop &lt;- do.call(cbind,
+    lapply(unique(anno_filter$individual), function(ind) {
+        rowMeans(molecules_expressed_subset[, anno_filter$individual == ind] == 0,
+                 na.rm = TRUE)
+      }) )
+colnames(zero_prop) &lt;- unique(anno_filter$individual)
+names(zero_prop) &lt;- unique(anno_filter$individual)      
+
+summary_table &lt;- data.frame(
+  gene_symbo = symbol, 
+  diffCVpval = permuted_pval_subset[which(names(permuted_pval_subset) %in% pluripotency_genes)] &lt; .01,
+  fit_zero_qval[which(rownames(fit_zero) %in% pluripotency_genes), ] &lt; .01,
+  round(log2fc[which(rownames(log2fc) %in% pluripotency_genes), ], digits = 2),
+  round(zero_prop[which(rownames(log2fc) %in% pluripotency_genes), ], digits = 2),
+  stringsAsFactors = FALSE)
+
+
+# The two significant CV genes
+
+
+#DNMT3B
+table(molecules_expressed_subset[which( rownames(molecules_expressed_subset) %in% &quot;ENSG00000088305&quot;), ])</code></pre>
+<pre><code>
+  1 
+564 </code></pre>
+<pre class="r"><code>summary(unlist(molecules_final_expressed_subset[which( rownames(molecules_final_expressed_subset) %in% &quot;ENSG00000088305&quot;), ]) )</code></pre>
+<pre><code>   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+  10.80   12.03   12.35   12.36   12.71   13.72 </code></pre>
+<pre class="r"><code># N66A1
+table(molecules_expressed_subset[which( rownames(molecules_expressed_subset) %in% &quot;ENSG00000148200&quot;), ])</code></pre>
+<pre><code>
+  1 
+564 </code></pre>
+<pre class="r"><code>summary(unlist(molecules_final_expressed_subset[which( rownames(molecules_final_expressed_subset) %in% &quot;ENSG00000148200&quot;), ]) )</code></pre>
+<pre><code>   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+  10.23   11.21   11.50   11.50   11.79   12.91 </code></pre>
+<pre class="r"><code># NANOG
+table(molecules_expressed_subset[which( rownames(molecules_expressed_subset) %in% &quot;ENSG00000111704&quot;), ])</code></pre>
+<pre><code>
+  0   1 
+125 439 </code></pre>
+<pre class="r"><code>summary(unlist(molecules_final_expressed_subset[which( rownames(molecules_final_expressed_subset) %in% &quot;ENSG00000111704&quot;), ]) )</code></pre>
+<pre><code>   Min. 1st Qu.  Median    Mean 3rd Qu.    Max.    NA&#39;s 
+  5.977   7.184   7.678   7.784   8.368  10.550     125 </code></pre>
+<pre class="r"><code>#ZFP42
+table(molecules_expressed_subset[which( rownames(molecules_expressed_subset) %in% &quot;ENSG00000179059&quot;), ])</code></pre>
+<pre><code>
+  0   1 
+  1 563 </code></pre>
+<pre class="r"><code>summary(unlist(molecules_final_expressed_subset[which( rownames(molecules_final_expressed_subset) %in% &quot;ENSG00000179059&quot;), ]) )</code></pre>
+<pre><code>   Min. 1st Qu.  Median    Mean 3rd Qu.    Max.    NA&#39;s 
+  6.556   9.722  10.380  10.220  10.810  11.770       1 </code></pre>
+<pre class="r"><code>kable(summary_table)</code></pre>
+<table>
+<thead>
+<tr class="header">
+<th align="left"></th>
+<th align="left">gene_symbo</th>
+<th align="left">diffCVpval</th>
+<th align="left">NA19098.NA19101</th>
+<th align="left">NA19098.NA19239</th>
+<th align="left">NA19101.NA19239</th>
+<th align="right">NA19098_NA19101</th>
+<th align="right">NA19098_NA19239</th>
+<th align="right">NA19101_NA19239</th>
+<th align="right">NA19098</th>
+<th align="right">NA19101</th>
+<th align="right">NA19239</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">ENSG00000187140</td>
+<td align="left">FOXD3</td>
+<td align="left">FALSE</td>
+<td align="left">FALSE</td>
+<td align="left">TRUE</td>
+<td align="left">FALSE</td>
+<td align="right">-0.49</td>
+<td align="right">-0.10</td>
+<td align="right">0.39</td>
+<td align="right">0.30</td>
+<td align="right">0.46</td>
+<td align="right">0.53</td>
+</tr>
+<tr class="even">
+<td align="left">ENSG00000156574</td>
+<td align="left">NODAL</td>
+<td align="left">FALSE</td>
+<td align="left">TRUE</td>
+<td align="left">FALSE</td>
+<td align="left">FALSE</td>
+<td align="right">-0.15</td>
+<td align="right">-0.49</td>
+<td align="right">-0.34</td>
+<td align="right">0.82</td>
+<td align="right">0.96</td>
+<td align="right">0.93</td>
+</tr>
+<tr class="odd">
+<td align="left">ENSG00000171794</td>
+<td align="left">UTF1</td>
+<td align="left">FALSE</td>
+<td align="left">FALSE</td>
+<td align="left">TRUE</td>
+<td align="left">TRUE</td>
+<td align="right">-0.68</td>
+<td align="right">-0.51</td>
+<td align="right">0.17</td>
+<td align="right">0.89</td>
+<td align="right">0.89</td>
+<td align="right">0.98</td>
+</tr>
+<tr class="even">
+<td align="left">ENSG00000184344</td>
+<td align="left">GDF3</td>
+<td align="left">FALSE</td>
+<td align="left">FALSE</td>
+<td align="left">TRUE</td>
+<td align="left">TRUE</td>
+<td align="right">-0.37</td>
+<td align="right">-0.10</td>
+<td align="right">0.26</td>
+<td align="right">0.18</td>
+<td align="right">0.29</td>
+<td align="right">0.45</td>
+</tr>
+<tr class="odd">
+<td align="left">ENSG00000111704</td>
+<td align="left">NANOG</td>
+<td align="left">FALSE</td>
+<td align="left">FALSE</td>
+<td align="left">FALSE</td>
+<td align="left">TRUE</td>
+<td align="right">-0.84</td>
+<td align="right">-0.25</td>
+<td align="right">0.58</td>
+<td align="right">0.18</td>
+<td align="right">0.13</td>
+<td align="right">0.33</td>
+</tr>
+<tr class="even">
+<td align="left">ENSG00000102554</td>
+<td align="left">KLF5</td>
+<td align="left">TRUE</td>
+<td align="left">FALSE</td>
+<td align="left">TRUE</td>
+<td align="left">FALSE</td>
+<td align="right">-0.91</td>
+<td align="right">-0.41</td>
+<td align="right">0.50</td>
+<td align="right">0.99</td>
+<td align="right">0.96</td>
+<td align="right">0.87</td>
+</tr>
+<tr class="odd">
+<td align="left">ENSG00000088305</td>
+<td align="left">DNMT3B</td>
+<td align="left">TRUE</td>
+<td align="left">FALSE</td>
+<td align="left">FALSE</td>
+<td align="left">FALSE</td>
+<td align="right">-0.51</td>
+<td align="right">0.31</td>
+<td align="right">0.81</td>
+<td align="right">0.00</td>
+<td align="right">0.00</td>
+<td align="right">0.00</td>
+</tr>
+<tr class="even">
+<td align="left">ENSG00000101115</td>
+<td align="left">SALL4</td>
+<td align="left">TRUE</td>
+<td align="left">FALSE</td>
+<td align="left">FALSE</td>
+<td align="left">FALSE</td>
+<td align="right">-0.33</td>
+<td align="right">-0.09</td>
+<td align="right">0.24</td>
+<td align="right">0.00</td>
+<td align="right">0.00</td>
+<td align="right">0.00</td>
+</tr>
+<tr class="odd">
+<td align="left">ENSG00000163530</td>
+<td align="left">DPPA2</td>
+<td align="left">TRUE</td>
+<td align="left">TRUE</td>
+<td align="left">TRUE</td>
+<td align="left">FALSE</td>
+<td align="right">-0.60</td>
+<td align="right">-0.41</td>
+<td align="right">0.19</td>
+<td align="right">0.67</td>
+<td align="right">0.84</td>
+<td align="right">0.89</td>
+</tr>
+<tr class="even">
+<td align="left">ENSG00000121570</td>
+<td align="left">DPPA4</td>
+<td align="left">FALSE</td>
+<td align="left">FALSE</td>
+<td align="left">FALSE</td>
+<td align="left">FALSE</td>
+<td align="right">-0.13</td>
+<td align="right">-0.11</td>
+<td align="right">0.03</td>
+<td align="right">0.00</td>
+<td align="right">0.00</td>
+<td align="right">0.00</td>
+</tr>
+<tr class="odd">
+<td align="left">ENSG00000181449</td>
+<td align="left">SOX2</td>
+<td align="left">FALSE</td>
+<td align="left">FALSE</td>
+<td align="left">FALSE</td>
+<td align="left">FALSE</td>
+<td align="right">-0.44</td>
+<td align="right">-0.32</td>
+<td align="right">0.12</td>
+<td align="right">0.00</td>
+<td align="right">0.00</td>
+<td align="right">0.00</td>
+</tr>
+<tr class="even">
+<td align="left">ENSG00000179059</td>
+<td align="left">ZFP42</td>
+<td align="left">FALSE</td>
+<td align="left">FALSE</td>
+<td align="left">FALSE</td>
+<td align="left">FALSE</td>
+<td align="right">-1.37</td>
+<td align="right">-1.34</td>
+<td align="right">0.03</td>
+<td align="right">0.01</td>
+<td align="right">0.00</td>
+<td align="right">0.00</td>
+</tr>
+<tr class="odd">
+<td align="left">ENSG00000164362</td>
+<td align="left">TERT</td>
+<td align="left">FALSE</td>
+<td align="left">FALSE</td>
+<td align="left">FALSE</td>
+<td align="left">FALSE</td>
+<td align="right">-0.42</td>
+<td align="right">-0.18</td>
+<td align="right">0.24</td>
+<td align="right">0.62</td>
+<td align="right">0.54</td>
+<td align="right">0.58</td>
+</tr>
+<tr class="even">
+<td align="left">ENSG00000204531</td>
+<td align="left">POU5F1</td>
+<td align="left">FALSE</td>
+<td align="left">FALSE</td>
+<td align="left">FALSE</td>
+<td align="left">FALSE</td>
+<td align="right">-0.60</td>
+<td align="right">-0.29</td>
+<td align="right">0.31</td>
+<td align="right">0.00</td>
+<td align="right">0.00</td>
+<td align="right">0.00</td>
+</tr>
+<tr class="odd">
+<td align="left">ENSG00000124762</td>
+<td align="left">CDKN1A</td>
+<td align="left">FALSE</td>
+<td align="left">FALSE</td>
+<td align="left">TRUE</td>
+<td align="left">TRUE</td>
+<td align="right">-0.38</td>
+<td align="right">-0.32</td>
+<td align="right">0.06</td>
+<td align="right">0.59</td>
+<td align="right">0.60</td>
+<td align="right">0.91</td>
+</tr>
+<tr class="even">
+<td align="left">ENSG00000203909</td>
+<td align="left">DPPA5</td>
+<td align="left">FALSE</td>
+<td align="left">FALSE</td>
+<td align="left">TRUE</td>
+<td align="left">TRUE</td>
+<td align="right">-0.54</td>
+<td align="right">-0.14</td>
+<td align="right">0.39</td>
+<td align="right">0.66</td>
+<td align="right">0.65</td>
+<td align="right">0.99</td>
+</tr>
+<tr class="odd">
+<td align="left">ENSG00000128567</td>
+<td align="left">PODXL</td>
+<td align="left">FALSE</td>
+<td align="left">FALSE</td>
+<td align="left">FALSE</td>
+<td align="left">FALSE</td>
+<td align="right">-0.46</td>
+<td align="right">0.10</td>
+<td align="right">0.56</td>
+<td align="right">0.00</td>
+<td align="right">0.00</td>
+<td align="right">0.00</td>
+</tr>
+<tr class="even">
+<td align="left">ENSG00000136997</td>
+<td align="left">MYC</td>
+<td align="left">FALSE</td>
+<td align="left">FALSE</td>
+<td align="left">FALSE</td>
+<td align="left">TRUE</td>
+<td align="right">-1.07</td>
+<td align="right">-0.03</td>
+<td align="right">1.04</td>
+<td align="right">0.04</td>
+<td align="right">0.03</td>
+<td align="right">0.11</td>
+</tr>
+<tr class="odd">
+<td align="left">ENSG00000136826</td>
+<td align="left">KLF4</td>
+<td align="left">TRUE</td>
+<td align="left">FALSE</td>
+<td align="left">FALSE</td>
+<td align="left">FALSE</td>
+<td align="right">-0.70</td>
+<td align="right">-0.78</td>
+<td align="right">-0.09</td>
+<td align="right">0.96</td>
+<td align="right">0.93</td>
+<td align="right">0.86</td>
+</tr>
+<tr class="even">
+<td align="left">ENSG00000148200</td>
+<td align="left">NR6A1</td>
+<td align="left">FALSE</td>
+<td align="left">FALSE</td>
+<td align="left">FALSE</td>
+<td align="left">FALSE</td>
+<td align="right">-0.35</td>
+<td align="right">-0.25</td>
+<td align="right">0.10</td>
+<td align="right">0.00</td>
+<td align="right">0.00</td>
+<td align="right">0.00</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+ [1] stats4    parallel  grid      stats     graphics  grDevices utils    
+ [8] datasets  methods   base     
+
+other attached packages:
+ [1] broman_0.59-5          gridExtra_2.0.0        VennDiagram_1.6.9     
+ [4] aod_1.3                mygene_1.2.3           GenomicFeatures_1.20.1
+ [7] AnnotationDbi_1.30.1   Biobase_2.28.0         GenomicRanges_1.20.5  
+[10] GenomeInfoDb_1.4.0     IRanges_2.2.4          S4Vectors_0.6.0       
+[13] BiocGenerics_0.14.0    matrixStats_0.14.0     MASS_7.3-40           
+[16] cowplot_0.3.1          Humanzee_0.1.0         scales_0.4.0          
+[19] ggplot2_1.0.1          edgeR_3.10.2           limma_3.24.9          
+[22] dplyr_0.4.2            knitr_1.10.5          
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.12.4             lattice_0.20-31        
+ [3] Rsamtools_1.20.4        Biostrings_2.36.1      
+ [5] assertthat_0.1          digest_0.6.8           
+ [7] chron_2.3-45            R6_2.1.1               
+ [9] plyr_1.8.3              futile.options_1.0.0   
+[11] acepack_1.3-3.3         RSQLite_1.0.0          
+[13] evaluate_0.7            highr_0.5              
+[15] sqldf_0.4-10            httr_0.6.1             
+[17] zlibbioc_1.14.0         rpart_4.1-9            
+[19] gsubfn_0.6-6            rmarkdown_0.6.1        
+[21] proto_0.3-10            splines_3.2.0          
+[23] BiocParallel_1.2.2      stringr_1.0.0          
+[25] foreign_0.8-63          RCurl_1.95-4.6         
+[27] biomaRt_2.24.0          munsell_0.4.3          
+[29] rtracklayer_1.28.4      htmltools_0.2.6        
+[31] nnet_7.3-9              Hmisc_3.16-0           
+[33] XML_3.98-1.2            GenomicAlignments_1.4.1
+[35] bitops_1.0-6            jsonlite_0.9.16        
+[37] gtable_0.1.2            DBI_0.3.1              
+[39] magrittr_1.5            formatR_1.2            
+[41] stringi_1.0-1           XVector_0.8.0          
+[43] reshape2_1.4.1          latticeExtra_0.6-26    
+[45] futile.logger_1.4.1     Formula_1.2-1          
+[47] lambda.r_1.1.7          RColorBrewer_1.1-2     
+[49] tools_3.2.0             survival_2.38-1        
+[51] yaml_2.1.13             colorspace_1.2-6       
+[53] cluster_2.0.1          </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>

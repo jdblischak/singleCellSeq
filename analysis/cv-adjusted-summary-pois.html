@@ -10,9 +10,9 @@
 
 <meta name="author" content="Joyce Hsiao" />
 
-<meta name="date" content="2016-02-02" />
+<meta name="date" content="2016-07-08" />
 
-<title>Cell-to-cell variation analysis summary</title>
+<title>Cell-to-cell variation analysis: noisy genes among all cells</title>
 
 <script src="libs/jquery-1.11.0/jquery.min.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -119,45 +119,42 @@ img {
 </div><!--/.navbar -->
 
 <div id="header">
-<h1 class="title">Cell-to-cell variation analysis summary</h1>
+<h1 class="title">Cell-to-cell variation analysis: noisy genes among all cells</h1>
 <h4 class="author"><em>Joyce Hsiao</em></h4>
-<h4 class="date"><em>2016-02-02</em></h4>
+<h4 class="date"><em>2016-07-08</em></h4>
 </div>
 
 <div id="TOC">
 <ul>
-<li><a href="#objective">Objective</a></li>
+<li><a href="#background-and-some-observations">Background and some observations</a></li>
 <li><a href="#set-up">Set up</a></li>
 <li><a href="#prepare-data">Prepare data</a></li>
-<li><a href="#helper-functions">Helper functions</a></li>
-<li><a href="#cv-mean-plots">CV-mean plots</a><ul>
-<li><a href="#cell-cycle-or-pluripotency">Cell-cycle or pluripotency?</a></li>
-</ul></li>
-<li><a href="#compute-dm-vlaues-distance-from-the-median">Compute DM vlaues (distance-from-the-median)</a><ul>
+<li><a href="#compute-cv-and-adjusted-cv-values">Compute CV and adjusted CV values</a><ul>
 <li><a href="#sanity-check-plots.">Sanity-check plots.</a></li>
 <li><a href="#check-pluripotency-and-cell-cycle">Check pluripotency and cell-cycle</a></li>
 </ul></li>
 <li><a href="#top-ranked-dm-genes">Top ranked DM genes</a><ul>
-<li><a href="#venn-diagram">Venn diagram</a></li>
+<li><a href="#venn-diagram-1000-genes">Venn diagram, 1000 genes</a></li>
+<li><a href="#venn-diagram-100-genes">Venn diagram, 100 genes</a></li>
+<li><a href="#go-analysis---individual-top-genes">GO analysis - individual top genes</a></li>
+<li><a href="#go-analysis---shared-noisy-genes">GO analysis - shared noisy genes</a></li>
 </ul></li>
-<li><a href="#compare-dms">Compare DMs</a><ul>
-<li><a href="#compute-mad">Compute MAD</a></li>
-<li><a href="#permutation-based-test">Permutation-based test</a></li>
-<li><a href="#heatmap-of-differential-genes">Heatmap of differential genes</a></li>
-<li><a href="#pathway-analysis">Pathway analysis</a></li>
-<li><a href="#go-analysis">GO analysis</a></li>
-<li><a href="#gene-ontology-consortium">Gene Ontology Consortium</a></li>
+<li><a href="#differential-dms">Differential DMs</a><ul>
+<li><a href="#top-100-ranked-genes-by-mad.">Top 100 ranked genes by MAD.</a></li>
 </ul></li>
-<li><a href="#figures">Figures</a></li>
 <li><a href="#session-information">Session information</a></li>
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2016-02-15</p>
-<p><strong>Code version:</strong> afb6992553e07bb4a9f9437d4f2aebb9b973eb37</p>
-<div id="objective" class="section level2">
-<h2>Objective</h2>
-<p>Analyze cell-to-cell heterogeneity in individual iPSC cell lines and identifies genes with differential cell-cell heterogeneity between individual iPSC cell lines. This document uses the final filtered data (poisson transformation).</p>
+<p><strong>Last updated:</strong> 2016-07-08</p>
+<p><strong>Code version:</strong> f3271c626c586079652907b55fa357b6f569fd26</p>
+<div id="background-and-some-observations" class="section level2">
+<h2>Background and some observations</h2>
+<p>Preliminary investigation into expression noise at the transcriptional level. We looked at expression noise across all the cells, including the cells that were not detected (i.e., count = 0) in the experiment. The investigatino begins with coefficeint of variation - a popular measure for quantifying variation in the data.</p>
+<ol style="list-style-type: decimal">
+<li><p>Computation of CV: We were interested in the variation in our batch-corrected data. But since these data are log2-transformed counts. We take 2 to the power of log-transformed counts and then compute the CV based on these corrected counts.</p></li>
+<li><p>Corrected CV: Because in sequencing data, CVs are confounded with abundance levels, we performed a calculation that transformed each CV into a measure of deviation from the median of the CVs from the genes of similar abudance levels.</p></li>
+</ol>
 </div>
 <div id="set-up" class="section level2">
 <h2>Set up</h2>
@@ -172,7 +169,8 @@ source(&quot;functions.R&quot;)
 library(&quot;Humanzee&quot;)
 library(&quot;cowplot&quot;)
 library(&quot;MASS&quot;)
-library(&quot;matrixStats&quot;)</code></pre>
+library(&quot;matrixStats&quot;)
+library(&quot;mygene&quot;)</code></pre>
 </div>
 <div id="prepare-data" class="section level2">
 <h2>Prepare data</h2>
@@ -181,7 +179,7 @@ library(&quot;matrixStats&quot;)</code></pre>
                       header = TRUE,
                       stringsAsFactors = FALSE)
 dim(anno_filter)</code></pre>
-<pre><code>[1] 560   5</code></pre>
+<pre><code>[1] 564   5</code></pre>
 <pre class="r"><code>head(anno_filter, 2)</code></pre>
 <pre><code>  individual replicate well      batch      sample_id
 1    NA19098        r1  A01 NA19098.r1 NA19098.r1.A01
@@ -194,260 +192,12 @@ stopifnot(NROW(anno_filter) == NCOL(molecules_filter))</code></pre>
 <pre class="r"><code>molecules_final &lt;- read.table(&quot;../data/molecules-final.txt&quot;, 
                              header = TRUE, stringsAsFactors = FALSE)
 dim(molecules_final)</code></pre>
-<pre><code>[1] 12192   560</code></pre>
+<pre><code>[1] 13058   564</code></pre>
 <pre class="r"><code>stopifnot(NROW(anno_filter) == NCOL(molecules_final))</code></pre>
 <p>Import gene symbols.</p>
 <pre class="r"><code>gene_symbols &lt;- read.table(file = &quot;../data/gene-info.txt&quot;, sep = &quot;\t&quot;,
                            header = TRUE, stringsAsFactors = FALSE, quote = &quot;&quot;)</code></pre>
-</div>
-<div id="helper-functions" class="section level2">
-<h2>Helper functions</h2>
-<p>*plot_density</p>
-<p>Per gene plot of overlaied density curves computed from individual cell lines.</p>
-<pre class="r"><code>plot_density_overlay &lt;- function(molecules_ENSG, annotation,
-                         individuals, batches = NULL,
-                         which_gene, labels, 
-                         xlims = NULL, ylims = NULL, gene_symbols) {
-  if_present &lt;- which(rownames(molecules_ENSG) == which_gene)
-  if(length(if_present) == 0) {
-    stop(&quot;Gene not present in the data&quot;)
-  }
-  
-  library(scales)
-  library(broman)
-  crayon &lt;- brocolors(&quot;crayon&quot;)
-  
-  if (is.null(batches)) {
-    individuals &lt;- unique(annotation$individual)
-    colors &lt;- c(&quot;Sunset Orange&quot;, &quot;Tropical Rain Forest&quot;, &quot;Denim&quot;)
-    dens &lt;- lapply(1:3, function(per_individual) {
-      which_individual &lt;- annotation$individual == individuals[per_individual]
-      density(unlist( molecules_ENSG[ rownames(molecules_ENSG) == which_gene, 
-                                      which_individual] ) )
-    })
-
-    if (is.null(xlims)) xlims &lt;- range(sapply(dens, function(obj) obj$x))
-    if (is.null(ylims)) ylims &lt;- range(sapply(dens, function(obj) obj$y))
-    
-    plot(dens[[1]], 
-         xlab = &quot;log2 gene expression&quot;, main = &quot;&quot;,
-         ylab = &quot;Density&quot;, axes = F, lwd = 0, xlim = xlims, ylim = ylims)
-    for (i in 1:length(individuals)) {
-      polygon(dens[[i]], 
-              col = alpha(crayon[colors[i]], .4), 
-              border = &quot;grey40&quot;)
-    }
-    axis(1); axis(2)
-    mtext(text = labels, side = 3)
-    title(main = with(gene_symbols, 
-                      external_gene_name[which(ensembl_gene_id == which_gene)]) )
-  }
-  
-  if (!is.null(batches)) {
-    
-    individuals &lt;- unique(annotation$individual)
-    dens &lt;- lapply(1:length(individuals), function(per_individual) {
-      which_individual &lt;- annotation$individual == individuals[per_individual]
-      annotation_sub &lt;- annotation[which_individual, ]
-      molecules_sub &lt;- molecules_ENSG[ , which_individual]
-      replicates &lt;- unique(annotation_sub$replicate)
-      dens_batch &lt;- lapply(1:length(replicates), function(per_replicate) {
-        which_replicate &lt;- annotation_sub$replicate == replicates[per_replicate]
-        density(unlist( molecules_sub[ rownames(molecules_ENSG) == which_gene, 
-                                       which_replicate] ) )
-      })
-    })
-    
-    if (is.null(xlims)) {
-      xlims &lt;- range( c( sapply(dens, function(obj_individual) {
-        c( sapply(obj_individual, function(obj) {
-          range(obj$x)
-        }) )
-      }) ) )
-    }
-    if (is.null(ylims)) {
-      ylims &lt;- range( c( sapply(dens, function(obj_individual) {
-        c( sapply(obj_individual, function(obj) {
-          range(obj$y)
-        }) )
-      }) ) )
-    }
-    
-    colors &lt;- c(&quot;Sunset Orange&quot;, &quot;Tropical Rain Forest&quot;, &quot;Denim&quot;)
-    for (i in 1:length(dens)) {
-      
-      if (i == 1) col &lt;- crayon[&quot;Sunset Orange&quot;]
-      if (i == 2) col &lt;- crayon[&quot;Tropical Rain Forest&quot;]
-      if (i == 3) col &lt;- crayon[&quot;Denim&quot;]
- 
-      plot(dens[[i]][[1]], 
-           xlab = &quot;log2 gene expression&quot;, main = &quot;&quot;,
-           ylab = &quot;Density&quot;, axes = F, lwd = 0, xlim = xlims, ylim = ylims)
-      for (j in 1:length(dens[[i]])) {
-        polygon(dens[[i]][[j]], 
-                col = alpha(col, .4), 
-                border = &quot;grey40&quot;)
-      }
-    }
-      # first individual
-#       plot(dens[[1]][[1]], 
-#            xlab = &quot;log2 gene expression&quot;, main = &quot;&quot;,
-#            ylab = &quot;Density&quot;, axes = F, lwd = 0, xlim = xlims, ylim = ylims)
-#       for (j in 1:length(dens[[1]]) ) {
-#         polygon(dens[[1]][[j]], col = alpha(crayon[colors[1]], .4), 
-#                 border = &quot;grey40&quot;) }
-#       # second individuadl
-#       plot(dens[[2]][[1]], 
-#            xlab = &quot;log2 gene expression&quot;, main = &quot;&quot;,
-#            ylab = &quot;Density&quot;, axes = F, lwd = 0, xlim = xlims, ylim = ylims)
-#       for (j in 1:length(dens[[2]]) ) {
-#         polygon(dens[[2]][[j]], col = alpha(crayon[colors[2]], .4), 
-#                 border = &quot;grey40&quot;) }
-#       # third individual
-#       plot(dens[[3]][[1]], 
-#            xlab = &quot;log2 gene expression&quot;, main = &quot;&quot;,
-#            ylab = &quot;Density&quot;, axes = F, lwd = 0, xlim = xlims, ylim = ylims)
-#       for (j in 1:length(dens[[3]]) ) {
-#         polygon(dens[[3]][[j]], col = alpha(crayon[colors[3]], .4), 
-#                 border = &quot;grey40&quot;) }
-#       
-      
-        
-    axis(1); axis(2)
-    mtext(text = labels, side = 3)
-    title(main = with(gene_symbols, 
-                      external_gene_name[which(ensembl_gene_id == which_gene)]) )
-  }
-}</code></pre>
-</div>
-<div id="cv-mean-plots" class="section level2">
-<h2>CV-mean plots</h2>
-<p>From the existing RNAseq literature, we learn that gene counts follow an overdispersed poission distribution, i.e., a negative binomial distribution, and that the size of the overdispersion parameter may suggest the degree to which biological variation affects the underlying distribution (see the voom paper).</p>
-<p>Here we examine visually the gene molecule counts for each individual cell lines, before any data transformation or batch-effect correction. Points marked blue are ERCC genes, based on the <em>observed counts</em> before data transformation and batch correction.</p>
-<p><em>Red line</em> is the lossy Poission line predicted based on ERCC genes.</p>
-<p><em>Blue line</em> is based on Poisson distribution.</p>
-<p><em>Yellow line</em> plots a poisson distribution which standard deviation is 3 times the size of its mean - an overdispersed poisson distribution.</p>
-<p>Note: We decided to not make this plot for the entire data set, i.e., across the three cell lines. The goal of these plots are to assess the variation across the three C1 plates collected for each individual cell line.</p>
-<p>*Helper function</p>
-<pre class="r"><code>plot_poisson_cv &lt;- function(molecules_ENSG, molecules_ERCC, 
-
-                            is_log2count = FALSE,
-                            include_observed_ERCC = TRUE,
-                            main){
-    cbPalette &lt;- c(&quot;#999999&quot;, &quot;#0000FF&quot;, &quot;#56B4E9&quot;, &quot;#009E73&quot;, 
-                   &quot;#F0E442&quot;, &quot;#0072B2&quot;, &quot;#D55E00&quot;, &quot;#CC79A7&quot;)    
-    
-    library(matrixStats)
-    if (is_log2count == FALSE) {
-        molecules_ENSG &lt;- as.matrix(molecules_ENSG)
-        molecules_ERCC &lt;- as.matrix(molecules_ERCC)
-        # Remove genes with zero mean molecule count
-        which_ENSG_finite &lt;- which(rowMeans(molecules_ENSG) &gt; 0)
-        molecules_ENSG &lt;- molecules_ENSG[which_ENSG_finite, ]
-        which_ERCC_finite &lt;- which(rowMeans(molecules_ERCC) &gt; 0)
-        molecules_ERCC &lt;- molecules_ERCC[which_ERCC_finite, ]
-
-    }
-    if (is_log2count == TRUE) {
-        molecules_ENSG &lt;- 2^as.matrix(molecules_ENSG)
-        molecules_ERCC &lt;- 2^as.matrix(molecules_ERCC)
-    }
-
-    # defnine poisson function on a log x scale
-    ensg_cv   &lt;- sqrt(rowVars(molecules_ENSG))/rowMeans(molecules_ENSG)
-    poisson.c &lt;- function (x) {
-        (10^x)^(0.5)/(10^x) + min(ensg_cv)
-    }
-
-    # compute the lossy factor based on ERCC
-    ####   use maximum likelihood estimate
-    ####   dont use the points from ERCC.mol.mean &lt; 0.1 to fit. 
-    ercc_mean &lt;- rowMeans(molecules_ERCC)
-    ercc_cv   &lt;- sqrt(rowVars(molecules_ERCC))/rowMeans(molecules_ERCC)
-
-    require(MASS)
-    glm_fit &lt;- glm.nb(round(ercc_mean[log10(ercc_mean) &gt; 0]) ~ 1)
-    dispersion &lt;- summary.glm(glm_fit)$dispersion
-
-    # ERCC poisson
-    lossy.posson &lt;- function (x) {
-        1/sqrt((10^x)/dispersion) + min(ercc_cv)
-    }
-
-    # 3 s.d. 
-    large_sd &lt;- function (x) {
-        1/sqrt((10^x)/dispersion/3) + min(ensg_cv)
-    }
-
-    if (include_observed_ERCC == TRUE) {
-    return(
-      ggplot(rbind(data.frame(means = log10(rowMeans(molecules_ENSG)),
-                      cvs = sqrt(rowVars(molecules_ENSG))/rowMeans(molecules_ENSG),
-                      gene_type = rep(1, NROW(molecules_ENSG) ) ),
-                 data.frame(means = log10(ercc_mean),
-                            cvs = ercc_cv,
-                            gene_type = rep(2, NROW(molecules_ERCC) ) ) ), 
-           aes(x = means, y = cvs, 
-               col = as.factor(gene_type) ) )  + 
-      geom_point(size = 2, alpha = 0.5) + 
-      stat_function(fun = poisson.c, col= &quot;red&quot;)  + 
-      stat_function(fun = lossy.posson, col= &quot;blue&quot;) + 
-      stat_function(fun = large_sd, col = &quot;yellow&quot;) +
-      scale_colour_manual(values = cbPalette) + 
-      labs(x = &quot;log10 average molecule count&quot;,
-           y =&quot;Coefficient of variation (CV)&quot;,
-           title = main) 
-    )
-    }
-    if (include_observed_ERCC == FALSE) {
-    return(
-      ggplot(rbind(data.frame(means = log10(rowMeans(molecules_ENSG)),
-                      cvs = sqrt(rowVars(molecules_ENSG))/rowMeans(molecules_ENSG),
-                      gene_type = rep(1, NROW(molecules_ENSG))),
-                 data.frame(means = log10(ercc_mean),
-                            cvs = ercc_cv,
-                            gene_type = rep(2, NROW(molecules_ERCC)))), 
-           aes(x = means, y = cvs, col = as.factor(gene_type)) )  + 
-      geom_point(size = 2, alpha = 0.5) + 
-      stat_function(fun = poisson.c, col= &quot;red&quot;)  + 
-      scale_colour_manual(values = cbPalette) + 
-      labs(x = &quot;log10 average molecule count&quot;,
-           y =&quot;Coefficient of variation (CV)&quot;,
-           title = main) 
-    )
-    }
-}</code></pre>
-<pre class="r"><code>theme_set(theme_bw(base_size = 8))
-cowplot::plot_grid(
-    plot_poisson_cv(molecules_filter[grep(&quot;ERCC&quot;, rownames(molecules_filter),
-                                          invert = TRUE), 
-                                      anno_filter$individual == &quot;NA19098&quot;], 
-                    molecules_filter[grep(&quot;ERCC&quot;, rownames(molecules_filter)), 
-                                     anno_filter$individual == &quot;NA19098&quot;], 
-                    is_log2count = FALSE,
-                    main = &quot;Filtered counts, NA19098&quot;) +
-                    theme(legend.position = &quot;none&quot;),
-    plot_poisson_cv(molecules_filter[grep(&quot;ERCC&quot;, rownames(molecules_filter),
-                                      invert = TRUE), 
-                                  anno_filter$individual == &quot;NA19101&quot;], 
-                molecules_filter[grep(&quot;ERCC&quot;, rownames(molecules_filter)), 
-                                 anno_filter$individual == &quot;NA19101&quot;], 
-                is_log2count = FALSE,
-                main = &quot;Filtered counts, NA19101&quot;) +
-                theme(legend.position = &quot;none&quot;),
-    plot_poisson_cv(molecules_filter[grep(&quot;ERCC&quot;, rownames(molecules_filter),
-                                  invert = TRUE), 
-                              anno_filter$individual == &quot;NA19239&quot;], 
-            molecules_filter[grep(&quot;ERCC&quot;, rownames(molecules_filter)), 
-                             anno_filter$individual == &quot;NA19239&quot;], 
-            is_log2count = FALSE,
-            main = &quot;Filtered counts, NA19239&quot;) +
-            theme(legend.position = &quot;none&quot;),
-  ncol = 2,
-  labels = LETTERS[1:4])</code></pre>
-<p><img src="figure/cv-adjusted-summary-pois.Rmd/mean-cv-before-correction-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<div id="cell-cycle-or-pluripotency" class="section level3">
-<h3>Cell-cycle or pluripotency?</h3>
+<p>Import cell cycle and pluripotency genes.</p>
 <pre class="r"><code>cell_cycle_genes &lt;- read.table(&quot;../data/cellcyclegenes.txt&quot;,
                                header = TRUE, sep = &quot;\t&quot;,
                                stringsAsFactors = FALSE)
@@ -455,84 +205,9 @@ cowplot::plot_grid(
 pluripotency_genes &lt;- read.table(&quot;../data/pluripotency-genes.txt&quot;,
                                header = TRUE, sep = &quot;\t&quot;,
                                stringsAsFactors = FALSE)$To</code></pre>
-<p>Identify outlier genes and check if they are cell-cycle genes or pluripotent genes.</p>
-<pre class="r"><code>molecules_filter_ENSG &lt;- molecules_filter[grep(&quot;ERCC&quot;, rownames(molecules_filter),
-                                          invert = TRUE), ]
-individuals &lt;- unique(anno_filter$individual)
-cv_outlier_list &lt;- lapply(1:3,
-    function(ii) {
-      ensg &lt;- molecules_filter_ENSG[ ,anno_filter$individual == individuals[ii]]
-      ensg &lt;- as.matrix(ensg)
-      ensg &lt;- ensg[rowMeans(ensg) &gt; 0, ]
-      ensg_cv   &lt;- sqrt(rowVars(ensg))/rowMeans(ensg)
-      ensg_mean   &lt;- rowMeans(ensg)
-      
-#       ercc_mean &lt;- rowMeans(molecules_cpm_ercc)
-#       glm_fit &lt;- glm.nb(round(ercc_mean[log10(ensg_mean) &gt; 0]) ~ 1)
-#       dispersion &lt;- summary.glm(glm_fit)$dispersion
-
-      glm_fit &lt;- glm.nb(round(ensg_mean) ~ 1)
-      dispersion &lt;- summary.glm(glm_fit)$dispersion
-      
-      # Define large genes
-      ii &lt;- ensg_cv &gt; (1/sqrt(ensg_mean/dispersion/3)) + min(ensg_cv)
-      summary(ii)
-      list(dispersion = dispersion,
-      min_cv = min(ensg_cv),
-      outlier_list = ii)
-  })
-names(cv_outlier_list) &lt;- individuals</code></pre>
-<p>Number of outlier genes</p>
-<pre class="r"><code>sapply(cv_outlier_list, function(xx) sum(xx[[3]], na.rm = TRUE))</code></pre>
-<pre><code>NA19098 NA19101 NA19239 
-      3       3       4 </code></pre>
-<p>Names of outlier genes</p>
-<pre class="r"><code>cv_outlier_ensg &lt;- lapply(cv_outlier_list, 
-  function(xx) { 
-    ensg_id &lt;- names(xx$outlier_list)[which(xx$outlier_list == TRUE)] 
-    gene_names &lt;- 
-        do.call(c, lapply(1:length(ensg_id), function(i) {
-                    one_gene_name &lt;-
-                      with(gene_symbols, 
-                           external_gene_name[which(ensembl_gene_id == ensg_id[i])]) 
-                    if (length(one_gene_name) == 0) one_gene_name &lt;- &quot;NULL&quot;
-                    return(one_gene_name)
-                    }) )
-    cell_cycle &lt;- 
-        do.call(c, lapply(1:length(ensg_id), function(i) {
-                    is_cell_cycle &lt;- sum(unlist(cell_cycle_genes) == ensg_id[i]) &gt; 0
-                    return(is_cell_cycle)
-                    }) )
-    pluripotent &lt;- 
-        do.call(c, lapply(1:length(ensg_id), function(i) {
-                    is_pluripotent &lt;- sum(unlist(pluripotency_genes) == ensg_id[i]) &gt; 0
-                    return(is_pluripotent)
-                    }) )
-    cbind(ensg_id, gene_names, cell_cycle, pluripotent)
-    })
-cv_outlier_ensg</code></pre>
-<pre><code>$NA19098
-     ensg_id           gene_names  cell_cycle pluripotent
-[1,] &quot;ENSG00000255823&quot; &quot;MTRNR2L8&quot;  &quot;FALSE&quot;    &quot;FALSE&quot;    
-[2,] &quot;ENSG00000269028&quot; &quot;MTRNR2L12&quot; &quot;FALSE&quot;    &quot;FALSE&quot;    
-[3,] &quot;ENSG00000198786&quot; &quot;MT-ND5&quot;    &quot;FALSE&quot;    &quot;FALSE&quot;    
-
-$NA19101
-     ensg_id           gene_names  cell_cycle pluripotent
-[1,] &quot;ENSG00000255823&quot; &quot;MTRNR2L8&quot;  &quot;FALSE&quot;    &quot;FALSE&quot;    
-[2,] &quot;ENSG00000136147&quot; &quot;PHF11&quot;     &quot;FALSE&quot;    &quot;FALSE&quot;    
-[3,] &quot;ENSG00000269028&quot; &quot;MTRNR2L12&quot; &quot;FALSE&quot;    &quot;FALSE&quot;    
-
-$NA19239
-     ensg_id           gene_names  cell_cycle pluripotent
-[1,] &quot;ENSG00000255823&quot; &quot;MTRNR2L8&quot;  &quot;FALSE&quot;    &quot;FALSE&quot;    
-[2,] &quot;ENSG00000125148&quot; &quot;MT2A&quot;      &quot;FALSE&quot;    &quot;FALSE&quot;    
-[3,] &quot;ENSG00000269028&quot; &quot;MTRNR2L12&quot; &quot;FALSE&quot;    &quot;FALSE&quot;    
-[4,] &quot;ENSG00000271043&quot; &quot;MTRNR2L2&quot;  &quot;FALSE&quot;    &quot;FALSE&quot;    </code></pre>
 </div>
-</div>
-<div id="compute-dm-vlaues-distance-from-the-median" class="section level2">
-<h2>Compute DM vlaues (distance-from-the-median)</h2>
+<div id="compute-cv-and-adjusted-cv-values" class="section level2">
+<h2>Compute CV and adjusted CV values</h2>
 <ol style="list-style-type: decimal">
 <li>Compute Squared Coefficients of Variation across cells for each individual;</li>
 <li>Adjust Squared CVs for confounding effect with the mean:
@@ -541,14 +216,6 @@ $NA19239
 <li>Compute Squared CVs corresponding to rolling medians of gene expression levels, deviation of adjusted CVs.</li>
 </ul></li>
 </ol>
-<pre class="r"><code>source(&quot;../code/cv-functions.r&quot;)</code></pre>
-<p>Compute individual CVs.</p>
-<pre class="r"><code>ENSG_cv &lt;- compute_cv(log2counts = molecules_final,
-                      grouping_vector = anno_filter$individual)</code></pre>
-<p>Adjust CVs for mean dependency.</p>
-<pre class="r"><code>ENSG_cv_adj &lt;- normalize_cv(group_cv = ENSG_cv, 
-                            log2counts = molecules_final, 
-                            anno = anno_filter)</code></pre>
 <div id="sanity-check-plots." class="section level3">
 <h3>Sanity-check plots.</h3>
 <p>Supplemenetal for the Methods section.</p>
@@ -605,10 +272,10 @@ plot_grid(
 ii_cellcycle_genes &lt;- lapply(1:3, function(per_individual) {
   genes %in% unlist(cell_cycle_genes)
 })
-names(ii_cellcycle_genes) &lt;- names(ENSG_cv)
+names(ii_cellcycle_genes) &lt;- names(ENSG_cv)[1:3]
 ii_cellcycle_genes &lt;- do.call(c, ii_cellcycle_genes)
 
-ggplot(data.frame(do.call(rbind, ENSG_cv_adj),
+ggplot(data.frame(do.call(rbind, ENSG_cv_adj[1:3]),
                   dm = c(ENSG_cv_adj$NA19098$log10cv2_adj, 
                          ENSG_cv_adj$NA19101$log10cv2_adj, 
                          ENSG_cv_adj$NA19239$log10cv2_adj) ),
@@ -616,7 +283,7 @@ ggplot(data.frame(do.call(rbind, ENSG_cv_adj),
   geom_point(aes(col = group), cex = 1.2) + facet_wrap( ~ group) +
   ggtitle(&quot;Cell-cycle genes&quot;) + 
   geom_point(
-      data = subset(data.frame(do.call(rbind, ENSG_cv_adj),
+      data = subset(data.frame(do.call(rbind, ENSG_cv_adj[1:3]),
                               dm = c(ENSG_cv_adj$NA19098$log10cv2_adj, 
                                      ENSG_cv_adj$NA19101$log10cv2_adj, 
                                      ENSG_cv_adj$NA19239$log10cv2_adj) ), 
@@ -624,15 +291,15 @@ ggplot(data.frame(do.call(rbind, ENSG_cv_adj),
        colour = &quot;grey20&quot;, cex = 1.2) +
   labs(x = &quot;log10 average gene expression level&quot;,
        y = &quot;DM values&quot;)</code></pre>
-<p><img src="figure/cv-adjusted-summary-pois.Rmd/unnamed-chunk-6-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="figure/cv-adjusted-summary-pois.Rmd/unnamed-chunk-2-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 <p>Mark pluripotent genes</p>
 <pre class="r"><code>ii_pluripotent_genes &lt;- lapply(1:3, function(per_individual) {
   genes %in% unlist(pluripotency_genes)
 })
-names(ii_pluripotent_genes) &lt;- names(ENSG_cv)
+names(ii_pluripotent_genes) &lt;- names(ENSG_cv)[1:3]
 ii_pluripotent_genes &lt;- do.call(c, ii_pluripotent_genes)
 
-ggplot(data.frame(do.call(rbind, ENSG_cv_adj),
+ggplot(data.frame(do.call(rbind, ENSG_cv_adj[1:3]),
                   dm = c(ENSG_cv_adj$NA19098$log10cv2_adj, 
                          ENSG_cv_adj$NA19101$log10cv2_adj, 
                          ENSG_cv_adj$NA19239$log10cv2_adj) ),
@@ -640,7 +307,7 @@ ggplot(data.frame(do.call(rbind, ENSG_cv_adj),
   geom_point(aes(col = group), cex = 1.2) + facet_wrap( ~ group) +
   ggtitle(&quot;Pluripotent genes&quot;) + 
   geom_point(
-      data = subset(data.frame(do.call(rbind, ENSG_cv_adj),
+      data = subset(data.frame(do.call(rbind, ENSG_cv_adj[1:3]),
                               dm = c(ENSG_cv_adj$NA19098$log10cv2_adj, 
                                      ENSG_cv_adj$NA19101$log10cv2_adj, 
                                      ENSG_cv_adj$NA19239$log10cv2_adj) ), 
@@ -648,13 +315,13 @@ ggplot(data.frame(do.call(rbind, ENSG_cv_adj),
        colour = &quot;grey20&quot;, cex = 1.2) +
   labs(x = &quot;log10 average gene expression level&quot;,
        y = &quot;DM values&quot;)</code></pre>
-<p><img src="figure/cv-adjusted-summary-pois.Rmd/unnamed-chunk-7-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p><img src="figure/cv-adjusted-summary-pois.Rmd/unnamed-chunk-3-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
 </div>
 </div>
 <div id="top-ranked-dm-genes" class="section level2">
 <h2>Top ranked DM genes</h2>
-<div id="venn-diagram" class="section level3">
-<h3>Venn diagram</h3>
+<div id="venn-diagram-1000-genes" class="section level3">
+<h3>Venn diagram, 1000 genes</h3>
 <p>Top 1000 genes based on DM.</p>
 <pre class="r"><code>genes &lt;- rownames(ENSG_cv[[1]])
 library(gplots)
@@ -690,7 +357,7 @@ gplots::venn(
   cvs = c(ENSG_cv_adj[[1]]$log10cv2_adj, ENSG_cv_adj[[2]]$log10cv2_adj,
           ENSG_cv_adj[[3]]$log10cv2_adj),
   means = c(ENSG_cv[[1]]$mean, ENSG_cv[[2]]$mean, ENSG_cv[[3]]$mean),
-  individual = as.factor(rep(names(ENSG_cv), each = NROW(ENSG_cv[[1]])) ) ) 
+  individual = as.factor(rep(names(ENSG_cv)[1:3], each = NROW(ENSG_cv[[1]])) ) ) 
 
 cowplot::plot_grid(
   ggplot( df_plot,
@@ -730,409 +397,554 @@ cowplot::plot_grid(
         ggtitle(&quot;Top 1,000 genes in NA19239 based on DM values&quot;) +
         theme(legend.position = &quot;none&quot;),
   labels = LETTERS[1:4] )  </code></pre>
-<p><img src="figure/cv-adjusted-summary-pois.Rmd/unnamed-chunk-8-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+<p><img src="figure/cv-adjusted-summary-pois.Rmd/unnamed-chunk-4-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
+</div>
+<div id="venn-diagram-100-genes" class="section level3">
+<h3>Venn diagram, 100 genes</h3>
+<p>Top 100 genes based on DM.</p>
+<pre class="r"><code>genes &lt;- rownames(ENSG_cv[[1]])
+library(gplots)
+venn_cv_rank &lt;- gplots::venn(
+  list(NA19098 = genes[ which( rank(ENSG_cv_adj$NA19098$log10cv2_adj) 
+                               &gt; length(genes) - 100 ) ],
+       NA19101 = genes[ which( rank(ENSG_cv_adj$NA19101$log10cv2_adj) 
+                               &gt; length(genes) - 100 ) ],
+       NA19239 = genes[ which( rank(ENSG_cv_adj$NA19239$log10cv2_adj) 
+                               &gt; length(genes) - 100 ) ] ))</code></pre>
+<p><img src="figure/cv-adjusted-summary-pois.Rmd/venn-top-100-dm-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>Bottom 100 genes based on DM.</p>
+<pre class="r"><code>genes &lt;- rownames(ENSG_cv[[1]])
+library(gplots)
+gplots::venn(
+  list(NA19098 = genes[ which( rank(ENSG_cv_adj$NA19098$log10cv2_adj) 
+                               &lt;= 100 ) ],
+       NA19101 = genes[ which( rank(ENSG_cv_adj$NA19101$log10cv2_adj) 
+                               &lt;= 100 ) ],
+       NA19239 = genes[ which( rank(ENSG_cv_adj$NA19239$log10cv2_adj) 
+                               &lt;= 100 ) ] ))</code></pre>
+<p><img src="figure/cv-adjusted-summary-pois.Rmd/venn-bottom-100-dm-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+<p>Top 100 genes based on Means.</p>
+<pre class="r"><code>genes &lt;- rownames(ENSG_cv[[1]])
+library(gplots)
+gplots::venn( 
+  list(NA19098 = genes[ which(rank(ENSG_cv[[1]]$mean) &gt; length(genes) - 100 ) ],
+       NA19101 = genes[ which(rank(ENSG_cv[[2]]$mean) &gt; length(genes) - 100 ) ],
+       NA19239 = genes[ which(rank(ENSG_cv[[3]]$mean) &gt; length(genes) - 100 ) ] ) )</code></pre>
+<p><img src="figure/cv-adjusted-summary-pois.Rmd/venn-top-100-means-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="go-analysis---individual-top-genes" class="section level3">
+<h3>GO analysis - individual top genes</h3>
+<p>Analyze top 1,000 genes in DM values.</p>
+<pre class="r"><code># output top 1000 genes in DM values
+top1000DM_genes &lt;-
+  data.frame(NA19098 = genes[ which( rank(ENSG_cv_adj$NA19098$log10cv2_adj) 
+                               &gt; length(genes) - 1000 ) ],
+       NA19101 = genes[ which( rank(ENSG_cv_adj$NA19101$log10cv2_adj) 
+                               &gt; length(genes) - 1000 ) ],
+       NA19239 = genes[ which( rank(ENSG_cv_adj$NA19239$log10cv2_adj) 
+                               &gt; length(genes) - 1000 ) ],
+       stringsAsFactors = FALSE)
+
+# write the gene names out to a text file,
+# then copy and paste to GO Consortium interface
+for (ind in c(&quot;NA19098&quot;, &quot;NA19101&quot;, &quot;NA19239&quot;)) {
+  write.table(top100DM_genes[[ind]],
+              file = paste0(&quot;../data/top-100-dm-&quot;,ind,&quot;.txt&quot;),
+              sep = &quot;/t&quot;, quote = FALSE,
+              col.names = FALSE, row.names = FALSE)
+}
+for (ind in c(&quot;NA19098&quot;, &quot;NA19101&quot;, &quot;NA19239&quot;)) {
+  write.table(top1000DM_genes[[ind]],
+              file = paste0(&quot;../data/top-1000-dm-&quot;,ind,&quot;.txt&quot;),
+              sep = &quot;/t&quot;, quote = FALSE,
+              col.names = FALSE, row.names = FALSE)
+}
+write.table(rownames(molecules_final),
+            file = &quot;../data/gene-names.txt&quot;,
+            sep = &quot;/t&quot;, quote = FALSE,
+            col.names = FALSE, row.names = FALSE)</code></pre>
+<div id="go-consortium" class="section level4">
+<h4>GO consortium</h4>
+<p>We found no significant GO terms in PANTHER database.</p>
+</div>
+<div id="gostats" class="section level4">
+<h4>GOStats</h4>
+<p>Not yet figured out how to get genes associated with each sig. GO terms.</p>
+<p><em>[Chunk not evaluated]</em></p>
+<pre class="r"><code>require(Humanzee)
+# Find GO terms
+go_top1000_results &lt;- lapply(c(&quot;NA19098&quot;, &quot;NA19101&quot;, &quot;NA19239&quot;),
+    function(individual) {
+        go_list &lt;- lapply(c(&quot;BP&quot;, &quot;MF&quot;, &quot;CC&quot;), function(term) {
+              sig_gene_go &lt;- GOtest(rownames(molecules_final),
+                                    top1000DM_genes[[individual]],
+                                    ontology = term,
+                                    conditional.method = F)
+              
+              
+              go_data &lt;- goHeatmapData(list(summary(sig_gene_go$GO[[term]], 
+                                                    pvalue = .01)))
+              return(go_data)
+        })
+        names(go_list) &lt;- c(&quot;BP&quot;, &quot;MF&quot;, &quot;CC&quot;)
+        return(go_list)      
+})
+names(go_top1000_results) &lt;- c(&quot;NA19098&quot;, &quot;NA19101&quot;, &quot;NA19239&quot;)
+
+go_gene_list &lt;- sig_gene_go[[&quot;GO&quot;]][[1]]@goDag@nodeData@data
+go_gene_list_names &lt;- names(go_gene_list)
+go_sig &lt;- which(go_gene_list_names %in% go_data[,1])
+go_gene_list_sig &lt;- go_gene_list[go_sig]
+length(go_gene_list_sig)
+go_gene_list_sig
+head(go_data)
+# Plot heatmap
+go_heatmap &lt;- plotHeatmap(go_data, 
+                          labCol = &quot;&quot;)</code></pre>
+</div>
+<div id="cpdb" class="section level4">
+<h4>CPDB</h4>
+<p>ConsensusPATHDB-Human was used to perform GO over-representation analysis.</p>
+<p><em>NA19098</em></p>
+<pre class="r"><code>go_NA19098 &lt;- 
+  read.table(&quot;figure/cv-adjusted-summary-pois.Rmd/go-cpdb-top-1000-dm-NA19098.tab&quot;,
+               sep = &quot;\t&quot;,
+               header = TRUE)
+go_NA19098_sig &lt;- go_NA19098[go_NA19098$q.value &lt; .1, ]
+go_NA19098_sig$term_name</code></pre>
+<pre><code> [1] response to oxygen levels                              
+ [2] response to decreased oxygen levels                    
+ [3] response to hypoxia                                    
+ [4] sarcoplasmic reticulum                                 
+ [5] very-low-density lipoprotein particle receptor activity
+ [6] mononuclear cell migration                             
+ [7] response to hyperoxia                                  
+ [8] condensed nuclear chromosome, centromeric region       
+ [9] condensed nuclear chromosome kinetochore               
+[10] calcium ion binding                                    
+[11] carbohydrate derivative transporter activity           
+59 Levels: base-excision repair, AP site formation ...</code></pre>
+<p><em>NA19101</em></p>
+<pre class="r"><code>go_NA19101 &lt;- read.table(&quot;figure/cv-adjusted-summary-pois.Rmd/go-cpdb-top-1000-dm-NA19101.tab&quot;,
+                         sep = &quot;\t&quot;,
+                         header = TRUE)
+head(go_NA19101$q.value)</code></pre>
+<pre><code>[1] 0.008862498 0.015732966 0.033066707 0.142366905 0.142366905 0.138059112</code></pre>
+<pre class="r"><code>go_NA19101_sig &lt;- go_NA19101[go_NA19101$q.value &lt; .1, ]
+go_NA19101_sig$term_name</code></pre>
+<pre><code>[1] mononuclear cell migration                 
+[2] regulation of mononuclear cell migration   
+[3] multicellular organismal response to stress
+[4] glutathione derivative metabolic process   
+56 Levels: acid-amino acid ligase activity ... xenobiotic metabolic process</code></pre>
+<p><em>NA19239</em></p>
+<pre class="r"><code>go_NA19239 &lt;- read.table(&quot;figure/cv-adjusted-summary-pois.Rmd/go-cpdb-top-1000-dm-NA19239.tab&quot;,
+           sep = &quot;\t&quot;,
+           header = TRUE)
+go_NA19239_sig &lt;- go_NA19239[go_NA19239$q.value &lt; .1, ]
+
+go_NA19239_sig$term_name</code></pre>
+<pre><code> [1] extracellular space                                              
+ [2] fibronectin binding                                              
+ [3] calcium ion binding                                              
+ [4] heparin binding                                                  
+ [5] basement membrane                                                
+ [6] proteinaceous extracellular matrix                               
+ [7] sulfur compound binding                                          
+ [8] response to zinc ion                                             
+ [9] plasma membrane region                                           
+[10] extracellular matrix disassembly                                 
+[11] cell adhesion                                                    
+[12] glycosaminoglycan binding                                        
+[13] cell projection membrane                                         
+[14] regulation of growth                                             
+[15] intrinsic component of membrane                                  
+[16] regulation of multicellular organismal process                   
+[17] response to transition metal nanoparticle                        
+[18] cytoskeletal protein binding                                     
+[19] actin binding                                                    
+[20] anatomical structure morphogenesis                               
+[21] integral component of membrane                                   
+[22] organ development                                                
+[23] cartilage development                                            
+[24] hormone metabolic process                                        
+[25] system process                                                   
+[26] wound healing                                                    
+[27] multi-multicellular organism process                             
+[28] developmental cell growth                                        
+[29] negative regulation of growth                                    
+[30] collagen catabolic process                                       
+[31] multicellular organismal catabolic process                       
+[32] laminin-10 complex                                               
+[33] female pregnancy                                                 
+[34] retinoic acid binding                                            
+[35] connective tissue development                                    
+[36] tissue development                                               
+[37] plasma membrane                                                  
+[38] lipid binding                                                    
+[39] cell periphery                                                   
+[40] extracellular structure organization                             
+[41] membrane region                                                  
+[42] developmental growth                                             
+[43] isoprenoid metabolic process                                     
+[44] apical plasma membrane                                           
+[45] embryo implantation                                              
+[46] response to alcohol                                              
+[47] single-multicellular organism process                            
+[48] sodium:potassium-exchanging ATPase complex                       
+[49] carboxylic acid binding                                          
+[50] cell growth                                                      
+[51] plasma membrane part                                             
+[52] hormone activity                                                 
+[53] organic acid binding                                             
+[54] developmental growth involved in morphogenesis                   
+[55] detection of external stimulus                                   
+[56] cell-cell junction                                               
+[57] response to wounding                                             
+[58] stereocilium                                                     
+[59] proteoglycan binding                                             
+[60] fibrillar collagen trimer                                        
+[61] retinoid binding                                                 
+[62] banded collagen fibril                                           
+[63] actin filament-based process                                     
+[64] detection of abiotic stimulus                                    
+[65] regulation of developmental process                              
+[66] basal lamina                                                     
+[67] extracellular matrix binding                                     
+[68] cartilage development involved in endochondral bone morphogenesis
+[69] transcription factor activity, sequence-specific DNA binding     
+[70] metal ion binding                                                
+[71] cell migration                                                   
+[72] cation binding                                                   
+[73] growth factor binding                                            
+[74] retinol binding                                                  
+[75] glycosphingolipid binding                                        
+[76] apical part of cell                                              
+[77] collagen binding                                                 
+[78] phosphatidylserine binding                                       
+[79] insulin-like growth factor binding                               
+[80] isoprenoid binding                                               
+[81] insulin-like growth factor binding protein complex               
+[82] phospholipid binding                                             
+[83] extracellular matrix structural constituent                      
+[84] single-organism developmental process                            
+[85] cell motility                                                    
+[86] localization of cell                                             
+[87] laminin complex                                                  
+[88] protein-lipid complex binding                                    
+[89] apolipoprotein binding                                           
+[90] laminin binding                                                  
+[91] regulation of biological quality                                 
+166 Levels: actin binding ... wound healing</code></pre>
+<p>*Why is there so many more GO terms in NA19239 than the other two individuals?</p>
+<p><em>[Chunk not evaluated]</em></p>
+<pre class="r"><code>top1000DM_genes &lt;-
+  data.frame(NA19098 = genes[ which( rank(ENSG_cv_adj$NA19098$log10cv2_adj) 
+                               &gt; length(genes) - 1000 ) ],
+       NA19101 = genes[ which( rank(ENSG_cv_adj$NA19101$log10cv2_adj) 
+                               &gt; length(genes) - 1000 ) ],
+       NA19239 = genes[ which( rank(ENSG_cv_adj$NA19239$log10cv2_adj) 
+                               &gt; length(genes) - 1000 ) ],
+       stringsAsFactors = FALSE)
+
+par(mfrow = c(2,2))
+boxplot(cbind(ENSG_cv_adj$NA19101$log10cv2_adj[which( rank(ENSG_cv_adj$NA19101$log10cv2_adj) 
+                               &gt; length(genes) - 1000 )],
+              ENSG_cv_adj$NA19239$log10cv2_adj[which( rank(ENSG_cv_adj$NA19239$log10cv2_adj) 
+                               &gt; length(genes) - 1000 )]) )
+title(main = &quot;adjusted CV&quot;)
+
+boxplot(
+  cbind(ENSG_cv_adj$NA19101$mean[ which( rank(ENSG_cv_adj$NA19101$log10cv2_adj)
+                                        &gt; length(genes) - 1000 )],
+        ENSG_cv_adj$NA19239$mean[which( rank(ENSG_cv_adj$NA19239$log10cv2_adj) 
+                               &gt; length(genes) - 1000 )]) )</code></pre>
 </div>
 </div>
-<div id="compare-dms" class="section level2">
-<h2>Compare DMs</h2>
+<div id="go-analysis---shared-noisy-genes" class="section level3">
+<h3>GO analysis - shared noisy genes</h3>
+<pre class="r"><code>shared_venn &lt;- gplots::venn(
+  list(NA19098 = genes[ which( rank(ENSG_cv_adj$NA19098$log10cv2_adj) 
+                               &gt; length(genes) - 1000 ) ],
+       NA19101 = genes[ which( rank(ENSG_cv_adj$NA19101$log10cv2_adj) 
+                               &gt; length(genes) - 1000 ) ],
+       NA19239 = genes[ which( rank(ENSG_cv_adj$NA19239$log10cv2_adj) 
+                               &gt; length(genes) - 1000 ) ] ) )
+
+shared_genes &lt;- attr(shared_venn, &quot;intersections&quot;)[[&#39;111&#39;]]
+
+# write.table(shared_genes,
+#             file = (&quot;../data/top-1000-dm-shared.txt&quot;),
+#             sep = &quot;/t&quot;, quote = FALSE,
+#            col.names = FALSE, row.names = FALSE)</code></pre>
+<p>ConsensusPATHDB-Human was used to perform GO over-representation analysis.</p>
+<p>Of the 120 noisy genes that are common to all three individual cell lines, 38 of the genes are over-represented in the following functions:</p>
+<pre class="r"><code>go_top_shared &lt;- read.table(&quot;figure/cv-adjusted-summary-pois.Rmd/go-cpdb-top-1000-shared.tab&quot;,
+                         sep = &quot;\t&quot;,
+                         header = TRUE)
+go_top_shared &lt;- go_top_shared[go_top_shared$q.value &lt; .1, ]
+go_top_shared$term_name</code></pre>
+<pre><code> [1] inner mitochondrial membrane protein complex                                                                    
+ [2] respiratory electron transport chain                                                                            
+ [3] electron transport chain                                                                                        
+ [4] nucleoside triphosphate metabolic process                                                                       
+ [5] nucleoside monophosphate metabolic process                                                                      
+ [6] mitochondrial protein complex                                                                                   
+ [7] respiratory chain complex                                                                                       
+ [8] condensed nuclear chromosome, centromeric region                                                                
+ [9] condensed nuclear chromosome outer kinetochore                                                                  
+[10] response to erythropoietin                                                                                      
+[11] mitochondrial respiratory chain                                                                                 
+[12] response to transition metal nanoparticle                                                                       
+[13] NADH dehydrogenase (quinone) activity                                                                           
+[14] respiratory chain                                                                                               
+[15] response to hyperoxia                                                                                           
+[16] response to increased oxygen levels                                                                             
+[17] NADH dehydrogenase activity                                                                                     
+[18] mitochondrial respiratory chain complex I                                                                       
+[19] NADH dehydrogenase complex                                                                                      
+[20] respiratory chain complex I                                                                                     
+[21] oxidative phosphorylation                                                                                       
+[22] purine nucleoside metabolic process                                                                             
+[23] mitochondrial membrane part                                                                                     
+[24] response to zinc ion                                                                                            
+[25] cellular respiration                                                                                            
+[26] oxidoreductase complex                                                                                          
+[27] ribonucleoside metabolic process                                                                                
+[28] oxidoreductase activity, acting on NAD(P)H, quinone or similar compound as acceptor                             
+[29] vascular smooth muscle cell development                                                                         
+[30] condensed nuclear chromosome kinetochore                                                                        
+[31] condensed nuclear chromosome                                                                                    
+[32] phospholipase inhibitor activity                                                                                
+[33] DNA binding, bending                                                                                            
+[34] cellular response to lipid                                                                                      
+[35] cardiac muscle cell development                                                                                 
+[36] response to cadmium ion                                                                                         
+[37] lipase inhibitor activity                                                                                       
+[38] cardiocyte differentiation                                                                                      
+[39] histone-serine phosphorylation                                                                                  
+[40] positive regulation of transcription from RNA polymerase II promoter in response to endoplasmic reticulum stress
+[41] ribonucleotide metabolic process                                                                                
+[42] purine nucleotide metabolic process                                                                             
+[43] regulation of mitochondrial depolarization                                                                      
+[44] glutathione biosynthetic process                                                                                
+[45] synaptonemal complex organization                                                                               
+[46] RNA replication                                                                                                 
+[47] negative regulation of catabolic process                                                                        
+[48] midbody                                                                                                         
+[49] cellular response to metal ion                                                                                  
+[50] meiotic chromosome segregation                                                                                  
+[51] actin-mediated cell contraction                                                                                 
+[52] condensed chromosome outer kinetochore                                                                          
+[53] proton-transporting ATP synthase complex, coupling factor F(o)                                                  
+[54] acid-amino acid ligase activity                                                                                 
+[55] regulation of glial cell proliferation                                                                          
+[56] NLS-bearing protein import into nucleus                                                                         
+[57] mitochondrial depolarization                                                                                    
+[58] negative regulation of cellular component organization                                                          
+[59] positive regulation of chromosome segregation                                                                   
+78 Levels: acid-amino acid ligase activity ...</code></pre>
+<pre class="r"><code>go_top_shared_genes &lt;- getGenes(gsub(&quot;;&quot;, &quot;,&quot;,
+                    as.character(go_top_shared$members_input_overlap_geneids)))
+go_top_shared_genes &lt;- go_top_shared_genes[!duplicated(go_top_shared_genes[ , &quot;symbol&quot;]), ]
+kable(data.frame(symbol = go_top_shared_genes[ ,&quot;symbol&quot;],
+                  name = go_top_shared_genes[,&quot;name&quot;]) )</code></pre>
+<table>
+<thead>
+<tr class="header">
+<th align="left">symbol</th>
+<th align="left">name</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">ND3</td>
+<td align="left">NADH dehydrogenase, subunit 3 (complex I)</td>
+</tr>
+<tr class="even">
+<td align="left">CYTB</td>
+<td align="left">cytochrome b</td>
+</tr>
+<tr class="odd">
+<td align="left">ND5</td>
+<td align="left">NADH dehydrogenase, subunit 5 (complex I)</td>
+</tr>
+<tr class="even">
+<td align="left">ND4L</td>
+<td align="left">NADH dehydrogenase, subunit 4L (complex I)</td>
+</tr>
+<tr class="odd">
+<td align="left">ATP8</td>
+<td align="left">ATP synthase F0 subunit 8</td>
+</tr>
+<tr class="even">
+<td align="left">ND2</td>
+<td align="left">MTND2</td>
+</tr>
+<tr class="odd">
+<td align="left">ATP6</td>
+<td align="left">ATP synthase F0 subunit 6</td>
+</tr>
+<tr class="even">
+<td align="left">ATP1A2</td>
+<td align="left">ATPase Na+/K+ transporting subunit alpha 2</td>
+</tr>
+<tr class="odd">
+<td align="left">DDIT4</td>
+<td align="left">DNA damage inducible transcript 4</td>
+</tr>
+<tr class="even">
+<td align="left">PLK1</td>
+<td align="left">polo like kinase 1</td>
+</tr>
+<tr class="odd">
+<td align="left">AURKA</td>
+<td align="left">aurora kinase A</td>
+</tr>
+<tr class="even">
+<td align="left">CCNB1</td>
+<td align="left">cyclin B1</td>
+</tr>
+<tr class="odd">
+<td align="left">MT1X</td>
+<td align="left">metallothionein 1X</td>
+</tr>
+<tr class="even">
+<td align="left">MT2A</td>
+<td align="left">metallothionein 2A</td>
+</tr>
+<tr class="odd">
+<td align="left">TSPO</td>
+<td align="left">translocator protein</td>
+</tr>
+<tr class="even">
+<td align="left">ATG7</td>
+<td align="left">autophagy related 7</td>
+</tr>
+<tr class="odd">
+<td align="left">HES1</td>
+<td align="left">hes family bHLH transcription factor 1</td>
+</tr>
+<tr class="even">
+<td align="left">SGCB</td>
+<td align="left">sarcoglycan beta</td>
+</tr>
+<tr class="odd">
+<td align="left">P3H4</td>
+<td align="left">prolyl 3-hydroxylase family member 4 (non-enzymatic)</td>
+</tr>
+<tr class="even">
+<td align="left">ANXA3</td>
+<td align="left">annexin A3</td>
+</tr>
+<tr class="odd">
+<td align="left">ANXA2</td>
+<td align="left">annexin A2</td>
+</tr>
+<tr class="even">
+<td align="left">TRERF1</td>
+<td align="left">transcriptional regulating factor 1</td>
+</tr>
+<tr class="odd">
+<td align="left">TOP2A</td>
+<td align="left">topoisomerase (DNA) II alpha</td>
+</tr>
+<tr class="even">
+<td align="left">STC1</td>
+<td align="left">stanniocalcin 1</td>
+</tr>
+<tr class="odd">
+<td align="left">LITAF</td>
+<td align="left">lipopolysaccharide induced TNF factor</td>
+</tr>
+<tr class="even">
+<td align="left">LRP8</td>
+<td align="left">LDL receptor related protein 8</td>
+</tr>
+<tr class="odd">
+<td align="left">GSS</td>
+<td align="left">glutathione synthetase</td>
+</tr>
+<tr class="even">
+<td align="left">ATF6B</td>
+<td align="left">activating transcription factor 6 beta</td>
+</tr>
+<tr class="odd">
+<td align="left">HSPA5</td>
+<td align="left">heat shock protein family A (Hsp70) member 5</td>
+</tr>
+<tr class="even">
+<td align="left">GCLM</td>
+<td align="left">glutamate-cysteine ligase modifier subunit</td>
+</tr>
+<tr class="odd">
+<td align="left">UBE2C</td>
+<td align="left">ubiquitin conjugating enzyme E2 C</td>
+</tr>
+<tr class="even">
+<td align="left">CCDC124</td>
+<td align="left">coiled-coil domain containing 124</td>
+</tr>
+<tr class="odd">
+<td align="left">VIM</td>
+<td align="left">vimentin</td>
+</tr>
+<tr class="even">
+<td align="left">KPNA5</td>
+<td align="left">karyopherin subunit alpha 5</td>
+</tr>
+<tr class="odd">
+<td align="left">KPNA2</td>
+<td align="left">karyopherin subunit alpha 2</td>
+</tr>
+<tr class="even">
+<td align="left">PMEPA1</td>
+<td align="left">prostate transmembrane protein, androgen induced 1</td>
+</tr>
+<tr class="odd">
+<td align="left">LGALS3</td>
+<td align="left">lectin, galactoside binding soluble 3</td>
+</tr>
+<tr class="even">
+<td align="left">PFN1</td>
+<td align="left">profilin 1</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div id="differential-dms" class="section level2">
+<h2>Differential DMs</h2>
 <p>Compute median of absolute deviations (MAD) to quantify dissimilarity of the individual DM meausres.</p>
-<div id="compute-mad" class="section level3">
-<h3>Compute MAD</h3>
 <pre class="r"><code>library(matrixStats)
 dm_matrix &lt;- as.matrix(
                 data.frame(NA19098 = ENSG_cv_adj$NA19098$log10cv2_adj,
                            NA19101 = ENSG_cv_adj$NA19101$log10cv2_adj,
                            NA19239 = ENSG_cv_adj$NA19239$log10cv2_adj) )
 mad &lt;- rowMedians( abs( dm_matrix - rowMedians(dm_matrix) ) )</code></pre>
-<p>Top 100 ranked genes by MAD.</p>
-<pre class="r"><code>ggplot(data.frame(do.call(rbind, ENSG_cv_adj),
-                  dm = c(ENSG_cv_adj$NA19098$log10cv2_adj, 
-                         ENSG_cv_adj$NA19101$log10cv2_adj, 
-                         ENSG_cv_adj$NA19239$log10cv2_adj) ),
-       aes(x = log10(mean), y = dm )) +
-  geom_point(aes(col = group), cex = 1.2) + facet_wrap( ~ group) +
-  ggtitle(&quot;Top 1000 ranked genes by MAD&quot;) + 
-  geom_point(
-    data = subset(
-    data.frame(do.call(rbind, ENSG_cv_adj),
-               dm = c(ENSG_cv_adj$NA19098$log10cv2_adj, 
-                      ENSG_cv_adj$NA19101$log10cv2_adj, 
-                      ENSG_cv_adj$NA19239$log10cv2_adj)),                   
-                      rep(rank(mad) &gt; length(genes) - 1000, times = 3) ), 
-             colour = &quot;grey20&quot;, cex = 1.2 ) +
-  labs(x = &quot;log10 Mean gene expression level&quot;,
-       y = &quot;MAD&quot;)</code></pre>
-<p><img src="figure/cv-adjusted-summary-pois.Rmd/unnamed-chunk-10-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<p>Export data to rda format and then transport them to midway for permutation-based test.</p>
-<p><em>[Chunk not evaluted]</em></p>
-<pre class="r"><code>if (!file.exists(&quot;rda/cv-adjusted-summary-pois/adj-cv.rda&quot;)) {
-  save(mad, file = &quot;rda/cv-adjusted-summary-pois/adj-cv.rda&quot;)
-}
-
-
-if (!file.exists(&quot;rda/cv-adjusted-summary-pois/permute-cv-test.rda&quot;)) {
-  save(molecules_final, anno_filter,
-       file = &quot;rda/cv-adjusted-summary-pois/permute-cv-test.rda&quot;)
-}</code></pre>
+<div id="top-100-ranked-genes-by-mad." class="section level3">
+<h3>Top 100 ranked genes by MAD.</h3>
+<p>ConsensusPATHDB-Human was used to perform GO over-representation analysis.</p>
+<p>Look up top 100 genes in MAD values</p>
+<pre class="r"><code>mad_genes &lt;- rownames(molecules_final)[rank(mad) &gt; 
+                                             (length(mad) - 100) ]
+#write.table(mad_genes,
+#            file = &quot;../data/mad-genes.txt&quot;,
+#            sep = &quot;\t&quot;, quote = FALSE,
+#            col.names = FALSE, row.names = FALSE)</code></pre>
+<pre class="r"><code>library(mygene)
+go_top &lt;- read.table(&quot;figure/cv-adjusted-summary-pois.Rmd/go-cpdb-all-top.tab&quot;,
+                         sep = &quot;\t&quot;,
+                         header = TRUE)
+go_top &lt;- go_top[go_top$q.value &lt; .1, ]
+as.character(go_top$term_name)</code></pre>
+<pre><code>[1] &quot;extracellular space&quot;           &quot;ErbB-2 class receptor binding&quot;</code></pre>
+<pre class="r"><code># go_top_genes &lt;- getGenes(gsub(&quot;;&quot;, &quot;,&quot;,
+#                     as.character(go_top$members_input_overlap_geneids)))
+# go_top_genes &lt;- go_top_genes[!duplicated(go_top_genes[ , &quot;symbol&quot;]), ]
+# kable(data.frame(symbol =go_top_genes[ ,&quot;symbol&quot;],
+#                  name = go_top_genes[,&quot;name&quot;]) )</code></pre>
 </div>
-<div id="permutation-based-test" class="section level3">
-<h3>Permutation-based test</h3>
-<p>All computations are done in midway.</p>
-<p>Compute MAD based on permuted data.</p>
-<p><em>[Chunk not evaluated]</em></p>
-<pre><code>sbatch permute-cv-test.sbatch</code></pre>
-<p>Compute permutation-based p-values for each gene.</p>
-<p><em>[Chunk not evaluated]</em></p>
-<pre><code>sbatch permuted-cv-compute-pval.sbatch</code></pre>
-<p>Import permutation results.</p>
-<pre class="r"><code>load(&quot;../data/permuted-pval.rda&quot;)
-sum(permuted_pval$mad_pval == 0)</code></pre>
-<pre><code>[1] 263</code></pre>
-<p>Histogram of permuted p-values. Supplemental figure.</p>
-<pre class="r"><code>ggplot( data.frame(pvals = permuted_pval$mad_pval),
-       aes(x = pvals) ) +
-  geom_histogram() + xlim(0, 1) +
-  labs(x = &quot;Permutation-based p-values&quot;, y = &quot;Count&quot;)</code></pre>
-<p><img src="figure/cv-adjusted-summary-pois.Rmd/unnamed-chunk-12-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<p>Permuted p-values versus mean gene expression. Supplemental figure?</p>
-<pre class="r"><code>ggplot( data.frame(pvals = permuted_pval$mad_pval,
-                   gene_mean = rowMeans(as.matrix(molecules_final))),
-       aes(x = gene_mean, y = -log10(pvals) ) ) +
-  geom_point() </code></pre>
-<p><img src="figure/cv-adjusted-summary-pois.Rmd/unnamed-chunk-13-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-<p>Export genes with significant MAD values.</p>
-<pre class="r"><code>genes_sig_mad &lt;- data.frame(
-  ensg = rownames(molecules_final)[which(permuted_pval$mad_pval == 0)],
-  mad_value = mad[ which(permuted_pval$mad_pval ==0) ])
-genes_sig_mad$gene_names &lt;-
-  gene_symbols$external_gene_name[match(genes_sig_mad$ensg, gene_symbols$ensembl_gene_id)]
-genes_sig_mad$is_cell_cycle &lt;- genes_sig_mad$ensg %in% unlist(cell_cycle_genes)
-genes_sig_mad$is_pluripotent &lt;- genes_sig_mad$ensg %in% unlist(pluripotency_genes)
-
-
-genes_sig_mad &lt;- genes_sig_mad[order(genes_sig_mad$mad_value, 
-                                     decreasing = TRUE), ]
-head(genes_sig_mad)</code></pre>
-<pre><code>               ensg mad_value gene_names is_cell_cycle is_pluripotent
-182 ENSG00000053438 0.9604387       NNAT         FALSE          FALSE
-127 ENSG00000141449 0.9591805     GREB1L         FALSE          FALSE
-234 ENSG00000106153 0.5734047     CHCHD2         FALSE          FALSE
-157 ENSG00000198046 0.5457927     ZNF667         FALSE          FALSE
-187 ENSG00000184674 0.4592946      GSTT1         FALSE          FALSE
-210 ENSG00000164241 0.4389843    C5orf63         FALSE          FALSE</code></pre>
-<pre class="r"><code>if (!file.exists(&quot;../data/sig-permute-gene.txt&quot;)) {
-write.table(genes_sig_mad,
-            file = &quot;../data/sig-permute-gene.txt&quot;,
-            col.names = TRUE, row.names = FALSE, sep = &quot;\t&quot;,
-            quote = FALSE)
-}</code></pre>
-<p>Select columns from “sig-permute-gene.txt” for GO anlaysis on different platforms.</p>
-<p><em>[Chunk not evaluated]</em></p>
-<pre class="r"><code>write.table(genes_sig_mad[ ,3],
-          file = &quot;../data/sig-permute-gene-symbol-only.txt&quot;,
-          col.names = FALSE, row.names = FALSE, sep = &quot;\t&quot;,
-          quote = FALSE)
-write.table(genes_sig_mad[ ,1],
-          file = &quot;../data/sig-permute-gene-ensg-only.txt&quot;,
-          col.names = FALSE, row.names = FALSE, sep = &quot;\t&quot;,
-          quote = FALSE)
-write.table(genes_sig_mad[,c(1,2)],
-          file = &quot;../data/sig-permute-gene-ensg-and-pvalue.txt&quot;,
-          col.names = FALSE, row.names = FALSE, sep = &quot;\t&quot;,
-          quote = FALSE)
-}</code></pre>
-<p>Genes with p = 0 sorted by MAD. Print out the density distributions to a pdf file for exploratory data analysis.</p>
-<p><em>[Chunk not evaluated]</em></p>
-<pre class="r"><code>if(!file.exists(&quot;figure/cv-adjusted-summary-pois.Rmd/density-sig-mad.pdf&quot;)) {
-    pdf(file = &quot;figure/cv-adjusted-summary-pois.Rmd/density-sig-mad.pdf&quot;,
-        height = 12, width = 8)
-    par(mfrow = c(5,4), cex = .7)
-    for(i in 1:dim(genes_sig_mad)[1]) {
-      plot_density_overlay(molecules_ENSG = molecules_final,
-                   genes_sig_mad$ensg[i], 
-                   labels = round(genes_sig_mad$mad[i], 6),
-                   gene_symbols = gene_symbols)
-    }
-    dev.off()
-}</code></pre>
-</div>
-<div id="heatmap-of-differential-genes" class="section level3">
-<h3>Heatmap of differential genes</h3>
-<p>Print heatmaps of differential genes to a pdf file. These do not reveal any interesting patterns.</p>
-<p><em>[Chunk not evaluated]</em></p>
-<pre class="r"><code>library(gplots)
-library(broman)
-crayon &lt;- brocolors(&quot;crayon&quot;)
-file_name &lt;- &quot;../analysis/figure/cv-adjusted-summary-pois.Rmd/heatmap-sig-genes.pdf&quot;
-if(!file.exists(file_name)) {
-    pdf(file = file_name,
-        height = 14, width = 10)
-    select_significant_genes &lt;- which(permuted_pval$mad_pval == 0 )
-    for (individual in unique(anno_filter$individual)) {
-    xx &lt;- molecules_final[ select_significant_genes, 
-                            anno_filter$individual == individual]
-    xx &lt;- xx[order(mad[select_significant_genes], decreasing = TRUE), ]
-    heatmap.2(as.matrix(xx)[ order( mad[select_significant_genes] ), ], 
-      breaks = seq(0, 9, by = 1),
-      symm = F, symkey = F, symbreaks = T, scale=&quot;none&quot;,
-      Rowv = TRUE, Colv = TRUE,
-      dendrogram = &quot;both&quot;,
-      trace = &quot;none&quot;,
-      labRow = with(gene_symbols, 
-                    external_gene_name[match(rownames(xx), ensembl_gene_id)] ), 
-               labCol = &quot;&quot;,
-              col = crayon[c(&quot;Violet Blue&quot;, &quot;Pacific Blue&quot;, &quot;Shamrock&quot;,
-                             &quot;Sea Green&quot;, &quot;Sky Blue&quot;, &quot;Yellow&quot;,
-                             &quot;Violet Red&quot;, &quot;Mango Tango&quot;, &quot;Scarlet&quot;)],
-              keysize = 1,
-              key.xlab = NULL, key.title = &quot;log2 Gene expression&quot;)
-    }
-    dev.off()
-}
-
-
-file_name &lt;- &quot;../analysis/figure/cv-adjusted-summary-pois.Rmd/heatmap-sig-genes-all-individuals.pdf&quot;
-if(!file.exists(file_name)) {
-    pdf(file = file_name,
-        height = 10, width = 14)
-    select_significant_genes &lt;- which(permuted_pval$mad_pval == 0 )
-    xx &lt;- molecules_final[ select_significant_genes, ]
-    xx &lt;- xx[order(mad[select_significant_genes], decreasing = TRUE), ]
-    heatmap.2(as.matrix(xx)[ order( mad[select_significant_genes] ), ], 
-      breaks = seq(0, 9, by = 1),
-      symm = F, symkey = F, symbreaks = T, scale=&quot;none&quot;,
-      Rowv = TRUE, Colv = FALSE,
-      dendrogram = &quot;row&quot;,
-      trace = &quot;none&quot;,
-      labRow = with(gene_symbols, 
-                    external_gene_name[match(rownames(xx), ensembl_gene_id)] ), 
-               labCol = &quot;&quot;,
-              col = crayon[c(&quot;Violet Blue&quot;, &quot;Pacific Blue&quot;, &quot;Shamrock&quot;,
-                             &quot;Sea Green&quot;, &quot;Sky Blue&quot;, &quot;Yellow&quot;,
-                             &quot;Violet Red&quot;, &quot;Mango Tango&quot;, &quot;Scarlet&quot;)],
-              keysize = 1,
-              key.xlab = NULL, key.title = &quot;log2 Gene expression&quot;)
-    dev.off()
-}</code></pre>
-</div>
-<div id="pathway-analysis" class="section level3">
-<h3>Pathway analysis</h3>
-<p><img src="../analysis/figure/cv-adjusted-summary-pois.Rmd/sig-genes-pathway-analysis.png" alt="pathway." /></p>
-</div>
-<div id="go-analysis" class="section level3">
-<h3>GO analysis</h3>
-</div>
-<div id="gene-ontology-consortium" class="section level3">
-<h3>Gene Ontology Consortium</h3>
-<p>Search PANTHER database.</p>
-<p><img src="../analysis/figure/cv-adjusted-summary-pois.Rmd/sig-genes-GO-analysis.png" alt="GO." /></p>
-<div id="gostats" class="section level4">
-<h4>GOStats</h4>
-<p>Below is not run. The code here is based on annotation results from GOstats. We decided for now to use resutls from GO Ontology Consortium.</p>
-<p><em>[Chunk not evaluated]</em></p>
-<pre class="r"><code>require(Humanzee)
-# Find GO terms
-sig_gene_go &lt;- GOtest(rownames(molecules_final),
-                      genes_sig_mad[,1],
-                      ontology = &quot;BP&quot;,
-                      conditional.method = F)
-
-# Prepare GO terms for heatmap plotting
-go_data &lt;- goHeatmapData(list(summary(sig_gene_go$GO$BP, pvalue = .01)))
-
-# Plot heatmap
-go_heatmap &lt;- plotHeatmap(go_data, 
-                          labCol = &quot;&quot;)</code></pre>
-</div>
-</div>
-</div>
-<div id="figures" class="section level2">
-<h2>Figures</h2>
-<p>I made figure 6 in powerpoint. We can figure out later how to combine the venn diagrams and the density plots nicely…</p>
-<p><img src="../analysis/figure/cv-adjusted-summary-pois.Rmd/figure6.png" alt="Figure6." /></p>
-<p>Legend:</p>
-<p>Code for reproducing Figure 6 a-b</p>
-<p><em>[Chunk not evaluted]</em></p>
-<pre class="r"><code>## Venn diagrams
-genes &lt;- rownames(ENSG_cv[[1]])
-library(gplots)
-venn_mean_rank &lt;- gplots::venn( 
-  list(NA19098 = genes[ which(rank(ENSG_cv[[1]]$mean) &gt; length(genes) - 1000 ) ],
-       NA19101 = genes[ which(rank(ENSG_cv[[2]]$mean) &gt; length(genes) - 1000 ) ],
-       NA19239 = genes[ which(rank(ENSG_cv[[3]]$mean) &gt; length(genes) - 1000 ) ] ) )
-
-venn_cv_rank &lt;- gplots::venn(
-  list(NA19098 = genes[ which( rank(ENSG_cv_adj$NA19098$log10cv2_adj) 
-                               &gt; length(genes) - 1000 ) ],
-       NA19101 = genes[ which( rank(ENSG_cv_adj$NA19101$log10cv2_adj) 
-                               &gt; length(genes) - 1000 ) ],
-       NA19239 = genes[ which( rank(ENSG_cv_adj$NA19239$log10cv2_adj) 
-                               &gt; length(genes) - 1000 ) ] ))</code></pre>
-<p>Code for reproducing Figure 6c-f</p>
-<pre class="r"><code>NANOG and ZFP42: pluripotent genes, we found no significant individual difference in the Deviation-from-the-Median (DM) for these two genes. We also examined the density plots of 
-the other genes. See [here][link1].
-
-[link1]: http://jdblischak.github.io/singleCellSeq/analysis/compare-distribution-pluripotency.html
-
-I also picked two genes with significant individual differences.
-
-*[Chunk not evaluted]*</code></pre>
-<pre class="r"><code>query_genes &lt;- c(&quot;NANOG&quot;, &quot;ZFP42&quot;, &quot;NLRP2&quot;, &quot;FAT3&quot;)
-query_genes_ensg &lt;- gene_symbols[which(gene_symbols$external_gene_name %in% query_genes), ]
-query_genes_ensg &lt;- query_genes_ensg[c(2,4,1,3), ]
-
-par(mfrow = c(1,4))
-for (i in 1:nrow(query_genes_ensg)) {
-  plot_density_overlay(molecules_ENSG = molecules_final,
-               annotation = anno_filter,
-               which_gene = query_genes_ensg$ensembl_gene_id[i], 
-    #                   labels = round(genes_plot$dist[i], 6),
-               labels = &quot;&quot;,
-               xlims = c(1,14), ylims = NULL,
-               gene_symbols = gene_symbols)
-}</code></pre>
-<p>Supplemental figure XX0.</p>
-<p>Legend:</p>
-<pre class="r"><code>pluri_pvals &lt;- data.frame(pvals = permuted_pval,
-                          ENSG = rownames(molecules_final))
-pluri_pvals &lt;- pluri_pvals[which(rownames(molecules_final) %in% 
-                                   pluripotency_genes), ]
-pluri_symbols &lt;- gene_symbols[which(gene_symbols$ensembl_gene_id %in% pluri_pvals$ENSG) , 
-                              c(1,3)]
-pluri_results &lt;- merge(pluri_pvals, pluri_symbols,
-                       by.x = c(&quot;ENSG&quot;), by.y = &quot;ensembl_gene_id&quot;) 
-pluri_results &lt;- pluri_results[order(pluri_results$mad_pval), ]
-pluri_results</code></pre>
-<pre><code>              ENSG    mad_pval external_gene_name
-1  ENSG00000088305 0.000000000             DNMT3B
-9  ENSG00000163530 0.001640420              DPPA2
-11 ENSG00000179059 0.001722441              ZFP42
-14 ENSG00000187140 0.004019029              FOXD3
-16 ENSG00000204531 0.014107612             POU5F1
-7  ENSG00000136997 0.020505249                MYC
-8  ENSG00000148200 0.026738845              NR6A1
-2  ENSG00000101115 0.035843176              SALL4
-12 ENSG00000181449 0.053887795               SOX2
-4  ENSG00000121570 0.054790026              DPPA4
-15 ENSG00000203909 0.166830709              DPPA5
-10 ENSG00000164362 0.229002625               TERT
-6  ENSG00000128567 0.250656168              PODXL
-5  ENSG00000124762 0.621555118             CDKN1A
-3  ENSG00000111704 0.664452100              NANOG
-13 ENSG00000184344 0.988763123               GDF3</code></pre>
-<pre class="r"><code>for (i in 1:nrow(pluri_results)) {
-    par(mfrow = c(1,3))
-    for (which_individual in unique(anno_filter$individual)) {
-        plot_density_overlay(
-             molecules_ENSG = molecules_final[ , anno_filter$individual == which_individual],
-             annotation = anno_filter[anno_filter$individual == which_individual, ],
-             individuals = anno_filter$individual,
-             batches = anno_filter$sample_id,
-             which_gene = pluri_results$ENSG[i],
-             labels = which_individual,
-             xlims = c(2,14),
-             gene_symbols = gene_symbols)
-    }
-}</code></pre>
-<p><img src="figure/cv-adjusted-summary-pois.Rmd/pluripotent-density-replicates-1.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/cv-adjusted-summary-pois.Rmd/pluripotent-density-replicates-2.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/cv-adjusted-summary-pois.Rmd/pluripotent-density-replicates-3.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/cv-adjusted-summary-pois.Rmd/pluripotent-density-replicates-4.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/cv-adjusted-summary-pois.Rmd/pluripotent-density-replicates-5.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/cv-adjusted-summary-pois.Rmd/pluripotent-density-replicates-6.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/cv-adjusted-summary-pois.Rmd/pluripotent-density-replicates-7.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/cv-adjusted-summary-pois.Rmd/pluripotent-density-replicates-8.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/cv-adjusted-summary-pois.Rmd/pluripotent-density-replicates-9.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/cv-adjusted-summary-pois.Rmd/pluripotent-density-replicates-10.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/cv-adjusted-summary-pois.Rmd/pluripotent-density-replicates-11.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/cv-adjusted-summary-pois.Rmd/pluripotent-density-replicates-12.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/cv-adjusted-summary-pois.Rmd/pluripotent-density-replicates-13.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/cv-adjusted-summary-pois.Rmd/pluripotent-density-replicates-14.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/cv-adjusted-summary-pois.Rmd/pluripotent-density-replicates-15.png" title="" alt="" width="768" style="display: block; margin: auto;" /><img src="figure/cv-adjusted-summary-pois.Rmd/pluripotent-density-replicates-16.png" title="" alt="" width="768" style="display: block; margin: auto;" /></p>
-<p>Supplemental figure XX1.</p>
-<p>Legend: Coefficients of variation plotted against average molecule counts across cells of each individual cell line. Grey dots represent endogeneous genes, and blue dots indicate ERCC spike-in control genes. Red curve depicts the expected coefficients of variation assuming the endogeneous genes follow a poisson distribution. Likewise, blue curve depicts the expected CVs of the ERCC spike-in control genes. Yellow curve predicts the expected CVs assuming standard deviation is 3 times the ERCC spike-in genes.</p>
-<pre class="r"><code>theme_set(theme_bw(base_size = 12))
-theme_update(panel.grid.minor.x = element_blank(),
-             panel.grid.minor.y = element_blank(),
-             panel.grid.major.x = element_blank(),
-             panel.grid.major.y = element_blank())
-cowplot::plot_grid(
-    plot_poisson_cv(molecules_filter[grep(&quot;ERCC&quot;, rownames(molecules_filter),
-                                          invert = TRUE), 
-                                      anno_filter$individual == &quot;NA19098&quot;], 
-                    molecules_filter[grep(&quot;ERCC&quot;, rownames(molecules_filter)), 
-                                     anno_filter$individual == &quot;NA19098&quot;], 
-                    is_log2count = FALSE,
-                    main = &quot;Filtered counts, NA19098&quot;) +
-                    theme(legend.position = &quot;none&quot;),
-    plot_poisson_cv(molecules_filter[grep(&quot;ERCC&quot;, rownames(molecules_filter),
-                                      invert = TRUE), 
-                                  anno_filter$individual == &quot;NA19101&quot;], 
-                molecules_filter[grep(&quot;ERCC&quot;, rownames(molecules_filter)), 
-                                 anno_filter$individual == &quot;NA19101&quot;], 
-                is_log2count = FALSE,
-                main = &quot;Filtered counts, NA19101&quot;) +
-                theme(legend.position = &quot;none&quot;),
-    plot_poisson_cv(molecules_filter[grep(&quot;ERCC&quot;, rownames(molecules_filter),
-                                  invert = TRUE), 
-                              anno_filter$individual == &quot;NA19239&quot;], 
-            molecules_filter[grep(&quot;ERCC&quot;, rownames(molecules_filter)), 
-                             anno_filter$individual == &quot;NA19239&quot;], 
-            is_log2count = FALSE,
-            main = &quot;Filtered counts, NA19239&quot;) +
-            theme(legend.position = &quot;none&quot;),
-  nrow = 1,
-  labels = LETTERS[1:3])</code></pre>
-<p><img src="figure/cv-adjusted-summary-pois.Rmd/unnamed-chunk-19-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
-<p>Supplemental figure XX2. Legend:</p>
-<p>Investigating distance-to-the-median (DM). (A) to (C) correspond to cell lines NA19098, NA19101, NA19239. DM values of each gene are plotted against log10 of the average molecule counts.</p>
-<pre class="r"><code>plot_grid(
-  ggplot(data.frame(dm = ENSG_cv_adj$NA19098$log10cv2_adj,
-                    log10_mean = log10(ENSG_cv_adj$NA19098$mean)),
-         aes(x = log10_mean, y = dm)) +
-      geom_point(cex = .4) +
-      xlab(&quot;log10 average molecule count&quot;) +
-      ylab(&quot;DM values&quot;) +
-      ggtitle(&quot;NA19098&quot;) +
-      theme(legend.position = &quot;none&quot;),
-    ggplot(data.frame(dm = ENSG_cv_adj$NA19101$log10cv2_adj,
-                    log10_mean = log10(ENSG_cv_adj$NA19101$mean)),
-         aes(x = log10_mean, y = dm)) +
-      geom_point(cex = .4) +
-      xlab(&quot;log10 average molecule count&quot;) +
-      ylab(&quot;DM values&quot;) +
-      ggtitle(&quot;NA19101&quot;) +
-      theme(legend.position = &quot;none&quot;),
-  ggplot(data.frame(dm = ENSG_cv_adj$NA19239$log10cv2_adj,
-                    log10_mean = log10(ENSG_cv_adj$NA19239$mean)),
-         aes(x = log10_mean, y = dm)) +
-      geom_point(cex = .4) +
-      xlab(&quot;log10 average molecule count&quot;) +
-      ylab(&quot;DM values&quot;) +
-      ggtitle(&quot;NA19239&quot;) +
-      theme(legend.position = &quot;none&quot;),
-  nrow = 1,
-  labels = LETTERS[4:6] )</code></pre>
-<p><img src="figure/cv-adjusted-summary-pois.Rmd/unnamed-chunk-20-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
-<p>Supplemental XX3</p>
-<p>Legend: (A) Histogram of empirical p-values based on 12,192 permutations. (B) -log10 empirical p-values are plotted against average gene expression levels. Blue line displays predicted -log10 p-values using locally weighted scatterplot smooth (LOESS). (C) Median of Absolute Deviation (MAD) of genes versus average gene expression levels. LOESS was also used to depict predicted MAD values.</p>
-<pre class="r"><code># Bins average gene expression and make a boxplot of -log10 p-values
-# for each bin
-gene_means &lt;- rowMeans(as.matrix(molecules_final))
-
-plot_grid(
-  ggplot( data.frame(pvals = permuted_pval$mad_pval),
-         aes(x = pvals) ) +
-    geom_histogram() + xlim(0, 1) +
-    labs(x = &quot;Permutation-based p-values&quot;, y = &quot;Count&quot;),
-  ggplot( data.frame(pvals = permuted_pval$mad_pval,
-                     gene_mean = rowMeans(as.matrix(molecules_final)),
-                     bins = cut_number(gene_means, n = 10)),
-         aes(x = gene_mean, y = -log10(pvals)) ) +
-    geom_point(alpha = .5, cex = .2) +
-    stat_smooth() +
-    theme(legend.position = &quot;none&quot;) +
-    ylab(&quot;-log10(p-value)&quot;) +
-    xlab(&quot;Average gene expression level&quot;),
-  ggplot( data.frame(mad = mad,
-                   gene_mean = rowMeans(as.matrix(molecules_final)),
-                   bins = cut_number(gene_means, n = 10)),
-         aes(x = gene_mean, y = mad) ) +
-      geom_point( alpha = .5, cex = .2) +
-      stat_smooth(col = 11) +
-      theme(legend.position = &quot;none&quot;) +
-      ylab(&quot;Median of absolute deviation (MAD)&quot;) +
-      xlab(&quot;Average gene expression level&quot;),
-  ncol = 2,
-  labels = LETTERS[1:3]
-  )</code></pre>
-<p><img src="figure/cv-adjusted-summary-pois.Rmd/unnamed-chunk-21-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
 </div>
 <div id="session-information" class="section level2">
 <h2>Session information</h2>
@@ -1149,29 +961,49 @@ locale:
 [11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
 
 attached base packages:
-[1] grid      stats     graphics  grDevices utils     datasets  methods  
-[8] base     
+ [1] stats4    parallel  grid      stats     graphics  grDevices utils    
+ [8] datasets  methods   base     
 
 other attached packages:
- [1] mgcv_1.8-6         nlme_3.1-120       broman_0.59-5     
- [4] scales_0.2.4       gplots_2.17.0      zoo_1.7-12        
- [7] matrixStats_0.14.0 MASS_7.3-40        cowplot_0.3.1     
-[10] Humanzee_0.1.0     ggplot2_1.0.1      edgeR_3.10.2      
-[13] limma_3.24.9       dplyr_0.4.2        data.table_1.9.4  
-[16] knitr_1.10.5      
+ [1] gplots_2.17.0          mygene_1.2.3           GenomicFeatures_1.20.1
+ [4] AnnotationDbi_1.30.1   Biobase_2.28.0         GenomicRanges_1.20.5  
+ [7] GenomeInfoDb_1.4.0     IRanges_2.2.4          S4Vectors_0.6.0       
+[10] BiocGenerics_0.14.0    matrixStats_0.14.0     MASS_7.3-40           
+[13] cowplot_0.3.1          Humanzee_0.1.0         ggplot2_1.0.1         
+[16] edgeR_3.10.2           limma_3.24.9           dplyr_0.4.2           
+[19] data.table_1.9.4       knitr_1.10.5          
 
 loaded via a namespace (and not attached):
- [1] Rcpp_0.12.0        formatR_1.2        plyr_1.8.3        
- [4] bitops_1.0-6       tools_3.2.0        digest_0.6.8      
- [7] evaluate_0.7       gtable_0.1.2       lattice_0.20-31   
-[10] Matrix_1.2-1       DBI_0.3.1          yaml_2.1.13       
-[13] parallel_3.2.0     proto_0.3-10       httr_0.6.1        
-[16] stringr_1.0.0      caTools_1.17.1     gtools_3.5.0      
-[19] R6_2.1.1           rmarkdown_0.6.1    gdata_2.16.1      
-[22] reshape2_1.4.1     magrittr_1.5       htmltools_0.2.6   
-[25] assertthat_0.1     colorspace_1.2-6   labeling_0.3      
-[28] KernSmooth_2.23-14 stringi_0.4-1      RCurl_1.95-4.6    
-[31] munsell_0.4.2      chron_2.3-45      </code></pre>
+ [1] httr_0.6.1              jsonlite_0.9.16        
+ [3] splines_3.2.0           gsubfn_0.6-6           
+ [5] gtools_3.5.0            Formula_1.2-1          
+ [7] assertthat_0.1          highr_0.5              
+ [9] latticeExtra_0.6-26     Rsamtools_1.20.4       
+[11] yaml_2.1.13             RSQLite_1.0.0          
+[13] lattice_0.20-31         chron_2.3-45           
+[15] digest_0.6.8            RColorBrewer_1.1-2     
+[17] XVector_0.8.0           colorspace_1.2-6       
+[19] htmltools_0.2.6         plyr_1.8.3             
+[21] XML_3.98-1.2            biomaRt_2.24.0         
+[23] zlibbioc_1.14.0         scales_0.4.0           
+[25] gdata_2.16.1            BiocParallel_1.2.2     
+[27] sqldf_0.4-10            nnet_7.3-9             
+[29] proto_0.3-10            survival_2.38-1        
+[31] magrittr_1.5            evaluate_0.7           
+[33] foreign_0.8-63          tools_3.2.0            
+[35] formatR_1.2             stringr_1.0.0          
+[37] munsell_0.4.3           cluster_2.0.1          
+[39] lambda.r_1.1.7          Biostrings_2.36.1      
+[41] caTools_1.17.1          futile.logger_1.4.1    
+[43] RCurl_1.95-4.6          bitops_1.0-6           
+[45] labeling_0.3            rmarkdown_0.6.1        
+[47] gtable_0.1.2            DBI_0.3.1              
+[49] reshape2_1.4.1          R6_2.1.1               
+[51] GenomicAlignments_1.4.1 gridExtra_2.0.0        
+[53] rtracklayer_1.28.4      Hmisc_3.16-0           
+[55] futile.options_1.0.0    KernSmooth_2.23-14     
+[57] stringi_1.0-1           Rcpp_0.12.4            
+[59] rpart_4.1-9             acepack_1.3-3.3        </code></pre>
 </div>
 
 
