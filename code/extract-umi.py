@@ -37,7 +37,7 @@ if __name__  == '__main__':
     output.write('chr\tstart\tumi\n')
     for read in bam.fetch(region, until_eof = True):
         chr = bam.getrname(read.tid)
-        assert 'Read is aligned to specified region', chr == region
+        assert chr == region, 'Read is aligned to specified region'
         start_pos = read.pos
         umi = read.qname.split(':')[-1].split('_')[-1]
         output.write(chr + '\t' + str(start_pos) + '\t' + umi + '\n')

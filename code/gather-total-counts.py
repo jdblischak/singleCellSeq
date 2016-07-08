@@ -53,7 +53,7 @@ def read_count_file(f):
                  sequences at that stage in the processing pipeline.
     """
     lines = read_lines(f)
-    assert "Count file has only one line", len(lines) == 1
+    assert len(lines) == 1, "Count file has only one line"
     counts = lines[0].strip("\n")
     return counts
 
@@ -66,13 +66,13 @@ def read_featureCounts_summary(f):
                  category Assigned is for sequences that map unambiguously to a
                  gene.
     """
-    assert "featureCounts summary file has correct extension", \
-           f[-8:] == ".summary"
+    assert f[-8:] == ".summary", \
+           "featureCounts summary file has correct extension"
     lines = read_lines(f)
-    assert "featureCounts summary file has 12 lines", \
-           len(lines) == 12
-    assert "The Assigned category is the first entry after the header", \
-           lines[1].split("\t")[0] == "Assigned"
+    assert len(lines) == 12, \
+           "featureCounts summary file has 12 lines"
+    assert lines[1].split("\t")[0] == "Assigned", \
+           "The Assigned category is the first entry after the header"
     counts = lines[1].strip("\n").split("\t")[1]
     return counts
 

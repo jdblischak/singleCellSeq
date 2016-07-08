@@ -22,17 +22,14 @@ fig_supp_plurigene <- "S7"
 fig_supp_design <- "S8"
 fig_supp_proportion <- "S9"
 fig_supp_CV <- "S10"
-
 fig_supp_cellcycle <- "S11"
 fig_supp_subsample <- "S12"
 
-# Numbering tables
-table_qualitycell <- "1"
-
 # Numbering for supplementary tables
-table_supp_collection <- "S1"
-table_noisygene <- "S2"
-table_GO <- "S3"
+table_collection <- "S1"
+table_qualitycell <- "S2"
+table_noisygene <- "S3"
+table_GO <- "S4"
 
 # Import data
 anno_filter <- read.table("../data/annotation-filter.txt", header = TRUE,
