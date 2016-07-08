@@ -10,7 +10,7 @@
 
 <meta name="author" content="Joyce Hsiao" />
 
-<meta name="date" content="2016-06-25" />
+<meta name="date" content="2016-07-06" />
 
 <title>Cell-to-cell variation analysis: summary</title>
 
@@ -121,17 +121,16 @@ img {
 <div id="header">
 <h1 class="title">Cell-to-cell variation analysis: summary</h1>
 <h4 class="author"><em>Joyce Hsiao</em></h4>
-<h4 class="date"><em>2016-06-25</em></h4>
+<h4 class="date"><em>2016-07-06</em></h4>
 </div>
 
 <div id="TOC">
 <ul>
 <li><a href="#objective">Objective</a></li>
 <li><a href="#set-up">Set up</a></li>
-<li><a href="#prepare-data">Prepare data</a></li>
 <li><a href="#main-figure-1">Main figure 1</a></li>
-<li><a href="#main-figure-2">Main figure 2</a></li>
-<li><a href="#supp.-figure-pluripotent-gens-density-plot-for-all-batches">Supp. figure: pluripotent gens density plot for all batches</a></li>
+<li><a href="#supplemental-figure-6">Supplemental Figure 6</a></li>
+<li><a href="#suppelmental-figure-7-all-pluripotent-gens">Suppelmental Figure 7: all pluripotent gens</a></li>
 <li><a href="#supp.-figure-cv-mean-all-cells">Supp. figure: CV-mean, all cells</a></li>
 <li><a href="#supplemental-figure-xx-adjusted-cv-sanity-checks">Supplemental figure XX: Adjusted CV sanity checks</a></li>
 <li><a href="#supp.-figure-permutation-test-results">Supp. figure: permutation test results</a></li>
@@ -140,8 +139,8 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2016-06-29</p>
-<p><strong>Code version:</strong> c59e3a495e7257caa3180d1dfdaf315cdd79d715</p>
+<p><strong>Last updated:</strong> 2016-07-08</p>
+<p><strong>Code version:</strong> 641fc1222ff5c5bc6b4766ad24ea2f5420334427</p>
 <div id="objective" class="section level2">
 <h2>Objective</h2>
 <p>This page documents analysis performed for the paper figures.</p>
@@ -161,9 +160,6 @@ library(&quot;cowplot&quot;)
 library(&quot;MASS&quot;)
 library(&quot;matrixStats&quot;)
 source(&quot;../code/plotting-functions.R&quot;)</code></pre>
-</div>
-<div id="prepare-data" class="section level2">
-<h2>Prepare data</h2>
 <p>We import molecule counts before standardizing and transformation and also log2-transformed counts after batch-correction. Biological variation analysis of the individuals is performed on the batch-corrected and log2-transformed counts.</p>
 <pre class="r"><code># Import filtered annotations
 anno_filter &lt;- read.table(&quot;../data/annotation-filter.txt&quot;, 
@@ -199,18 +195,11 @@ pluripotency_genes &lt;- read.table(&quot;../data/pluripotency-genes.txt&quot;,
 load(&quot;../data/cv-expressed-cells.rda&quot;)
 #load(&quot;../data/sig-mean-expressed.rda&quot;)
 
-## TBD
-## permutation results
-# expressed cells
-#load(&quot;../data/permuted-pval-expressed.rda&quot;)
-# # all cells
-#load(&quot;../data/permuted-pval.rda&quot;)
+## permutation results including the detected/expressed cells
+load(&quot;../data/permuted-pval-expressed-set1.rda&quot;)
 
-# load permute p-values
-load(&quot;../data/permuted-pval-expressed.rda&quot;)
-
-# compute MAD of the cells detected as expressed
-mad_expressed &lt;- rowMedians( abs( as.matrix(expressed_dm) - rowMedians(as.matrix(expressed_dm)) ) )</code></pre>
+## load observed statistics (MAD)
+load(&quot;../data/mad-expressed.rda&quot;)</code></pre>
 <p>Compute a matrix of 0’s and 1’s labeling non-detected and detected cells, respectively.</p>
 <pre class="r"><code>molecules_expressed &lt;- molecules_filter
 molecules_expressed[which(molecules_filter &gt; 0 , arr.ind = TRUE)] &lt;- 1
@@ -219,7 +208,7 @@ molecules_expressed &lt;- as.matrix((molecules_expressed))</code></pre>
 <pre class="r"><code>genes_included &lt;- Reduce(intersect,
                          list(rownames(molecules_final),
                              rownames(expressed_cv$NA19098),
-                             names(perm_pval)) )
+                             names(perm_pval_set1)) )
 
 molecules_filter_subset &lt;- molecules_filter[
   which(rownames(molecules_filter) %in% genes_included), ]
@@ -233,8 +222,7 @@ molecules_expressed_subset &lt;- molecules_expressed[
 molecules_final_expressed_subset &lt;- molecules_final_subset*molecules_expressed_subset
 molecules_final_expressed_subset[which(molecules_expressed_subset == 0, arr.ind = TRUE)] &lt;- NA
 
-permuted_pval_subset &lt;- perm_pval[which(names(perm_pval) %in% genes_included)]
-names(permuted_pval_subset) &lt;- names(perm_pval)[which(names(perm_pval) %in% genes_included)]
+permuted_pval_subset &lt;- perm_pval_set1[which(names(perm_pval_set1) %in% genes_included)]
 
 expressed_cv_subset &lt;- lapply(expressed_cv, function(x)
   x[which(rownames(x) %in% genes_included), ] )
@@ -409,8 +397,8 @@ venn_cv_rank &lt;- gplots::venn(
        NA19239 = genes[ which(rank(ENSG_cv[[3]]$mean) &gt; length(genes) - 1000 ) ] ) )</code></pre>
 <p><img src="figure/cv-adjusted-summary-pois-final.Rmd/venn-all-2.png" title="" alt="" width="480" style="display: block; margin: auto;" /></p>
 </div>
-<div id="main-figure-2" class="section level2">
-<h2>Main figure 2</h2>
+<div id="supplemental-figure-6" class="section level2">
+<h2>Supplemental Figure 6</h2>
 <p><img src="figure/cv-adjusted-summary-pois-final.Rmd/bio-figure2.png" alt="bio-figure2" /></p>
 <p><em>[chunk not evaluated]</em></p>
 <pre class="r"><code>par(mfrow = c(1,1))
@@ -423,9 +411,9 @@ query_genes &lt;- c(&quot;NANOG&quot;, &quot;TFPI&quot;, &quot;SLC9A5&quot;, &qu
 query_genes_ensg &lt;- gene_symbols[which(gene_symbols$external_gene_name %in% query_genes), ]
 
 ## print permuted p-values of the chosen genes
-pvals_tab &lt;- rbind(rownames(permuted_pval)[which(rownames(permuted_pval) %in% query_genes_ensg$ensembl_gene_id)],
-      gene_symbols$external_gene_name[gene_symbols$ensembl_gene_id %in% rownames(permuted_pval)[which(rownames(permuted_pval) %in% query_genes_ensg$ensembl_gene_id)]],
-      permuted_pval$mad_pval[which(rownames(permuted_pval) %in% query_genes_ensg$ensembl_gene_id)] )
+pvals_tab &lt;- rbind(names(perm_pval_set1)[which(names(perm_pval_set1) %in% query_genes_ensg$ensembl_gene_id)],
+      gene_symbols$external_gene_name[gene_symbols$ensembl_gene_id %in% names(perm_pval_set1)[which(names(perm_pval_set1) %in% query_genes_ensg$ensembl_gene_id)]],
+      perm_pval_set1[which(names(perm_pval_set1) %in% query_genes_ensg$ensembl_gene_id)] )
       
 pdf(&quot;figure/cv-adjusted-summary-pois-final.Rmd/chosen-genes.pdf&quot;,
     height = 8, width = 12)
@@ -484,15 +472,18 @@ for (i in 1:nrow(query_genes_ensg)) {
   
   # print permuted p-value for the adjusted coefficient of variation
   if (i !=2) {
-  mtext(text = expression(paste(italic(&quot;p&quot;),&quot;&lt;&quot;,10^&quot;-5&quot;)), side=3)
+  mtext(text = expression(paste(italic(&quot;p&quot;),&quot;&lt;&quot;,10^&quot;-4&quot;)), side=3)
   }
   if (i == 2) {
-  mtext(text = expression(paste(italic(&quot;p&quot;),&quot;=.80&quot;)), side = 3)
+  mtext(text = expression(paste(italic(&quot;p&quot;),&quot;=.40&quot;)), side = 3)
   }
 abline(h = 0)
 
 }
 dev.off()</code></pre>
+</div>
+<div id="suppelmental-figure-7-all-pluripotent-gens" class="section level2">
+<h2>Suppelmental Figure 7: all pluripotent gens</h2>
 <p><em>[chunk not evaluated]</em></p>
 <p>heatmap of pluripotent genes</p>
 <pre class="r"><code>## Heatmap
@@ -518,34 +509,6 @@ gplots::heatmap.2(
   labRow = gene_symbols$external_gene_name[match(rownames(molecules_final_subset)[which_pluri], gene_symbols$ensembl_gene_id)],
   col = rev(viridis::viridis(256)))</code></pre>
 <p><img src="figure/cv-adjusted-summary-pois-final.Rmd/unnamed-chunk-6-1.png" title="" alt="" width="672" style="display: block; margin: auto;" /></p>
-</div>
-<div id="supp.-figure-pluripotent-gens-density-plot-for-all-batches" class="section level2">
-<h2>Supp. figure: pluripotent gens density plot for all batches</h2>
-<p><em>[chunk not evaluated]</em></p>
-<pre class="r"><code>pluri_pvals &lt;- data.frame(pvals = permuted_pval_subset,
-                          ENSG = rownames(molecules_final_subset))
-pluri_pvals &lt;- pluri_pvals[which(rownames(molecules_final_subset) %in% 
-                                   pluripotency_genes), ]
-pluri_symbols &lt;- gene_symbols[which(gene_symbols$ensembl_gene_id %in% pluri_pvals$ENSG) , c(1,3)]
-pluri_results &lt;- merge(pluri_pvals, pluri_symbols,
-                       by.x = c(&quot;ENSG&quot;), by.y = &quot;ensembl_gene_id&quot;) 
-pluri_results &lt;- pluri_results[order(pluri_results$pval), ]
-pluri_results
-
-for (i in 1:nrow(pluri_results)) {
-    par(mfrow = c(1,3))
-    for (which_individual in unique(anno_filter$individual)) {
-        plot_density_overlay(
-             molecules = molecules_final[ , anno_filter$individual == which_individual],
-             annotation = anno_filter[anno_filter$individual == which_individual, ],
-             individual_label = which_individual,
-             batches = anno_filter$sample_id,
-             which_gene = pluri_results$ENSG[i],
-             labels = which_individual,
-             xlims = c(2,14),
-             gene_symbols = gene_symbols)
-    }
-}</code></pre>
 </div>
 <div id="supp.-figure-cv-mean-all-cells" class="section level2">
 <h2>Supp. figure: CV-mean, all cells</h2>
@@ -652,16 +615,15 @@ cowplot::plot_grid(
 <p>Legend: (A) Histogram of empirical p-values based on 12,192 permutations. (B) -log10 empirical p-values are plotted against average gene expression levels. Blue line displays predicted -log10 p-values using locally weighted scatterplot smooth (LOESS). (C) Median of Absolute Deviation (MAD) of genes versus average gene expression levels. LOESS was also used to depict predicted MAD values.</p>
 <pre class="r"><code># Bins average gene expression and make a boxplot of -log10 p-values
 # for each bin
-permuted_pval_subset[which(permuted_pval_subset == 0)] &lt;- 1/length(perm_pval)
-mad_expressed &lt;- rowMedians( abs( as.matrix(expressed_dm_subset) - rowMedians(as.matrix(expressed_dm_subset)) ) )
-
+load(&quot;../data/permuted-pval-expressed-set1.rda&quot;)
+load(&quot;../data/mad-expressed.rda&quot;)
 
 plot_grid(
-  ggplot( data.frame(pvals = permuted_pval_subset),
+  ggplot( data.frame(pvals = perm_pval_set1),
          aes(x = pvals) ) +
     geom_histogram() + xlim(0, 1) +
     labs(x = &quot;Permutation-based P-values&quot;, y = &quot;Count&quot;, title = &quot;Empirical P-values based on permutation&quot;),
-  ggplot( data.frame(pvals = permuted_pval_subset,
+  ggplot( data.frame(pvals = perm_pval_set1,
                      gene_mean = rowMeans(as.matrix(molecules_final_expressed_subset),
                                           na.rm = TRUE),
                      bins = cut_number(rowMeans(as.matrix(molecules_final_expressed_subset),
