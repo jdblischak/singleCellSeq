@@ -1,7 +1,7 @@
 ---
-title: "Cell-to-cell variation analysis: non-detected cells"
+title: "Cell-to-cell variation analysis: cells not detected as expressed"
 author: "Joyce Hsiao"
-date: 2016-03-01  
+date: 2016-07-08
 ---
 
 **Last updated:** `r Sys.Date()`
@@ -106,8 +106,7 @@ Load gene CVs computed over all cells ([link1][link1]), CV computed only over th
 ```{r}
 load("../data/cv-all-cells.rda")
 load("../data/cv-expressed-cells.rda")
-load("../data/permuted-pval-expressed.rda")
-load("../data/sig-mean-expressed.rda")
+load("../data/permuted-pval-expressed-set1.rda")
 ```
 
 
@@ -126,7 +125,7 @@ Take the gene subset included in the final data.
 genes_included <- Reduce(intersect,
                          list(rownames(molecules_final),
                              rownames(expressed_cv$NA19098),
-                             rownames(permuted_pval)) )
+                             names(perm_pval_set1)) )
 
 molecules_filter_subset <- molecules_filter[
   which(rownames(molecules_filter) %in% genes_included), ]
@@ -140,8 +139,8 @@ molecules_expressed_subset <- molecules_expressed[
 molecules_final_expressed_subset <- molecules_final_subset*molecules_expressed_subset
 molecules_final_expressed_subset[which(molecules_expressed_subset == 0, arr.ind = TRUE)] <- NA
 
-permuted_pval_subset <- permuted_pval[which(rownames(permuted_pval) %in% genes_included), ]
-names(permuted_pval_subset) <- rownames(permuted_pval)[which(rownames(permuted_pval) %in% genes_included)]
+permuted_pval_subset <- perm_pval_set1[which(names(perm_pval_set1) %in% genes_included)]
+names(permuted_pval_subset) <- names(perm_pval_set1)[which(names(perm_pval_set1) %in% genes_included)]
 
 expressed_cv_subset <- lapply(expressed_cv, function(x)
   x[which(rownames(x) %in% genes_included), ] )
@@ -435,51 +434,6 @@ grid.arrange(gTree(children = venn.diagram(overlap_list,filename = NULL,
                           name = "q-val < .01")) )
 ```
 
-
-
-## Non-detection rate p-value and DE p-value
-
-For genes with sig. individual differences in percent of non-detected genes, consider the difference in gene abundance levels.
-
-```{r}
-colnames(fit_w)
-
-par(mfrow = c(2,2))
-plot(rank(fit_zero$`NA19098-NA19101`), 
-     rank((fit_w$p.value[ ,"NA19098_NA19101"] ) ),
-     pch = 16, cex = .3,
-     xlab = "Differential non-detection rate p-value (rank)",
-     ylab = "Differential expression p-value (rank)",
-     main = "NA19098-NA19101") 
-plot(rank(fit_zero$`NA19098-NA19239`), 
-     rank((fit_w$p.value[ ,"NA19098_NA19239"] ) ),
-     pch = 16, cex = .3,
-     xlab = "Differential non-detection rate p-value (rank)",
-     ylab = "Differential expression p-value (rank)",
-     main = "NA19098-NA19239") 
-plot(rank(fit_zero$`NA19101-NA19239`), 
-     rank((fit_w$p.value[ ,"NA19101_NA19239"] ) ),
-     pch = 16, cex = .3,
-     xlab = "Differential non-detection rate p-value (rank)",
-     ylab = "Differential expression p-value (rank)",
-     main = "NA19101-NA19239") 
-
-library(VennDiagram)
-library(gridExtra)
-genes <- rownames(molecules_final_subset)
-overlap_list <- lapply(1:3, function(i)
-  list(diffNonDetection = genes[which(fit_zero_qval[,i] < .01)],
-       diffAbundance = genes[ which(p.adjust(fit_w$p.value[,i], method = "fdr") < .01)]) )
-names(overlap_list) <- colnames(fit_zero_qval)
-
-grid.arrange(gTree(children = venn.diagram(overlap_list[[1]],filename = NULL,
-                          category.names = names(overlap_list[[1]]))),
-            gTree(children = venn.diagram(overlap_list[[2]],filename = NULL,
-                          category.names = names(overlap_list[[1]]))),
-            gTree(children = venn.diagram(overlap_list[[3]],filename = NULL,
-                          category.names = names(overlap_list[[3]]))),
-      ncol = 2)
-```
 
 
 
