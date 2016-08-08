@@ -3,7 +3,7 @@ MARKDOWN := title-page.md introduction.md results.md discussion.md methods.md le
 TARGETS := title.yaml $(MARKDOWN)
 NAME := paper
 BIBLIO := refs.bib
-PANDOC_OPTS := --bibliography=${BIBLIO} --csl=plos.csl
+PANDOC_OPTS := --bibliography=${BIBLIO}
 
 all: html word pdf
 
