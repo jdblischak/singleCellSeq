@@ -33,6 +33,8 @@ The following steps must be performed manually to complete the formatting of the
 *  Add line numbers starting after the title page (Page Layout -> Line Numbers)
 *  Resize the figures to have a width of 6 inches (after you resize the first figure, then you only have to select the remaining figures individually and press F4 - [directions][f4]
 *  Crop the supplementary figures
+*  Extract the supplementary figures and tables into separate document
+*  Convert supplement to PDF
 
 [f4]: http://answers.microsoft.com/en-us/office/forum/office_2010-word/select-multiple-images-in-word-to-resize-all/2061eed7-0522-4127-9b84-f490c02e2d81
 
