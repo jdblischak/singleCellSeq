@@ -1,0 +1,159 @@
+---
+title: "Figures for presentation"
+date: 2016-10-14
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+opts_chunk$set(fig.width = 8, fig.height = 6, dpi = 300)
+```
+
+```{r packages, message=FALSE}
+library("ggplot2")
+library("cowplot")
+source("functions.R")
+theme_set(theme_cowplot(font_size = 20))
+```
+
+## Input
+
+Input filtered annotation.
+
+```{r input-annotation-filter, cache=TRUE}
+anno_filter <- read.table("../data/annotation-filter.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno_filter)
+```
+
+Input standardized molecule counts.
+
+```{r input-molecule-counts-cpm, cache=TRUE}
+molecules_cpm <- read.table("../data/molecules-cpm.txt", header = TRUE,
+                            stringsAsFactors = FALSE)
+stopifnot(ncol(molecules_cpm) == nrow(anno_filter),
+          colnames(molecules_cpm) == anno_filter$sample_id)
+```
+
+Input final batch-corrected molecule counts per million.
+
+```{r input-molecule-counts-final, cache=TRUE}
+molecules_final <- read.table("../data/molecules-final.txt", header = TRUE,
+                              stringsAsFactors = FALSE)
+stopifnot(ncol(molecules_final) == nrow(anno_filter),
+          colnames(molecules_final) == anno_filter$sample_id)
+```
+
+## PCA
+
+### PCA of standardized data
+
+```{r pca-molecules-cpm, cache=TRUE}
+pca_molecules_cpm <- run_pca(molecules_cpm)
+```
+
+```{r pca-molecules-cpm-plot}
+pca_molecules_cpm_plot <- plot_pca(pca_molecules_cpm$PCs,
+         explained = pca_molecules_cpm$explained,
+         metadata = anno_filter, color = "individual",
+         shape = "replicate", alpha = 0.5, size = 2.2) +
+  scale_shape_discrete(name = "Replicate") +
+  scale_color_discrete(name = "Individual")
+pca_molecules_cpm_plot
+```
+
+### PCA of final batch-corrected data
+
+```{r pca-molecules-final, cache=TRUE}
+pca_final <- run_pca(molecules_final)
+```
+
+```{r pca-molecules-final-plot}
+pca_final_plot <- plot_pca(pca_final$PCs, explained = pca_final$explained,
+         metadata = anno_filter, color = "individual",
+         shape = "replicate", alpha = 0.5, size = 2.2) +
+  scale_shape_discrete(name = "Replicate") +
+  scale_color_discrete(name = "Individual")
+pca_final_plot
+```
+
+
+## Variance components
+
+```{r}
+load("../data/blme-variance.rda")
+
+labels <- c("Endogenous raw", "ERCC raw",
+            "Endogenous CPM", "Endogenous Poisson",
+            "Endogenous final")
+blme_list <- list(blme_raw, blme_ercc, blme_cpm,
+                  blme_cpm_trans, blme_final)
+prop_list <- vector("list", length(blme_list))
+names(prop_list) <- c("raw", "ercc", "cpm", "cpm_trans", "final")
+par(mfrow = c(2,3))
+for (i in c(1:length(blme_list))) {
+  res <- blme_list[[i]]
+  ms_ind <- (res[,1]*2.67*70.5) + (res[,2]*70.5) + res[,3]
+  ms_batch <- (res[,2]*70.5) + res[,3]
+  ms_resid <- res[,3]
+  ss_ind <- ms_ind*(3-1)
+  ss_batch <- ms_batch*3*(2.67-1)
+  ss_resid <- ms_resid*3*2.67*(70.5-1)
+  prop_ind <- ss_ind/(ss_ind + ss_batch + ss_resid)
+  prop_batch <- ss_batch/(ss_ind + ss_batch + ss_resid)
+  prop_list[[i]] <- data.frame(prop_ind = prop_ind,
+                               prop_batch = prop_batch)
+}
+```
+
+Endogenous genes
+
+```{r variance-components-endo}
+var_endo_df <- data.frame(proportion = c(prop_list$raw$prop_ind,
+                                         prop_list$raw$prop_batch,
+                                         1 - prop_list$raw$prop_ind -
+                                           prop_list$raw$prop_batch),
+                          type = rep(1:3, each = dim(prop_list$raw)[1]))
+var_endo_df$type <- factor(var_endo_df$type,
+                           labels = c("Individual",
+                                      "Replicate",
+                                      "Residual\ncell-to-cell variance"))
+var_endo_plot <- ggplot(var_endo_df,
+                        aes(x = type, y = proportion)) +
+  geom_violin(alpha = .5) +
+  geom_boxplot(alpha = .01, width = 0.1,
+               position = position_dodge(width = 0.9)) +
+  ylim(0,1) + xlab("") + ylab("Proportion of variance explained")
+var_endo_plot
+```
+
+ERCC spike-ins
+
+```{r variance-components-ercc}
+var_ercc_df <- data.frame(proportion = c(prop_list$ercc$prop_ind,
+                                         prop_list$ercc$prop_batch,
+                                         1- prop_list$ercc$prop_ind -
+                                           prop_list$ercc$prop_batch),
+                          type = rep(1:3, each = dim(prop_list$ercc)[1]))
+var_ercc_df$type <- factor(var_ercc_df$type,
+                           labels = c("Individual",
+                                      "Replicate",
+                                      "Residual\ncell-to-cell variance"))
+var_ercc_plot <- ggplot(var_ercc_df,
+                        aes(x = type, y = proportion)) +
+    geom_violin(alpha = .5) +
+    geom_boxplot(alpha = .01, width = 0.1,
+                 position = position_dodge(width = 0.9)) +
+    ylim(0,1) + xlab("") + ylab("Proportion of variance explained")
+var_ercc_plot
+```
+
+
+## Session information
+
+```{r info}
+sessionInfo()
+```
