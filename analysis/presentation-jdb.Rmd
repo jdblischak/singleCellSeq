@@ -13,6 +13,7 @@ opts_chunk$set(fig.width = 8, fig.height = 6, dpi = 300)
 ```
 
 ```{r packages, message=FALSE}
+library("dplyr")
 library("ggplot2")
 library("cowplot")
 source("functions.R")
@@ -151,6 +152,50 @@ var_ercc_plot <- ggplot(var_ercc_df,
 var_ercc_plot
 ```
 
+
+
+## Subampling
+
+```{r input-subsampling, cache=TRUE}
+d <- read.table("../data/subsampling-results.txt",
+                header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+d_grouped <- d %>%
+  group_by(type, depth, gene_subset, subsampled_cells,
+           individual, potential_cells, available_cells,
+           lower_q, upper_q, available_ensg, used_ensg,
+           available_ercc, used_ercc) %>%
+  summarize(mean_detected = mean(detected_ensg),
+            sem_detected = sd(detected_ensg) / sqrt(length(detected_ensg)),
+            mean_bulk = mean(pearson_ensg),
+            sem_bulk = sd(pearson_ensg) / sqrt(length(pearson_ensg)),
+            mean_var = mean(var_pearson),
+            sem_var = sd(var_pearson) / sqrt(length(var_pearson)))
+d_filter <- d_grouped %>% filter(individual == "NA19239",
+                                type == "molecules",
+                                gene_subset %in% c("lower", "upper"))
+d_filter$gene_subset <- factor(d_filter$gene_subset,
+                               levels = c("lower", "upper"),
+                               labels = c("Lower 50% of expressed genes",
+                                          "Upper 50% of expressed genes"))
+```
+
+```{r plot-subsampling, fig.width=12}
+theme_set(theme_cowplot(font_size = 24))
+plot_bulk <- ggplot(d_filter,
+                 aes(x = subsampled_cells, y = mean_bulk,
+                     color = as.factor(depth))) +
+  geom_line() +
+  geom_errorbar(aes(ymin = mean_bulk - sem_bulk,
+                    ymax = mean_bulk + sem_bulk),
+                width = 1) +
+  facet_wrap(~gene_subset) +
+  scale_color_grey(start = 0.8, end = 0.2, name = "Sequencing depth") +
+  # theme(legend.position = "none") +
+  theme(legend.position = c(0.75, 0.35)) +
+  labs(x = "Number of subsampled cells",
+       y = "Pearson's r (+/- SEM)")
+plot_bulk
+```
 
 ## Session information
 
