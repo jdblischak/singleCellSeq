@@ -1,7 +1,7 @@
 ---
-title: "Cell-to-cell variation analysis: summary"
+title: "Cell-to-cell variation analysis: paper figures"
 author: "Joyce Hsiao"
-date: 2016-07-06  
+date: 2016-10-26
 ---
 
 **Last updated:** `r Sys.Date()`
@@ -20,7 +20,7 @@ opts_chunk$set(message = FALSE, warning = FALSE, eval = TRUE,
 
 ## Objective
 
-This page documents analysis performed for the paper figures. 
+This page contains codes for reproducing figures reported in the paper that are related the analysis of cell-to-cell variation in transcriptional gene expression.
 
 
 ## Set up
@@ -126,7 +126,8 @@ molecules_expressed_subset <- molecules_expressed[
   which(rownames(molecules_expressed) %in% genes_included), ]
 
 molecules_final_expressed_subset <- molecules_final_subset*molecules_expressed_subset
-molecules_final_expressed_subset[which(molecules_expressed_subset == 0, arr.ind = TRUE)] <- NA
+molecules_final_expressed_subset[which(molecules_expressed_subset == 0, 
+                                       arr.ind = TRUE)] <- NA
 
 permuted_pval_subset <- perm_pval_set1[which(names(perm_pval_set1) %in% genes_included)]
 
@@ -191,21 +192,24 @@ sum(drop_out_significance < quantile(drop_out_significance, prob = seq(0,1,.1))[
 ## Main figure 5: Cell-to-cell variation in gene expression
 
 
+### Expressed cells
+
 ```{r venn-expressed-cells, eval = T, fig.width = 5, fig.height=5}
-# Venn diagrams
-# only expressed cells
-library(gplots)
+# mean gene expression
 genes <- rownames(expressed_cv_subset[[1]])
 venn_mean_rank <- gplots::venn( 
   list(NA19098 = genes[ which(rank(expressed_cv_subset[[1]]$expr_mean) > length(genes) - 1000 ) ],
        NA19101 = genes[ which(rank(expressed_cv_subset[[2]]$expr_mean) > length(genes) - 1000 ) ],
        NA19239 = genes[ which(rank(expressed_cv_subset[[3]]$expr_mean) > length(genes) - 1000 ) ] ) )
 
+# adjusted CV
 venn_cv_rank <- gplots::venn( 
-  list(NA19098 = genes[ which(rank(expressed_cv_subset[[1]]$expr_cv) > length(genes) - 1000 ) ],
-       NA19101 = genes[ which(rank(expressed_cv_subset[[2]]$expr_cv) > length(genes) - 1000 ) ],
-       NA19239 = genes[ which(rank(expressed_cv_subset[[3]]$expr_cv) > length(genes) - 1000 ) ] ) )
+  list(NA19098 = genes[ which(rank(expressed_dm_subset[[1]]) > length(genes) - 1000 ) ],
+       NA19101 = genes[ which(rank(expressed_dm_subset[[2]]) > length(genes) - 1000 ) ],
+       NA19239 = genes[ which(rank(expressed_dm_subset[[3]]) > length(genes) - 1000 ) ] ) )
 ```
+
+### All cells
 
 Venn diagram of gene-specific mean and adjusted CV for when all cells are included. For more results for when including all cells, see [here][results-all-cells]. 
 
@@ -229,6 +233,7 @@ gplots::venn(
        NA19239 = genes[ which(rank(ENSG_cv[[3]]$mean) > length(genes) - 1000 ) ] ) )
 ```
 
+### Mean-CV plot
 
 CV and mean of batch-corrected data including all cells across all three indivivduals.
 
@@ -276,7 +281,154 @@ text(labels = rev( levels(cut(drop_out$NA19098, breaks = seq(0, 1, by = .1),
 title(main = "drop-out rate")
 ```
 
+### Additional analysis 
 
+
+Investigate the consistency of genes in the top ranked highly expressed list between the analysis including only the expressed cells and the analysis including all of the cells. 
+
+*Mean gene expression*
+
+```{r agree-allcells-expressedcells-mean}
+expressed_cells_genes <- rownames(expressed_cv_subset[[1]])
+high_mean_genes_expressed_cells <- venn_mean_rank <- gplots::venn( 
+  list(NA19098 = expressed_cells_genes[ 
+          which(rank(expressed_cv_subset[[1]]$expr_mean) > length(expressed_cells_genes) - 1000 ) ],
+       NA19101 = expressed_cells_genes[ 
+          which(rank(expressed_cv_subset[[2]]$expr_mean) > length(expressed_cells_genes) - 1000 ) ],
+       NA19239 = expressed_cells_genes[ 
+         which(rank(expressed_cv_subset[[3]]$expr_mean) > length(expressed_cells_genes) - 1000 ) ]),
+  show.plot = FALSE)
+
+all_cells_genes <- rownames(ENSG_cv[[1]])
+high_mean_genes_all_cells <- gplots::venn( 
+  list(NA19098 = all_cells_genes[ which(rank(ENSG_cv[[1]]$mean) > length(all_cells_genes) - 1000 ) ],
+       NA19101 = all_cells_genes[ which(rank(ENSG_cv[[2]]$mean) > length(all_cells_genes) - 1000 ) ],
+       NA19239 = all_cells_genes[ which(rank(ENSG_cv[[3]]$mean) > length(all_cells_genes) - 1000 ) ] ),
+  show.plot = FALSE)
+```
+
+Check if the genes in the intersection set are the same: Yes, exactly the same.
+
+```{r}
+# setdiff(y, x) finds the elements in y/x
+# that is, elements in y but not in x
+setequal(attr(high_mean_genes_expressed_cells, "intersection")[["NA19098:NA19101:NA19239"]],
+           attr(high_mean_genes_all_cells, "intersection")[["NA19098:NA19101:NA19239"]]) 
+```
+
+
+*adjusted CV*
+
+```{r agree-allcells-expressedcells-adjcv}
+expressed_cells_genes <- rownames(expressed_cv_subset[[1]])
+high_adjcv_genes_expressed_cells <- gplots::venn( 
+  list(NA19098 = expressed_cells_genes[ 
+          which(rank(expressed_dm_subset[[1]]) > length(expressed_cells_genes) - 1000 ) ],
+       NA19101 = expressed_cells_genes[ 
+          which(rank(expressed_dm_subset[[2]]) > length(expressed_cells_genes) - 1000 ) ],
+       NA19239 = expressed_cells_genes[ 
+         which(rank(expressed_dm_subset[[3]]) > length(expressed_cells_genes) - 1000 ) ]),
+  show.plot = FALSE)
+
+all_cells_genes <- rownames(ENSG_cv[[1]])
+high_adjcv_genes_all_cells <- gplots::venn(
+  list(NA19098 = all_cells_genes[ which( rank(ENSG_cv_adj$NA19098$log10cv2_adj) 
+                               > length(all_cells_genes) - 1000 ) ],
+       NA19101 = all_cells_genes[ which( rank(ENSG_cv_adj$NA19101$log10cv2_adj) 
+                               > length(all_cells_genes) - 1000 ) ],
+       NA19239 = all_cells_genes[ which( rank(ENSG_cv_adj$NA19239$log10cv2_adj) 
+                               > length(all_cells_genes) - 1000 ) ] ),
+  show.plot = FALSE)
+```
+
+Check if the genes in the intersection set are the same: NO!
+
+```{r}
+high_adjcv_genes_expressed_all <- 
+  gplots::venn(list(expressed = attr(high_adjcv_genes_expressed_cells, "intersection")[["NA19098:NA19101:NA19239"]],
+        all = attr(high_adjcv_genes_all_cells, "intersection")[["NA19098:NA19101:NA19239"]]))
+```
+
+Of the genes with high CV in the expressed cell analysis but not in all cell analysis, the gene expression distribution including the expressed cells versus the expression distribution including all ghe cells.
+
+```{r diff-adj-cv-distribution-set1, fig.width=11, fig.height=11}
+high_adjcv_genes_expressed_but_not_all <- attr(high_adjcv_genes_expressed_all, "intersection")$expressed
+par(mfrow = c(4,4))
+for (i in 1:length(high_adjcv_genes_expressed_but_not_all)) {
+plot_density_overlay(
+    molecules = molecules_final_expressed_subset,
+    annotation = anno_filter,
+    which_gene = high_adjcv_genes_expressed_but_not_all[i], 
+    labels = "",
+    xlims = c(4,12.5), ylims = c(0,1),
+    cex.lab = 1.2,
+    cex.axis = 1.2,
+    gene_symbols = gene_symbols)
+    individuals <- unique(anno_filter$individual)
+  library(scales)
+  library(broman)
+  crayon <- brocolors("crayon")
+  cols <- c("Mango Tango", "Green", "Violet Blue")
+  cols <- alpha(crayon[cols], .7)
+
+plot_density_overlay(
+    molecules = molecules_final_subset,
+    annotation = anno_filter,
+    which_gene = high_adjcv_genes_expressed_but_not_all[i], 
+    labels = "",
+    xlims = c(0,15), ylims = c(0,1.5),
+    cex.lab = 1.2,
+    cex.axis = 1.2,
+    gene_symbols = gene_symbols)
+    individuals <- unique(anno_filter$individual)
+  library(scales)
+  library(broman)
+  crayon <- brocolors("crayon")
+  cols <- c("Mango Tango", "Green", "Violet Blue")
+  cols <- alpha(crayon[cols], .7)
+}  
+```
+
+Of the genes detected as high CV in all cell analysis but not in the expressed cells, make the distribution plot including only the expressed cells and including all the cells. Only print selected examples. Basically there is no individual difference in adjusted coefficent of variation after excluding the non-detected cells.
+
+```{r diff-adj-cv-distribution-set2, fig.width=11, fig.height=11}
+high_adjcv_genes_all_but_not_expressed <- attr(high_adjcv_genes_expressed_all, "intersection")$all
+par(mfrow = c(4,4))
+#for (i in 1:length(high_adjcv_genes_all_but_not_expressed)) {
+for (i in 1:8) {
+plot_density_overlay(
+    molecules = molecules_final_expressed_subset,
+    annotation = anno_filter,
+    which_gene = high_adjcv_genes_all_but_not_expressed[i], 
+    labels = "",
+    xlims = c(4,12.5), ylims = c(0,1),
+    cex.lab = 1.2,
+    cex.axis = 1.2,
+    gene_symbols = gene_symbols)
+    individuals <- unique(anno_filter$individual)
+  library(scales)
+  library(broman)
+  crayon <- brocolors("crayon")
+  cols <- c("Mango Tango", "Green", "Violet Blue")
+  cols <- alpha(crayon[cols], .7)
+
+plot_density_overlay(
+    molecules = molecules_final_subset,
+    annotation = anno_filter,
+    which_gene = high_adjcv_genes_expressed_but_not_all[i], 
+    labels = "",
+    xlims = c(0,15), ylims = c(0,1.5),
+    cex.lab = 1.2,
+    cex.axis = 1.2,
+    gene_symbols = gene_symbols)
+    individuals <- unique(anno_filter$individual)
+  library(scales)
+  library(broman)
+  crayon <- brocolors("crayon")
+  cols <- c("Mango Tango", "Green", "Violet Blue")
+  cols <- alpha(crayon[cols], .7)
+}  
+```
 
 ## Supplemental Figure 6: Inter-individual differences in regulatory noise
 
@@ -635,13 +787,11 @@ plot_grid(
 
 ## Supplemental figure 4: The gene specific dropout rate
 
-All individuals, expressed cells
+Undetected cell per gene versus gene abundance, variance, and coefficient of variation
 
-```{r, fig.height=4, fig.width=12}
-# % undetected cell per gene versus gene abundance, variance, and coefficient of variation
-
+```{r supp-fig4, fig.height=4, fig.width=12}
+# Expressed cells
 par(mfrow = c(1,3))
-
 # abundance
 plot(y = log10(expressed_cv_subset$all$expr_mean),
      x = drop_out$all,
@@ -649,7 +799,7 @@ plot(y = log10(expressed_cv_subset$all$expr_mean),
      ylab = "log10 mean expression",
      pch = 16, cex =.3, 
      cex.axis = 1.5, 
-     cex.lab = 1.5)
+     cex.lab = 1.5, ylim = c(1,5))
 lines(lowess( log10(expressed_cv_subset$all$expr_mean) ~ drop_out$all),
       col = "red")
 
@@ -663,17 +813,54 @@ plot(y = log10(expressed_cv_subset$all$expr_var),
      cex.lab = 1.5)
 lines(lowess( log10(expressed_cv_subset$all$expr_var) ~ drop_out$all),
       col = "red")
-# CV
-plot(y = expressed_cv_subset$all$expr_cv,
+
+# mean individual adjusted-CV
+plot(y = expressed_dm_subset$all*(.5),
      x = drop_out$all,
      xlab = "Gene-specific dropout rate",
-     ylab = "CV",
+     ylab = "adjusted log10-CV",
+     pch = 16, cex =.3, 
+     cex.axis = 1.5, 
+     cex.lab = 1.5, ylim = c(-.5, 1))
+lines(lowess( expressed_dm_subset$all*(.5) ~ drop_out$all),
+      col = "red")
+title(main = "Expressed cells, three individuals", outer = TRUE, line = -1)
+
+# all cells
+ii_genes <- which(rownames(molecules_final) %in% rownames(molecules_final_subset))
+par(mfrow = c(1,3))
+# abundance
+plot(y = log10(ENSG_cv$all$mean[ii_genes]),
+     x = drop_out$all,
+     xlab = "Gene-specific dropout rate",
+     ylab = "log10 mean expression",
+     pch = 16, cex =.3, 
+     cex.axis = 1.5, 
+     cex.lab = 1.5, ylim = c(1,5))
+lines(lowess( log10(ENSG_cv$all$mean[ii_genes]) ~ drop_out$all),
+      col = "red")
+
+# variance
+plot(y = log10(ENSG_cv$all$sd^2)[ii_genes],
+     x = drop_out$all,
+     xlab = "Gene-specific dropout rate",
+     ylab = "log10 variance of expression",
      pch = 16, cex =.3, 
      cex.axis = 1.5, 
      cex.lab = 1.5)
-lines(lowess( expressed_cv_subset$all$expr_cv ~ drop_out$all),
+lines(lowess( log10(ENSG_cv$all$sd^2)[ii_genes] ~ drop_out$all),
       col = "red")
-title(main = "Expressed cells, three individuals", outer = TRUE, line = -1)
+
+plot(y = ENSG_cv_adj$all$log10cv2_adj[ii_genes]*(1/2),
+     x = drop_out$all,
+     xlab = "Gene-specific dropout rate",
+     ylab = "adjusted log10-CV",
+     pch = 16, cex =.3, 
+     cex.axis = 1.5, 
+     cex.lab = 1.5, ylim= c(-.5,1))
+lines(lowess( ENSG_cv_adj$all$log10cv2_adj[ii_genes]*(1/2) ~ drop_out$all),
+      col = "red")
+title(main = "All cells, three individuals", outer = TRUE, line = -1)
 ```
 
 
