@@ -1,7 +1,7 @@
 ---
-title: "Cell-to-cell variation analysis: noisy genes (all cells)"
+title: "Cell-to-cell variation analysis: noisy genes among all cells"
 author: "Joyce Hsiao"
-date: 2016-02-26  
+date: 2016-07-08
 ---
 
 **Last updated:** `r Sys.Date()`
@@ -77,14 +77,14 @@ stopifnot(NROW(anno_filter) == NCOL(molecules_final))
 
 Import gene symbols.
 
-```{r}
+```{r import-gene-symbol}
 gene_symbols <- read.table(file = "../data/gene-info.txt", sep = "\t",
                            header = TRUE, stringsAsFactors = FALSE, quote = "")
 ```
 
 Import cell cycle and pluripotency genes.
 
-```{r}
+```{r import-cell-cycle-and-pluri-gene-list}
 cell_cycle_genes <- read.table("../data/cellcyclegenes.txt",
                                header = TRUE, sep = "\t",
                                stringsAsFactors = FALSE)
@@ -95,16 +95,7 @@ pluripotency_genes <- read.table("../data/pluripotency-genes.txt",
 ```
 
 
-
-Load CV results of all cells
-
-```{r}
-load("../data/cv.rda")
-```
-
-
-
-## Compute DM vlaues (distance-from-the-median)
+## Compute CV and adjusted CV values
 
 1. Compute Squared Coefficients of Variation across cells for each individual;
 2. Adjust Squared CVs for confounding effect with the mean:
@@ -113,7 +104,7 @@ load("../data/cv.rda")
 deviation of adjusted CVs.    
 
 
-```{r, include = FALSE, echo = FALSE, eval = TRUE}
+```{r load-cv-for-all-cells, include = FALSE, echo = FALSE, eval = TRUE}
 file_name <- "../data/cv-all-cells.rda"
 if (file.exists(file_name)) {
   load(file_name)
@@ -198,10 +189,10 @@ genes <- rownames(ENSG_cv[[1]])
 ii_cellcycle_genes <- lapply(1:3, function(per_individual) {
   genes %in% unlist(cell_cycle_genes)
 })
-names(ii_cellcycle_genes) <- names(ENSG_cv)
+names(ii_cellcycle_genes) <- names(ENSG_cv)[1:3]
 ii_cellcycle_genes <- do.call(c, ii_cellcycle_genes)
 
-ggplot(data.frame(do.call(rbind, ENSG_cv_adj),
+ggplot(data.frame(do.call(rbind, ENSG_cv_adj[1:3]),
                   dm = c(ENSG_cv_adj$NA19098$log10cv2_adj, 
                          ENSG_cv_adj$NA19101$log10cv2_adj, 
                          ENSG_cv_adj$NA19239$log10cv2_adj) ),
@@ -209,7 +200,7 @@ ggplot(data.frame(do.call(rbind, ENSG_cv_adj),
   geom_point(aes(col = group), cex = 1.2) + facet_wrap( ~ group) +
   ggtitle("Cell-cycle genes") + 
   geom_point(
-      data = subset(data.frame(do.call(rbind, ENSG_cv_adj),
+      data = subset(data.frame(do.call(rbind, ENSG_cv_adj[1:3]),
                               dm = c(ENSG_cv_adj$NA19098$log10cv2_adj, 
                                      ENSG_cv_adj$NA19101$log10cv2_adj, 
                                      ENSG_cv_adj$NA19239$log10cv2_adj) ), 
@@ -225,10 +216,10 @@ Mark pluripotent genes
 ii_pluripotent_genes <- lapply(1:3, function(per_individual) {
   genes %in% unlist(pluripotency_genes)
 })
-names(ii_pluripotent_genes) <- names(ENSG_cv)
+names(ii_pluripotent_genes) <- names(ENSG_cv)[1:3]
 ii_pluripotent_genes <- do.call(c, ii_pluripotent_genes)
 
-ggplot(data.frame(do.call(rbind, ENSG_cv_adj),
+ggplot(data.frame(do.call(rbind, ENSG_cv_adj[1:3]),
                   dm = c(ENSG_cv_adj$NA19098$log10cv2_adj, 
                          ENSG_cv_adj$NA19101$log10cv2_adj, 
                          ENSG_cv_adj$NA19239$log10cv2_adj) ),
@@ -236,7 +227,7 @@ ggplot(data.frame(do.call(rbind, ENSG_cv_adj),
   geom_point(aes(col = group), cex = 1.2) + facet_wrap( ~ group) +
   ggtitle("Pluripotent genes") + 
   geom_point(
-      data = subset(data.frame(do.call(rbind, ENSG_cv_adj),
+      data = subset(data.frame(do.call(rbind, ENSG_cv_adj[1:3]),
                               dm = c(ENSG_cv_adj$NA19098$log10cv2_adj, 
                                      ENSG_cv_adj$NA19101$log10cv2_adj, 
                                      ENSG_cv_adj$NA19239$log10cv2_adj) ), 
@@ -304,7 +295,7 @@ df_plot <- data.frame(
   cvs = c(ENSG_cv_adj[[1]]$log10cv2_adj, ENSG_cv_adj[[2]]$log10cv2_adj,
           ENSG_cv_adj[[3]]$log10cv2_adj),
   means = c(ENSG_cv[[1]]$mean, ENSG_cv[[2]]$mean, ENSG_cv[[3]]$mean),
-  individual = as.factor(rep(names(ENSG_cv), each = NROW(ENSG_cv[[1]])) ) ) 
+  individual = as.factor(rep(names(ENSG_cv)[1:3], each = NROW(ENSG_cv[[1]])) ) ) 
 
 cowplot::plot_grid(
   ggplot( df_plot,
@@ -635,383 +626,6 @@ as.character(go_top$term_name)
 #                  name = go_top_genes[,"name"]) )
 ```
 
-
-
-
-### Permutation-based test
-
-All computations are done in midway.
-
-Compute MAD based on permuted data.
-
-Export data to rda format and then transport them to midway for permutation-based
-test. 
-
-*[Chunk not evaluted]*
-```{r output-rdas-for-computing-permuted-pvals, eval = FALSE}
-if (!file.exists("rda/cv-adjusted-summary-pois/adj-cv.rda")) {
-  save(mad, file = "rda/cv-adjusted-summary-pois/adj-cv.rda")
-}
-
-
-if (!file.exists("rda/cv-adjusted-summary-pois/permute-cv-test.rda")) {
-  save(molecules_final, anno_filter,
-       file = "rda/cv-adjusted-summary-pois/permute-cv-test.rda")
-}
-```
-
-*[Chunk not evaluated]*
-```
-sbatch permute-cv-test.sbatch
-```
-
-Compute permutation-based p-values for each gene.
-
-*[Chunk not evaluated]*
-```
-sbatch permuted-cv-compute-pval.sbatch
-```
-
-Import permutation results.
-
-```{r}
-load("../data/permuted-pval-all.rda")
-sum(permuted_pval$mad_pval == 0)
-```
-
-
-Histogram of permuted p-values. Supplemental figure.
-
-```{r}
-ggplot( data.frame(pvals = permuted_pval$mad_pval),
-       aes(x = pvals) ) +
-  geom_histogram() + xlim(0, 1) +
-  labs(x = "Permutation-based p-values", y = "Count")
-```
-
-Permuted p-values versus mean gene expression. Supplemental figure?
-
-```{r}
-ggplot( data.frame(pvals = permuted_pval$mad_pval,
-                   gene_mean = rowMeans(as.matrix(molecules_final))),
-       aes(x = gene_mean, y = -log10(pvals) ) ) +
-  geom_point() 
-```
-
-Export genes with significant MAD values.
-
-```{r}
-genes_sig_mad <- data.frame(
-  ensg = rownames(molecules_final)[which(permuted_pval$mad_pval == 0)],
-  mad_value = mad[ which(permuted_pval$mad_pval ==0) ])
-genes_sig_mad$gene_names <-
-  gene_symbols$external_gene_name[match(genes_sig_mad$ensg, gene_symbols$ensembl_gene_id)]
-genes_sig_mad$is_cell_cycle <- genes_sig_mad$ensg %in% unlist(cell_cycle_genes)
-genes_sig_mad$is_pluripotent <- genes_sig_mad$ensg %in% unlist(pluripotency_genes)
-
-
-genes_sig_mad <- genes_sig_mad[order(genes_sig_mad$mad_value, 
-                                     decreasing = TRUE), ]
-head(genes_sig_mad)
-
-# if (!file.exists("../data/sig-permute-gene.txt")) {
-# write.table(genes_sig_mad,
-#             file = "../data/sig-permute-gene.txt",
-#             col.names = TRUE, row.names = FALSE, sep = "\t",
-#             quote = FALSE)
-# }
-```
-
-
-Select columns from "sig-permute-gene.txt" for GO anlaysis on different platforms. 
-
-*[Chunk not evaluated]*
-```{r, eval = FALSE}
-write.table(genes_sig_mad[ ,3],
-          file = "../data/sig-permute-gene-symbol-only.txt",
-          col.names = FALSE, row.names = FALSE, sep = "\t",
-          quote = FALSE)
-write.table(genes_sig_mad[ ,1],
-          file = "../data/sig-permute-gene-ensg-only.txt",
-          col.names = FALSE, row.names = FALSE, sep = "\t",
-          quote = FALSE)
-write.table(genes_sig_mad[,c(1,2)],
-          file = "../data/sig-permute-gene-ensg-and-pvalue.txt",
-          col.names = FALSE, row.names = FALSE, sep = "\t",
-          quote = FALSE)
-}
-```
-
-
-
-
-Genes with p = 0 sorted by MAD. Print out the density distributions to a pdf file 
-for exploratory data analysis. 
-
-*[Chunk not evaluated]*
-```{r, eval = FALSE}
-if(!file.exists("figure/cv-adjusted-summary-pois.Rmd/density-sig-mad.pdf")) {
-    pdf(file = "figure/cv-adjusted-summary-pois.Rmd/density-sig-mad.pdf",
-        height = 12, width = 8)
-    par(mfrow = c(5,4), cex = .7)
-    for(i in 1:dim(genes_sig_mad)[1]) {
-      plot_density_overlay(molecules_ENSG = molecules_final,
-                   genes_sig_mad$ensg[i], 
-                   labels = round(genes_sig_mad$mad[i], 6),
-                   gene_symbols = gene_symbols)
-    }
-    dev.off()
-}
-```
-
-
-
-
-### Heatmap of differential genes
-
-Print heatmaps of differential genes to a pdf file. These do not reveal any
-interesting patterns. 
-
-*[Chunk not evaluated]*
-```{r, eval = FALSE}
-library(gplots)
-library(broman)
-crayon <- brocolors("crayon")
-file_name <- "../analysis/figure/cv-adjusted-summary-pois.Rmd/heatmap-sig-genes.pdf"
-if(!file.exists(file_name)) {
-    pdf(file = file_name,
-        height = 14, width = 10)
-    select_significant_genes <- which(permuted_pval$mad_pval == 0 )
-    for (individual in unique(anno_filter$individual)) {
-    xx <- molecules_final[ select_significant_genes, 
-                            anno_filter$individual == individual]
-    xx <- xx[order(mad[select_significant_genes], decreasing = TRUE), ]
-    heatmap.2(as.matrix(xx)[ order( mad[select_significant_genes] ), ], 
-      breaks = seq(0, 9, by = 1),
-      symm = F, symkey = F, symbreaks = T, scale="none",
-      Rowv = TRUE, Colv = TRUE,
-      dendrogram = "both",
-      trace = "none",
-      labRow = with(gene_symbols, 
-                    external_gene_name[match(rownames(xx), ensembl_gene_id)] ), 
-               labCol = "",
-              col = crayon[c("Violet Blue", "Pacific Blue", "Shamrock",
-                             "Sea Green", "Sky Blue", "Yellow",
-                             "Violet Red", "Mango Tango", "Scarlet")],
-              keysize = 1,
-              key.xlab = NULL, key.title = "log2 Gene expression")
-    }
-    dev.off()
-}
-
-
-file_name <- "../analysis/figure/cv-adjusted-summary-pois.Rmd/heatmap-sig-genes-all-individuals.pdf"
-if(!file.exists(file_name)) {
-    pdf(file = file_name,
-        height = 10, width = 14)
-    select_significant_genes <- which(permuted_pval$mad_pval == 0 )
-    xx <- molecules_final[ select_significant_genes, ]
-    xx <- xx[order(mad[select_significant_genes], decreasing = TRUE), ]
-    heatmap.2(as.matrix(xx)[ order( mad[select_significant_genes] ), ], 
-      breaks = seq(0, 9, by = 1),
-      symm = F, symkey = F, symbreaks = T, scale="none",
-      Rowv = TRUE, Colv = FALSE,
-      dendrogram = "row",
-      trace = "none",
-      labRow = with(gene_symbols, 
-                    external_gene_name[match(rownames(xx), ensembl_gene_id)] ), 
-               labCol = "",
-              col = crayon[c("Violet Blue", "Pacific Blue", "Shamrock",
-                             "Sea Green", "Sky Blue", "Yellow",
-                             "Violet Red", "Mango Tango", "Scarlet")],
-              keysize = 1,
-              key.xlab = NULL, key.title = "log2 Gene expression")
-    dev.off()
-}
-```
-
-
-
-#### Over-represntation analysis
-
-
-##### Gene Ontology Consortium
-
-Search PANTHER database.
-
-![GO.](../analysis/figure/cv-adjusted-summary-pois.Rmd/sig-genes-GO-analysis.png) 
-
-
-##### GOStats
-
-Below is not run. The code here is based on annotation results from GOstats. We decided for now to use resutls from GO Ontology Consortium.
-
-*[Chunk not evaluated]*
-```{r, eval = FALSE}
-require(Humanzee)
-# Find GO terms
-sig_gene_go <- GOtest(rownames(molecules_final),
-                      genes_sig_mad[,1],
-                      ontology = "BP",
-                      conditional.method = F)
-
-# Prepare GO terms for heatmap plotting
-go_data <- goHeatmapData(list(summary(sig_gene_go$GO$BP, pvalue = .01)))
-
-# Plot heatmap
-go_heatmap <- plotHeatmap(go_data, 
-                          labCol = "")
-```
-
-
-##### CPDB
-
-ConsensusPATHDB-Human was used to perform GO over-representation analysis.
-
-
-```{r}
-go_sig <- read.table("figure/cv-adjusted-summary-pois.Rmd/go-cpdb-sig-dm.tab",
-                         sep = "\t",
-                         header = TRUE)
-go_sig <- go_sig[go_sig$q.value < .1, ]
-as.character(go_sig$term_name)
-```
-
-
-
-## Top DM-ranked genes vs. differential genes
-
-Top genes in each individual
-
-```{r}
-genes_top1000 <-data.frame(
-  NA19098 = genes[ which( rank(ENSG_cv_adj$NA19098$log10cv2_adj) 
-                               > length(genes) - 1000 ) ],
-  NA19101 = genes[ which( rank(ENSG_cv_adj$NA19101$log10cv2_adj) 
-                               > length(genes) - 1000 ) ],
-  NA19239 = genes[ which( rank(ENSG_cv_adj$NA19239$log10cv2_adj) 
-                               > length(genes) - 1000 ) ] ) 
-```
-
-Sig. genes
-
-```{r}
-genes_sig_mad <- data.frame(
-  ensg = rownames(molecules_final)[which(permuted_pval$mad_pval == 0)] )
-genes_sig_mad$gene_names <- gene_symbols$external_gene_name[
-  match(genes_sig_mad$ensg, gene_symbols$ensembl_gene_id)]
-genes_sig_mad$is_cell_cycle <- genes_sig_mad$ensg %in% unlist(cell_cycle_genes)
-genes_sig_mad$is_pluripotent <- genes_sig_mad$ensg %in% unlist(pluripotency_genes)
-```
-
-
-Which ones of significant genes are also in the top ranked genes 
-
-94 genes
-
-```{r}
-overlap_list <- lapply(c(1:3), function(ii) {
-  as.character(genes_sig_mad$ensg)[
-    which( as.character(genes_sig_mad$ensg) %in% genes_top1000[[ii]]) ]  
-})
-overlap_list
-
-length( c(overlap_list[[1]], overlap_list[[2]], overlap_list[[3]]) )
-
-length(Reduce("union",
-       list(overlap_list[[1]], overlap_list[[2]], overlap_list[[3]]) ) )
-
-write(unique( c(overlap_list[[1]], overlap_list[[2]], overlap_list[[3]]) ),
-      file = "../data/overlap-sig-top-dm-genes", sep = "\t")
-```
-
-
-*CPDB
-
-```{r}
-go_overlap <- read.table("figure/cv-adjusted-summary-pois.Rmd/go-cpdb-overlap-sig-top-dm.tab",
-                         sep = "\t", header = TRUE,
-                         stringsAsFactors = FALSE)
-go_overlap <- go_overlap[go_overlap$q.value < .1, ]
-go_overlap$term_name
-
-go_overlap_genes <- getGenes(gsub(";", ",",
-                    as.character(go_overlap$members_input_overlap_geneids)))
-go_overlap_genes <- go_overlap_genes[!duplicated(go_overlap_genes[ , "symbol"]), ]
-kable(data.frame(symbol =go_overlap_genes[ ,"symbol"],
-                  name = go_overlap_genes[,"name"]) )
-```
-
-
-
-
-## Top MAD genes vs. differential genes
-
-MAD genes in each individual
-
-```{r}
-par(mfrow = c(1,1))
-gplots::venn(list(
-  MAD = rownames(molecules_final)[rank(mad) > (length(mad) - 100)],
-  PERM = rownames(molecules_final)[which(permuted_pval$mad_pval == 0)] ) )
-```
-
-
-MAD in the top 1000 genes of each individual?
-
-```{r}
-MAD = rownames(molecules_final)[rank(mad) > (length(mad) - 100)]
-genes_top1000 <-data.frame(
-  NA19098 = genes[ which( rank(ENSG_cv_adj$NA19098$log10cv2_adj) 
-                               > length(genes) - 1000 ) ],
-  NA19101 = genes[ which( rank(ENSG_cv_adj$NA19101$log10cv2_adj) 
-                               > length(genes) - 1000 ) ],
-  NA19239 = genes[ which( rank(ENSG_cv_adj$NA19239$log10cv2_adj) 
-                               > length(genes) - 1000 ) ] ) 
-overlap_list <- lapply(c(1:3), function(ii) {
-  as.character(MAD)[
-    which( MAD %in% genes_top1000[[ii]]) ]  
-})
-length( c(overlap_list[[1]], overlap_list[[2]], overlap_list[[3]]) )
-length( unique(c(overlap_list[[1]], overlap_list[[2]], overlap_list[[3]])))
-length( Reduce("intersect",
-               list(overlap_list[[1]], overlap_list[[2]], overlap_list[[3]])))
-```
-
-
-
-Which ones of significant genes are also in the top MAD genes
-
-62
-
-```{r}
-overlap_list <- intersect(
-  rownames(molecules_final)[rank(mad) > (length(mad) - 100)],
-  rownames(molecules_final)[which(permuted_pval$mad_pval == 0)] )
-
-#write(overlap_list,
-#      file = "../data/overlap-sig-mad-dm-genes", sep = "\t")
-```
-
-
-
-
-### CPDB
-
-
-```{r}
-go_overlap <- read.table("figure/cv-adjusted-summary-pois.Rmd/go-cpdb-mad-dm.tab",
-                         sep = "\t", header = TRUE,
-                         stringsAsFactors = FALSE)
-go_overlap <- go_overlap[go_overlap$q.value < .1, ]
-go_overlap$term_name
-
-# go_overlap_genes <- getGenes(gsub(";", ",",
-#                     as.character(go_overlap$members_input_overlap_geneids)))
-# go_overlap_genes <- go_overlap_genes[!duplicated(go_overlap_genes[ , "symbol"]), ]
-# kable(data.frame(symbol =go_overlap_genes[ ,"symbol"],
-#                  name = go_overlap_genes[,"name"]) )
-```
 
 ## Session information
 

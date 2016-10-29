@@ -103,6 +103,15 @@ main <- function(num_cells, seed, single_sub_fname, single_full_fname,
                                replicate = replicate,
                                keep_genes_list = keep_genes_list)
 
+  # If no available cells to be subsampled, write empty file and exit.
+  # Note: The reason is because we excluded all cells from NA19098 r2, and
+  # snakemake needs a file to be created in order for the rule to be completed.
+  # These empty files will be ignored in the snakemake aggregation step.
+  if (ncol(single_cells_sub) == 0) {
+    file.create(outfile)
+    return(invisible())
+  }
+
   assert("Same number of genes in bulk and single cells.",
          nrow(bulk_cells) == nrow(single_cells_sub),
          nrow(single_cells_full) == nrow(single_cells_sub))
@@ -290,8 +299,9 @@ prepare_counts <- function(fname, individual = NULL, replicate = NULL,
   # Keep only good quality cells
   if (!is.null(good_cells_list)) {
     x <- x[, colnames(x) %in% good_cells_list]
-    assert("There are quality cells to perform the analysis.",
-           ncol(x) > 0)
+    if (ncol(x) == 0) {
+      warning("There are no quality cells to perform the analysis.")
+    }
   }
   assert("Output is a matrix", class(x) == "matrix")
   return(x)
