@@ -15,11 +15,13 @@ opts_chunk$set(fig.width = 8, fig.height = 8)
 ```{r packages, message=FALSE}
 library("ggplot2")
 library("cowplot")
-theme_set(theme_bw(base_size = 12))
+theme_set(theme_bw(base_size = 16))
 theme_update(panel.grid.minor.x = element_blank(),
              panel.grid.minor.y = element_blank(),
              panel.grid.major.x = element_blank(),
-             panel.grid.major.y = element_blank())
+             panel.grid.major.y = element_blank(),
+             legend.key = element_blank(),
+             plot.title = element_text(size = rel(1)))
 source("functions.R")
 ```
 
@@ -85,11 +87,13 @@ stopifnot(ncol(molecules_final) == nrow(anno_filter),
 
 ```{r pca-molecules-filter}
 pca_molecules_filter <- run_pca(molecules_filter)
+pca_molecules_filter_title <- "The effect of technical batch on single cell gene expression for raw counts data"
 pca_molecules_filter_plot <- plot_pca(pca_molecules_filter$PCs,
          explained = pca_molecules_filter$explained,
          metadata = anno_filter, color = "individual",
          shape = "replicate", alpha = 0.5, size = 2.2) +
-  labs(title = "The effect of technical batch \n on single cell gene expression data \n when raw counts are used")
+  # labs(title = "The effect of technical batch \n on single cell gene expression data \n when raw counts are used")
+  labs(title = paste(strwrap(pca_molecules_filter_title, width = 50), collapse = "\n"))
 ```
 
 ```{r pca-molecules-filter-out}
@@ -113,11 +117,13 @@ pca-dendrogram -i ../data/pca-molecules-filter.txt
 
 ```{r pca-molecules-cpm}
 pca_molecules_cpm <- run_pca(molecules_cpm)
+pca_molecules_cpm_title <- "The effect of technical batch on single cell gene expression for log counts per million data"
 pca_molecules_cpm_plot <- plot_pca(pca_molecules_cpm$PCs,
          explained = pca_molecules_cpm$explained,
          metadata = anno_filter, color = "individual",
          shape = "replicate", alpha = 0.5, size = 2.2) +
-  labs(title = "The effect of technical batch \n on single cell gene expression data \n when log transformed counts per million data are used")
+  labs(title = paste(strwrap(pca_molecules_cpm_title, width = 50), collapse = "\n"))
+  # labs(title = "The effect of technical batch \n on single cell gene expression data \n when log transformed counts per million data are used")
 ```
 
 ```{r pca-molecules-cpm-out}
@@ -141,11 +147,13 @@ pca-dendrogram -i ../data/pca-molecules-cpm.txt
 
 ```{r pca-molecules-cpm-trans}
 pca_molecules_cpm_trans <- run_pca(molecules_cpm_trans)
+pca_molecules_cpm_trans_title <- "The effect of technical batch on single cell gene expression for Poisson transformed data"
 pca_molecules_cpm_trans_plot <- plot_pca(pca_molecules_cpm_trans$PCs,
          explained = pca_molecules_cpm_trans$explained,
          metadata = anno_filter, color = "individual",
          shape = "replicate",  alpha = 0.5, size = 2.2) +
-  labs(title = "The effect of technical batch \n on single cell gene expression data \n when Poisson transformed data are used")
+  labs(title = paste(strwrap(pca_molecules_cpm_trans_title, width = 50), collapse = "\n"))
+  # labs(title = "The effect of technical batch \n on single cell gene expression data \n when Poisson transformed data are used")
 ```
 
 ```{r pca-molecules-cpm-trans-out}
@@ -169,10 +177,12 @@ pca-dendrogram -i ../data/pca-molecules-cpm-trans.txt
 
 ```{r pca-molecules-final}
 pca_final <- run_pca(molecules_final)
+pca_final_title <- "PCA of standardized, normalized, and batch corrected single cell gene expression data"
 pca_final_plot <- plot_pca(pca_final$PCs, explained = pca_final$explained,
          metadata = anno_filter, color = "individual",
          shape = "replicate", alpha = 0.5, size = 2.2) +
-  labs(title = "PCA of standardized, \n normalized, and batch corrected \n single cell gene expression data")
+  labs(title = paste(strwrap(pca_final_title, width = 50), collapse = "\n"))
+  # labs(title = "PCA of standardized, \n normalized, and batch corrected \n single cell gene expression data")
 ```
 
 ```{r pca-final-out}
@@ -194,16 +204,38 @@ pca-dendrogram -i ../data/pca-final.txt
 
 ## Data transformation figure
 
-```{r data-transformation, fig.width=12, fig.height=16}
-plot_grid(pca_molecules_filter_plot +
-            guides(shape = FALSE) + theme(legend.position = "bottom"),
-          pca_molecules_cpm_plot +
-            guides(color = FALSE) + theme(legend.position = "bottom"),
-          pca_molecules_cpm_trans_plot +
-            guides(shape = FALSE) + theme(legend.position = "bottom"),
-          pca_final_plot +
-            guides(color = FALSE) + theme(legend.position = "bottom"),
-          labels = LETTERS[1:4])
+```{r data-transformation, fig.width=12, fig.height=12}
+plot_final <- plot_grid(
+  pca_molecules_filter_plot +
+    scale_color_discrete(name = "Individual") +
+    guides(shape = FALSE) + theme(legend.position = "bottom"),
+  pca_molecules_cpm_plot +
+    scale_shape(name = "Replicate") +
+    guides(color = FALSE) + theme(legend.position = "bottom"),
+  pca_molecules_cpm_trans_plot +
+    scale_color_discrete(name = "Individual") +
+    guides(shape = FALSE) + theme(legend.position = "bottom"),
+  pca_final_plot +
+    scale_shape(name = "Replicate") +
+    guides(color = FALSE) + theme(legend.position = "bottom"),
+  labels = letters[1:4])
+plot_final
+tiff("../paper/figure/fig-data-transformation.tiff",
+     width = 12, height = 12,
+     units = "in", res = 300, compression = "none")
+plot_final
+dev.off()
+tiff("../paper/figure/fig-data-transformation.tiff",
+     width = 12, height = 12,
+     units = "in", res = 300, compression = "zip")
+plot_final
+dev.off()
+# An uncompressed version to put in Word
+tiff("../paper/figure/fig-data-transformation-uncompressed.tiff",
+     width = 12, height = 12,
+     units = "in", res = 300, compression = "none")
+plot_final
+dev.off()
 ```
 
 ## Session information
