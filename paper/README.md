@@ -35,8 +35,10 @@ The following steps must be performed manually to complete the formatting of the
 *  Crop the supplementary figures
 *  Extract the supplementary figures and tables into separate document (make sure to adjust margins, add page numbers, and add title)
 *  Convert supplement to PDF
+*  Move [Figure Legends][legends] after References.
 
 [f4]: http://answers.microsoft.com/en-us/office/forum/office_2010-word/select-multiple-images-in-word-to-resize-all/2061eed7-0522-4127-9b84-f490c02e2d81
+[legends]: http://www.nature.com/srep/publish/guidelines#figure-legends
 
 ## Additional manual formatting steps for Windows
 
