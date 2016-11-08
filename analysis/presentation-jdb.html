@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+
+<meta name="date" content="2016-10-14" />
+
+<title>Figures for presentation</title>
+
+<script src="libs/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="libs/bootstrap-3.3.1/css/united.min.css" rel="stylesheet" />
+<script src="libs/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="libs/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">
+
+/* padding for bootstrap navbar */
+body {
+  padding-top: 50px;
+  padding-bottom: 40px;
+}
+
+
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h2 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+.section h3 {
+  padding-top: 55px;
+  margin-top: -55px;
+}
+
+
+
+/* don't use link color in navbar */
+.dropdown-menu>li>a {
+  color: black;
+}
+
+/* some padding for disqus */
+#disqus_thread {
+  margin-top: 45px;
+}
+
+</style>
+
+<link rel="stylesheet" href="libs/font-awesome-4.1.0/css/font-awesome.min.css"/>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="libs/highlight/textmate.css"
+      type="text/css" />
+<script src="libs/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">singleCellSeq</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="license.html">License</a></li>
+        <li><a href="https://github.com/jdblischak/singleCellSeq">GitHub</a></li>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+<h1 class="title">Figures for presentation</h1>
+<h4 class="date"><em>2016-10-14</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#input">Input</a></li>
+<li><a href="#pca">PCA</a><ul>
+<li><a href="#pca-of-standardized-data">PCA of standardized data</a></li>
+<li><a href="#pca-of-final-batch-corrected-data">PCA of final batch-corrected data</a></li>
+</ul></li>
+<li><a href="#variance-components">Variance components</a></li>
+<li><a href="#subampling">Subampling</a></li>
+<li><a href="#session-information">Session information</a></li>
+</ul>
+</div>
+
+<p><strong>Last updated:</strong> 2016-11-08</p>
+<p><strong>Code version:</strong> bd286a36f14d3b332285cdc7e62258b1f616bb14</p>
+<pre class="r"><code>library(&quot;dplyr&quot;)
+library(&quot;ggplot2&quot;)
+library(&quot;cowplot&quot;)
+source(&quot;functions.R&quot;)
+theme_set(theme_cowplot(font_size = 20))</code></pre>
+<div id="input" class="section level2">
+<h2>Input</h2>
+<p>Input filtered annotation.</p>
+<pre class="r"><code>anno_filter &lt;- read.table(&quot;../data/annotation-filter.txt&quot;, header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno_filter)</code></pre>
+<pre><code>  individual replicate well      batch      sample_id
+1    NA19098        r1  A01 NA19098.r1 NA19098.r1.A01
+2    NA19098        r1  A02 NA19098.r1 NA19098.r1.A02
+3    NA19098        r1  A04 NA19098.r1 NA19098.r1.A04
+4    NA19098        r1  A05 NA19098.r1 NA19098.r1.A05
+5    NA19098        r1  A06 NA19098.r1 NA19098.r1.A06
+6    NA19098        r1  A07 NA19098.r1 NA19098.r1.A07</code></pre>
+<p>Input standardized molecule counts.</p>
+<pre class="r"><code>molecules_cpm &lt;- read.table(&quot;../data/molecules-cpm.txt&quot;, header = TRUE,
+                            stringsAsFactors = FALSE)
+stopifnot(ncol(molecules_cpm) == nrow(anno_filter),
+          colnames(molecules_cpm) == anno_filter$sample_id)</code></pre>
+<p>Input final batch-corrected molecule counts per million.</p>
+<pre class="r"><code>molecules_final &lt;- read.table(&quot;../data/molecules-final.txt&quot;, header = TRUE,
+                              stringsAsFactors = FALSE)
+stopifnot(ncol(molecules_final) == nrow(anno_filter),
+          colnames(molecules_final) == anno_filter$sample_id)</code></pre>
+</div>
+<div id="pca" class="section level2">
+<h2>PCA</h2>
+<div id="pca-of-standardized-data" class="section level3">
+<h3>PCA of standardized data</h3>
+<pre class="r"><code>pca_molecules_cpm &lt;- run_pca(molecules_cpm)</code></pre>
+<pre class="r"><code>pca_molecules_cpm_plot &lt;- plot_pca(pca_molecules_cpm$PCs,
+         explained = pca_molecules_cpm$explained,
+         metadata = anno_filter, color = &quot;individual&quot;,
+         shape = &quot;replicate&quot;, alpha = 0.5, size = 2.2) +
+  scale_shape_discrete(name = &quot;Replicate&quot;) +
+  scale_color_discrete(name = &quot;Individual&quot;)
+pca_molecules_cpm_plot</code></pre>
+<p><img src="figure/presentation-jdb.Rmd/pca-molecules-cpm-plot-1.png" title="" alt="" width="2400" style="display: block; margin: auto;" /></p>
+</div>
+<div id="pca-of-final-batch-corrected-data" class="section level3">
+<h3>PCA of final batch-corrected data</h3>
+<pre class="r"><code>pca_final &lt;- run_pca(molecules_final)</code></pre>
+<pre class="r"><code>pca_final_plot &lt;- plot_pca(pca_final$PCs, explained = pca_final$explained,
+         metadata = anno_filter, color = &quot;individual&quot;,
+         shape = &quot;replicate&quot;, alpha = 0.5, size = 2.2) +
+  scale_shape_discrete(name = &quot;Replicate&quot;) +
+  scale_color_discrete(name = &quot;Individual&quot;)
+pca_final_plot</code></pre>
+<p><img src="figure/presentation-jdb.Rmd/pca-molecules-final-plot-1.png" title="" alt="" width="2400" style="display: block; margin: auto;" /></p>
+</div>
+</div>
+<div id="variance-components" class="section level2">
+<h2>Variance components</h2>
+<pre class="r"><code>load(&quot;../data/blme-variance.rda&quot;)
+
+labels &lt;- c(&quot;Endogenous raw&quot;, &quot;ERCC raw&quot;,
+            &quot;Endogenous CPM&quot;, &quot;Endogenous Poisson&quot;,
+            &quot;Endogenous final&quot;)
+blme_list &lt;- list(blme_raw, blme_ercc, blme_cpm,
+                  blme_cpm_trans, blme_final)
+prop_list &lt;- vector(&quot;list&quot;, length(blme_list))
+names(prop_list) &lt;- c(&quot;raw&quot;, &quot;ercc&quot;, &quot;cpm&quot;, &quot;cpm_trans&quot;, &quot;final&quot;)
+par(mfrow = c(2,3))
+for (i in c(1:length(blme_list))) {
+  res &lt;- blme_list[[i]]
+  ms_ind &lt;- (res[,1]*2.67*70.5) + (res[,2]*70.5) + res[,3]
+  ms_batch &lt;- (res[,2]*70.5) + res[,3]
+  ms_resid &lt;- res[,3]
+  ss_ind &lt;- ms_ind*(3-1)
+  ss_batch &lt;- ms_batch*3*(2.67-1)
+  ss_resid &lt;- ms_resid*3*2.67*(70.5-1)
+  prop_ind &lt;- ss_ind/(ss_ind + ss_batch + ss_resid)
+  prop_batch &lt;- ss_batch/(ss_ind + ss_batch + ss_resid)
+  prop_list[[i]] &lt;- data.frame(prop_ind = prop_ind,
+                               prop_batch = prop_batch)
+}</code></pre>
+<p>Endogenous genes</p>
+<pre class="r"><code>var_endo_df &lt;- data.frame(proportion = c(prop_list$raw$prop_ind,
+                                         prop_list$raw$prop_batch,
+                                         1 - prop_list$raw$prop_ind -
+                                           prop_list$raw$prop_batch),
+                          type = rep(1:3, each = dim(prop_list$raw)[1]))
+var_endo_df$type &lt;- factor(var_endo_df$type,
+                           labels = c(&quot;Individual&quot;,
+                                      &quot;Replicate&quot;,
+                                      &quot;Residual\ncell-to-cell variance&quot;))
+var_endo_plot &lt;- ggplot(var_endo_df,
+                        aes(x = type, y = proportion)) +
+  geom_violin(alpha = .5) +
+  geom_boxplot(alpha = .01, width = 0.1,
+               position = position_dodge(width = 0.9)) +
+  ylim(0,1) + xlab(&quot;&quot;) + ylab(&quot;Proportion of variance explained&quot;)
+var_endo_plot</code></pre>
+<pre><code>Warning: Removed 753 rows containing non-finite values (stat_ydensity).</code></pre>
+<pre><code>Warning: Removed 753 rows containing non-finite values (stat_boxplot).</code></pre>
+<p><img src="figure/presentation-jdb.Rmd/variance-components-endo-1.png" title="" alt="" width="2400" style="display: block; margin: auto;" /></p>
+<p>ERCC spike-ins</p>
+<pre class="r"><code>var_ercc_df &lt;- data.frame(proportion = c(prop_list$ercc$prop_ind,
+                                         prop_list$ercc$prop_batch,
+                                         1- prop_list$ercc$prop_ind -
+                                           prop_list$ercc$prop_batch),
+                          type = rep(1:3, each = dim(prop_list$ercc)[1]))
+var_ercc_df$type &lt;- factor(var_ercc_df$type,
+                           labels = c(&quot;Individual&quot;,
+                                      &quot;Replicate&quot;,
+                                      &quot;Residual\ncell-to-cell variance&quot;))
+var_ercc_plot &lt;- ggplot(var_ercc_df,
+                        aes(x = type, y = proportion)) +
+    geom_violin(alpha = .5) +
+    geom_boxplot(alpha = .01, width = 0.1,
+                 position = position_dodge(width = 0.9)) +
+    ylim(0,1) + xlab(&quot;&quot;) + ylab(&quot;Proportion of variance explained&quot;)
+var_ercc_plot</code></pre>
+<p><img src="figure/presentation-jdb.Rmd/variance-components-ercc-1.png" title="" alt="" width="2400" style="display: block; margin: auto;" /></p>
+</div>
+<div id="subampling" class="section level2">
+<h2>Subampling</h2>
+<pre class="r"><code>d &lt;- read.table(&quot;../data/subsampling-results.txt&quot;,
+                header = TRUE, sep = &quot;\t&quot;, stringsAsFactors = FALSE)
+d_grouped &lt;- d %&gt;%
+  group_by(type, depth, gene_subset, subsampled_cells,
+           individual, potential_cells, available_cells,
+           lower_q, upper_q, available_ensg, used_ensg,
+           available_ercc, used_ercc) %&gt;%
+  summarize(mean_detected = mean(detected_ensg),
+            sem_detected = sd(detected_ensg) / sqrt(length(detected_ensg)),
+            mean_bulk = mean(pearson_ensg),
+            sem_bulk = sd(pearson_ensg) / sqrt(length(pearson_ensg)),
+            mean_var = mean(var_pearson),
+            sem_var = sd(var_pearson) / sqrt(length(var_pearson)))
+d_filter &lt;- d_grouped %&gt;% filter(individual == &quot;NA19239&quot;,
+                                type == &quot;molecules&quot;,
+                                gene_subset %in% c(&quot;lower&quot;, &quot;upper&quot;))
+d_filter$gene_subset &lt;- factor(d_filter$gene_subset,
+                               levels = c(&quot;lower&quot;, &quot;upper&quot;),
+                               labels = c(&quot;Lower 50% of expressed genes&quot;,
+                                          &quot;Upper 50% of expressed genes&quot;))</code></pre>
+<pre class="r"><code>theme_set(theme_cowplot(font_size = 24))
+plot_bulk &lt;- ggplot(d_filter,
+                 aes(x = subsampled_cells, y = mean_bulk,
+                     color = as.factor(depth))) +
+  geom_line() +
+  geom_errorbar(aes(ymin = mean_bulk - sem_bulk,
+                    ymax = mean_bulk + sem_bulk),
+                width = 1) +
+  facet_wrap(~gene_subset) +
+  scale_color_grey(start = 0.8, end = 0.2, name = &quot;Sequencing depth&quot;) +
+  # theme(legend.position = &quot;none&quot;) +
+  theme(legend.position = c(0.75, 0.35)) +
+  labs(x = &quot;Number of subsampled cells&quot;,
+       y = &quot;Pearson&#39;s r (+/- SEM)&quot;)
+plot_bulk</code></pre>
+<p><img src="figure/presentation-jdb.Rmd/plot-subsampling-1.png" title="" alt="" width="3600" style="display: block; margin: auto;" /></p>
+</div>
+<div id="session-information" class="section level2">
+<h2>Session information</h2>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 3.2.0 (2015-04-16)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] testit_0.4    cowplot_0.3.1 ggplot2_1.0.1 dplyr_0.4.2   knitr_1.10.5 
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.12.4      magrittr_1.5     MASS_7.3-40      munsell_0.4.3   
+ [5] colorspace_1.2-6 R6_2.1.1         stringr_1.0.0    httr_0.6.1      
+ [9] plyr_1.8.3       tools_3.2.0      parallel_3.2.0   grid_3.2.0      
+[13] gtable_0.1.2     DBI_0.3.1        htmltools_0.2.6  lazyeval_0.1.10 
+[17] yaml_2.1.13      assertthat_0.1   digest_0.6.8     reshape2_1.4.1  
+[21] formatR_1.2      codetools_0.2-11 bitops_1.0-6     RCurl_1.95-4.6  
+[25] evaluate_0.7     rmarkdown_0.6.1  labeling_0.3     stringi_1.0-1   
+[29] scales_0.4.0     proto_0.3-10    </code></pre>
+</div>
+
+
+<!-- some extra javascript for older browsers -->
+<script type="text/javascript" src="libs/polyfill.js"></script>
+
+<script>
+
+// manage active state of menu based on current page
+$(document).ready(function () {
+
+    // active menu
+    href = window.location.pathname
+    href = href.substr(href.lastIndexOf('/') + 1)
+    $('a[href="' + href + '"]').parent().addClass('active');
+
+    // manage active menu header
+    if (href.startsWith('authoring_'))
+      $('a[href="' + 'authoring' + '"]').parent().addClass('active');
+    else if (href.endsWith('_format.html'))
+      $('a[href="' + 'formats' + '"]').parent().addClass('active');
+    else if (href.startsWith('developer_'))
+      $('a[href="' + 'developer' + '"]').parent().addClass('active');
+
+});
+
+</script>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>

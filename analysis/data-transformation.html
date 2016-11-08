@@ -136,15 +136,17 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2016-06-29</p>
-<p><strong>Code version:</strong> c59e3a495e7257caa3180d1dfdaf315cdd79d715</p>
+<p><strong>Last updated:</strong> 2016-11-08</p>
+<p><strong>Code version:</strong> bd286a36f14d3b332285cdc7e62258b1f616bb14</p>
 <pre class="r"><code>library(&quot;ggplot2&quot;)
 library(&quot;cowplot&quot;)
-theme_set(theme_bw(base_size = 12))
+theme_set(theme_bw(base_size = 16))
 theme_update(panel.grid.minor.x = element_blank(),
              panel.grid.minor.y = element_blank(),
              panel.grid.major.x = element_blank(),
-             panel.grid.major.y = element_blank())
+             panel.grid.major.y = element_blank(),
+             legend.key = element_blank(),
+             plot.title = element_text(size = rel(1)))
 source(&quot;functions.R&quot;)</code></pre>
 <p>This file performs principal components analysis (PCA) and displays the results for the data at each stage of our data transformation pipeline. Furthermore, it quantifies and tests the PCA results using <a href="https://github.com/geekysuavo/pca-utils">pca-utils</a> (commit <a href="https://github.com/geekysuavo/pca-utils/tree/8540ff2c6769031b0505af78f2dcb5703ae09294">8540ff2</a>). The methodology is described in <a href="http://www.ncbi.nlm.nih.gov/pubmed/23079505">Worley et al., 2013</a>. Briefly, the differences between samples are calculated using the squared Mahalanobis distance. The distances are then scaled so that the hypothesis test that the samples from two groups come from separate distributions can be computed with an F-test.</p>
 <div id="input" class="section level2">
@@ -186,11 +188,13 @@ stopifnot(ncol(molecules_final) == nrow(anno_filter),
 <div id="pca-of-filtered-data" class="section level3">
 <h3>PCA of filtered data</h3>
 <pre class="r"><code>pca_molecules_filter &lt;- run_pca(molecules_filter)
+pca_molecules_filter_title &lt;- &quot;The effect of technical batch on single cell gene expression for raw counts data&quot;
 pca_molecules_filter_plot &lt;- plot_pca(pca_molecules_filter$PCs,
          explained = pca_molecules_filter$explained,
          metadata = anno_filter, color = &quot;individual&quot;,
-         shape = &quot;replicate&quot;, alpha = 0.5, size = 2.2) +
-  labs(title = &quot;The effect of technical batch \n on single cell gene expression data \n when raw counts are used&quot;)</code></pre>
+         shape = &quot;replicate&quot;, alpha = 0.5, size = 3) +
+  # labs(title = &quot;The effect of technical batch \n on single cell gene expression data \n when raw counts are used&quot;)
+  labs(title = paste(strwrap(pca_molecules_filter_title, width = 50), collapse = &quot;\n&quot;))</code></pre>
 <pre class="r"><code>pca_molecules_filter_out &lt;- data.frame(Obs.id = 1:nrow(anno_filter),
                                        Obs.batch = anno_filter$batch,
                                        pca_molecules_filter$PCs[, 1:2])
@@ -228,11 +232,13 @@ NA19239.r2                                                                      
 <div id="pca-of-standardized-data" class="section level3">
 <h3>PCA of standardized data</h3>
 <pre class="r"><code>pca_molecules_cpm &lt;- run_pca(molecules_cpm)
+pca_molecules_cpm_title &lt;- &quot;The effect of technical batch on single cell gene expression for log counts per million data&quot;
 pca_molecules_cpm_plot &lt;- plot_pca(pca_molecules_cpm$PCs,
          explained = pca_molecules_cpm$explained,
          metadata = anno_filter, color = &quot;individual&quot;,
-         shape = &quot;replicate&quot;, alpha = 0.5, size = 2.2) +
-  labs(title = &quot;The effect of technical batch \n on single cell gene expression data \n when log transformed counts per million data are used&quot;)</code></pre>
+         shape = &quot;replicate&quot;, alpha = 0.5, size = 3) +
+  labs(title = paste(strwrap(pca_molecules_cpm_title, width = 50), collapse = &quot;\n&quot;))
+  # labs(title = &quot;The effect of technical batch \n on single cell gene expression data \n when log transformed counts per million data are used&quot;)</code></pre>
 <pre class="r"><code>pca_molecules_cpm_out &lt;- data.frame(Obs.id = 1:nrow(anno_filter),
                                        Obs.batch = anno_filter$batch,
                                        pca_molecules_cpm$PCs[, 1:2])
@@ -270,11 +276,13 @@ NA19239.r2                                                                      
 <div id="pca-of-poisson-glm-transformed-molecule-counts-per-million" class="section level3">
 <h3>PCA of Poisson GLM transformed molecule counts per million</h3>
 <pre class="r"><code>pca_molecules_cpm_trans &lt;- run_pca(molecules_cpm_trans)
+pca_molecules_cpm_trans_title &lt;- &quot;The effect of technical batch on single cell gene expression for Poisson transformed data&quot;
 pca_molecules_cpm_trans_plot &lt;- plot_pca(pca_molecules_cpm_trans$PCs,
          explained = pca_molecules_cpm_trans$explained,
          metadata = anno_filter, color = &quot;individual&quot;,
-         shape = &quot;replicate&quot;,  alpha = 0.5, size = 2.2) +
-  labs(title = &quot;The effect of technical batch \n on single cell gene expression data \n when Poisson transformed data are used&quot;)</code></pre>
+         shape = &quot;replicate&quot;,  alpha = 0.5, size = 3) +
+  labs(title = paste(strwrap(pca_molecules_cpm_trans_title, width = 50), collapse = &quot;\n&quot;))
+  # labs(title = &quot;The effect of technical batch \n on single cell gene expression data \n when Poisson transformed data are used&quot;)</code></pre>
 <pre class="r"><code>pca_molecules_cpm_trans_out &lt;- data.frame(Obs.id = 1:nrow(anno_filter),
                                        Obs.batch = anno_filter$batch,
                                        pca_molecules_cpm_trans$PCs[, 1:2])
@@ -312,10 +320,12 @@ NA19239.r2                                                                      
 <div id="pca-of-final-batch-corrected-data" class="section level3">
 <h3>PCA of final batch-corrected data</h3>
 <pre class="r"><code>pca_final &lt;- run_pca(molecules_final)
+pca_final_title &lt;- &quot;PCA of standardized, normalized, and batch corrected single cell gene expression data&quot;
 pca_final_plot &lt;- plot_pca(pca_final$PCs, explained = pca_final$explained,
          metadata = anno_filter, color = &quot;individual&quot;,
-         shape = &quot;replicate&quot;, alpha = 0.5, size = 2.2) +
-  labs(title = &quot;PCA of standardized, \n normalized, and batch corrected \n single cell gene expression data&quot;)</code></pre>
+         shape = &quot;replicate&quot;, alpha = 0.5, size = 3) +
+  labs(title = paste(strwrap(pca_final_title, width = 50), collapse = &quot;\n&quot;))
+  # labs(title = &quot;PCA of standardized, \n normalized, and batch corrected \n single cell gene expression data&quot;)</code></pre>
 <pre class="r"><code>pca_final_out &lt;- data.frame(Obs.id = 1:nrow(anno_filter),
                             Obs.batch = anno_filter$batch,
                             pca_final$PCs[, 1:2])
@@ -353,16 +363,29 @@ NA19239.r2                                                                      
 </div>
 <div id="data-transformation-figure" class="section level2">
 <h2>Data transformation figure</h2>
-<pre class="r"><code>plot_grid(pca_molecules_filter_plot +
-            guides(shape = FALSE) + theme(legend.position = &quot;bottom&quot;),
-          pca_molecules_cpm_plot +
-            guides(color = FALSE) + theme(legend.position = &quot;bottom&quot;),
-          pca_molecules_cpm_trans_plot +
-            guides(shape = FALSE) + theme(legend.position = &quot;bottom&quot;),
-          pca_final_plot +
-            guides(color = FALSE) + theme(legend.position = &quot;bottom&quot;),
-          labels = LETTERS[1:4])</code></pre>
+<pre class="r"><code>plot_final &lt;- plot_grid(
+  pca_molecules_filter_plot +
+    scale_color_discrete(name = &quot;Individual&quot;) +
+    guides(shape = FALSE) + theme(legend.position = &quot;bottom&quot;),
+  pca_molecules_cpm_plot +
+    scale_shape(name = &quot;Replicate&quot;) +
+    guides(color = FALSE) + theme(legend.position = &quot;bottom&quot;),
+  pca_molecules_cpm_trans_plot +
+    scale_color_discrete(name = &quot;Individual&quot;) +
+    guides(shape = FALSE) + theme(legend.position = &quot;bottom&quot;),
+  pca_final_plot +
+    scale_shape(name = &quot;Replicate&quot;) +
+    guides(color = FALSE) + theme(legend.position = &quot;bottom&quot;),
+  labels = letters[1:4])
+plot_final</code></pre>
 <p><img src="figure/data-transformation.Rmd/data-transformation-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>tiff(&quot;../paper/figure/fig-data-transformation.tiff&quot;,
+     width = 12, height = 12,
+     units = &quot;in&quot;, res = 300, compression = &quot;zip&quot;)
+plot_final
+dev.off()</code></pre>
+<pre><code>png 
+  2 </code></pre>
 </div>
 <div id="session-information" class="section level2">
 <h2>Session information</h2>

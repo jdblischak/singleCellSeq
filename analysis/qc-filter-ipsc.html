@@ -146,19 +146,21 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2016-06-29</p>
-<p><strong>Code version:</strong> c59e3a495e7257caa3180d1dfdaf315cdd79d715</p>
+<p><strong>Last updated:</strong> 2016-11-08</p>
+<p><strong>Code version:</strong> bd286a36f14d3b332285cdc7e62258b1f616bb14</p>
 <div id="input" class="section level2">
 <h2>Input</h2>
 <pre class="r"><code>library(&quot;dplyr&quot;)
 library(&quot;edgeR&quot;)
 library(&quot;ggplot2&quot;)
 library(&quot;cowplot&quot;)
-theme_set(theme_bw(base_size = 12))
+theme_set(theme_bw(base_size = 16))
 theme_update(panel.grid.minor.x = element_blank(),
              panel.grid.minor.y = element_blank(),
              panel.grid.major.x = element_blank(),
-             panel.grid.major.y = element_blank())
+             panel.grid.major.y = element_blank(),
+             legend.key = element_blank(),
+             plot.title = element_text(size = rel(1)))
 source(&quot;functions.R&quot;)</code></pre>
 <p>Summary counts from featureCounts. Created with <a href="https://github.com/jdblischak/singleCellSeq/blob/master/code/gather-summary-counts.py">gather-summary-counts.py</a>. These data were collected from the summary files of the full combined samples.</p>
 <pre class="r"><code>summary_per_sample &lt;- read.table(&quot;../data/summary-counts.txt&quot;, header = TRUE,
@@ -299,7 +301,7 @@ plot_reads &lt;- ggplot(summary_per_sample_reads_qc[summary_per_sample_reads_qc$
        aes(x = total_mapped, fill = as.factor(cell_number))) + 
        geom_density(alpha = 0.5) +
        geom_vline(xintercept = cut_off_reads, colour=&quot;grey&quot;, linetype = &quot;longdash&quot;) +
-       labs(x = &quot;Total mapped reads per sample&quot;, title = &quot;Cutoff based on the number of total mappred reads&quot;, fill = &quot;Cell number&quot;)</code></pre>
+       labs(x = &quot;Total mapped reads per sample&quot;, title = &quot;Cutoff based on the number of total mapped reads&quot;, fill = &quot;Cell number&quot;)</code></pre>
 </div>
 <div id="unmapped-ratios" class="section level2">
 <h2>Unmapped ratios</h2>
@@ -534,8 +536,8 @@ summary_per_sample_reads_qc$conversion_outlier &lt;- summary_per_sample_reads_qc
 plot_ercc_before &lt;- ggplot(data_lda, aes(x = ERCC_conversion, y = conversion,
                color = as.factor(group))) +
                geom_text(aes(label = cell_number)) +
-               labs(x = &quot;Read-to-molecule convertion of ERCC&quot;, 
-                    y = &quot;Read-to-molecule convertion of ERCC&quot;, 
+               labs(x = &quot;Read-to-molecule conversion of ERCC&quot;, 
+                    y = &quot;Read-to-molecule conversion of genes&quot;, 
                     title = &quot;Before linear discriminant analysis (LDA) \n A few samples with one cell (purple) \n clustered with samples with multiple cells (green)&quot;) +
                scale_color_brewer(palette = &quot;Dark2&quot;) +
                theme(legend.position = &quot;none&quot;)
@@ -543,7 +545,7 @@ plot_ercc_before &lt;- ggplot(data_lda, aes(x = ERCC_conversion, y = conversion,
 plot_ercc_after &lt;- ggplot(data_lda, aes(x = ERCC_conversion, y = conversion,
                color = as.factor(data_ercc_lda_p))) +
                geom_text(aes(label = cell_number)) +
-               labs(x = &quot;Read-to-molecule convertion of ERCC&quot;, 
+               labs(x = &quot;Read-to-molecule conversion of ERCC&quot;, 
                     y = &quot;Read-to-molecule conversion of genes&quot;, 
                     title = &quot;After linear discriminant analysis (LDA) \n Removal of samples classified as \n samples with multiple cells (green)&quot;) +
                scale_color_brewer(palette = &quot;Dark2&quot;) +
@@ -654,7 +656,7 @@ ggplot(summary_per_sample_reads_qc[summary_per_sample_reads_qc$filter_all == &qu
                    geom_hline(yintercept = cut_off_unmapped * 100, colour=&quot;grey&quot;, linetype = &quot;longdash&quot;) +
                    labs(x = &quot;Number of detected genes / sample&quot;, 
                         y = &quot;Percentage of unmapped reads in each sample (%)&quot;,
-                        title = &quot;Number of genes detected as expressed \n as a function of \n the proportion of mapped reads&quot;) 
+                        title = &quot;Number of genes detected as \n expressed as a function of \n the proportion of mapped reads&quot;) 
 
 genes_ercc &lt;-  ggplot(summary_per_sample_reads_qc,
                    aes(x = gene_number, y = ercc_percentage * 100,
@@ -664,7 +666,7 @@ genes_ercc &lt;-  ggplot(summary_per_sample_reads_qc,
                    geom_hline(yintercept = cut_off_ercc * 100, colour=&quot;grey&quot;, linetype = &quot;longdash&quot;) +
                    labs(x = &quot;Number of detected genes / samlpe&quot;, 
                         y = &quot;Percentage of ERCC reads in each sample (%)&quot;,
-                        title = &quot;Samples with zero cell \n (visual inspection) \n have low number of reads&quot;) 
+                        title = &quot;Samples with zero cell \n (visual inspection) have \n low number of reads&quot;) 
 
 reads_unmapped_num &lt;-  ggplot(summary_per_sample_reads_qc,
                    aes(x = total_mapped, y = unmapped_ratios * 100,
@@ -672,9 +674,9 @@ reads_unmapped_num &lt;-  ggplot(summary_per_sample_reads_qc,
                    geom_text(fontface = 3, alpha = 0.5) + 
                    geom_vline(xintercept = cut_off_reads, colour=&quot;grey&quot;, linetype = &quot;longdash&quot;) +
                    geom_hline(yintercept = cut_off_unmapped * 100, colour=&quot;grey&quot;, linetype = &quot;longdash&quot;) +
-                   labs(x = &quot;Number of total mapped reads / sample&quot;, 
+                   labs(x = &quot;Total mapped reads / sample&quot;, 
                         y = &quot;Percentage of unmapped reads in each sample (%)&quot;,
-                        title = &quot;Samples with zero cells \n (visual inspection) \n have high proportion of unmapped reads&quot;) 
+                        title = &quot;Samples with zero cells \n (visual inspection) have \n high proportion of unmapped reads&quot;) 
 
 reads_ercc_num &lt;-  ggplot(summary_per_sample_reads_qc,
                    aes(x = total_mapped, y = ercc_percentage * 100,
@@ -682,37 +684,37 @@ reads_ercc_num &lt;-  ggplot(summary_per_sample_reads_qc,
                    geom_text(fontface = 3, alpha = 0.5) + 
                    geom_vline(xintercept = cut_off_reads, colour=&quot;grey&quot;, linetype = &quot;longdash&quot;) +
                    geom_hline(yintercept = cut_off_ercc * 100, colour=&quot;grey&quot;, linetype = &quot;longdash&quot;) +
-                   labs(x = &quot;Number of total mapped reads / sample&quot;,
+                   labs(x = &quot;Total mapped reads / sample&quot;,
                         y = &quot;Percentage of ERCC reads in each sample (%)&quot;,
-                        title = &quot;Samples with zero cells \n (visual inspection) \n have high proportion of ERCC reads&quot;) 
+                        title = &quot;Samples with zero cells \n (visual inspection) have \n high proportion of ERCC reads&quot;) 
 
 plot_grid(genes_unmapped + theme(legend.position = &quot;none&quot;), 
           genes_ercc + theme(legend.position = &quot;none&quot;),
           reads_unmapped_num + theme(legend.position = &quot;none&quot;), 
           reads_ercc_num + theme(legend.position = &quot;none&quot;),
-          labels = LETTERS[1:4])</code></pre>
-<p><img src="figure/qc-filter-ipsc.Rmd/plots-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
+          labels = letters[1:4])</code></pre>
+<p><img src="figure/qc-filter-ipsc.Rmd/plots-1.png" title="" alt="" width="3600" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>plot_grid(genes_unmapped + theme(legend.position = c(.75,.9)) + labs(col = &quot;Individual&quot;), 
           reads_unmapped_num + theme(legend.position = &quot;none&quot;), 
           reads_ercc_num + theme(legend.position = &quot;none&quot;),
-          labels = LETTERS[3:5],
+          labels = letters[3:5],
           nrow = 1)</code></pre>
-<p><img src="figure/qc-filter-ipsc.Rmd/paper-fig1-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
+<p><img src="figure/qc-filter-ipsc.Rmd/paper-fig1-1.png" title="" alt="" width="3600" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>plot_grid(ercc_reads_plot + theme(legend.position = &quot;none&quot;),
           ercc_molecule_plot + theme(legend.position = &quot;none&quot;),
           plot_reads + theme(legend.position=c(.8,.85)),
           plot_unmapped + theme(legend.position = &quot;none&quot;),
           plot_ercc + theme(legend.position = &quot;none&quot;), 
           plot_gene + theme(legend.position = &quot;none&quot;),
-          labels = LETTERS[1:6],
+          labels = letters[1:6],
           ncol = 2)</code></pre>
-<p><img src="figure/qc-filter-ipsc.Rmd/paper-fig-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
+<p><img src="figure/qc-filter-ipsc.Rmd/paper-fig-1.png" title="" alt="" width="3600" style="display: block; margin: auto;" /></p>
 <pre class="r"><code>plot_grid(plot_before + theme(legend.position=c(.85,.85)) + labs(col = &quot;Cell number&quot;), 
           plot_after + theme(legend.position = &quot;none&quot;),
           plot_ercc_before, 
           plot_ercc_after,
-          labels = LETTERS[1:4])</code></pre>
-<p><img src="figure/qc-filter-ipsc.Rmd/paper-fig-2-1.png" title="" alt="" width="1152" style="display: block; margin: auto;" /></p>
+          labels = letters[1:4])</code></pre>
+<p><img src="figure/qc-filter-ipsc.Rmd/paper-fig-2-1.png" title="" alt="" width="3600" style="display: block; margin: auto;" /></p>
 </div>
 </div>
 <div id="session-information" class="section level2">
