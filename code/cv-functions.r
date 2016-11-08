@@ -266,3 +266,54 @@ normalize_cv_input <- function(expressed_cv,
 }
 
 
+
+
+#' Normalize coefficients of variation with summary statistics
+#'
+#' @param expressed_cv a list. Each list is a data.frame of
+#'        gene mean expression, gene expression cv, and
+#'        gene expression variance. The last list is a data.frame of
+#'        the same summary statistics across all individuals.
+#'
+#' @export
+#'
+#' @examples
+#' normalize_cv_input()
+#'
+normalize_cv_input <- function(expressed_cv,
+                               grouping_vector) {
+  groups <- unique(grouping_vector)
+  ## normalize CV
+  library(zoo)
+  # order genes by overall mean expression level
+  expressed_gene_order <- order(expressed_cv[["all"]]$expr_mean)
+
+  # Rolling medians of log10 squared CV by mean expression levels
+  roll_medians <- suppressWarnings(
+    rollapply( log10(expressed_cv[["all"]]$expr_cv^2)[expressed_gene_order],
+               width = 50, by = 25,
+               FUN = median, fill = list("extend", "extend", "NA") )
+  )
+  ii_na <- which( is.na(roll_medians) )
+  roll_medians[ii_na] <- median(
+    log10(expressed_cv[["all"]]$expr_cv^2)[expressed_gene_order][ii_na] )
+  names(roll_medians) <- rownames(expressed_cv[[1]])[expressed_gene_order]
+
+  # Order rolling medians according to the count matrix
+  reorder_gene <- match(rownames(expressed_cv[[1]]), names(roll_medians) )
+  roll_medians <- roll_medians[ reorder_gene ]
+  stopifnot( all.equal(names(roll_medians), rownames(expressed_cv[[1]]) ) )
+
+  expressed_dm <- do.call(cbind,
+                          lapply(groups, function(ind) {
+                            # Adjusted coefficient of variation on log10 scale
+                            dm <- log10(expressed_cv[[ind]]$expr_cv^2) - roll_medians
+                            # combine the adjusted cv with the unadjusted cv
+                            return(dm)
+                          }) )
+  colnames(expressed_dm) <- groups
+  expressed_dm <- data.frame(expressed_dm,
+                             all = log10(expressed_cv[["all"]]$expr_cv^2) - roll_medians)
+
+  return(expressed_dm)
+}

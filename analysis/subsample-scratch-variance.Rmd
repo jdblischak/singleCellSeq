@@ -1,0 +1,195 @@
+---
+output:
+  html_document:
+    toc: true
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+At lower number of sampled cells, reads appear to perform better with lower sequencing.
+On the other hand, the molecules look as expected, higher sequencing depth leads to increased or similar performance.
+This is observed both for endogenous and ERCC genes.
+Maybe there is less bias with fewer reads?
+I re-did this analysis with more extreme differences in sequencing depth, from a low of 50,000 to a high of 4 million.
+
+The key is separating the low and high expressed genes.
+The reads do a poor job of capturing the lowly expressed genes, so with more sequencing, this relationship gets less linear.
+This is why Spearman correlation works better for the reads.
+The molecules are less affected because they remove the amplification bias of the highly expressed genes.
+
+## Setup
+
+I haven't correctly formatted the output for when there are not enough cells to be subsampled, so I removed these.
+
+```
+$ cat subsampling-results.txt | awk '$17 >= 0' > subsampling-results9.txt
+```
+
+```{r packages, message=FALSE}
+library("knitr")
+opts_chunk$set(fig.width = 8, fig.height = 8, fig.pos = "center")
+library("dplyr")
+library("ggplot2")
+theme_set(theme_bw())
+```
+
+```{r}
+d <- read.table("/mnt/gluster/home/jdblischak/ssd/subsampled/subsampling-results9.txt",
+                header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+head(d)
+summary(d)
+```
+
+```{r}
+d_grouped <- d %>%
+  group_by(type, depth, gene_subset, subsampled_cells,
+           individual, potential_cells, available_cells,
+           lower_q, upper_q, available_ensg, used_ensg,
+           available_ercc, used_ercc) %>%
+  summarize(mean_pearson_ensg = mean(var_pearson),
+            sem_pearson_ensg = sd(var_pearson) / sqrt(length(var_pearson)),
+            mean_pearson_ercc = mean(pearson_ercc),
+            sem_pearson_ercc = sd(pearson_ercc) / sqrt(length(pearson_ercc)),
+            mean_spearman_ensg = mean(var_spearman),
+            sem_spearman_ensg = sd(var_spearman) / sqrt(length(var_spearman)),
+            mean_spearman_ercc = mean(spearman_ercc),
+            sem_spearman_ercc = sd(spearman_ercc) / sqrt(length(spearman_ercc)))
+head(d_grouped)
+dim(d_grouped)
+```
+
+## Endogenous Pearson NA19098
+
+```{r}
+ensg_pearson_plot <- ggplot(d_grouped[d_grouped$individual == "NA19098", ],
+                 aes(x = subsampled_cells, y = mean_pearson_ensg,
+                     color = as.factor(depth))) +
+  geom_line() +
+  geom_errorbar(aes(ymin = mean_pearson_ensg - sem_pearson_ensg,
+                    ymax = mean_pearson_ensg + sem_pearson_ensg),
+                width = 1) +
+  facet_grid(gene_subset~type) +
+  scale_color_grey()
+  # scale_color_brewer(type = "sequential", palette = "GnBu")
+ensg_pearson_plot
+```
+
+## Endogenous Pearson NA19101
+
+```{r}
+ensg_pearson_plot %+% d_grouped[d_grouped$individual == "NA19101", ]
+ensg_pearson_plot %+% d_grouped[d_grouped$individual == "NA19101" &
+                                d_grouped$depth %in% c(50000, 250000, 1500000), ]
+```
+
+## Endogenous Pearson NA19239
+
+```{r}
+ensg_pearson_plot %+% d_grouped[d_grouped$individual == "NA19239", ]
+```
+
+## ERCC Pearson NA19098
+
+```{r}
+ercc_pearson_plot <- ggplot(d_grouped[d_grouped$individual == "NA19098", ],
+                 aes(x = subsampled_cells, y = mean_pearson_ercc,
+                     color = as.factor(depth))) +
+  geom_line() +
+  geom_errorbar(aes(ymin = mean_pearson_ercc - sem_pearson_ercc,
+                    ymax = mean_pearson_ercc + sem_pearson_ercc),
+                width = 1) +
+  facet_grid(gene_subset~type)
+ercc_pearson_plot
+```
+
+## ERCC Pearson NA19101
+
+```{r}
+ercc_pearson_plot %+% d_grouped[d_grouped$individual == "NA19101", ]
+ercc_pearson_plot %+% d_grouped[d_grouped$individual == "NA19101" &
+                                d_grouped$depth %in% c(50000, 250000), ]
+```
+
+## ERCC Pearson NA19239
+
+```{r}
+ercc_pearson_plot %+% d_grouped[d_grouped$individual == "NA19239", ]
+```
+
+---
+
+## Endogenous Spearman NA19098
+
+```{r}
+ensg_spearman_plot <- ggplot(d_grouped[d_grouped$individual == "NA19098", ],
+                 aes(x = subsampled_cells, y = mean_spearman_ensg,
+                     color = as.factor(depth))) +
+  geom_line() +
+  geom_errorbar(aes(ymin = mean_spearman_ensg - sem_spearman_ensg,
+                    ymax = mean_spearman_ensg + sem_spearman_ensg),
+                width = 1) +
+  facet_grid(gene_subset~type)
+ensg_spearman_plot
+```
+
+## Endogenous Spearman NA19101
+
+```{r}
+ensg_spearman_plot %+% d_grouped[d_grouped$individual == "NA19101", ]
+ensg_spearman_plot %+% d_grouped[d_grouped$individual == "NA19101" &
+                                 d_grouped$depth %in% c(50000, 4000000), ]
+```
+
+## Endogenous Spearman NA19239
+
+```{r}
+ensg_spearman_plot %+% d_grouped[d_grouped$individual == "NA19239", ]
+```
+
+## ERCC Spearman NA19098
+
+```{r}
+ercc_spearman_plot <- ggplot(d_grouped[d_grouped$individual == "NA19098", ],
+                 aes(x = subsampled_cells, y = mean_spearman_ercc,
+                     color = as.factor(depth))) +
+  geom_line() +
+  geom_errorbar(aes(ymin = mean_spearman_ercc - sem_spearman_ercc,
+                    ymax = mean_spearman_ercc + sem_spearman_ercc),
+                width = 1) +
+  facet_grid(gene_subset~type)
+ercc_spearman_plot
+```
+
+## ERCC Spearman NA19101
+
+```{r}
+ercc_spearman_plot %+% d_grouped[d_grouped$individual == "NA19101", ]
+ercc_spearman_plot %+% d_grouped[d_grouped$individual == "NA19101" &
+                                 d_grouped$depth %in% c(50000, 4000000), ]
+```
+
+## ERCC Spearman NA19239
+
+```{r}
+ercc_spearman_plot %+% d_grouped[d_grouped$individual == "NA19239", ]
+```
+
+## Available cells
+
+Available cells - don't change up to 1.5 million reads, and then drop off at 4 million reads.
+
+```{r}
+ggplot(d_grouped, aes(x = potential_cells, y = available_cells,
+                      color = as.factor(depth))) +
+  geom_point() +
+  facet_wrap(~individual)
+```
+
+## Session information
+
+```{r info}
+sessionInfo()
+```
+

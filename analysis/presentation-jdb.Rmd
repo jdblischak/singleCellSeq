@@ -1,0 +1,204 @@
+---
+title: "Figures for presentation"
+date: 2016-10-14
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+opts_chunk$set(fig.width = 8, fig.height = 6, dpi = 300)
+```
+
+```{r packages, message=FALSE}
+library("dplyr")
+library("ggplot2")
+library("cowplot")
+source("functions.R")
+theme_set(theme_cowplot(font_size = 20))
+```
+
+## Input
+
+Input filtered annotation.
+
+```{r input-annotation-filter, cache=TRUE}
+anno_filter <- read.table("../data/annotation-filter.txt", header = TRUE,
+                   stringsAsFactors = FALSE)
+head(anno_filter)
+```
+
+Input standardized molecule counts.
+
+```{r input-molecule-counts-cpm, cache=TRUE}
+molecules_cpm <- read.table("../data/molecules-cpm.txt", header = TRUE,
+                            stringsAsFactors = FALSE)
+stopifnot(ncol(molecules_cpm) == nrow(anno_filter),
+          colnames(molecules_cpm) == anno_filter$sample_id)
+```
+
+Input final batch-corrected molecule counts per million.
+
+```{r input-molecule-counts-final, cache=TRUE}
+molecules_final <- read.table("../data/molecules-final.txt", header = TRUE,
+                              stringsAsFactors = FALSE)
+stopifnot(ncol(molecules_final) == nrow(anno_filter),
+          colnames(molecules_final) == anno_filter$sample_id)
+```
+
+## PCA
+
+### PCA of standardized data
+
+```{r pca-molecules-cpm, cache=TRUE}
+pca_molecules_cpm <- run_pca(molecules_cpm)
+```
+
+```{r pca-molecules-cpm-plot}
+pca_molecules_cpm_plot <- plot_pca(pca_molecules_cpm$PCs,
+         explained = pca_molecules_cpm$explained,
+         metadata = anno_filter, color = "individual",
+         shape = "replicate", alpha = 0.5, size = 2.2) +
+  scale_shape_discrete(name = "Replicate") +
+  scale_color_discrete(name = "Individual")
+pca_molecules_cpm_plot
+```
+
+### PCA of final batch-corrected data
+
+```{r pca-molecules-final, cache=TRUE}
+pca_final <- run_pca(molecules_final)
+```
+
+```{r pca-molecules-final-plot}
+pca_final_plot <- plot_pca(pca_final$PCs, explained = pca_final$explained,
+         metadata = anno_filter, color = "individual",
+         shape = "replicate", alpha = 0.5, size = 2.2) +
+  scale_shape_discrete(name = "Replicate") +
+  scale_color_discrete(name = "Individual")
+pca_final_plot
+```
+
+
+## Variance components
+
+```{r}
+load("../data/blme-variance.rda")
+
+labels <- c("Endogenous raw", "ERCC raw",
+            "Endogenous CPM", "Endogenous Poisson",
+            "Endogenous final")
+blme_list <- list(blme_raw, blme_ercc, blme_cpm,
+                  blme_cpm_trans, blme_final)
+prop_list <- vector("list", length(blme_list))
+names(prop_list) <- c("raw", "ercc", "cpm", "cpm_trans", "final")
+par(mfrow = c(2,3))
+for (i in c(1:length(blme_list))) {
+  res <- blme_list[[i]]
+  ms_ind <- (res[,1]*2.67*70.5) + (res[,2]*70.5) + res[,3]
+  ms_batch <- (res[,2]*70.5) + res[,3]
+  ms_resid <- res[,3]
+  ss_ind <- ms_ind*(3-1)
+  ss_batch <- ms_batch*3*(2.67-1)
+  ss_resid <- ms_resid*3*2.67*(70.5-1)
+  prop_ind <- ss_ind/(ss_ind + ss_batch + ss_resid)
+  prop_batch <- ss_batch/(ss_ind + ss_batch + ss_resid)
+  prop_list[[i]] <- data.frame(prop_ind = prop_ind,
+                               prop_batch = prop_batch)
+}
+```
+
+Endogenous genes
+
+```{r variance-components-endo}
+var_endo_df <- data.frame(proportion = c(prop_list$raw$prop_ind,
+                                         prop_list$raw$prop_batch,
+                                         1 - prop_list$raw$prop_ind -
+                                           prop_list$raw$prop_batch),
+                          type = rep(1:3, each = dim(prop_list$raw)[1]))
+var_endo_df$type <- factor(var_endo_df$type,
+                           labels = c("Individual",
+                                      "Replicate",
+                                      "Residual\ncell-to-cell variance"))
+var_endo_plot <- ggplot(var_endo_df,
+                        aes(x = type, y = proportion)) +
+  geom_violin(alpha = .5) +
+  geom_boxplot(alpha = .01, width = 0.1,
+               position = position_dodge(width = 0.9)) +
+  ylim(0,1) + xlab("") + ylab("Proportion of variance explained")
+var_endo_plot
+```
+
+ERCC spike-ins
+
+```{r variance-components-ercc}
+var_ercc_df <- data.frame(proportion = c(prop_list$ercc$prop_ind,
+                                         prop_list$ercc$prop_batch,
+                                         1- prop_list$ercc$prop_ind -
+                                           prop_list$ercc$prop_batch),
+                          type = rep(1:3, each = dim(prop_list$ercc)[1]))
+var_ercc_df$type <- factor(var_ercc_df$type,
+                           labels = c("Individual",
+                                      "Replicate",
+                                      "Residual\ncell-to-cell variance"))
+var_ercc_plot <- ggplot(var_ercc_df,
+                        aes(x = type, y = proportion)) +
+    geom_violin(alpha = .5) +
+    geom_boxplot(alpha = .01, width = 0.1,
+                 position = position_dodge(width = 0.9)) +
+    ylim(0,1) + xlab("") + ylab("Proportion of variance explained")
+var_ercc_plot
+```
+
+
+
+## Subampling
+
+```{r input-subsampling, cache=TRUE}
+d <- read.table("../data/subsampling-results.txt",
+                header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+d_grouped <- d %>%
+  group_by(type, depth, gene_subset, subsampled_cells,
+           individual, potential_cells, available_cells,
+           lower_q, upper_q, available_ensg, used_ensg,
+           available_ercc, used_ercc) %>%
+  summarize(mean_detected = mean(detected_ensg),
+            sem_detected = sd(detected_ensg) / sqrt(length(detected_ensg)),
+            mean_bulk = mean(pearson_ensg),
+            sem_bulk = sd(pearson_ensg) / sqrt(length(pearson_ensg)),
+            mean_var = mean(var_pearson),
+            sem_var = sd(var_pearson) / sqrt(length(var_pearson)))
+d_filter <- d_grouped %>% filter(individual == "NA19239",
+                                type == "molecules",
+                                gene_subset %in% c("lower", "upper"))
+d_filter$gene_subset <- factor(d_filter$gene_subset,
+                               levels = c("lower", "upper"),
+                               labels = c("Lower 50% of expressed genes",
+                                          "Upper 50% of expressed genes"))
+```
+
+```{r plot-subsampling, fig.width=12}
+theme_set(theme_cowplot(font_size = 24))
+plot_bulk <- ggplot(d_filter,
+                 aes(x = subsampled_cells, y = mean_bulk,
+                     color = as.factor(depth))) +
+  geom_line() +
+  geom_errorbar(aes(ymin = mean_bulk - sem_bulk,
+                    ymax = mean_bulk + sem_bulk),
+                width = 1) +
+  facet_wrap(~gene_subset) +
+  scale_color_grey(start = 0.8, end = 0.2, name = "Sequencing depth") +
+  # theme(legend.position = "none") +
+  theme(legend.position = c(0.75, 0.35)) +
+  labs(x = "Number of subsampled cells",
+       y = "Pearson's r (+/- SEM)")
+plot_bulk
+```
+
+## Session information
+
+```{r info}
+sessionInfo()
+```

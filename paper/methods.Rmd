@@ -138,7 +138,7 @@ These analyses took into consideration that in our study design, sources of vari
 In these sample-level analyses, the variation introduced at both the individual-level and the batch-level was modeled in a nested framework that allows random noise between C1 batches within individuals.
 Specifically, for each cell sample in individual $i$, replicate $j$ and well $k$, we used $y_{ijk}$ to denote some sample measurement (e.g. total molecule-counts) and fit a linear mixed model with the fixed effect of individual $\alpha_i$ and the random effect of batch $b_{ij}$:
 
-$$y_{ijk} = \alpha_{i} + b_{ij} + \epsilon_{ijk}$$
+$$y_{ijk} = \alpha_{i} + b_{ij} + \epsilon_{ijk} \,\,\,\,(1)$$
 
 where the random effect $b_{ij}$ of batch follows a normal distribution with mean zero and variance $\sigma^2_{b}$, and $\epsilon_{ijk}$ describes residual variation in the sample measurement.
 To test the statistical significance of individual effect (i.e., null hypothesis $\alpha_1 = \alpha_2 = \alpha_3$), we performed a likelihood ratio test (LRT) to compare the above full model and the reduced model that excludes $\alpha_i$.
@@ -188,11 +188,11 @@ We standardized the read counts to log~2~ cpm.
 
 Our last normalization step adjusted the transformed log~2~ gene expression levels for cell-to-cell correlation within each C1 plate.
 The algorithm mimics a method that was initially developed for adjusting within-replicate correlation in microarray data [@Smyth2005]. We assumed that for each gene $g$, cells that belong to the same batch $j$ are correlated, for batches $j = 1, \dots, 8$.
-The batch effect is specific to each C1 plate and is independent of biological variation across individuals.
+We also assume that the cell-to-cell gene expression variation due to C1 batch effect is independent of biological variation between individuals.
 
 We fit a linear mixed model for each gene $g$ that includes a fixed effect of individual and a random effect for within-batch variation attributed to cell-to-cell correlation in each C1 plate:
 
-$$ y_{g,ijk} = \mu_{g} + \alpha_{g,i} + b_{g,ij} + \epsilon_{g,ijk}, $$
+$$ y_{g,ijk} = \mu_{g} + \alpha_{g,i} + b_{g,ij} + \epsilon_{g,ijk}, \,\,\,\,(2)$$
 
 where $y_{g,ijk}$ denotes log~2~ counts-per-million (cpm) of gene $g$ in individual $i$, replicate $j$, and cell $k$; $i = NA19098, NA19101, NA19239$, $j = 1, \dots, n_i$ with $n_i$ the number of replicates in individual $i$, $k = 1, \dots, n_{ij}$ with $n_{ij}$ the number of cells in individual $i$ replicate $j$.
 $\mu_g$ denotes the mean gene expression level across cells, $\alpha_{g,i}$ quantifies the individual effect on mean gene expression, $b_{g,ij}$ models the replicate effect on mean expression level (assumed to be stochastic, independent, and identically distributed with mean 0 and variance $\sigma^2_{g,b}$).
@@ -200,10 +200,14 @@ Finally, $\epsilon_{g,ijk}$ describes the residual variation in gene expression.
 
 Batch-corrected expression levels were computed as
 
-$$ \widehat{y}_{g,ijk} = y_{g,ijk} - \widehat{b}_{g,ij}, $$
+$$ \widehat{y}_{g,ijk} = y_{g,ijk} - \widehat{b}_{g,ij}, \,\,\,\,(3)$$
 
 where $\widehat{b}_{g,ij}$ are the least-squares estimates.
 The computations in this step were done with the gls.series function of the limma package [@limma].
+We note that the batch correction method described here relies on the assumption that the technical effect due to batch is identical across individuals (no interaction).
+This assumption may be violated, yet due to the small number of individuals in our study, we are unable to explicitly test for a first order interaction between batch and individual.
+In the future, the issue of confounding effect between individual and batch may be more effectively addressed in the design of the study, instead of increasing the sample size.
+Indeed, in the main text we describe a study design that can effectively address the issue of confounding effect by processing samples from multiple individuals in a single C1 plate.
 
 ### Measurement of gene expression noise
 
@@ -227,7 +231,7 @@ After this transformation step, CV no longer had a polynomial relationship with 
 
 To identify differential noise genes across individuals, we computed median absolute deviation (MAD) - a robust and distribution-free dissimilarity measure for gene $g$:
 
-$$ MAD_{g} = Median_{i= 1,2,3} \left| \text{adjCV}_{g,i} -  Median_{i= 1,2,3} ({\text{adjCV}}_{g,i}) \right|. $$
+$$ MAD_{g} = Median_{i= 1,2,3} \left| \text{adjCV}_{g,i} -  Median_{i= 1,2,3} ({\text{adjCV}}_{g,i}) \right|. \,\,\,\,(4)$$
 
 Large values of $MAD_{g}$ suggest a large deviation from the median of the adjusted CV values.
 We identified genes with significant inter-individual differences using a permutation-based approach.
@@ -264,7 +268,7 @@ The results of our analyses are viewable at [https://jdblischak.github.io/single
 [site]: https://jdblischak.github.io/singleCellSeq/analysis
 
 ## Acknowledgments
-We thank members of the Pritchard, Gilad, and Stephens laboratories for valuable discussions during the preparation of this manuscript.
+We thank Xin He and members of the Pritchard, Gilad, and Stephens laboratories for valuable discussions during the preparation of this manuscript.
 This work was funded by NIH grant HL092206 to YG and HHMI funds to JKP.
 PYT is supported by NIH T32HL007381.
 JDB was supported by NIH T32GM007197.
