@@ -33,7 +33,7 @@ The following steps must be performed manually to complete the formatting of the
 *  Add line numbers starting after the title page (Page Layout -> Line Numbers)
 *  Resize the figures to have a width of 6 inches (after you resize the first figure, then you only have to select the remaining figures individually and press F4 - [directions][f4]
 *  Crop the supplementary figures
-*  Extract the supplementary figures and tables into separate document (make sure to adjust margins, add page numbers, and add title)
+*  Extract the supplementary figures and tables into separate document (make sure to adjust margins, add page numbers, and copy title page)
 *  Convert supplement to PDF
 *  Move [Figure Legends][legends] after References.
 
