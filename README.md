@@ -11,7 +11,7 @@ Download the raw FASTQ files at GEO record [GSE77288][geo].
 See the [contributing guidelines][contrib] to add a new analysis.
 
 [site]: http://jdblischak.github.io/singleCellSeq/analysis
-[paper]: https://github.com/jdblischak/singleCellSeq/blob/master/paper/tung-et-al.docx
+[paper]: http://www.nature.com/articles/srep39921
 [geo]: https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE77288
 [contrib]: https://github.com/jdblischak/singleCellSeq/blob/master/CONTRIBUTING.md
 
