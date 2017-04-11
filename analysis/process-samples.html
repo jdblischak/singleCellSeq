@@ -130,7 +130,6 @@ img {
 <li><a href="#run-fastqc">Run FastQC</a></li>
 <li><a href="#trim-umi">Trim UMI</a></li>
 <li><a href="#quality-trim-3-end-of-reads">Quality trim 3’ end of reads</a></li>
-<li><a href="#assess-sequence-characteristics">Assess sequence characteristics</a></li>
 <li><a href="#map-to-genome">Map to genome</a></li>
 <li><a href="#process-bam-files">Process bam files</a></li>
 <li><a href="#combine-single-cell-samples">Combine single cell samples</a></li>
@@ -142,21 +141,24 @@ img {
 </ul>
 </div>
 
-<p><strong>Last updated:</strong> 2016-06-29</p>
-<p><strong>Code version:</strong> c59e3a495e7257caa3180d1dfdaf315cdd79d715</p>
+<p><strong>Last updated:</strong> 2017-04-11</p>
+<p><strong>Code version:</strong> b26dce3b41a0b3d6e330e880422006017b6a5f48</p>
 <p>All processing scripts were run from the data directory.</p>
 <pre class="bash"><code>cd /mnt/gluster/data/internal_supp/singleCellSeq</code></pre>
 <p>The raw fastq files were write-protected to avoid accidental deletion.</p>
 <pre class="bash"><code>chmod uga=r fastq/*fastq.gz</code></pre>
+<p>Most steps are saved in shell scripts. This code should be able to run in any Unix-like environment (of course after installing the necessary software). To process the data efficiently on our HPC, we wrote a wrapper script, <a href="https://github.com/jdblischak/singleCellSeq/blob/master/code/submit-array.sh">submit-array.sh</a>, to combine the many parallel jobs into one array job submitted to the Sun Grid Engine (SGE) scheduler. Not only does this make it easier for the scheduler (and you) to manage thousands of tasks, we also made it so that it won’t re-run jobs if the output file already exists. This is convenient when a small fraction of jobs fail and need to be re-run. However, if your HPC uses a scheduler other than SGE, you will have to decide how best to submit the jobs.</p>
 <div id="create-genome-for-mapping" class="section level2">
 <h2>Create genome for mapping</h2>
-<p><a href="https://github.com/jdblischak/singleCellSeq/blob/master/code/create-genome.sh">create-genome.sh</a> downloads the fasta files for human genome hg19 (chromosomes 1-22, X, Y, M) and the ERRC spike-ins. It indexes the genome with <code>subread-buildindex</code>.</p>
+<p><a href="https://github.com/jdblischak/singleCellSeq/blob/master/code/create-genome.sh">create-genome.sh</a> downloads the fasta files for human genome hg19 (chromosomes 1-22, X, Y, M) and the ERRC spike-ins. It indexes the genome with <code>subread-buildindex</code>. The output is saved in the directory <code>genome</code>.</p>
 <pre class="bash"><code>submit-array.sh create-genome.sh 8g genome</code></pre>
 </div>
 <div id="run-fastqc" class="section level2">
 <h2>Run FastQC</h2>
+<p><a href="https://github.com/jdblischak/singleCellSeq/blob/master/code/run-fastqc.sh">run-fastqc.sh</a> runs <a href="http://www.bioinformatics.babraham.ac.uk/projects/fastqc/">FastQC</a> on each raw fastq file. It also counts the number of reads. The output is saved in the directory <code>fastqc</code>.</p>
 <pre class="bash"><code>submit-array.sh run-fastqc.sh 2g fastq/*fastq.gz</code></pre>
-<pre class="bash"><code>ls fastq/ | wc -l
+<pre class="bash"><code>ls fastqc/*zip | wc -l
+ls fastqc/*count.txt | wc -l
 grep -w success ~/log/run-fastqc.sh/* | wc -l
 grep -w failure ~/log/run-fastqc.sh/* | wc -l</code></pre>
 </div>
@@ -179,13 +181,6 @@ grep -w failure ~/log/trim.sh/* | wc -l</code></pre>
 <pre class="bash"><code>ls sickle/*fastq.gz | wc -l
 grep -w success ~/log/sickle.sh/* | wc -l
 grep -w failure ~/log/sickle.sh/* | wc -l</code></pre>
-</div>
-<div id="assess-sequence-characteristics" class="section level2">
-<h2>Assess sequence characteristics</h2>
-<pre class="bash"><code>submit-array.sh qc.sh 2g fastq/*fastq.gz trim/*fastq.gz sickle/*fastq.gz</code></pre>
-<pre class="bash"><code>ls seqqs/*_len.txt | wc -l
-grep -w success ~/log/qc.sh/* | wc -l
-grep -w failure ~/log/qc.sh/* | wc -l</code></pre>
 </div>
 <div id="map-to-genome" class="section level2">
 <h2>Map to genome</h2>
@@ -265,7 +260,7 @@ grep -w failure ~/log/rmdup-umi.sh/* | wc -l</code></pre>
 </div>
 <div id="count-reads-per-gene" class="section level2">
 <h2>Count reads per gene</h2>
-<p><a href="https://github.com/jdblischak/singleCellSeq/blob/master/code/count-reads-per-gene.sh">count-reads-per-gene.sh</a> uses <a href="http://sourceforge.net/projects/subread/files/subread-1.5.0-p1/">featureCounts version 1.5.0-p1</a> to count the number or reads or molecules per gene. We perform strand-specific counting (flag <code>-s 1</code>) because the UMI protocol preserves sequence strand information. The per lane reads for both the bulk and single cell samples are in <code>bam-processed</code>. The per lane and combined molecules for the single cells only are contained in <code>bam-rmdup-umi</code>. The ouptut is written to the directory <code>counts</code>.</p>
+<p><a href="https://github.com/jdblischak/singleCellSeq/blob/master/code/count-reads-per-gene.sh">count-reads-per-gene.sh</a> uses <a href="http://sourceforge.net/projects/subread/files/subread-1.5.0-p1/">featureCounts version 1.5.0-p1</a> to count the number or reads or molecules per gene. We perform strand-specific counting (flag <code>-s 1</code>) because the UMI protocol preserves sequence strand information. The per lane reads for both the bulk and single cell samples are in <code>bam-processed</code>. The per lane and combined molecules for the single cells only are contained in <code>bam-rmdup-umi</code>. The output is written to the directory <code>counts</code>.</p>
 <pre class="bash"><code>submit-array.sh count-reads-per-gene.sh 2g bam-processed/*bam bam-rmdup-umi/*bam</code></pre>
 <p>Expect 6120 files:</p>
 <ul>
@@ -280,17 +275,17 @@ grep -w failure ~/log/count-reads-per-gene.sh/* | wc -l</code></pre>
 </div>
 <div id="gather-total-counts" class="section level2">
 <h2>Gather total counts</h2>
-<p>The total number of reads at each stage of the processing pipeline.</p>
+<p><a href="https://github.com/jdblischak/singleCellSeq/blob/master/code/gather-total-counts.py">gather-total-counts.py</a> gathers the total number of reads at each stage of the processing pipeline. The output is saved in <a href="https://github.com/jdblischak/singleCellSeq/blob/master/data/total-counts.txt">total-counts.txt</a>.</p>
 <pre class="bash"><code>gather-total-counts.py &gt; total-counts.txt</code></pre>
 </div>
 <div id="gather-summary-counts" class="section level2">
 <h2>Gather summary counts</h2>
-<p><a href="https://github.com/jdblischak/singleCellSeq/blob/master/code/gather-summary-counts.py">gather-summary-counts.py</a> gathers the classification of reads assigned by featureCounts. It only gathers from the single cell samples, because this information is used for quality control filtering.</p>
+<p><a href="https://github.com/jdblischak/singleCellSeq/blob/master/code/gather-summary-counts.py">gather-summary-counts.py</a> gathers the classification of reads assigned by featureCounts. It only gathers from the single cell samples, because this information is used for quality control filtering. The output is saved in <a href="https://github.com/jdblischak/singleCellSeq/blob/master/data/summary-counts.txt">summary-counts.txt</a>.</p>
 <pre class="bash"><code>gather-summary-counts.py &gt; summary-counts.txt</code></pre>
 </div>
 <div id="gather-gene-counts" class="section level2">
 <h2>Gather gene counts</h2>
-<p><a href="https://github.com/jdblischak/singleCellSeq/blob/master/code/gather-gene-counts.py">gather-gene-counts.py</a> gathers the featureCounts results and creates count matrices.</p>
+<p><a href="https://github.com/jdblischak/singleCellSeq/blob/master/code/gather-gene-counts.py">gather-gene-counts.py</a> gathers the featureCounts results and creates count matrices. The output is saved in the directory <code>counts-matrix</code>.</p>
 <pre class="bash"><code>mkdir -p counts-matrix
 gather-gene-counts.py counts-matrix/ counts/*genecounts.txt</code></pre>
 <p>It creates six files:</p>
