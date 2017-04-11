@@ -11,14 +11,14 @@ Should be run from data directory.
 import glob
 import sys
 
-files = sorted(glob.glob("fastq/*count*")) + \
+files = sorted(glob.glob("fastqc/*count*")) + \
         sorted(glob.glob("trim/*count*")) + \
         sorted(glob.glob("sickle/*count*")) + \
         sorted(glob.glob("bam-processed/*count*")) + \
         sorted(glob.glob("bam-rmdup-umi/*count*")) + \
         sorted(glob.glob("counts/*summary"))
 
-# files = glob.glob("fastq/*count*")[:2] + \
+# files = glob.glob("fastqc/*count*")[:2] + \
 #         glob.glob("trim/*count*")[:2] + \
 #         glob.glob("sickle/*count*")[:2] + \
 #         glob.glob("bam-processed/*count*")[:2] + \
@@ -100,7 +100,7 @@ for f in files:
 
     dir, fname = f.split("/")
 
-    if dir == "fastq":
+    if dir == "fastqc":
         stage = "raw"
         counts = read_count_file(f)
     elif dir == "trim":

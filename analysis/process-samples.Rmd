@@ -20,10 +20,24 @@ The raw fastq files were write-protected to avoid accidental deletion.
 chmod uga=r fastq/*fastq.gz
 ```
 
+Most steps are saved in shell scripts. This code should be able to run in any
+Unix-like environment (of course after installing the necessary software). To
+process the data efficiently on our HPC, we wrote a wrapper script,
+[submit-array.sh][], to combine the many parallel jobs into one array job
+submitted to the Sun Grid Engine (SGE) scheduler. Not only does this make it
+easier for the scheduler (and you) to manage thousands of tasks, we also made it
+so that it won't re-run jobs if the output file already exists. This is
+convenient when a small fraction of jobs fail and need to be re-run. However, if
+your HPC uses a scheduler other than SGE, you will have to decide how best to
+submit the jobs.
+
+[submit-array.sh]: https://github.com/jdblischak/singleCellSeq/blob/master/code/submit-array.sh
+
 ## Create genome for mapping
 
 [create-genome.sh][] downloads the fasta files for human genome hg19 (chromosomes 1-22, X, Y, M) and the ERRC spike-ins.
 It indexes the genome with `subread-buildindex`.
+The output is saved in the directory `genome`.
 
 ```bash
 submit-array.sh create-genome.sh 8g genome
@@ -33,12 +47,20 @@ submit-array.sh create-genome.sh 8g genome
 
 ## Run FastQC
 
+[run-fastqc.sh][] runs [FastQC][] on each raw fastq file.
+It also counts the number of reads.
+The output is saved in the directory `fastqc`.
+
 ```bash
 submit-array.sh run-fastqc.sh 2g fastq/*fastq.gz
 ```
 
+[run-fastqc.sh]: https://github.com/jdblischak/singleCellSeq/blob/master/code/run-fastqc.sh
+[FastQC]: http://www.bioinformatics.babraham.ac.uk/projects/fastqc/
+
 ```bash
-ls fastq/ | wc -l
+ls fastqc/*zip | wc -l
+ls fastqc/*count.txt | wc -l
 grep -w success ~/log/run-fastqc.sh/* | wc -l
 grep -w failure ~/log/run-fastqc.sh/* | wc -l
 ```
@@ -88,18 +110,6 @@ To confirm that the jobs ran successfully:
 ls sickle/*fastq.gz | wc -l
 grep -w success ~/log/sickle.sh/* | wc -l
 grep -w failure ~/log/sickle.sh/* | wc -l
-```
-
-## Assess sequence characteristics
-
-```bash
-submit-array.sh qc.sh 2g fastq/*fastq.gz trim/*fastq.gz sickle/*fastq.gz
-```
-
-```bash
-ls seqqs/*_len.txt | wc -l
-grep -w success ~/log/qc.sh/* | wc -l
-grep -w failure ~/log/qc.sh/* | wc -l
 ```
 
 ## Map to genome
@@ -250,7 +260,7 @@ grep -w failure ~/log/rmdup-umi.sh/* | wc -l
 We perform strand-specific counting (flag `-s 1`) because the UMI protocol preserves sequence strand information.
 The per lane reads for both the bulk and single cell samples are in `bam-processed`.
 The per lane and combined molecules for the single cells only are contained in `bam-rmdup-umi`.
-The ouptut is written to the directory `counts`.
+The output is written to the directory `counts`.
 
 ```bash
 submit-array.sh count-reads-per-gene.sh 2g bam-processed/*bam bam-rmdup-umi/*bam
@@ -273,26 +283,33 @@ grep -w failure ~/log/count-reads-per-gene.sh/* | wc -l
 
 ## Gather total counts
 
-The total number of reads at each stage of the processing pipeline.
+[gather-total-counts.py][] gathers the total number of reads at each stage of the processing pipeline.
+The output is saved in [total-counts.txt][].
 
 ```bash
 gather-total-counts.py > total-counts.txt
 ```
 
+[gather-total-counts.py]: https://github.com/jdblischak/singleCellSeq/blob/master/code/gather-total-counts.py
+[total-counts.txt]: https://github.com/jdblischak/singleCellSeq/blob/master/data/total-counts.txt
+
 ## Gather summary counts
 
 [gather-summary-counts.py][] gathers the classification of reads assigned by featureCounts.
 It only gathers from the single cell samples, because this information is used for quality control filtering.
+The output is saved in [summary-counts.txt][].
 
 ```bash
 gather-summary-counts.py > summary-counts.txt
 ```
 
 [gather-summary-counts.py]: https://github.com/jdblischak/singleCellSeq/blob/master/code/gather-summary-counts.py
+[summary-counts.txt]: https://github.com/jdblischak/singleCellSeq/blob/master/data/summary-counts.txt
 
 ## Gather gene counts
 
 [gather-gene-counts.py][] gathers the featureCounts results and creates count matrices.
+The output is saved in the directory `counts-matrix`.
 
 ```bash
 mkdir -p counts-matrix

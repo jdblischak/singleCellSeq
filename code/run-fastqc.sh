@@ -13,7 +13,7 @@ then
   exit 65
 fi
 
-if [ -s $OUTDIR/$BASE.raw.count.txt ]
+if [ -s $OUTDIR/$BASE.count.txt ]
 then
   echo "Output file already exists: $OUTDIR/$BASE.raw.count.txt"
   exit 64
