@@ -7,7 +7,7 @@ date: 2015-08-10
 
 **Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
 
-```{r chunk-options, include=FALSE}
+```{r chunk-options, message=FALSE}
 source("chunk-options.R")
 library("edgeR")
 library("ggplot2")
@@ -164,19 +164,19 @@ qc$efficiency <- efficiency
 qc$quality <- anno_single$sample_id %in% quality_single_cells
 ```
 
-Single cells from batch 2 of individual 19098 ahve the highest efficiency.
+Single cells from replicate 2 of individual NA19098 have the highest efficiency.
 This was expected since they have an [abnormally high ERCC ratio](qc-cell-ipsc.html#total-mapped-reads-unmapped-ratios-and-ercc-ratios).
 
 ```{r efficiency-19098-2-outlier}
-efficiency_box <- ggplot(qc, aes(y = efficiency, x = as.factor(individual), fill = as.factor(batch))) +
+efficiency_box <- ggplot(qc, aes(y = efficiency, x = individual, fill = replicate)) +
   geom_boxplot()
 efficiency_box
 ```
 
-Removing batch 2 of individual 19098.
+Removing replicate 2 of individual NA19098.
 
-```{r qc-remove-19098-batch-2-single}
-qc_sub <- qc[!(anno_single$individual == 19098 & anno_single$batch == 2), ]
+```{r qc-remove-19098-replicate-2-single}
+qc_sub <- qc[!(anno_single$individual == "NA19098" & anno_single$replicate == "r2"), ]
 ```
 
 ```{r efficiency-wo-19098-2-outlier}
@@ -188,7 +188,7 @@ There doesn't seem to be a relationship between Bioanalyzer concentration and ca
 ```{r efficiency-concentration}
 efficiency_conc <- ggplot(qc_sub, aes(x = concentration, y = efficiency)) +
   geom_point() +
-  facet_grid(batch ~ individual) +
+  facet_grid(replicate ~ individual) +
   geom_smooth()
 efficiency_conc
 ```
@@ -224,17 +224,17 @@ Also, it appears this is another technical difference between the individuals.
 
 ```{r efficiency-v-perc-ercc}
 perc_ercc_plot <- ggplot(perc_ercc_data, aes(x = perc_ercc, y = efficiency,
-                                             col = as.factor(individual),
-                                             shape = as.factor(batch))) +
+                                             col = individual,
+                                             shape = replicate)) +
   geom_point()
 perc_ercc_plot
 ```
 
-Focusing on the lower part of the distribution, which ignores the outlier batch 2 of individual 19098.
+Focusing on the lower part of the distribution, which ignores the outlier replicate 2 of individual NA19098.
 
 ```{r efficiency-v-perc-ercc-focused}
 perc_ercc_plot + ylim(0, 0.25)
-perc_ercc_plot + ylim(0, 0.20) + xlim(0, 0.12) + facet_grid(individual ~ batch) + geom_smooth()
+perc_ercc_plot + ylim(0, 0.20) + xlim(0, 0.12) + facet_grid(individual ~ replicate) + geom_smooth()
 ```
 
 Comparing capture efficiency with the total molecules, both ERCC and endogenous genes.
@@ -245,13 +245,13 @@ perc_ercc_data <- cbind(total_molecule, perc_ercc, efficiency, anno[anno$well !=
 
 ```{r efficiency-v-total-molecules}
 total_mol_plot <- ggplot(perc_ercc_data, aes(x = total_molecule, y = efficiency,
-                                             col = as.factor(individual),
-                                             shape = as.factor(batch))) +
+                                             col = individual,
+                                             shape = replicate)) +
   geom_point()
 total_mol_plot
 
 total_mol_plot + ylim(0, 0.25)
-total_mol_plot + ylim(0, 0.20) + facet_grid(individual ~ batch) + geom_smooth()
+total_mol_plot + ylim(0, 0.20) + facet_grid(individual ~ replicate) + geom_smooth()
 ```
 
 ## Visualizing capture efficiency
@@ -270,11 +270,11 @@ stopifnot(ncol(molecules_single) == nrow(anno_single),
           colnames(molecules_single) == anno_single$sample_id)
 ```
 
-Also remove batch 2 of individual 19098.
+Also remove replicate 2 of individual NA19098.
 
-```{r remove-19098-batch-2-single, eval=FALSE}
-molecules_single <- molecules_single[, !(anno_single$individual == 19098 & anno_single$batch == 2)]
-anno_single <- anno_single[!(anno_single$individual == 19098 & anno_single$batch == 2), ]
+```{r remove-19098-replicate-2-single, eval=FALSE}
+molecules_single <- molecules_single[, !(anno_single$individual == "NA19098" & anno_single$replicate == "r2")]
+anno_single <- anno_single[!(anno_single$individual == "NA19098" & anno_single$replicate == "r2"), ]
 stopifnot(ncol(molecules_single) == nrow(anno_single))
 ```
 
@@ -319,9 +319,7 @@ p_efficiency + scale_x_log10() +
        title = "ERCC capture efficiency - log transformed")
 ```
 
-Here is their result:
-
-![Islam et al. Figure 2](http://www.nature.com/nmeth/journal/v11/n2/images/nmeth.2772-F2.jpg)
+Here is their result: [Islam et al. Figure 2](https://www.nature.com/nmeth/journal/v11/n2/images/nmeth.2772-F2.jpg)
 
 ## Session information
 
